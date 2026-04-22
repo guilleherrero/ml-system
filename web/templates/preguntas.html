@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% block title %} — Preguntas {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+/* ── Layout ───────────────────────────────────────────────── */
+.q-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+  overflow:hidden; margin-bottom:1.1rem;
+  transition: box-shadow .2s;
+}
+.q-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.07); }
+.q-card.respondida { opacity:.55; border-color:#d1fae5; }
+.q-card.respondida .q-header { background:#f0fdf4; }
+
+/* ── Header del producto ──────────────────────────────────── */
+.q-header {
+  background:#f8fafc; border-bottom:1px solid #e2e8f0;
+  padding:.55rem 1rem;
+  display:flex; align-items:center; justify-content:space-between; gap:.75rem;
+}
+.q-product { font-size:.78rem; font-weight:600; color:#1e3a8a; flex:1;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.q-meta { font-size:.68rem; color:#94a3b8; white-space:nowrap; }
+
+/* ── Cuerpo ───────────────────────────────────────────────── */
+.q-body { padding:1rem 1.1rem; }
+.q-bubble {
+  background:#f0f4ff; border-radius:12px; border-radius:4px 12px 12px 12px;
+  padding:.7rem 1rem; margin-bottom:.75rem; position:relative;
+}
+.q-bubble::before {
+  content:''; position:absolute; top:0; left:-6px;
+  border:6px solid transparent; border-right-color:#f0f4ff;
+  border-top-color:#f0f4ff;
+}
+.q-text  { font-size:.9rem; color:#1e293b; line-height:1.55; }
+.q-buyer { font-size:.7rem; color:#64748b; margin-top:.3rem; }
+
+/* ── Botón generar ────────────────────────────────────────── */
+.btn-gen {
+  background:linear-gradient(135deg,#2563eb,#7c3aed);
+  color:#fff; border:none; border-radius:8px;
+  padding:.45rem 1rem; font-size:.8rem; font-weight:600;
+  display:inline-flex; align-items:center; gap:.4rem;
+  cursor:pointer; transition:opacity .15s;
+}
+.btn-gen:hover { opacity:.9; }
+.btn-gen:disabled { opacity:.6; cursor:default; }
+
+/* ── Opciones de respuesta ────────────────────────────────── */
+.opciones-wrap {
+  display:none; gap:.75rem; margin-top:.85rem;
+}
+.opciones-wrap.show { display:flex; }
+@media(max-width:768px){ .opciones-wrap { flex-direction:column; } }
+
+.opcion-card {
+  flex:1; border:2px solid #e2e8f0; border-radius:10px;
+  padding:.75rem .85rem; cursor:pointer;
+  transition: border-color .15s, box-shadow .15s;
+  display:flex; flex-direction:column; gap:.5rem;
+  background:#fff;
+}
+.opcion-card:hover   { border-color:#93c5fd; box-shadow:0 2px 10px rgba(37,99,235,.08); }
+.opcion-card.selected{ border-color:#2563eb; background:#eff6ff; box-shadow:0 2px 14px rgba(37,99,235,.15); }
+.opcion-card.A       { --accent:#2563eb; }
+.opcion-card.B       { --accent:#7c3aed; }
+.opcion-card.C       { --accent:#16a34a; }
+
+.opcion-badge {
+  display:inline-flex; align-items:center; gap:.3rem;
+  font-size:.65rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.05em; padding:2px 8px; border-radius:20px;
+  width:fit-content;
+}
+.opcion-card.A .opcion-badge { background:#dbeafe; color:#1d4ed8; }
+.opcion-card.B .opcion-badge { background:#ede9fe; color:#6d28d9; }
+.opcion-card.C .opcion-badge { background:#dcfce7; color:#15803d; }
+
+.opcion-textarea {
+  width:100%; border:1px solid #e2e8f0; border-radius:7px;
+  padding:.5rem .7rem; font-size:.82rem; line-height:1.55;
+  resize:vertical; min-height:80px; color:#1e293b;
+  font-family:inherit;
+  transition: border-color .15s;
+}
+.opcion-textarea:focus { outline:none; border-color:#93c5fd; }
+.opcion-card.selected .opcion-textarea { border-color:#93c5fd; background:#fff; }
+
+.btn-enviar {
+  background:#2563eb; color:#fff; border:none; border-radius:7px;
+  padding:.38rem .85rem; font-size:.78rem; font-weight:600;
+  cursor:pointer; transition:background .15s;
+  align-self:flex-end;
+}
+.btn-enviar:hover    { background:#1d4ed8; }
+.btn-enviar:disabled { background:#93c5fd; cursor:default; }
+
+/* ── Estados ──────────────────────────────────────────────── */
+.estado-ok {
+  display:none; align-items:center; gap:.5rem;
+  font-size:.82rem; font-weight:600; color:#15803d;
+  background:#dcfce7; padding:.45rem .85rem; border-radius:8px;
+  margin-top:.6rem;
+}
+.q-card.respondida .estado-ok { display:flex; }
+
+/* ── Contador ─────────────────────────────────────────────── */
+.count-badge {
+  background:#dc2626; color:#fff; border-radius:20px;
+  padding:2px 8px; font-size:.72rem; font-weight:700;
+  min-width:24px; text-align:center;
+}
+.count-badge.zero { background:#16a34a; }
+
+/* ── Skeleton loader ──────────────────────────────────────── */
+.skeleton { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);
+  background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:6px; }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+</style>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<div class="page-header">
+  <div>
+    <h1>
+      <i class="bi bi-chat-dots me-2 text-primary"></i>Preguntas de compradores
+      <span id="totalBadge" class="count-badge ms-2" style="font-size:.75rem;vertical-align:middle">
+        {{ questions | length }}
+      </span>
+    </h1>
+    <div class="sub">{{ alias }} — respondé con IA en un clic</div>
+  </div>
+  <a href="/preguntas/{{ alias }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+  </a>
+</div>
+
+<!-- ── Error de conexión ────────────────────────────────────── -->
+{% if fetch_error %}
+<div class="alert alert-danger mb-3">
+  <i class="bi bi-exclamation-triangle me-2"></i>
+  Error al conectar con ML: <code>{{ fetch_error }}</code>
+</div>
+{% endif %}
+
+<!-- ── Sin preguntas ────────────────────────────────────────── -->
+{% if not questions %}
+<div class="card">
+  <div class="card-body text-center py-5">
+    <i class="bi bi-chat-square-check" style="font-size:2.5rem;color:#22c55e;display:block;margin-bottom:.75rem"></i>
+    <h3 style="font-size:1.05rem;font-weight:600">Todo respondido</h3>
+    <p class="text-muted mb-0">No tenés preguntas pendientes en esta cuenta.</p>
+  </div>
+</div>
+
+{% else %}
+<!-- ── Barra de acciones ────────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-3 gap-2 flex-wrap">
+  <div class="text-muted" style="font-size:.82rem">
+    <strong>{{ questions | length }}</strong> preguntas esperando respuesta
+  </div>
+  <button class="btn-gen" onclick="generarTodas()" id="btnTodas">
+    <i class="bi bi-stars"></i>Generar respuestas para todas con IA
+  </button>
+</div>
+
+<!-- ── Cards de preguntas ──────────────────────────────────── -->
+{% for q in questions %}
+<div class="q-card" id="qcard-{{ q.id }}">
+
+  <!-- Header: producto + meta -->
+  <div class="q-header">
+    <div class="q-product">
+      <i class="bi bi-box-seam me-1 text-primary"></i>{{ q.item_title or q.item_id }}
+    </div>
+    <div class="q-meta">
+      <i class="bi bi-clock me-1"></i>{{ q.date }}
+    </div>
+  </div>
+
+  <!-- Cuerpo -->
+  <div class="q-body">
+    <!-- Burbuja de pregunta -->
+    <div class="q-bubble">
+      <div class="q-text">{{ q.text }}</div>
+      <div class="q-buyer"><i class="bi bi-person me-1"></i>{{ q.buyer }}</div>
+    </div>
+
+    <!-- Acciones -->
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button class="btn-gen"
+              id="btnGen-{{ q.id }}"
+              onclick="generarRespuestas('{{ q.id }}', {{ q.item_id | tojson }}, {{ q.item_title | tojson }}, {{ q.text | tojson }})">
+        <i class="bi bi-stars"></i>Generar 3 respuestas con IA
+      </button>
+      <span class="text-muted" style="font-size:.72rem" id="status-{{ q.id }}"></span>
+    </div>
+
+    <!-- Opciones A / B / C -->
+    <div class="opciones-wrap" id="opciones-{{ q.id }}">
+
+      {% for letra, label in [('A','Directa'), ('B','Completa'), ('C','Orientada a la venta')] %}
+      <div class="opcion-card {{ letra }}"
+           id="opcion-{{ q.id }}-{{ letra }}"
+           onclick="seleccionar('{{ q.id }}', '{{ letra }}')">
+        <div class="opcion-badge">
+          {% if letra == 'A' %}<i class="bi bi-lightning-fill"></i>
+          {% elif letra == 'B' %}<i class="bi bi-card-text"></i>
+          {% else %}<i class="bi bi-bag-check"></i>{% endif %}
+          {{ label }}
+        </div>
+        <textarea class="opcion-textarea"
+                  id="txt-{{ q.id }}-{{ letra }}"
+                  rows="3"
+                  placeholder="Generando respuesta..."
+                  onclick="event.stopPropagation()"></textarea>
+        <button class="btn-enviar"
+                id="enviar-{{ q.id }}-{{ letra }}"
+                onclick="event.stopPropagation(); enviarRespuesta('{{ q.id }}', '{{ letra }}', '{{ alias }}')"
+                disabled>
+          <i class="bi bi-send me-1"></i>Enviar esta respuesta
+        </button>
+      </div>
+      {% endfor %}
+
+    </div><!-- /opciones -->
+
+    <!-- Estado respondida -->
+    <div class="estado-ok" id="ok-{{ q.id }}">
+      <i class="bi bi-check-circle-fill"></i>Respuesta enviada correctamente
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- ── Toast ────────────────────────────────────────────────── -->
+<div id="addToast" style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS = {{ alias | tojson }};
+
+function showToast(msg, type='success') {
+  const t = document.createElement('div');
+  t.className = `alert alert-${type} py-2 px-3 mb-2`;
+  t.style.cssText = 'font-size:.8rem;box-shadow:0 2px 8px rgba(0,0,0,.15);border-radius:8px;min-width:220px';
+  t.innerHTML = `<i class="bi bi-${type==='success'?'check':'exclamation-triangle'} me-1"></i>${msg}`;
+  document.getElementById('addToast').appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ── Generar respuestas para UNA pregunta ──────────────────────
+async function generarRespuestas(qId, itemId, itemTitle, questionText) {
+  const btn    = document.getElementById(`btnGen-${qId}`);
+  const status = document.getElementById(`status-${qId}`);
+  const wrap   = document.getElementById(`opciones-${qId}`);
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generando...';
+  status.textContent = '';
+
+  try {
+    const resp = await fetch('/api/generar-respuestas', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        alias:    ALIAS,
+        question: questionText,
+        item_id:  itemId,
+        item_title: itemTitle,
+      })
+    });
+    const data = await resp.json();
+
+    if (!data.ok) {
+      status.textContent = '❌ ' + (data.error || 'Error al generar');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-stars"></i>Reintentar';
+      return;
+    }
+
+    // Llenar las 3 opciones
+    data.opciones.forEach(op => {
+      const ta  = document.getElementById(`txt-${qId}-${op.key}`);
+      const btn2 = document.getElementById(`enviar-${qId}-${op.key}`);
+      if (ta)  { ta.value = op.text; ta.dispatchEvent(new Event('input')); }
+      if (btn2) btn2.disabled = false;
+    });
+
+    wrap.classList.add('show');
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>Regenerar';
+    btn.disabled  = false;
+
+    // Seleccionar opción A por defecto
+    seleccionar(qId, 'A');
+
+  } catch(e) {
+    status.textContent = '❌ Error de red';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-stars"></i>Reintentar';
+  }
+}
+
+// ── Seleccionar opción ────────────────────────────────────────
+function seleccionar(qId, letra) {
+  ['A','B','C'].forEach(l => {
+    document.getElementById(`opcion-${qId}-${l}`)?.classList.toggle('selected', l === letra);
+  });
+}
+
+// ── Enviar respuesta ──────────────────────────────────────────
+async function enviarRespuesta(qId, letra, alias) {
+  const ta   = document.getElementById(`txt-${qId}-${letra}`);
+  const btn  = document.getElementById(`enviar-${qId}-${letra}`);
+  const card = document.getElementById(`qcard-${qId}`);
+  const texto = ta?.value?.trim();
+
+  if (!texto) { showToast('Escribí una respuesta antes de enviar', 'warning'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enviando...';
+
+  try {
+    const resp = await fetch('/api/responder-pregunta', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ alias, question_id: parseInt(qId), respuesta: texto })
+    });
+    const data = await resp.json();
+
+    if (data.ok) {
+      card.classList.add('respondida');
+      document.getElementById(`ok-${qId}`).style.display = 'flex';
+      document.getElementById(`opciones-${qId}`).classList.remove('show');
+      document.getElementById(`btnGen-${qId}`).style.display = 'none';
+
+      // Actualizar contador
+      const badge = document.getElementById('totalBadge');
+      const cur   = parseInt(badge.textContent) - 1;
+      badge.textContent = cur;
+      badge.className   = 'count-badge ms-2' + (cur === 0 ? ' zero' : '');
+
+      showToast('Respuesta enviada correctamente');
+
+      // Colapsar después de 2s
+      setTimeout(() => {
+        card.style.transition = 'max-height .4s, opacity .4s, margin .4s';
+        card.style.overflow   = 'hidden';
+        card.style.maxHeight  = card.offsetHeight + 'px';
+        requestAnimationFrame(() => {
+          card.style.maxHeight = '0';
+          card.style.opacity   = '0';
+          card.style.margin    = '0';
+        });
+      }, 2000);
+    } else {
+      showToast('Error: ' + (data.error || 'respuesta no enviada'), 'danger');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-send me-1"></i>Enviar esta respuesta';
+    }
+  } catch(e) {
+    showToast('Error de red', 'danger');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-send me-1"></i>Enviar esta respuesta';
+  }
+}
+
+// ── Generar para TODAS las preguntas ──────────────────────────
+async function generarTodas() {
+  const btn = document.getElementById('btnTodas');
+  const cards = document.querySelectorAll('.q-card:not(.respondida)');
+  if (!cards.length) return;
+
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Generando para ${cards.length} preguntas...`;
+
+  let done = 0;
+  for (const card of cards) {
+    const qId  = card.id.replace('qcard-','');
+    const btnG = document.getElementById(`btnGen-${qId}`);
+    if (!btnG || card.classList.contains('respondida')) continue;
+
+    // Extraer datos del DOM
+    const questionText = card.querySelector('.q-text')?.textContent?.trim() || '';
+    const itemTitle    = card.querySelector('.q-product')?.textContent?.replace(/^[^\w]+/,'').trim() || '';
+
+    await generarRespuestas(qId, '', itemTitle, questionText);
+    done++;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${done}/${cards.length} generadas...`;
+    await new Promise(r => setTimeout(r, 400)); // pausa entre llamadas
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-stars"></i>Todas generadas — revisá y enviá';
+  showToast(`${done} respuestas generadas`);
+}
+
+// ── Auto-resize textareas ─────────────────────────────────────
+document.querySelectorAll('.opcion-textarea').forEach(ta => {
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  });
+});
+</script>
+{% endblock %}

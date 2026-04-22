@@ -1,0 +1,2505 @@
+{% extends "base.html" %}
+{% block title %} — Optimizaciones {{ alias }}{% endblock %}
+{% block content %}
+<style>
+/* ── Optimization Cards ───────────────────────────────────────────────── */
+.opt-card { border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.07); border:1px solid #e2e8f0; overflow:hidden; background:#fff; margin-bottom:1.5rem; }
+.opt-card-hdr { padding:14px 20px; display:flex; align-items:center; gap:10px; background:#fff; border-bottom:1px solid #f1f5f9; flex-wrap:wrap; }
+.opt-card-title { font-size:.9rem; font-weight:600; color:#0f172a; flex:1; min-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Score */
+.score-strip { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.score-pill { display:flex; flex-direction:column; align-items:center; padding:5px 13px; border-radius:8px; line-height:1.1; }
+.score-pill.bad  { background:#fee2e2; border:1px solid #fca5a5; }
+.score-pill.good { background:#dcfce7; border:1px solid #86efac; }
+.score-pill .sp-num { font-size:1.15rem; font-weight:800; }
+.score-pill.bad  .sp-num { color:#dc2626; }
+.score-pill.good .sp-num { color:#16a34a; }
+.score-pill .sp-lbl { font-size:.55rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#6b7280; margin-top:1px; }
+
+/* Sections */
+.opt-sec { border-top:1px solid #f1f5f9; }
+.opt-sec-hdr { padding:11px 20px; display:flex; align-items:center; gap:8px; }
+.opt-sec-hdr.cc { cursor:pointer; user-select:none; transition:background .15s; background:#f8fafc; }
+.opt-sec-hdr.cc:hover { background:#f1f5f9; }
+.opt-sec-lbl { font-size:.69rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; flex:1; }
+.opt-sec-body { padding:14px 20px; }
+
+/* Title options */
+.t-opt { border-radius:9px; overflow:hidden; margin-bottom:8px; }
+.t-opt.rec { border:2px solid #16a34a; box-shadow:0 1px 6px rgba(22,163,74,.15); }
+.t-opt.nor { border:1px solid #d1fae5; }
+.t-opt-head { padding:10px 14px; display:flex; align-items:center; gap:10px; }
+.t-opt.rec .t-opt-head { background:#bbf7d0; }
+.t-opt.nor .t-opt-head { background:#f0fdf4; }
+.t-opt-num { font-size:.62rem; font-weight:800; text-transform:uppercase; color:#166534; flex-shrink:0; min-width:55px; }
+.t-opt-text { font-size:.9rem; font-weight:600; color:#14532d; flex:1; }
+.t-opt-chars { font-size:.67rem; color:#6b7280; flex-shrink:0; }
+.t-opt-strat { padding:6px 14px; font-size:.71rem; color:#475569; background:#f7fdf9; border-top:1px solid #d1fae5; display:flex; align-items:flex-start; gap:6px; }
+.t-opt-why   { padding:6px 14px; font-size:.72rem; color:#166534; background:#dcfce7; border-top:1px solid #a7f3d0; display:flex; align-items:flex-start; gap:6px; }
+
+/* Actions */
+.act-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+.act-card { border-radius:10px; padding:14px 16px; }
+.act-card.catalog { background:#fef9c3; border:1px solid #fde68a; }
+.act-card.fix     { background:#eff6ff; border:1px solid #bfdbfe; }
+.act-card.price   { background:#f0fdf4; border:1px solid #bbf7d0; }
+.act-card.photos  { background:#fdf4ff; border:1px solid #e9d5ff; }
+.act-lbl  { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.act-body { font-size:.82rem; line-height:1.65; white-space:pre-wrap; }
+.act-card.catalog .act-lbl { color:#92400e; } .act-card.catalog .act-body { color:#78350f; }
+.act-card.fix     .act-lbl { color:#1e40af; } .act-card.fix     .act-body { color:#1e3a8a; }
+.act-card.price   .act-lbl { color:#14532d; } .act-card.price   .act-body { color:#166534; }
+.act-card.photos  .act-lbl { color:#6b21a8; } .act-card.photos  .act-body { color:#581c87; }
+
+/* Analysis accordion */
+.anl-item { border-radius:8px; overflow:hidden; border:1px solid #e2e8f0; margin-bottom:8px; }
+.anl-item summary { padding:9px 14px; background:#f8fafc; cursor:pointer; font-size:.8rem; font-weight:600; list-style:none; display:flex; align-items:center; gap:8px; user-select:none; }
+.anl-item summary:hover { background:#f1f5f9; }
+.anl-item summary::marker,.anl-item summary::-webkit-details-marker { display:none; }
+.anl-item .anl-chev { margin-left:auto; font-size:.72rem; color:#94a3b8; transition:transform .2s; }
+.anl-item[open] .anl-chev { transform:rotate(180deg); }
+.anl-item-body { padding:12px 14px; font-size:.83rem; white-space:pre-wrap; line-height:1.75; max-height:280px; overflow-y:auto; }
+
+/* Insights */
+.ins-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+.ins-card { border-radius:10px; padding:14px 16px; }
+.ins-card.debil { background:#fef2f2; border:1px solid #fecaca; }
+.ins-card.dudas { background:#fef9c3; border:1px solid #fde68a; }
+.ins-card.valor { background:#f0fdf4; border:1px solid #bbf7d0; }
+.ins-card.leng  { background:#fdf4ff; border:1px solid #e9d5ff; }
+.ins-lbl  { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.ins-body { font-size:.8rem; line-height:1.6; white-space:pre-wrap; }
+.ins-card.debil .ins-lbl { color:#991b1b; } .ins-card.debil .ins-body { color:#7f1d1d; }
+.ins-card.dudas .ins-lbl { color:#854d0e; } .ins-card.dudas .ins-body { color:#78350f; }
+.ins-card.valor .ins-lbl { color:#14532d; } .ins-card.valor .ins-body { color:#166534; }
+.ins-card.leng  .ins-lbl { color:#6b21a8; } .ins-card.leng  .ins-body { color:#581c87; }
+
+/* Description */
+.desc-wrap { border:1px solid #86efac; border-radius:10px; overflow:hidden; }
+.desc-wrap-body { padding:14px 16px; white-space:pre-wrap; font-size:.86rem; max-height:280px; overflow-y:auto; line-height:1.75; background:#f0fdf4; }
+.desc-wrap-foot { padding:7px 14px; background:#dcfce7; border-top:1px solid #bbf7d0; display:flex; justify-content:space-between; align-items:center; }
+
+/* Stats */
+.opt-stats { display:flex; gap:12px; margin-bottom:1.25rem; }
+.opt-stat-box { flex:1; border-radius:10px; padding:14px 16px; text-align:center; }
+.opt-stat-box.blue  { background:#eff6ff; border:1px solid #bfdbfe; }
+.opt-stat-box.green { background:#f0fdf4; border:1px solid #bbf7d0; }
+.opt-stat-num { font-size:1.7rem; font-weight:800; line-height:1; }
+.opt-stat-box.blue  .opt-stat-num { color:#1d4ed8; }
+.opt-stat-box.green .opt-stat-num { color:#16a34a; }
+.opt-stat-lbl { font-size:.7rem; color:#64748b; font-weight:600; margin-top:4px; }
+</style>
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-magic me-2 text-primary"></i>Optimizaciones con IA</h1>
+    <div class="sub">{{ alias }}{% if fecha %} — {{ fecha }}{% endif %}</div>
+  </div>
+</div>
+
+<!-- ── Panel: Mis Preguntas — señales de compradores ───────────────── -->
+<div class="card mb-4" id="panel-mis-preguntas">
+  <div class="card-header d-flex align-items-center gap-2" style="cursor:pointer" onclick="toggleMisPreguntas()">
+    <i class="bi bi-chat-quote text-warning"></i>
+    <span class="fw-semibold">Señales de tus compradores — qué les falta en tus publicaciones</span>
+    <span id="mq-badge" style="display:none;background:#f59e0b;color:#fff;border-radius:12px;padding:1px 9px;font-size:.7rem;font-weight:700;margin-left:4px"></span>
+    <button class="btn btn-sm btn-outline-warning ms-auto run-btn" id="btn-mq-cargar"
+            onclick="event.stopPropagation();cargarMisPreguntas()" style="font-size:.75rem">
+      <i class="bi bi-arrow-repeat me-1"></i>Analizar mis preguntas
+    </button>
+    <i class="bi bi-chevron-down ms-1 text-muted" id="mq-chevron" style="transition:transform .2s"></i>
+  </div>
+  <div id="mq-body" style="display:none">
+    <div class="card-body" id="mq-content">
+      <div class="text-muted small">Hacé clic en <strong>Analizar mis preguntas</strong> para ver qué información le falta a tus publicaciones según las preguntas reales de tus compradores.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Explicación ──────────────────────────────────────────────────── -->
+<div class="alert alert-info d-flex gap-2 align-items-start mb-4">
+  <i class="bi bi-lightbulb-fill mt-1 flex-shrink-0"></i>
+  <div>
+    <strong>¿Qué hace esta sección?</strong><br>
+    Aplica las recomendaciones del análisis de competencia para generar el <strong>título y descripción final</strong> de tu publicación, listos para pegar directamente en MercadoLibre.<br>
+    <span class="text-muted small">Para mejores resultados, primero corré el módulo de Competencia para tener datos de mercado actualizados.</span>
+  </div>
+</div>
+
+<!-- ── Generador ──────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-stars me-2 text-primary"></i>Optimizar una publicación</div>
+  <div class="card-body">
+
+    <!-- PASO 1: Elegir publicación -->
+    <div class="mb-3" data-paso1>
+      <label class="form-label fw-semibold"><span class="badge bg-primary me-2">1</span>Elegir tu publicación <span class="text-danger fw-normal small">*requerido</span></label>
+      <div id="paso1Error" style="display:none" class="alert alert-danger py-1 px-2 mb-2 small">
+        <i class="bi bi-exclamation-triangle me-1"></i>Seleccioná o ingresá tu publicación antes de optimizar.
+      </div>
+      <div class="row g-2">
+        <div class="col-md-6">
+          {% if pubs_disponibles %}
+          <select id="pubSelect" class="form-select">
+            <option value="">— Seleccioná una publicación —</option>
+            {% for p in pubs_disponibles %}
+            <option value="{{ p.id }}">{{ p.titulo[:65] }}</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input type="text" id="pubIdInput" class="form-control"
+                 placeholder="ID de MercadoLibre (ej: MLA1234567890)">
+          {% endif %}
+        </div>
+        <div class="col-md-4">
+          <div class="input-group">
+            <span class="input-group-text text-muted" style="font-size:.82rem">MLA-</span>
+            <input type="text" id="customIdOpt" class="form-control" placeholder="O ingresá el ID directo">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 2: Competidores -->
+    <div class="mb-3" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+
+      <!-- Header -->
+      <div class="d-flex align-items-center gap-2 px-3 py-2" style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
+        <span class="badge bg-warning text-dark">2</span>
+        <span class="fw-semibold">Competidores reales del mercado</span>
+        <span class="text-muted ms-1" style="font-size:.78rem">(opcional — mejora significativamente el resultado)</span>
+        <span id="compSelectedCount" class="ms-auto badge bg-success" style="display:none"></span>
+      </div>
+
+      <!-- Panel descubrimiento automático -->
+      <div style="background:#f0f9ff;border-bottom:1px solid #bae6fd;padding:12px 14px">
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+          <div style="flex:1;min-width:220px">
+            <div style="font-size:.8rem;font-weight:700;color:#0369a1;margin-bottom:2px">
+              <i class="bi bi-stars me-1"></i>Descubrimiento automático
+            </div>
+            <div style="font-size:.73rem;color:#64748b;line-height:1.4">
+              Analiza las keywords más buscadas y detecta los líderes reales del mercado para ese producto exacto.
+              Los competidores que aparecen en más keywords = mayor autoridad.
+            </div>
+          </div>
+          <button id="btnDescubrir" class="btn btn-sm fw-semibold flex-shrink-0"
+                  style="background:#0369a1;color:#fff;border:none;padding:.4rem 1rem"
+                  onclick="analizarProducto()"
+                  disabled title="Seleccioná primero tu publicación en el Paso 1">
+            <i class="bi bi-cpu me-1"></i>Analizar producto
+          </button>
+        </div>
+
+        <!-- Panel de análisis Claude (paso intermedio con checkboxes) -->
+        <div id="analysisPanel" style="display:none;background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <i class="bi bi-lightbulb-fill" style="color:#d97706;font-size:.9rem"></i>
+            <span style="font-size:.78rem;font-weight:700;color:#92400e">Análisis del producto — revisá y confirmá los términos</span>
+            <button onclick="document.getElementById('analysisPanel').style.display='none'"
+                    style="margin-left:auto;background:none;border:none;color:#92400e;cursor:pointer;font-size:1rem;line-height:1">&times;</button>
+          </div>
+
+          <!-- Concepto y diferenciador editable -->
+          <div style="background:#fff;border-radius:6px;padding:8px 11px;margin-bottom:10px;border:1px solid #fde68a">
+            <div id="analysisConcept" style="font-size:.78rem;color:#374151;margin-bottom:6px"></div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:.73rem;color:#059669;font-weight:700;white-space:nowrap">
+                <i class="bi bi-key-fill me-1"></i>Filtro diferenciador:
+              </span>
+              <input type="text" id="diferenciadorInput"
+                     style="flex:1;min-width:140px;font-size:.78rem;font-weight:600;color:#065f46;
+                            background:#f0fdf4;border:1px solid #6ee7b7;border-radius:5px;padding:3px 8px"
+                     placeholder="ej: puntas"
+                     oninput="_currentDiferenciador = this.value.trim()">
+              <span style="font-size:.68rem;color:#6b7280;line-height:1.3">
+                Solo pasarán competidores cuyo nombre contenga este término
+              </span>
+            </div>
+          </div>
+
+          <!-- Lista de términos con checkboxes -->
+          <div style="font-size:.69rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">
+            <i class="bi bi-check2-square me-1"></i>Seleccioná los términos que aplican a tu producto exacto
+          </div>
+          <div id="analysisTermsList" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px"></div>
+
+          <!-- Agregar término manual -->
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <input type="text" id="addTermInput" class="form-control form-control-sm"
+                   placeholder="+ Agregar término propio"
+                   onkeydown="if(event.key==='Enter') addCustomTerm()">
+            <button class="btn btn-sm btn-outline-warning fw-semibold flex-shrink-0" onclick="addCustomTerm()">
+              <i class="bi bi-plus-lg"></i> Agregar
+            </button>
+          </div>
+
+          <!-- Botón confirmar -->
+          <button id="btnConfirmar" class="btn fw-semibold w-100"
+                  style="background:#d97706;color:#fff;border:none;font-size:.85rem"
+                  onclick="confirmarYDescubrir()">
+            <i class="bi bi-search me-1"></i>Confirmar términos y buscar competidores
+          </button>
+        </div>
+
+        <!-- Loading análisis -->
+        <div id="analysisLoading" style="display:none;text-align:center;padding:1rem;color:#64748b;font-size:.82rem">
+          <div class="spinner-border spinner-border-sm text-warning me-2"></div>
+          Claude está analizando tu producto...
+        </div>
+
+        <!-- Keywords analizadas (se muestra tras la búsqueda de competidores) -->
+        <div id="kwsAnalizadas" style="display:none;margin-bottom:10px">
+          <div style="font-size:.68rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:5px;letter-spacing:.04em">
+            <i class="bi bi-graph-up-arrow me-1"></i>Keywords usadas — ordenadas por popularidad en ML
+          </div>
+          <div id="kwsAnalizadasList" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+        </div>
+
+        <!-- Resultados del descubrimiento -->
+        <div id="discoveryResults" style="display:none"></div>
+        <div id="discoveryLoading" style="display:none;text-align:center;padding:1.5rem;color:#64748b;font-size:.82rem">
+          <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+          Cruzando competidores en el mercado...
+        </div>
+        <div id="discoveryError" style="display:none;padding:8px 10px;background:#fef2f2;border-radius:6px;font-size:.78rem;color:#dc2626"></div>
+      </div>
+
+      <!-- Bookmarklet banner — aparece siempre -->
+      <div id="bookmarkletBanner" style="background:#f0fdf4;border-top:1px solid #bbf7d0;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:.78rem;font-weight:700;color:#15803d;margin-bottom:2px">
+            <i class="bi bi-bookmark-star-fill me-1"></i>Capturar competidor directo desde ML
+          </div>
+          <div style="font-size:.7rem;color:#4b7a5a;line-height:1.4">
+            Instalá el botón una vez → abrís la publicación del competidor en ML → clic en el botón → los datos llegan acá solos con título y descripción completa.
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <!-- Indicador de llegada -->
+          <div id="bookmarkletPing" style="display:none;background:#16a34a;color:#fff;border-radius:20px;padding:3px 10px;font-size:.72rem;font-weight:700;animation:pulse 1s infinite">
+            <i class="bi bi-arrow-down-circle me-1"></i><span id="bookmarkletPingText"></span>
+          </div>
+          <button onclick="toggleBookmarkletPanel()"
+                  style="background:#15803d;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
+            <i class="bi bi-download me-1"></i>Instalar botón
+          </button>
+        </div>
+      </div>
+
+      <!-- Panel de instalación del bookmarklet -->
+      <div id="bookmarkletPanel" style="display:none;background:#f8fffe;border-top:1px solid #6ee7b7;padding:14px">
+        <div style="font-size:.75rem;font-weight:700;color:#0f766e;margin-bottom:10px">
+          <i class="bi bi-info-circle me-1"></i>Cómo instalar — solo una vez
+        </div>
+
+        <!-- Paso 1 -->
+        <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
+          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
+          <div style="font-size:.75rem;color:#374151">
+            Mostrá la <strong>barra de favoritos</strong> del navegador si no está visible
+            <span style="color:#6b7280">(Ctrl+Shift+B en Chrome)</span>
+          </div>
+        </div>
+
+        <!-- Paso 2 -->
+        <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
+          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
+          <div style="font-size:.75rem;color:#374151;flex:1">
+            <div style="margin-bottom:5px">Arrastrá este botón a tu barra de favoritos:</div>
+            <a id="bookmarkletLink" href="#"
+               style="display:inline-flex;align-items:center;gap:5px;background:#facc15;color:#0f172a;border-radius:6px;
+                      padding:6px 14px;font-size:.82rem;font-weight:800;text-decoration:none;cursor:grab;
+                      border:2px dashed #a16207;user-select:none"
+               title="Arrastrá este botón a tu barra de favoritos">
+              <i class="bi bi-stars"></i> Enviar a Herramienta ML
+            </a>
+            <div style="font-size:.68rem;color:#6b7280;margin-top:4px">
+              <i class="bi bi-hand-index me-1"></i>Hacé clic y arrastrá hasta la barra de favoritos arriba
+            </div>
+          </div>
+        </div>
+
+        <!-- Paso 3 -->
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
+          <div style="font-size:.75rem;color:#374151">
+            Abrí la publicación de un competidor en ML → clic en <strong>"Enviar a Herramienta ML"</strong> → volvé acá, el competidor aparece solo.
+          </div>
+        </div>
+      </div>
+
+      <!-- Buscar competidores en ML real -->
+      <div style="border-top:1px solid #e2e8f0">
+        <div class="d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
+             style="background:#fafafa;cursor:pointer;user-select:none"
+             onclick="toggleManualSearch()">
+          <i class="bi bi-search" style="color:#64748b;font-size:.85rem"></i>
+          <span style="font-size:.78rem;font-weight:600;color:#374151">Buscar competidores en MercadoLibre</span>
+          <span style="font-size:.71rem;color:#94a3b8;margin-left:2px">(o buscá en ML y pegá el link con Ctrl+V)</span>
+          <i class="bi bi-chevron-down ms-auto" id="manualChevron" style="font-size:.78rem;color:#94a3b8"></i>
+        </div>
+
+        <div id="manualSearchSection" style="display:none;background:#f8fafc;border-top:1px solid #e2e8f0">
+
+          <!-- PASO A: Buscar en ML -->
+          <div style="background:#0f172a;padding:12px 14px">
+            <div style="color:#94a3b8;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px">
+              <i class="bi bi-search me-1" style="color:#facc15"></i>Paso 1 — Buscá el producto en MercadoLibre
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="text" id="mlSearchQueryInput"
+                     style="flex:1;font-size:.84rem;font-weight:600;background:#1e293b;color:#f1f5f9;
+                            border:1px solid #334155;border-radius:6px;padding:7px 11px;outline:none"
+                     placeholder="Ej: cortador de puntas cabello profesional..."
+                     onkeydown="if(event.key==='Enter'){ const a=document.getElementById('btnBuscarEnML'); prepararBusquedaML(a) && a.click(); }"
+                     onfocus="this.style.borderColor='#facc15'" onblur="this.style.borderColor='#334155'">
+              <a id="btnBuscarEnML" href="https://www.mercadolibre.com.ar" target="_blank"
+                 onclick="return prepararBusquedaML(this)"
+                 style="background:#facc15;color:#0f172a;border-radius:6px;padding:7px 14px;
+                        font-size:.82rem;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
+                <i class="bi bi-box-arrow-up-right"></i>Buscar en ML
+              </a>
+            </div>
+            <div style="color:#64748b;font-size:.67rem;margin-top:5px">
+              Se abre MercadoLibre con tu búsqueda → encontrás el competidor → copiás el link → lo pegás abajo
+            </div>
+          </div>
+
+          <!-- PASO B: Pegar el link -->
+          <div style="padding:10px 12px;background:#f0f9ff;border-bottom:1px solid #bae6fd">
+            <div style="color:#0369a1;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+              <i class="bi bi-clipboard-plus me-1"></i>Paso 2 — Pegá el link del competidor
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="text" id="pasteUrlField"
+                     class="form-control"
+                     style="font-size:.82rem;border:2px dashed #0369a1;background:#fff"
+                     placeholder="Ctrl+V — URL de ML o ID directo (ej: MLA1234567890)"
+                     onpaste="setTimeout(() => { procesarUrl(this.value); this.value=''; }, 60)"
+                     onkeydown="if(event.key==='Enter'){ procesarUrl(this.value); this.value=''; }">
+              <button class="btn btn-primary fw-semibold flex-shrink-0"
+                      onclick="procesarUrl(document.getElementById('pasteUrlField').value); document.getElementById('pasteUrlField').value=''">
+                <i class="bi bi-plus-lg me-1"></i>Agregar
+              </button>
+            </div>
+            <!-- Toast feedback -->
+            <div id="addToast" style="display:none;margin-top:7px;border-radius:7px;padding:6px 12px;font-size:.78rem;text-align:center"></div>
+          </div>
+
+          <!-- Competidores agregados en esta sesión -->
+          <div id="recentlyAdded" style="display:none;padding:8px 12px;background:#f0fdf4;border-bottom:1px solid #bbf7d0">
+            <div style="font-size:.69rem;font-weight:700;color:#15803d;margin-bottom:5px">
+              <i class="bi bi-check2-circle me-1"></i>Agregados en esta sesión
+            </div>
+            <div id="recentlyAddedList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de competidores seleccionados -->
+      <div id="compSelectedArea" style="display:none;border-top:2px solid #22c55e">
+        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap" style="background:#f0fdf4">
+          <i class="bi bi-check2-circle text-success"></i>
+          <span class="fw-semibold text-success small" id="compSelectedLabel"></span>
+          <button class="btn btn-xs btn-outline-danger ms-auto" onclick="limpiarSeleccion()">Limpiar todo</button>
+        </div>
+        <div id="compSelectedCards" class="d-flex flex-wrap gap-2 p-3" style="background:#f0fdf4"></div>
+
+        <!-- Botón reverse keywords -->
+        <div style="padding:0 12px 12px;background:#f0fdf4">
+          <button id="btnReverseKw" class="btn fw-semibold w-100"
+                  style="background:#0f766e;color:#fff;border:none;font-size:.84rem"
+                  onclick="analizarKeywordsCompetidores()">
+            <i class="bi bi-binoculars me-1"></i>Analizar keywords de los competidores seleccionados
+          </button>
+        </div>
+
+        <!-- Panel resultado reverse keywords -->
+        <div id="reverseKwPanel" style="display:none;border-top:1px solid #6ee7b7;background:#f8fffe">
+
+          <!-- Loading -->
+          <div id="reverseKwLoading" style="display:none;text-align:center;padding:1.2rem;color:#64748b;font-size:.82rem">
+            <div class="spinner-border spinner-border-sm text-teal me-2" style="color:#0f766e"></div>
+            Extrayendo keywords de los competidores con autosuggest...
+          </div>
+
+          <!-- Error -->
+          <div id="reverseKwError" style="display:none;padding:8px 14px;background:#fef2f2;font-size:.78rem;color:#dc2626"></div>
+
+          <!-- Resultados -->
+          <div id="reverseKwResults" style="display:none;padding:12px 14px">
+
+            <!-- Resumen -->
+            <div id="reverseKwSummary" style="font-size:.75rem;color:#374151;margin-bottom:10px;background:#fff;border-radius:6px;padding:7px 10px;border:1px solid #d1fae5"></div>
+
+            <!-- GAPS: keywords que ellos tienen y yo no -->
+            <div id="reverseKwGapsSection" style="display:none;margin-bottom:12px">
+              <div style="font-size:.7rem;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Gaps — keywords que tus competidores rankean y vos no tenés
+              </div>
+              <div id="reverseKwGapsList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+            </div>
+
+            <!-- Compartidas: keywords que ya tenemos -->
+            <div id="reverseKwSharedSection" style="display:none">
+              <div style="font-size:.7rem;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+                <i class="bi bi-check2-circle me-1"></i>Keywords confirmadas — ya están en tu análisis
+              </div>
+              <div id="reverseKwSharedList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Panel autosuggest (aparece después del descubrimiento) ───────────── -->
+    <div id="autosuggestPanel" style="display:none;border:2px solid #3b82f6;border-radius:8px;overflow:hidden;margin-bottom:12px">
+      <div style="background:#1e3a8a;padding:9px 14px;display:flex;align-items:center;gap:8px">
+        <i class="bi bi-graph-up-arrow" style="color:#93c5fd"></i>
+        <span style="color:#fff;font-size:.8rem;font-weight:700">Búsquedas reales en MercadoLibre — ordenadas por popularidad</span>
+        <span style="color:#93c5fd;font-size:.7rem;margin-left:4px">estas son las frases que la gente escribe en ML para encontrar tu producto</span>
+      </div>
+      <div style="padding:10px 14px;background:#eff6ff">
+        <div id="autosuggestList" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+    </div>
+
+    <!-- PASO 3: Investigar Keywords con IA -->
+    <div class="mb-3" style="border:1px solid #e0e7ff;border-radius:8px;overflow:hidden">
+      <div class="d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
+           style="background:#eef2ff;border-bottom:1px solid #e0e7ff;cursor:pointer"
+           onclick="toggleKwSection()">
+        <span class="badge bg-primary me-1">3</span>
+        <span class="fw-semibold">Investigar keywords con IA</span>
+        <span class="text-muted ms-1" style="font-size:.78rem">(opcional — Claude analiza qué palabras buscan los compradores)</span>
+        <i class="bi bi-chevron-down ms-auto" id="kwChevron"></i>
+      </div>
+      <div id="kwSection" style="display:none;padding:12px 14px;background:#f8f9ff">
+        <div class="d-flex gap-2 mb-2">
+          <input type="text" id="kwProductInput" class="form-control form-control-sm"
+                 placeholder="Ej: faja embarazada, silla gaming, cargador inalámbrico..."
+                 onkeydown="if(event.key==='Enter') investigarKeywords()">
+          <button class="btn btn-sm btn-primary fw-semibold flex-shrink-0" onclick="investigarKeywords()" id="kwBtn">
+            <i class="bi bi-search me-1"></i>Investigar
+          </button>
+        </div>
+        <div id="kwResults" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- PASO 4: Diferencial -->
+    <div class="mb-3">
+      <label class="form-label fw-semibold">
+        <span class="badge bg-success me-2">4</span>
+        Tu diferencial <span class="fw-normal text-muted">(opcional pero recomendado)</span>
+      </label>
+      <textarea id="contextoOpt" class="form-control" rows="2"
+                placeholder="Ej: envío gratis, garantía 2 años, incluye accesorios, importado directamente de fábrica..."></textarea>
+    </div>
+
+    <!-- PASO 5: Generar -->
+    <div>
+      <button id="optBtn" class="btn btn-primary" onclick="startOptimization()">
+        <i class="bi bi-magic me-1"></i>Optimizar con IA
+      </button>
+      <span id="optCompNote" class="text-muted small ms-3"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Panel streaming ──────────────────────────────────────────────── -->
+<div id="optPanel" style="display:none" class="mb-4">
+  <div class="card">
+    <div class="card-header d-flex align-items-center gap-2">
+      <span class="spinner-border spinner-border-sm text-primary" id="optSpinner"></span>
+      <span id="optStep" class="fw-semibold">Iniciando...</span>
+    </div>
+    <div class="card-body">
+      <div id="optOutput" style="white-space:pre-wrap;font-size:.875rem;line-height:1.75;
+           font-family:'Segoe UI',system-ui,sans-serif;max-height:70vh;overflow-y:auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Historial de optimizaciones ─────────────────────────────────── -->
+{% if items %}
+<h2 class="fw-semibold mb-3 mt-4" style="font-size:1rem">
+  <i class="bi bi-clock-history me-2 text-muted"></i>Optimizaciones generadas anteriormente
+</h2>
+
+<div class="opt-stats">
+  {% set aplicadas = items|selectattr('aplicado', 'eq', true)|list %}
+  {% set con_mejora = [] %}
+  {% set con_resultado = [] %}
+  {% for it in items %}
+    {% set seg_v  = (it.get('seguimiento') or {}).get('veredicto') %}
+    {% set auto_v = (it.get('resultado_auto') or {}).get('veredicto') %}
+    {% set vf = seg_v if seg_v in ('mejoro','empeoro','sin_cambio') else auto_v %}
+    {% if vf in ('mejoro','empeoro','sin_cambio') %}{% set _ = con_resultado.append(1) %}{% endif %}
+    {% if vf == 'mejoro' %}{% set _ = con_mejora.append(1) %}{% endif %}
+  {% endfor %}
+  <div class="opt-stat-box blue">
+    <div class="opt-stat-num">{{ items|length }}</div>
+    <div class="opt-stat-lbl">Generadas</div>
+  </div>
+  <div class="opt-stat-box green">
+    <div class="opt-stat-num">{{ aplicadas|length }}</div>
+    <div class="opt-stat-lbl">Aplicadas en ML</div>
+  </div>
+  {% if con_resultado %}
+  <div class="opt-stat-box" style="background:#f0fdf4;border:1px solid #bbf7d0">
+    <div class="opt-stat-num" style="color:#15803d">{{ con_mejora|length }}/{{ con_resultado|length }}</div>
+    <div class="opt-stat-lbl">Mejoraron / Con resultado</div>
+  </div>
+  {% endif %}
+</div>
+
+{% for item in items %}
+{% set outer_idx = loop.index %}
+{% set titulos   = item.get('titulos_alt', []) %}
+{% set tr_n      = item.get('titulo_recomendado_n', 0) %}
+
+<div class="opt-card">
+
+  <!-- ─ Header ──────────────────────────────────────────────────────── -->
+  <div class="opt-card-hdr">
+    <span class="opt-card-title" title="{{ item.get('titulo_actual', '') }}">{{ item.get('titulo_actual', '')[:65] }}</span>
+    {% if item.get('score_actual') %}
+    <div class="score-strip">
+      <div class="score-pill bad">
+        <span class="sp-num">{{ item.get('score_actual',0) }}</span>
+        <span class="sp-lbl">Actual</span>
+      </div>
+      <i class="bi bi-arrow-right" style="color:#94a3b8;font-size:.85rem"></i>
+      <div class="score-pill good">
+        <span class="sp-num">{{ item.get('score_proyectado',0) }}</span>
+        <span class="sp-lbl">Proyectado</span>
+      </div>
+    </div>
+    {% endif %}
+    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      {% if item.get('fecha') %}<span class="text-muted" style="font-size:.78rem">{{ item.fecha }}</span>{% endif %}
+
+      {# ── Badge de resultado medido ──────────────────────────────── #}
+      {% set seg   = item.get('seguimiento') or {} %}
+      {% set rauto = item.get('resultado_auto') or {} %}
+      {% set v_seg  = seg.get('veredicto') %}
+      {% set v_auto = rauto.get('veredicto') %}
+      {% set veredicto_final = v_seg if v_seg in ('mejoro','empeoro','sin_cambio') else v_auto %}
+
+      {% if veredicto_final == 'mejoro' %}
+        {% set dp = seg.get('delta_pos') %}
+        {% set da = rauto.get('delta') %}
+        {% if dp is not none and dp < 0 %}
+          <span class="badge" style="background:#dcfce7;color:#15803d;font-size:.7rem" title="Resultado medido post-optimización">
+            <i class="bi bi-graph-up-arrow me-1"></i>+{{ (dp * -1)|int }} pos
+          </span>
+        {% elif da is not none and da > 0 %}
+          <span class="badge" style="background:#dcfce7;color:#15803d;font-size:.7rem" title="Resultado medido post-optimización">
+            <i class="bi bi-graph-up-arrow me-1"></i>+{{ da|int }} pos
+          </span>
+        {% else %}
+          <span class="badge" style="background:#dcfce7;color:#15803d;font-size:.7rem">
+            <i class="bi bi-graph-up-arrow me-1"></i>Mejoró
+          </span>
+        {% endif %}
+      {% elif veredicto_final == 'empeoro' %}
+        {% set dp = seg.get('delta_pos') %}
+        {% set da = rauto.get('delta') %}
+        <span class="badge" style="background:#fee2e2;color:#dc2626;font-size:.7rem" title="Resultado medido post-optimización">
+          <i class="bi bi-graph-down-arrow me-1"></i>
+          {% if dp is not none and dp > 0 %}-{{ dp|int }} pos
+          {% elif da is not none and da < 0 %}{{ da|int }} pos
+          {% else %}Empeoró{% endif %}
+        </span>
+      {% elif veredicto_final == 'sin_cambio' %}
+        <span class="badge badge-dim" style="font-size:.7rem" title="Sin cambio de posición medido">
+          <i class="bi bi-dash me-1"></i>Sin cambio
+        </span>
+      {% else %}
+        <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.7rem" title="Sin datos de posición aún">
+          <i class="bi bi-hourglass-split me-1"></i>Midiendo...
+        </span>
+      {% endif %}
+
+      {% if item.get('aplicado') %}
+      <span class="badge badge-ok"><i class="bi bi-check2 me-1"></i>Aplicado</span>
+      {% else %}
+      <span class="badge badge-dim" style="font-size:.7rem">Sin aplicar</span>
+      {% endif %}
+      <button class="btn btn-xs btn-outline-danger" onclick="borrarOptimizacion('{{ item.get('item_id','') }}', this)" title="Eliminar">
+        <i class="bi bi-trash"></i>
+      </button>
+    </div>
+  </div>
+
+  {% if item.get('aplicado') %}
+  <!-- ─ Seguimiento post-optimización ──────────────────────────────────── -->
+  <div id="seg-{{ item.get('item_id','') }}"
+       style="background:#f0f9ff;border-bottom:1px solid #bae6fd;padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <i class="bi bi-graph-up-arrow" style="color:#0369a1;flex-shrink:0"></i>
+    <span style="font-size:.75rem;font-weight:700;color:#0369a1;flex-shrink:0">Seguimiento</span>
+    {% set seg = item.get('seguimiento') %}
+    {% set bl  = item.get('baseline', {}) %}
+    {% if seg and seg.get('veredicto') %}
+      {% set v = seg.veredicto %}
+      <span style="font-size:.73rem;padding:2px 8px;border-radius:20px;font-weight:700;
+                   background:{{ '#dcfce7' if v == 'mejoro' else ('#fee2e2' if v == 'empeoro' else '#fef3c7') }};
+                   color:{{ '#15803d' if v == 'mejoro' else ('#dc2626' if v == 'empeoro' else '#92400e') }}">
+        {{ '✓ Mejoró' if v == 'mejoro' else ('✗ Empeoró' if v == 'empeoro' else ('↔ Sin cambio' if v == 'sin_cambio' else 'Muy reciente')) }}
+      </span>
+      <span style="font-size:.73rem;color:#334155;flex:1">{{ seg.veredicto_txt }}</span>
+      {% if seg.delta_pos is not none %}
+      <span style="font-size:.73rem;font-weight:700;color:{{ '#15803d' if seg.delta_pos < 0 else '#dc2626' }}">
+        Posición: {{ seg.baseline.posicion_antes if seg.baseline else '?' }} →
+        {{ seg.ahora.posicion if seg.ahora else '?' }}
+        ({{ '+' if seg.delta_pos > 0 else '' }}{{ seg.delta_pos }})
+      </span>
+      {% endif %}
+      {% if seg.delta_vis is not none %}
+      <span style="font-size:.73rem;color:#64748b">
+        Visitas: {{ seg.baseline.visitas_antes if seg.baseline else '?' }} →
+        {{ seg.ahora.visitas if seg.ahora else '?' }}
+        ({{ '+' if seg.delta_vis > 0 else '' }}{{ seg.delta_vis }})
+      </span>
+      {% endif %}
+    {% elif bl %}
+      <span style="font-size:.73rem;color:#64748b">
+        Aplicado {{ bl.get('fecha_aplicacion','')[:10] }} ·
+        {% if bl.get('posicion_antes') %}Posición antes: #{{ bl.posicion_antes }}{% endif %}
+        {% if bl.get('visitas_antes') %}· Visitas antes: {{ bl.visitas_antes }}{% endif %}
+      </span>
+    {% endif %}
+    <button onclick="refreshSeguimiento('{{ item.get('item_id','') }}', '{{ alias }}')"
+            id="btn-seg-{{ item.get('item_id','') }}"
+            style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+    </button>
+  </div>
+  {% endif %}
+
+  <!-- ─ Título actual ────────────────────────────────────────────────── -->
+  <div style="padding:9px 20px;background:#f8fafc;border-bottom:1px solid #f1f5f9">
+    <span style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8">Título actual</span>
+    <div style="font-size:.84rem;color:#64748b;margin-top:2px">{{ item.get('titulo_actual', '—') }}</div>
+  </div>
+
+  <!-- ─ Títulos optimizados ──────────────────────────────────────────── -->
+  {% if titulos or item.get('titulo_nuevo') %}
+  <div class="opt-sec">
+    <div class="opt-sec-hdr">
+      <i class="bi bi-check-circle-fill" style="color:#16a34a;font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:#166534">Títulos optimizados — elegí y copiá</span>
+      {% if tr_n %}
+      <span class="badge ms-auto" style="background:#16a34a;font-size:.65rem;font-weight:700;flex-shrink:0">
+        <i class="bi bi-stars me-1"></i>IA recomienda opción {{ tr_n }}
+      </span>
+      {% endif %}
+    </div>
+    <div class="opt-sec-body">
+      {% if titulos %}
+        {% for t in titulos %}
+        {% set is_rec = (tr_n == loop.index) %}
+        <div class="t-opt {{ 'rec' if is_rec else 'nor' }}">
+          <div class="t-opt-head">
+            <span class="t-opt-num">{{ loop.index }}{% if is_rec %} <span class="badge ms-1" style="background:#16a34a;font-size:.58rem">★ RECOMENDADA</span>{% endif %}</span>
+            <span id="titulo-{{ outer_idx }}-{{ loop.index }}" class="t-opt-text">{{ t.titulo }}</span>
+            <span class="t-opt-chars{% if t.titulo|length > 60 %} text-danger fw-bold{% endif %}">
+              {{ t.titulo|length }}/60{% if t.titulo|length > 60 %} ⚠️ excede límite{% endif %}
+            </span>
+            <button class="btn btn-sm btn-success fw-semibold flex-shrink-0"
+                    onclick="copyById('titulo-{{ outer_idx }}-{{ loop.index }}', this)"
+                    style="font-size:.74rem;padding:4px 10px">
+              <i class="bi bi-clipboard me-1"></i>Copiar
+            </button>
+            <button class="btn btn-sm btn-outline-primary fw-semibold flex-shrink-0"
+                    id="btn-apply-tit-{{ outer_idx }}-{{ loop.index }}"
+                    onclick="aplicarTitulo('{{ item.get('item_id','') }}', 'titulo-{{ outer_idx }}-{{ loop.index }}', 'btn-apply-tit-{{ outer_idx }}-{{ loop.index }}')"
+                    style="font-size:.74rem;padding:4px 10px">
+              <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
+            </button>
+          </div>
+          {% if t.estrategia %}
+          <div class="t-opt-strat"><i class="bi bi-lightbulb text-warning flex-shrink-0"></i>{{ t.estrategia }}</div>
+          {% endif %}
+          {% if is_rec and item.get('titulo_recomendado_motivo') %}
+          <div class="t-opt-why"><i class="bi bi-stars flex-shrink-0" style="color:#16a34a"></i><strong>Por qué esta:&nbsp;</strong>{{ item.get('titulo_recomendado_motivo') }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="t-opt nor">
+        <div class="t-opt-head">
+          <span id="titulo-{{ outer_idx }}-1" class="t-opt-text">{{ item.get('titulo_nuevo') }}</span>
+          <button class="btn btn-sm btn-success fw-semibold flex-shrink-0"
+                  onclick="copyById('titulo-{{ outer_idx }}-1', this)"
+                  style="font-size:.74rem;padding:4px 10px">
+            <i class="bi bi-clipboard me-1"></i>Copiar
+          </button>
+          <button class="btn btn-sm btn-outline-primary fw-semibold flex-shrink-0"
+                  id="btn-apply-tit-{{ outer_idx }}-1"
+                  onclick="aplicarTitulo('{{ item.get('item_id','') }}', 'titulo-{{ outer_idx }}-1', 'btn-apply-tit-{{ outer_idx }}-1')"
+                  style="font-size:.74rem;padding:4px 10px">
+            <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
+          </button>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ─ Acciones recomendadas ──────────────────────────────────────── -->
+  {% if item.get('alerta_catalogo') or item.get('precio_recomendado') or item.get('fotos_recomendadas') or item.get('correcciones_titulo') %}
+  <div class="opt-sec">
+    <div class="opt-sec-hdr">
+      <i class="bi bi-lightning-charge-fill" style="color:#d97706;font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:#92400e">Acciones recomendadas</span>
+    </div>
+    <div class="opt-sec-body">
+      <div class="act-grid">
+        {% if item.get('alerta_catalogo') %}
+        <div class="act-card catalog" style="grid-column:1/-1">
+          <div class="act-lbl"><i class="bi bi-exclamation-triangle-fill"></i>Oportunidad de Catálogo ML</div>
+          <div class="act-body">{{ item.get('alerta_catalogo') }}</div>
+        </div>
+        {% endif %}
+        {% if item.get('correcciones_titulo') %}
+        <div class="act-card fix">
+          <div class="act-lbl"><i class="bi bi-pencil-square"></i>Correcciones de título</div>
+          <div class="act-body">{{ item.get('correcciones_titulo') }}</div>
+        </div>
+        {% endif %}
+        {% if item.get('precio_recomendado') %}
+        <div class="act-card price">
+          <div class="act-lbl"><i class="bi bi-currency-dollar"></i>Precio recomendado</div>
+          <div class="act-body">{{ item.get('precio_recomendado') }}</div>
+        </div>
+        {% endif %}
+        {% if item.get('fotos_recomendadas') %}
+        <div class="act-card photos">
+          <div class="act-lbl"><i class="bi bi-camera"></i>Fotos recomendadas</div>
+          <div class="act-body">{{ item.get('fotos_recomendadas') }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ─ Ficha técnica ────────────────────────────────────────────────── -->
+  {% if item.get('ficha_perfecta') %}
+  <div class="opt-sec">
+    <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.fchev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
+      <i class="bi bi-table" style="color:#9a3412;font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:#9a3412">Ficha técnica perfecta</span>
+      <div class="d-flex gap-2 ms-auto" onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-warning fw-semibold" onclick="copyById('ficha-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
+          <i class="bi bi-clipboard me-1"></i>Copiar
+        </button>
+        <button class="btn btn-sm fw-semibold" id="btn-apply-ficha-{{ outer_idx }}"
+                style="background:#0f766e;color:#fff;border:none;font-size:.73rem;padding:3px 10px"
+                onclick="aplicarFicha('{{ item.get('item_id','') }}', 'ficha-{{ outer_idx }}', 'btn-apply-ficha-{{ outer_idx }}')">
+          <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
+        </button>
+      </div>
+      <i class="bi bi-chevron-down fchev" style="font-size:.75rem;color:#94a3b8;margin-left:8px"></i>
+    </div>
+    <div style="display:none">
+      <div id="ficha-{{ outer_idx }}"
+           style="padding:14px 20px;white-space:pre-wrap;font-size:.84rem;line-height:1.9;font-family:monospace;background:#fffbf0;max-height:320px;overflow-y:auto">{{ item.get('ficha_perfecta') }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ─ Análisis de calidad ─────────────────────────────────────────── -->
+  {% if item.get('puntaje_calidad') or item.get('resumen_mercado') or item.get('keywords_faltantes') or item.get('analisis_ficha') or item.get('analisis_desc') %}
+  <div class="opt-sec">
+    <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.achev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
+      <i class="bi bi-bar-chart-fill" style="color:#7c3aed;font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:#6b21a8">Análisis de calidad</span>
+      <i class="bi bi-chevron-down achev ms-auto" style="font-size:.75rem;color:#94a3b8"></i>
+    </div>
+    <div style="display:none;padding:14px 20px;background:#fafafe">
+      {% if item.get('puntaje_calidad') %}
+      <details class="anl-item">
+        <summary><i class="bi bi-speedometer2 me-2" style="color:#7c3aed"></i>Puntaje de calidad actual<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:#fdf4ff;font-family:monospace">{{ item.get('puntaje_calidad') }}</div>
+      </details>
+      {% endif %}
+      {% if item.get('resumen_mercado') %}
+      <details class="anl-item">
+        <summary><i class="bi bi-people-fill me-2" style="color:#1d4ed8"></i>Fortalezas de cada competidor<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:#eff6ff">{{ item.get('resumen_mercado') }}</div>
+      </details>
+      {% endif %}
+      {% if item.get('keywords_faltantes') %}
+      <details class="anl-item">
+        <summary><i class="bi bi-key-fill me-2" style="color:#b45309"></i>Palabras clave faltantes<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:#fef9c3">{{ item.get('keywords_faltantes') }}</div>
+      </details>
+      {% endif %}
+      {% if item.get('analisis_ficha') %}
+      <details class="anl-item">
+        <summary><i class="bi bi-clipboard-x me-2" style="color:#9a3412"></i>Análisis ficha técnica<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:#fff7ed">{{ item.get('analisis_ficha') }}</div>
+      </details>
+      {% endif %}
+      {% if item.get('analisis_desc') %}
+      <details class="anl-item">
+        <summary><i class="bi bi-file-text me-2" style="color:#7e22ce"></i>Análisis descripción<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:#fdf4ff">{{ item.get('analisis_desc') }}</div>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ─ Insights de compradores ──────────────────────────────────────── -->
+  {% if item.get('qa_insights') %}
+  <div class="opt-sec">
+    <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.ichev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
+      <i class="bi bi-chat-quote-fill" style="color:#0284c7;font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:#0c4a6e">Insights de compradores reales</span>
+      <span style="font-size:.66rem;color:#64748b;font-weight:400;text-transform:none;letter-spacing:0">Q&amp;A y reseñas de competidores</span>
+      <i class="bi bi-chevron-down ichev ms-auto" style="font-size:.75rem;color:#94a3b8"></i>
+    </div>
+    <div style="display:none;padding:14px 20px;background:#f0f9ff">
+      <div class="ins-grid">
+        {% set qa_sections = item.get('qa_insights', '').split('## ') %}
+        {% for section in qa_sections %}
+          {% if section.strip() %}
+            {% set lines     = section.strip().split('\n') %}
+            {% set sec_title = lines[0].strip() %}
+            {% set sec_body  = lines[1:]|join('\n') %}
+            {% if 'DEBILIDADES' in sec_title %}
+            <div class="ins-card debil">
+              <div class="ins-lbl"><i class="bi bi-shield-exclamation"></i>{{ sec_title }}</div>
+              <div class="ins-body">{{ sec_body.strip() }}</div>
+            </div>
+            {% elif 'DUDAS' in sec_title %}
+            <div class="ins-card dudas">
+              <div class="ins-lbl"><i class="bi bi-question-circle-fill"></i>{{ sec_title }}</div>
+              <div class="ins-body">{{ sec_body.strip() }}</div>
+            </div>
+            {% elif 'VALORAN' in sec_title %}
+            <div class="ins-card valor">
+              <div class="ins-lbl"><i class="bi bi-star-fill"></i>{{ sec_title }}</div>
+              <div class="ins-body">{{ sec_body.strip() }}</div>
+            </div>
+            {% elif 'LENGUAJE' in sec_title %}
+            <div class="ins-card leng">
+              <div class="ins-lbl"><i class="bi bi-translate"></i>{{ sec_title }}</div>
+              <div class="ins-body">{{ sec_body.strip() }}</div>
+            </div>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ─ Descripción superadora ───────────────────────────────────────── -->
+  {% if item.get('descripcion_nueva') %}
+  <div class="opt-sec">
+    <div class="opt-sec-hdr">
+      <i class="bi bi-file-richtext-fill" style="color:#14532d;font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:#14532d">Descripción superadora — lista para pegar en ML</span>
+      <div class="d-flex gap-2 ms-auto">
+        {% if item.get('descripcion_aplicada') %}
+        <span class="badge badge-ok"><i class="bi bi-check2 me-1"></i>Aplicada</span>
+        {% else %}
+        <button class="btn btn-sm btn-outline-success fw-semibold" id="btn-apply-desc-{{ outer_idx }}"
+                onclick="aplicarDescripcion('{{ item.get('item_id','') }}', 'btn-apply-desc-{{ outer_idx }}')"
+                style="font-size:.73rem;padding:3px 10px">
+          <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
+        </button>
+        {% endif %}
+        <button class="btn btn-sm btn-success fw-semibold" onclick="copyById('desc-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
+          <i class="bi bi-clipboard me-1"></i>Copiar
+        </button>
+      </div>
+    </div>
+    <div class="opt-sec-body">
+      <div class="desc-wrap">
+        <div id="desc-{{ outer_idx }}" class="desc-wrap-body">{{ item.get('descripcion_nueva', '') }}</div>
+        <div class="desc-wrap-foot">
+          <span style="font-size:.7rem;color:#64748b">{{ item.get('descripcion_nueva','')|length }} caracteres</span>
+          <button class="btn btn-sm btn-success fw-semibold" onclick="copyById('desc-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
+            <i class="bi bi-clipboard me-1"></i>Copiar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div><!-- /opt-card -->
+{% endfor %}
+
+{% else %}
+<div class="no-data">
+  <i class="bi bi-magic" style="font-size:2rem;display:block;margin-bottom:8px"></i>
+  Sin optimizaciones generadas aún. Usá el formulario de arriba para crear tu primera optimización.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS_OPT = '{{ alias }}';
+
+// ── Estado global ─────────────────────────────────────────────────────────────
+const selectedCompetitors = {};  // id → detalle completo
+let kwResearchData = null;       // resultado de la investigación de keywords
+
+// ── Habilitar botón Descubrir cuando se elige publicación ─────────────────────
+function _updateDescubrirBtn() {
+  const btn  = document.getElementById('btnDescubrir');
+  if (!btn) return;
+  const itemId = _getSelectedItemId();
+  btn.disabled = !itemId;
+  btn.title    = itemId ? 'Claude analiza el producto y sugiere los mejores términos' : 'Seleccioná primero tu publicación en el Paso 1';
+}
+
+// Hook en el select y en el input de ID
+document.addEventListener('DOMContentLoaded', () => {
+  const sel  = document.getElementById('pubSelect');
+  const inp  = document.getElementById('pubIdInput');
+  const cust = document.getElementById('customIdOpt');
+  if (sel)  sel.addEventListener('change',  _updateDescubrirBtn);
+  if (inp)  inp.addEventListener('input',   _updateDescubrirBtn);
+  if (cust) cust.addEventListener('input',  _updateDescubrirBtn);
+  _updateDescubrirBtn();
+});
+
+function _getSelectedItemId() {
+  const cust = document.getElementById('customIdOpt');
+  if (cust && cust.value.trim()) return 'MLA' + cust.value.trim().replace(/^MLA-?/i, '');
+  const sel = document.getElementById('pubSelect');
+  if (sel && sel.value) return sel.value;
+  const inp = document.getElementById('pubIdInput');
+  if (inp && inp.value.trim()) return inp.value.trim().toUpperCase();
+  return '';
+}
+
+// ── Toggle búsqueda manual ────────────────────────────────────────────────────
+function toggleManualSearch() {
+  const sec = document.getElementById('manualSearchSection');
+  const chv = document.getElementById('manualChevron');
+  const open = sec.style.display === 'none';
+  sec.style.display = open ? 'block' : 'none';
+  chv.className     = open ? 'bi bi-chevron-up ms-auto' : 'bi bi-chevron-down ms-auto';
+  if (open) {
+    _prefillMLSearch();
+    document.getElementById('mlSearchQueryInput')?.focus();
+  }
+}
+
+// ── Paso 1: Análisis del producto con Claude ──────────────────────────────────
+async function analizarProducto() {
+  const itemId = _getSelectedItemId();
+  if (!itemId) {
+    document.getElementById('paso1Error').style.display = '';
+    return;
+  }
+
+  const btn = document.getElementById('btnDescubrir');
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analizando...';
+
+  document.getElementById('discoveryError').style.display   = 'none';
+  document.getElementById('analysisPanel').style.display    = 'none';
+  document.getElementById('analysisLoading').style.display  = 'block';
+  document.getElementById('discoveryResults').style.display = 'none';
+  document.getElementById('kwsAnalizadas').style.display    = 'none';
+
+  try {
+    const resp = await fetch('/api/analizar-producto', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({alias: ALIAS_OPT, item_id: itemId}),
+    });
+    const data = await resp.json();
+
+    document.getElementById('analysisLoading').style.display = 'none';
+
+    if (!data.ok) {
+      const errEl = document.getElementById('discoveryError');
+      errEl.style.display = 'block';
+      errEl.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || 'Error desconocido');
+      return;
+    }
+
+    renderAnalysisPanel(data);
+
+  } catch(e) {
+    document.getElementById('analysisLoading').style.display = 'none';
+    const errEl = document.getElementById('discoveryError');
+    errEl.style.display = 'block';
+    errEl.textContent   = '❌ Error de conexión: ' + e.message;
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-cpu me-1"></i>Analizar producto';
+  }
+}
+
+// Guarda el diferenciador del último análisis para pasarlo al discovery
+let _currentDiferenciador = '';
+
+// ── Paso 2: Renderizar panel de validación de términos ────────────────────────
+function renderAnalysisPanel(data) {
+  _currentDiferenciador = data.diferenciador || '';
+  document.getElementById('analysisConcept').innerHTML =
+    '<strong>Producto:</strong> ' + (data.concepto || '');
+  const diffInput = document.getElementById('diferenciadorInput');
+  if (diffInput) diffInput.value = _currentDiferenciador;
+
+  const list = document.getElementById('analysisTermsList');
+  list.innerHTML = '';
+
+  (data.terminos || []).forEach((t, i) => {
+    const id = 'term_' + i;
+    const badges = [
+      t.ambiguo    ? '<span style="background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px;font-size:.62rem;font-weight:700">ambiguo</span>' : '',
+      !t.recomendado ? '<span style="background:#f1f5f9;color:#64748b;border-radius:4px;padding:1px 5px;font-size:.62rem">genérico</span>' : '',
+    ].filter(Boolean).join(' ');
+
+    const borderColor = (t.recomendado && !t.ambiguo) ? '#bbf7d0' : '#e5e7eb';
+    const accentColor = (t.recomendado && !t.ambiguo) ? '#16a34a' : '#6b7280';
+
+    list.innerHTML += `
+      <label for="${id}" style="display:flex;align-items:flex-start;gap:8px;background:#fff;border-radius:6px;
+             padding:7px 10px;cursor:pointer;border:1px solid ${borderColor};margin:0">
+        <input type="checkbox" id="${id}" value="${t.termino}"
+               ${t.recomendado ? 'checked' : ''}
+               style="margin-top:3px;accent-color:${accentColor};cursor:pointer;flex-shrink:0">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.8rem;font-weight:600;color:#1f2937;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+            ${t.termino} ${badges}
+          </div>
+          <div style="font-size:.7rem;color:#6b7280;line-height:1.3;margin-top:2px">${t.razon || ''}</div>
+        </div>
+      </label>`;
+  });
+
+  document.getElementById('analysisPanel').style.display = 'block';
+}
+
+// ── Agregar término manual al panel ──────────────────────────────────────────
+function addCustomTerm() {
+  const input = document.getElementById('addTermInput');
+  const term  = (input.value || '').trim().toLowerCase();
+  if (!term) return;
+
+  const list = document.getElementById('analysisTermsList');
+  const id   = 'term_custom_' + Date.now();
+  list.innerHTML += `
+    <label for="${id}" style="display:flex;align-items:flex-start;gap:8px;background:#fff;border-radius:6px;
+           padding:7px 10px;cursor:pointer;border:1px solid #bfdbfe;margin:0">
+      <input type="checkbox" id="${id}" value="${term}" checked
+             style="margin-top:3px;accent-color:#2563eb;cursor:pointer;flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.8rem;font-weight:600;color:#1f2937;display:flex;align-items:center;gap:5px">
+          ${term}
+          <span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:.62rem;font-weight:700">propio</span>
+        </div>
+        <div style="font-size:.7rem;color:#6b7280;line-height:1.3;margin-top:2px">Término agregado manualmente</div>
+      </div>
+    </label>`;
+  input.value = '';
+}
+
+// ── Paso 3: Confirmar términos y buscar competidores ──────────────────────────
+async function confirmarYDescubrir() {
+  const checkboxes     = document.querySelectorAll('#analysisTermsList input[type=checkbox]:checked');
+  const confirmedTerms = Array.from(checkboxes).map(cb => cb.value).filter(Boolean);
+
+  if (!confirmedTerms.length) {
+    alert('Seleccioná al menos un término de búsqueda.');
+    return;
+  }
+
+  const itemId = _getSelectedItemId();
+  if (!itemId) return;
+
+  const btn = document.getElementById('btnConfirmar');
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Buscando competidores...';
+
+  document.getElementById('discoveryLoading').style.display  = 'block';
+  document.getElementById('discoveryResults').style.display  = 'none';
+  document.getElementById('discoveryError').style.display    = 'none';
+  document.getElementById('kwsAnalizadas').style.display     = 'none';
+
+  try {
+    const resp = await fetch('/api/descubrir-competidores', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({alias: ALIAS_OPT, item_id: itemId, confirmed_keywords: confirmedTerms,
+                              diferenciador: (document.getElementById('diferenciadorInput')?.value || _currentDiferenciador).trim()}),
+    });
+    const data = await resp.json();
+
+    document.getElementById('discoveryLoading').style.display = 'none';
+
+    if (!data.ok) {
+      const errEl = document.getElementById('discoveryError');
+      errEl.style.display = 'block';
+      errEl.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || 'Error desconocido');
+      return;
+    }
+
+    // Mostrar keywords del autosuggest — panel prominente separado
+    if (data.keywords && data.keywords.length) {
+      // Panel viejo (dentro del descubrimiento) — mantener por compatibilidad
+      const kwList = document.getElementById('kwsAnalizadasList');
+      kwList.innerHTML = data.keywords.map((k, i) => {
+        const barW  = k.weight;
+        const color = i === 0 ? '#2563eb' : i < 3 ? '#3b82f6' : '#94a3b8';
+        return `<div style="display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #bae6fd;
+                     border-radius:6px;padding:3px 8px;font-size:.74rem;color:#0c4a6e">
+          <span style="font-weight:${i<3?'700':'400'}">${i+1}. ${k.keyword}</span>
+          <div style="width:40px;background:#e2e8f0;border-radius:3px;height:4px">
+            <div style="width:${barW}%;background:${color};height:4px;border-radius:3px"></div>
+          </div>
+        </div>`;
+      }).join('');
+      document.getElementById('kwsAnalizadas').style.display = 'block';
+
+      // Panel nuevo prominente — entre Paso 2 y Paso 3
+      const asList = document.getElementById('autosuggestList');
+      const total  = data.keywords.length;
+      asList.innerHTML = data.keywords.map((k, i) => {
+        const pct   = Math.round(k.weight);
+        const color = i === 0 ? '#1d4ed8' : i < 3 ? '#2563eb' : i < 6 ? '#3b82f6' : '#94a3b8';
+        const bold  = i < 3 ? '700' : '400';
+        const label = i === 0 ? ' — más buscada' : i === 1 ? ' — 2ª más buscada' : i === 2 ? ' — 3ª más buscada' : '';
+        return `<div style="display:flex;align-items:center;gap:10px">
+          <span style="min-width:20px;font-size:.72rem;color:#64748b;font-weight:700;text-align:right">${i+1}</span>
+          <span style="flex:1;font-size:.82rem;font-weight:${bold};color:#1e3a5f">${k.keyword}<span style="font-size:.68rem;color:#6b7280;font-weight:400">${label}</span></span>
+          <div style="width:120px;background:#dbeafe;border-radius:4px;height:7px;flex-shrink:0">
+            <div style="width:${pct}%;background:${color};height:7px;border-radius:4px;transition:width .4s"></div>
+          </div>
+          <span style="font-size:.68rem;color:#64748b;min-width:28px;text-align:right">${pct}%</span>
+        </div>`;
+      }).join('');
+      document.getElementById('autosuggestPanel').style.display = 'block';
+    }
+
+    renderDiscoveryResults(data);
+    document.getElementById('discoveryResults').style.display = 'block';
+
+  } catch(e) {
+    document.getElementById('discoveryLoading').style.display = 'none';
+    const errEl = document.getElementById('discoveryError');
+    errEl.style.display = 'block';
+    errEl.textContent   = '❌ Error de conexión: ' + e.message;
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-search me-1"></i>Confirmar términos y buscar competidores';
+  }
+}
+
+function renderDiscoveryResults(data) {
+  const el         = document.getElementById('discoveryResults');
+  const competitors = data.competitors || [];
+  const totalFound  = data.total_found || 0;
+  const maxScore    = competitors.length ? competitors[0].score : 1;
+
+  if (!competitors.length) {
+    el.innerHTML = '<div style="padding:10px;font-size:.8rem;color:#64748b">No se encontraron competidores. Intentá con el buscador manual.</div>';
+    return;
+  }
+
+  let html = `<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">
+    <i class="bi bi-info-circle me-1"></i>
+    Se analizaron <strong>${totalFound}</strong> competidores encontrados en búsquedas cruzadas.
+    Los de mayor score aparecen en más keywords y en mejores posiciones.
+  </div>`;
+
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">';
+
+  competitors.forEach((comp, idx) => {
+    const isSelected  = !!selectedCompetitors[comp.id];
+    const scorePct    = Math.round((comp.score / maxScore) * 100);
+    const scoreColor  = scorePct >= 75 ? '#16a34a' : scorePct >= 45 ? '#d97706' : '#94a3b8';
+    const kwCount     = comp.appearances || 0;
+    const totalKws    = data.keywords ? data.keywords.length : 6;
+    const safeId      = comp.id.replace(/[^a-z0-9]/gi, '_');
+
+    // Mejor posición en resultados de búsqueda
+    const bestPos = comp.kw_details && comp.kw_details.length
+      ? Math.min(...comp.kw_details.map(k => k.position))
+      : null;
+
+    html += `
+    <div id="disc-card-${safeId}"
+         onclick="toggleDiscoverySelection('${comp.id}')"
+         style="cursor:pointer;border:2px solid ${isSelected ? '#16a34a' : '#e2e8f0'};
+                border-radius:10px;background:${isSelected ? '#f0fdf4' : '#fff'};
+                padding:10px;transition:all .15s;position:relative">
+
+      <!-- Checkmark seleccionado -->
+      <div id="disc-check-${safeId}" style="position:absolute;top:8px;right:8px;
+           width:22px;height:22px;border-radius:50%;background:#16a34a;
+           display:${isSelected ? 'flex' : 'none'};align-items:center;justify-content:center">
+        <i class="bi bi-check-lg text-white" style="font-size:.75rem"></i>
+      </div>
+
+      <!-- Header: thumbnail + título -->
+      <div class="d-flex gap-2 align-items-start mb-2">
+        ${comp.thumbnail
+          ? `<img src="${comp.thumbnail}" style="width:42px;height:42px;object-fit:contain;border-radius:5px;flex-shrink:0;background:#f8fafc">`
+          : `<div style="width:42px;height:42px;background:#f1f5f9;border-radius:5px;flex-shrink:0;display:flex;align-items:center;justify-content:center"><i class="bi bi-image" style="color:#94a3b8"></i></div>`}
+        <div style="min-width:0;flex:1;padding-right:20px">
+          <div style="font-size:.78rem;font-weight:600;color:#1e293b;line-height:1.35;
+                      overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical"
+               title="${comp.title}">${comp.title}</div>
+        </div>
+      </div>
+
+      <!-- Score bar -->
+      <div style="margin-bottom:7px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+          <span style="font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Autoridad de mercado</span>
+          <span style="font-size:.72rem;font-weight:800;color:${scoreColor}">${scorePct}%</span>
+        </div>
+        <div style="background:#f1f5f9;border-radius:99px;height:5px">
+          <div style="width:${scorePct}%;background:${scoreColor};height:5px;border-radius:99px;transition:width .4s"></div>
+        </div>
+      </div>
+
+      <!-- Métricas -->
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
+        ${comp.sold_quantity ? `<span style="background:#eff6ff;color:#1d4ed8;border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">${comp.sold_quantity.toLocaleString('es-AR')} ventas</span>` : ''}
+        ${comp.price ? `<span style="background:#f8fafc;color:#374151;border-radius:5px;padding:2px 6px;font-size:.68rem">$${Math.round(comp.price).toLocaleString('es-AR')}</span>` : ''}
+        ${comp.is_premium ? `<span style="background:#fef9c3;color:#92400e;border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">Premium</span>` : ''}
+        ${comp.free_shipping ? `<span style="background:#dcfce7;color:#15803d;border-radius:5px;padding:2px 6px;font-size:.68rem">Envío gratis</span>` : ''}
+        ${comp.photos_count ? `<span style="background:#f8fafc;color:#374151;border-radius:5px;padding:2px 6px;font-size:.68rem">${comp.photos_count} fotos</span>` : ''}
+      </div>
+
+      <!-- Keywords en las que aparece -->
+      <div style="font-size:.67rem;color:#64748b;line-height:1.4">
+        <i class="bi bi-search me-1" style="color:#3b82f6"></i>
+        Aparece en <strong style="color:#1d4ed8">${kwCount}/${totalKws}</strong> keywords
+        ${bestPos ? `· mejor posición: <strong>#${bestPos}</strong>` : ''}
+      </div>
+
+      <!-- Indicador selección -->
+      <div style="margin-top:7px;text-align:center;font-size:.72rem;font-weight:700;
+                  color:${isSelected ? '#16a34a' : '#64748b'}">
+        ${isSelected ? '✓ Seleccionado — clic para quitar' : 'Clic para seleccionar'}
+      </div>
+    </div>`;
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function toggleDiscoverySelection(compId) {
+  const safeId = compId.replace(/[^a-z0-9]/gi, '_');
+  const card   = document.getElementById(`disc-card-${safeId}`);
+  const check  = document.getElementById(`disc-check-${safeId}`);
+
+  if (selectedCompetitors[compId]) {
+    // Deseleccionar
+    delete selectedCompetitors[compId];
+    if (card)  { card.style.borderColor = '#e2e8f0'; card.style.background = '#fff'; }
+    if (check) check.style.display = 'none';
+    // Actualizar label del indicador
+    const label = card ? card.querySelector('div[style*="margin-top:7px"]') : null;
+    if (label) { label.style.color = '#64748b'; label.textContent = 'Clic para seleccionar'; }
+  } else {
+    // Seleccionar — cargar datos completos via API existente
+    selectedCompetitors[compId] = {
+      id: compId, title: compId,
+      thumbnail: '', attributes: [], description: '', main_features: []
+    };
+    if (card)  { card.style.borderColor = '#16a34a'; card.style.background = '#f0fdf4'; }
+    if (check) check.style.display = 'flex';
+    const label = card ? card.querySelector('div[style*="margin-top:7px"]') : null;
+    if (label) { label.style.color = '#16a34a'; label.textContent = '✓ Seleccionado — clic para quitar'; }
+
+    // Enriquecer con datos completos en background
+    fetch('/api/detalle-competidor', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({alias: ALIAS_OPT, product_id: compId}),
+    })
+    .then(r => r.json())
+    .then(detail => {
+      if (detail.ok && detail.title) {
+        selectedCompetitors[compId] = detail;
+      }
+      renderSelectedSection();
+    })
+    .catch(() => renderSelectedSection());
+  }
+  renderSelectedSection();
+}
+
+// ── Reverse engineering de keywords de competidores ──────────────────────────
+async function analizarKeywordsCompetidores() {
+  const entries = Object.values(selectedCompetitors);
+  if (!entries.length) return;
+
+  const competitors = entries
+    .filter(c => c.title && c.title !== c.id)
+    .map(c => ({id: c.id, title: c._manualTitle || c.title, description: c._manualDesc || c.description || ''}));
+
+  if (!competitors.length) {
+    alert('Los competidores seleccionados no tienen título cargado aún. Esperá unos segundos y volvé a intentar.');
+    return;
+  }
+
+  // Keywords propias actuales (del panel de análisis)
+  const ourKwEls = document.querySelectorAll('#kwsAnalizadasList > div');
+  const ourKeywords = Array.from(ourKwEls).map(el => el.textContent.trim().split('\n')[0].trim()).filter(Boolean);
+
+  const panel   = document.getElementById('reverseKwPanel');
+  const loading = document.getElementById('reverseKwLoading');
+  const errEl   = document.getElementById('reverseKwError');
+  const results = document.getElementById('reverseKwResults');
+  const btn     = document.getElementById('btnReverseKw');
+
+  panel.style.display   = 'block';
+  loading.style.display = 'block';
+  errEl.style.display   = 'none';
+  results.style.display = 'none';
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analizando keywords...';
+
+  try {
+    const resp = await fetch('/api/reverse-keywords', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({alias: ALIAS_OPT, competitors, our_keywords: ourKeywords}),
+    });
+    const data = await resp.json();
+
+    loading.style.display = 'none';
+
+    if (!data.ok) {
+      errEl.style.display = 'block';
+      errEl.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || 'Error desconocido');
+      return;
+    }
+
+    renderReverseKeywords(data);
+    results.style.display = 'block';
+
+  } catch(e) {
+    loading.style.display = 'none';
+    errEl.style.display   = 'block';
+    errEl.textContent     = '❌ Error de conexión: ' + e.message;
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Actualizar análisis de keywords';
+  }
+}
+
+function renderReverseKeywords(data) {
+  const totalComps = data.total_comps || 0;
+  const gaps       = data.gaps   || [];
+  const shared     = data.shared || [];
+
+  // Resumen
+  document.getElementById('reverseKwSummary').innerHTML =
+    `Se analizaron <strong>${totalComps}</strong> competidores → ` +
+    `<strong>${data.total_kws}</strong> keywords únicas encontradas · ` +
+    `<span style="color:#b45309;font-weight:700">${gaps.length} gaps</span> de oportunidad · ` +
+    `<span style="color:#0369a1;font-weight:700">${shared.length} confirmadas</span>`;
+
+  // Función para renderizar una keyword chip
+  function kwChip(kw) {
+    const freqColor  = kw.frequency >= 3 ? '#7c3aed' : kw.frequency >= 2 ? '#0369a1' : '#374151';
+    const bgColor    = kw.is_gap ? '#fff7ed' : '#f0f9ff';
+    const border     = kw.is_gap ? '#fed7aa' : '#bae6fd';
+    const descBadge  = kw.from_desc
+      ? `<span style="background:#e0e7ff;color:#3730a3;border-radius:4px;padding:0 4px;font-size:.59rem;font-weight:700"
+               title="Encontrada en la descripción del competidor">desc</span>`
+      : '';
+    return `
+      <div style="display:inline-flex;align-items:center;gap:4px;background:${bgColor};
+                  border:1px solid ${border};border-radius:6px;padding:4px 8px;font-size:.74rem;cursor:default"
+           title="Aparece en: ${kw.competitors.join(', ')}">
+        <span style="font-weight:600;color:#1e293b">${kw.keyword}</span>
+        ${descBadge}
+        <span style="background:${freqColor};color:#fff;border-radius:10px;padding:0 5px;font-size:.62rem;font-weight:700"
+              title="${kw.frequency} competidor${kw.frequency !== 1 ? 'es' : ''}">${kw.frequency}/${totalComps}</span>
+        <span style="color:#94a3b8;font-size:.63rem">pos.${kw.avg_position}</span>
+      </div>`;
+  }
+
+  // Gaps
+  const gapsSection = document.getElementById('reverseKwGapsSection');
+  const gapsList    = document.getElementById('reverseKwGapsList');
+  if (gaps.length) {
+    gapsList.innerHTML    = gaps.map(kwChip).join('');
+    gapsSection.style.display = 'block';
+  } else {
+    gapsSection.style.display = 'none';
+  }
+
+  // Compartidas
+  const sharedSection = document.getElementById('reverseKwSharedSection');
+  const sharedList    = document.getElementById('reverseKwSharedList');
+  if (shared.length) {
+    sharedList.innerHTML    = shared.map(kwChip).join('');
+    sharedSection.style.display = 'block';
+  } else {
+    sharedSection.style.display = 'none';
+  }
+}
+
+// ── Búsqueda en ML (abre nueva pestaña con los resultados reales) ─────────────
+function prepararBusquedaML(el) {
+  const q = (document.getElementById('mlSearchQueryInput')?.value || '').trim();
+  if (!q) { document.getElementById('mlSearchQueryInput')?.focus(); return false; }
+  const slug = encodeURIComponent(q);
+  el.href = 'https://listado.mercadolibre.com.ar/' + slug;
+  return true;  // permite que el link se abra normalmente en nueva pestaña
+}
+
+// Autocompletar el campo de búsqueda con el título del producto seleccionado
+function _prefillMLSearch() {
+  const itemId = _getSelectedItemId();
+  if (!itemId) return;
+  const sel  = document.getElementById('pubSelect');
+  const text = sel ? sel.options[sel.selectedIndex]?.text : '';
+  if (text && text !== '— Seleccioná una publicación —') {
+    const inp = document.getElementById('mlSearchQueryInput');
+    if (inp && !inp.value) inp.value = text.substring(0, 60);
+  }
+}
+
+// ── Captura global de links de ML ────────────────────────────────────────────
+
+// Alt+A: agrega desde portapapeles (fallback manual)
+document.addEventListener('keydown', e => {
+  if (e.altKey && e.key.toLowerCase() === 'a') {
+    e.preventDefault();
+    agregarDesdePortapapeles();
+  }
+});
+
+// Ctrl+V global: si el panel manual está abierto y el foco NO está en un input de texto,
+// intercepta el paste y lo redirige a procesarUrl()
+document.addEventListener('paste', e => {
+  const sec = document.getElementById('manualSearchSection');
+  if (!sec || sec.style.display === 'none') return;
+
+  // Si el foco está en el pasteUrlField déjalo pasar normalmente (el onpaste del input lo maneja)
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (!text) return;
+
+  // Solo actuar si parece una URL o ID de ML
+  if (text.match(/MLA-?\d{7,12}/i) || text.includes('mercadolibre')) {
+    e.preventDefault();
+    procesarUrl(text.trim());
+    // Abrir el panel si está cerrado
+    if (sec.style.display === 'none') toggleManualSearch();
+  }
+});
+
+function agregarDesdePortapapeles() {
+  if (!navigator.clipboard) {
+    showToast('⚠️ Permiso de portapapeles no disponible.', 'warn');
+    return;
+  }
+  navigator.clipboard.readText()
+    .then(text => {
+      if (!text.trim()) { showToast('⚠️ Portapapeles vacío — copiá un link de ML primero.', 'warn'); return; }
+      procesarUrl(text.trim());
+    })
+    .catch(() => showToast('⚠️ No se pudo leer el portapapeles. Permití el acceso en el navegador.', 'warn'));
+}
+
+// Extrae el título de una URL de ML: "articulo.../MLA-123-cortador-de-puntas-_JM" → "cortador de puntas"
+function _titleFromSlug(url) {
+  try {
+    const path = decodeURIComponent(url.split('?')[0]);
+    // Formato: /MLA-XXXXXXXXXX-palabras-del-titulo-_JM
+    const m = path.match(/MLA-\d+-([\w\-]+?)(?:-_JM|-#|$)/i);
+    if (!m) return '';
+    return m[1].replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+  } catch(e) { return ''; }
+}
+
+function procesarUrl(rawUrl) {
+  if (!rawUrl) return;
+
+  // Detectar si es URL de catálogo (/p/MLA...) o ítem directo
+  const isCatalog = /\/p\/MLA/i.test(rawUrl);
+
+  // Extraer MLA ID
+  const m = rawUrl.match(/MLA-?(\d{7,12})/i);
+  if (!m) {
+    showToast('⚠️ No encontré un ID de MercadoLibre. Copiá el link del producto (no de la búsqueda).', 'warn');
+    return;
+  }
+
+  const productId = 'MLA' + m[1];
+  if (selectedCompetitors[productId]) {
+    showToast('ℹ️ Ese producto ya está en la lista.', 'info');
+    return;
+  }
+
+  // Título extraído del slug como fallback inmediato
+  const slugTitle = _titleFromSlug(rawUrl);
+
+  showToast('⏳ Cargando ficha...', 'info', 0);
+
+  fetch('/api/detalle-competidor', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alias: ALIAS_OPT, product_id: productId, is_catalog: isCatalog })
+  })
+  .then(r => r.json())
+  .then(detail => {
+    if (detail.ok && detail.title) {
+      selectedCompetitors[productId] = detail;
+      showToast(`✅ ${detail.title.substring(0,50)}${detail.title.length>50?'…':''}`, 'ok');
+    } else if (slugTitle) {
+      // API sin permiso pero tenemos el título del slug
+      selectedCompetitors[productId] = {
+        id: productId, title: slugTitle,
+        thumbnail: '', attributes: [], description: '', main_features: [],
+        _fromSlug: true
+      };
+      showToast(`✅ ${slugTitle.substring(0,50)} (título extraído del link)`, 'ok');
+    } else {
+      selectedCompetitors[productId] = {
+        id: productId, title: productId,
+        thumbnail: '', attributes: [], description: '', main_features: []
+      };
+      showToast('⚠️ Agregado sin datos — completá el título manualmente.', 'warn');
+    }
+    renderSelectedSection();
+    updateRecentlyAdded(productId);
+  })
+  .catch(() => {
+    const fallbackTitle = slugTitle || productId;
+    selectedCompetitors[productId] = {
+      id: productId, title: fallbackTitle,
+      thumbnail: '', attributes: [], description: '', main_features: [],
+      _fromSlug: !!slugTitle
+    };
+    showToast(slugTitle ? `✅ ${slugTitle.substring(0,50)} (sin conexión)` : '⚠️ Agregado sin datos.', slugTitle ? 'ok' : 'warn');
+    renderSelectedSection();
+    updateRecentlyAdded(productId);
+  });
+}
+
+let toastTimer = null;
+function showToast(msg, type, duration) {
+  const el = document.getElementById('addToast');
+  const styles = {
+    ok:   { bg: '#166534', color: '#dcfce7' },
+    warn: { bg: '#92400e', color: '#fef9c3' },
+    info: { bg: '#1e3a5f', color: '#dbeafe' },
+  };
+  const s = styles[type] || styles.info;
+  el.style.background = s.bg;
+  el.style.color = s.color;
+  el.innerHTML = msg;
+  el.style.display = 'block';
+  if (toastTimer) clearTimeout(toastTimer);
+  const d = duration === undefined ? 3500 : duration;
+  if (d > 0) toastTimer = setTimeout(() => { el.style.display = 'none'; }, d);
+}
+
+// Muestra el "chip" del competidor recién agregado en la zona verde dentro del panel de búsqueda
+function updateRecentlyAdded(productId) {
+  const comp    = selectedCompetitors[productId];
+  const section = document.getElementById('recentlyAdded');
+  const list    = document.getElementById('recentlyAddedList');
+  if (!comp || !section || !list) return;
+
+  // Evitar duplicados en la lista visual
+  if (document.getElementById('recent-' + productId)) return;
+
+  const shortTitle = (comp.title || productId).substring(0, 45);
+  const chip = document.createElement('div');
+  chip.id = 'recent-' + productId;
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #86efac;border-radius:20px;padding:2px 8px 2px 4px;font-size:.72rem;color:#15803d;max-width:200px';
+  chip.innerHTML = `
+    ${comp.thumbnail
+      ? `<img src="${comp.thumbnail}" style="width:20px;height:20px;object-fit:contain;border-radius:50%;background:#f0fdf4;flex-shrink:0">`
+      : `<i class="bi bi-check-circle-fill" style="font-size:.8rem;flex-shrink:0"></i>`}
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${comp.title || productId}">${shortTitle}${(comp.title||'').length > 45 ? '…' : ''}</span>
+  `;
+  list.appendChild(chip);
+  section.style.display = 'block';
+}
+
+function removeCompetidor(id) {
+  delete selectedCompetitors[id];
+  renderSelectedSection();
+}
+
+function renderSelectedSection() {
+  const entries = Object.values(selectedCompetitors);
+  const area    = document.getElementById('compSelectedArea');
+  const badge   = document.getElementById('compSelectedCount');
+
+  if (!entries.length) {
+    area.style.display  = 'none';
+    badge.style.display = 'none';
+    document.getElementById('optCompNote').textContent = 'La IA usará los best sellers de tu categoría automáticamente';
+    return;
+  }
+
+  area.style.display  = 'block';
+  badge.style.display = '';
+  badge.textContent   = entries.length + ' elegido' + (entries.length !== 1 ? 's' : '');
+  document.getElementById('compSelectedLabel').textContent =
+    `${entries.length} competidor${entries.length !== 1 ? 'es' : ''} seleccionado${entries.length !== 1 ? 's' : ''} — la IA leerá ficha técnica y descripción completa`;
+  document.getElementById('optCompNote').textContent =
+    `La IA analizará en profundidad los ${entries.length} competidores que elegiste`;
+
+  document.getElementById('compSelectedCards').innerHTML = entries.map(c => {
+    const meta = [];
+    if (c.sold_quantity) meta.push(`${c.sold_quantity.toLocaleString('es-AR')} ventas`);
+    if (c.reviews_rating) meta.push(`⭐ ${c.reviews_rating} (${c.reviews_total || 0})`);
+    if (c.price) meta.push(`$${Math.round(c.price).toLocaleString('es-AR')}`);
+    if (c.photos_count) meta.push(`${c.photos_count} fotos`);
+    if (c.premium) meta.push('Premium');
+    if (c.free_ship) meta.push('Envío gratis');
+    const noData = (c.title === c.id || !c.title);
+    const safeId = c.id.replace(/[^a-z0-9]/gi, '_');
+    const displayTitle = c._manualTitle || (noData ? '' : c.title);
+    const displayDesc  = c._manualDesc  || c.description || '';
+    return `
+    <div style="background:#fff;border:1px solid ${noData ? '#fed7aa' : '#bbf7d0'};border-radius:8px;max-width:340px;overflow:hidden" id="comp-card-${safeId}">
+      <div class="d-flex align-items-start gap-2 p-2">
+        ${c.thumbnail
+          ? `<img src="${c.thumbnail}" style="width:44px;height:44px;object-fit:contain;border-radius:4px;flex-shrink:0;background:#f8fafc">`
+          : `<div style="width:44px;height:44px;background:#f1f5f9;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="bi bi-image"></i></div>`}
+        <div style="min-width:0;flex:1">
+          <div class="fw-semibold text-truncate" style="font-size:.8rem;color:${noData?'#ea580c':'inherit'}" title="${displayTitle || c.id}">
+            ${displayTitle || `<em style="color:#ea580c">Sin datos — editá para agregar título</em>`}
+          </div>
+          <div class="text-muted" style="font-size:.68rem;margin-top:2px">${meta.join(' · ') || (noData ? 'Ficha no disponible (API restringida)' : '—')}</div>
+          <div class="text-muted" style="font-size:.67rem">
+            ${c.attributes?.length ? c.attributes.length + ' atributos' : 'sin ficha'}
+            ${(displayDesc) ? ' · desc ✓' : ''}
+            ${c.reviews_sample?.length ? ` · ${c.reviews_sample.length} reseñas` : ''}
+          </div>
+        </div>
+        <div class="d-flex flex-column gap-1 flex-shrink-0">
+          <button class="btn btn-xs ${noData ? 'btn-warning' : 'btn-outline-secondary'}" onclick="toggleEditComp('${c.id}')" title="Editar título y descripción">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-xs btn-outline-danger" onclick="removeCompetidor('${c.id}')" title="Quitar">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+      </div>
+      <!-- Formulario de edición manual -->
+      <div id="edit-comp-${safeId}" style="display:${noData?'block':'none'};border-top:1px solid #fed7aa;padding:8px 10px;background:#fff7ed">
+        <div style="font-size:.73rem;color:#92400e;font-weight:600;margin-bottom:6px">
+          <i class="bi bi-pencil-fill me-1"></i>
+          ${noData ? 'Buscá este producto en el panel de ML y pegá el título y descripción:' : 'Editar datos del competidor:'}
+        </div>
+        <input type="text" placeholder="Título del competidor" value="${displayTitle.replace(/"/g,'&quot;')}"
+               class="form-control form-control-sm mb-2" id="edit-title-${safeId}">
+        <textarea placeholder="Descripción del competidor (copiá desde la publicación)" class="form-control form-control-sm mb-2" rows="3"
+                  id="edit-desc-${safeId}">${displayDesc.replace(/</g,'&lt;')}</textarea>
+        <button class="btn btn-sm btn-success w-100" onclick="saveCompEdit('${c.id}')">
+          <i class="bi bi-check-lg me-1"></i>Guardar datos
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function limpiarSeleccion() {
+  Object.keys(selectedCompetitors).forEach(id => delete selectedCompetitors[id]);
+  renderSelectedSection();
+}
+
+function toggleEditComp(id) {
+  const safeId = id.replace(/[^a-z0-9]/gi, '_');
+  const el = document.getElementById(`edit-comp-${safeId}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveCompEdit(id) {
+  const safeId = id.replace(/[^a-z0-9]/gi, '_');
+  const titleEl = document.getElementById(`edit-title-${safeId}`);
+  const descEl  = document.getElementById(`edit-desc-${safeId}`);
+  if (titleEl && titleEl.value.trim()) {
+    selectedCompetitors[id]._manualTitle = titleEl.value.trim();
+    selectedCompetitors[id].title = titleEl.value.trim();
+  }
+  if (descEl) {
+    selectedCompetitors[id]._manualDesc = descEl.value.trim();
+    selectedCompetitors[id].description = descEl.value.trim();
+  }
+  renderSelectedSection();
+  showToast('✅ Datos guardados — la IA los usará en la optimización.', 'ok');
+}
+
+// ── Investigar Keywords con IA ────────────────────────────────────────────────
+function toggleKwSection() {
+  const el = document.getElementById('kwSection');
+  const ch = document.getElementById('kwChevron');
+  const open = el.style.display === 'none';
+  el.style.display = open ? 'block' : 'none';
+  ch.className = open ? 'bi bi-chevron-up ms-auto' : 'bi bi-chevron-down ms-auto';
+  if (open && !document.getElementById('kwProductInput').value) {
+    // Pre-fill with the selected publication title if available
+    const sel = document.getElementById('pubSelect');
+    const inp = document.getElementById('pubIdInput');
+    const cust = document.getElementById('customIdOpt');
+    const chosen = (sel && sel.selectedOptions[0] && sel.selectedOptions[0].text !== '— Seleccioná una publicación —')
+      ? sel.selectedOptions[0].text
+      : (inp && inp.value ? inp.value : (cust && cust.value ? 'MLA' + cust.value : ''));
+    if (chosen) document.getElementById('kwProductInput').value = chosen.substring(0, 80);
+  }
+}
+
+function investigarKeywords() {
+  const q = document.getElementById('kwProductInput').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('kwBtn');
+  const results = document.getElementById('kwResults');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analizando...';
+  results.style.display = 'none';
+
+  fetch('/api/keywords-research', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS_OPT, producto: q})
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search me-1"></i>Investigar';
+    if (!data.ok) { showToast('❌ Error: ' + (data.error || 'desconocido'), 'warn'); return; }
+    kwResearchData = data;
+    renderKwResults(data);
+    results.style.display = 'block';
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search me-1"></i>Investigar';
+    showToast('❌ Error de conexión', 'warn');
+  });
+}
+
+function renderKwResults(data) {
+  const el = document.getElementById('kwResults');
+  const myTitle = (() => {
+    const sel = document.getElementById('pubSelect');
+    if (sel && sel.selectedOptions[0] && sel.selectedOptions[0].value) return sel.selectedOptions[0].text.toLowerCase();
+    return '';
+  })();
+
+  function inMyTitle(kw) {
+    return myTitle && myTitle.includes(kw.toLowerCase());
+  }
+
+  function kwBadge(kw, type) {
+    const present = inMyTitle(kw);
+    const bg    = present ? '#d1fae5' : (type === 'titulo' ? '#fef3c7' : '#eff6ff');
+    const color = present ? '#065f46' : (type === 'titulo' ? '#92400e' : '#1e40af');
+    const icon  = present ? '✓' : (type === 'titulo' ? '!' : '+');
+    const tip   = present ? 'Ya está en tu título' : (type === 'titulo' ? 'Prioritario para el título' : 'Usar en descripción');
+    return `<span style="display:inline-flex;align-items:center;gap:3px;background:${bg};color:${color};border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:600;margin:2px;cursor:default" title="${tip}">${icon} ${kw}</span>`;
+  }
+
+  let html = '<div style="font-size:.82rem">';
+
+  // ── Sugerencias crudas de ML (dato real) ──────────────────────────────────
+  const mlSuggestions = data.ml_suggestions || [];
+  if (mlSuggestions.length) {
+    const total = mlSuggestions.length;
+    html += `<div style="margin-bottom:12px;padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px">
+      <div style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:8px">
+        <i class="bi bi-graph-up-arrow me-1"></i>Búsquedas REALES en MercadoLibre Argentina — ordenadas por popularidad
+      </div>`;
+    mlSuggestions.forEach((s, i) => {
+      const pct      = Math.round(((total - i) / total) * 100);
+      const present  = inMyTitle(s);
+      const barColor = present ? '#10b981' : (i < 3 ? '#3b82f6' : '#94a3b8');
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <span style="min-width:16px;font-size:.7rem;color:#64748b;font-weight:700">${i+1}</span>
+        <span style="flex:1;font-size:.82rem;font-weight:${i<3?'700':'400'};color:${present?'#065f46':'#1e293b'}">${s}${present?' <span style="color:#10b981;font-size:.7rem">✓ en tu título</span>':''}</span>
+        <div style="width:80px;background:#e2e8f0;border-radius:4px;height:6px;flex-shrink:0">
+          <div style="width:${pct}%;background:${barColor};height:6px;border-radius:4px"></div>
+        </div>
+        <span style="font-size:.68rem;color:#64748b;min-width:32px;text-align:right">${i===0?'+ popular':''}</span>
+      </div>`;
+    });
+    html += `<div style="font-size:.65rem;color:#64748b;margin-top:4px">
+      <i class="bi bi-info-circle me-1"></i>Fuente: motor de búsqueda de MercadoLibre. La barra indica popularidad relativa (posición 1 = más buscada).
+    </div></div>`;
+  }
+
+  // ── Clasificación de Claude ───────────────────────────────────────────────
+  if (data.titulo?.length) {
+    html += `<div style="margin-bottom:8px">
+      <div style="font-size:.7rem;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px">
+        <i class="bi bi-tag me-1"></i>Para el TÍTULO — mayor impacto en posicionamiento
+      </div>
+      <div>${data.titulo.map(k => kwBadge(k, 'titulo')).join('')}</div>
+    </div>`;
+  }
+
+  if (data.descripcion?.length) {
+    html += `<div style="margin-bottom:8px">
+      <div style="font-size:.7rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:4px">
+        <i class="bi bi-text-paragraph me-1"></i>Para DESCRIPCIÓN — variantes semánticas y sinónimos
+      </div>
+      <div>${data.descripcion.map(k => kwBadge(k, 'desc')).join('')}</div>
+    </div>`;
+  }
+
+  if (data.long_tail?.length) {
+    html += `<div style="margin-bottom:8px">
+      <div style="font-size:.7rem;font-weight:700;color:#5b21b6;text-transform:uppercase;margin-bottom:4px">
+        <i class="bi bi-bullseye me-1"></i>Long-tail — compradores con alta intención de compra
+      </div>
+      <div>${data.long_tail.map(k => kwBadge(k, 'desc')).join('')}</div>
+    </div>`;
+  }
+
+  if (data.consejo) {
+    html += `<div style="margin-top:8px;padding:8px 10px;background:#fff7ed;border-radius:6px;font-size:.78rem;color:#92400e;border-left:3px solid #f59e0b">
+      <i class="bi bi-lightbulb-fill me-1"></i>${data.consejo}
+    </div>`;
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ── Optimización ──────────────────────────────────────────────────────────────
+function startOptimization() {
+  let itemId = '';
+  const customVal = document.getElementById('customIdOpt').value.trim();
+  if (customVal) {
+    itemId = 'MLA' + customVal.replace(/^MLA-?/i, '');
+  } else {
+    const sel = document.getElementById('pubSelect');
+    if (sel && sel.value) itemId = sel.value;
+    const inp = document.getElementById('pubIdInput');
+    if (inp && inp.value.trim()) itemId = inp.value.trim().toUpperCase();
+  }
+
+  if (!itemId) {
+    // Resaltar Paso 1 y scrollear hasta él
+    const paso1 = document.querySelector('[data-paso1]');
+    if (paso1) {
+      paso1.style.outline = '2px solid #ef4444';
+      paso1.style.borderRadius = '6px';
+      paso1.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => { paso1.style.outline = ''; }, 3000);
+    }
+    const errEl = document.getElementById('paso1Error');
+    if (errEl) {
+      errEl.style.display = 'block';
+      setTimeout(() => { errEl.style.display = 'none'; }, 4000);
+    }
+    return;
+  }
+
+  const competitorProducts = Object.values(selectedCompetitors);
+  const competitorIds      = [];
+  const competitorTitles   = [];
+
+  // Recolectar gap keywords del panel de reverse keywords (Paso 2)
+  const gapKwEls  = document.querySelectorAll('#reverseKwGapsList > div');
+  const gapKwList = Array.from(gapKwEls)
+    .map(el => el.querySelector('span:first-child')?.textContent?.trim())
+    .filter(Boolean);
+
+  document.getElementById('optPanel').style.display = 'block';
+  document.getElementById('optOutput').innerHTML = '';
+  document.getElementById('optOutput').dataset.raw = '';
+  document.getElementById('optStep').textContent = 'Iniciando...';
+  document.getElementById('optSpinner').style.display = '';
+  document.getElementById('optBtn').disabled = true;
+  document.getElementById('optPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  fetch('/api/optimizar-pub-v2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      alias: ALIAS_OPT,
+      item_id: itemId,
+      contexto: document.getElementById('contextoOpt').value.trim(),
+      competitor_ids: competitorIds,
+      competitor_titles: competitorTitles,
+      competitor_products: competitorProducts,
+      kw_research: kwResearchData,
+      gap_keywords: gapKwList
+    })
+  }).then(resp => {
+    const reader = resp.body.getReader();
+    const dec    = new TextDecoder();
+    let buf      = '';
+    function read() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          document.getElementById('optSpinner').style.display = 'none';
+          document.getElementById('optBtn').disabled = false;
+          return;
+        }
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n\n'); buf = lines.pop();
+        lines.forEach(l => {
+          if (!l.startsWith('data: ')) return;
+          try {
+            const ev = JSON.parse(l.slice(6));
+            if (ev.type === 'step') document.getElementById('optStep').textContent = ev.msg;
+            else if (ev.type === 'token') {
+              const out = document.getElementById('optOutput');
+              out.dataset.raw = (out.dataset.raw||'') + ev.text;
+              out.innerHTML = renderMd(out.dataset.raw);
+              out.scrollTop = out.scrollHeight;
+            }
+            else if (ev.type === 'done') {
+              document.getElementById('optStep').textContent = '✅ Listo — recargando para mostrar el resultado...';
+              document.getElementById('optSpinner').style.display = 'none';
+              document.getElementById('optBtn').disabled = false;
+              setTimeout(() => location.reload(), 2000);
+            }
+            else if (ev.type === 'error') {
+              document.getElementById('optStep').textContent = '❌ ' + ev.msg;
+              document.getElementById('optSpinner').style.display = 'none';
+              document.getElementById('optBtn').disabled = false;
+            }
+          } catch {}
+        });
+        read();
+      });
+    }
+    read();
+  });
+}
+
+function aplicarTitulo(itemId, tituloElId, btnId) {
+  const el    = document.getElementById(tituloElId);
+  const btn   = document.getElementById(btnId);
+  const titulo = el ? el.innerText.trim() : '';
+  if (!titulo) { alert('Sin título para aplicar.'); return; }
+  if (titulo.length > 60) {
+    if (!confirm(`El título tiene ${titulo.length} caracteres (máximo recomendado: 60). ¿Aplicar igual?`)) return;
+  } else {
+    if (!confirm(`¿Aplicar este título directamente en MercadoLibre?\n\n"${titulo}"`)) return;
+  }
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+
+  fetch('/api/aplicar-optimizacion', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, titulo })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>¡Aplicado!';
+      btn.className = btn.className.replace('btn-outline-primary', 'btn-success');
+      setTimeout(() => {
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+        btn.className = btn.className.replace('btn-success', 'btn-outline-primary');
+        btn.disabled  = false;
+      }, 3500);
+    } else {
+      btn.disabled  = false;
+      btn.innerHTML = '❌ Error';
+      alert('Error al aplicar: ' + (d.error || d.errors?.join(', ') || 'desconocido'));
+    }
+  })
+  .catch(() => {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+  });
+}
+
+function aplicarFicha(itemId, fichaElId, btnId) {
+  const fichaEl = document.getElementById(fichaElId);
+  const btn     = document.getElementById(btnId);
+  if (!fichaEl || !fichaEl.innerText.trim()) { alert('Sin ficha técnica para aplicar.'); return; }
+  if (!confirm('¿Aplicar la ficha técnica directamente en MercadoLibre?\nSolo se actualizan los campos que Claude generó.')) return;
+
+  // Parsear "Nombre: Valor" línea a línea
+  const lines = fichaEl.innerText.trim().split('\n');
+  const attributes = [];
+  for (const line of lines) {
+    const colon = line.indexOf(':');
+    if (colon < 1) continue;
+    const name  = line.slice(0, colon).trim();
+    const value = line.slice(colon + 1).trim();
+    if (name && value && !value.includes('[FALTANTE]')) {
+      attributes.push({ name, value });
+    }
+  }
+  if (!attributes.length) { alert('No se encontraron campos válidos para aplicar.'); return; }
+
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+
+  fetch('/api/aplicar-optimizacion', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, attributes })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      const applied = d.applied || [];
+      const warnings = d.attrs_warnings || [];
+      btn.outerHTML = `<span class="badge" style="background:#0f766e;color:#fff;padding:4px 8px;border-radius:5px">
+        <i class="bi bi-check2 me-1"></i>${applied.join(', ')} aplicado${warnings.length ? ' ⚠️ ' + warnings.length + ' no mapeados' : ''}</span>`;
+    } else {
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  })
+  .catch(() => {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+    alert('Error de conexión');
+  });
+}
+
+function aplicarDescripcion(itemId, btnId) {
+  const btn = document.getElementById(btnId);
+  const desc = document.getElementById(btnId.replace('btn-apply-desc-', 'desc-'));
+  if (!desc || !desc.innerText.trim()) { alert('Sin descripción para aplicar.'); return; }
+  if (!confirm('¿Aplicar esta descripción directamente en MercadoLibre?')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+  fetch('/api/aplicar-optimizacion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, descripcion: desc.innerText.trim() })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      btn.outerHTML = '<span class="badge badge-ok"><i class="bi bi-check2 me-1"></i>Descripción aplicada</span>';
+      if (!d.json_updated) console.warn('Descripción aplicada en ML pero el registro local no se encontró para item_id:', itemId);
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+    alert('Error de conexión.');
+  });
+}
+
+function borrarOptimizacion(itemId, btn) {
+  if (!confirm('¿Eliminar este análisis? No se puede deshacer.')) return;
+  const card = btn.closest('.card');
+  card.style.opacity = '0.4';
+  fetch('/api/borrar-optimizacion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alias: ALIAS_OPT, item_id: itemId })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) card.remove();
+    else { card.style.opacity = '1'; alert('Error al eliminar.'); }
+  })
+  .catch(() => { card.style.opacity = '1'; alert('Error de conexión.'); });
+}
+
+function copyById(elementId, btn) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = el.innerText || el.textContent;
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check2"></i> Copiado';
+    btn.classList.add('btn-success');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('btn-success'); }, 2000);
+  });
+}
+
+function renderMd(text) {
+  const sectionMeta = {
+    'KEYWORDS DEL MERCADO':          { bg:'#f0fdf4', border:'#16a34a', title:'#14532d', icon:'🔑' },
+    'FORTALEZAS DE CADA COMPETIDOR': { bg:'#eff6ff', border:'#3b82f6', title:'#1d4ed8', icon:'🔍' },
+    'PUNTAJE DE CALIDAD ACTUAL':     { bg:'#fdf2f8', border:'#9333ea', title:'#6b21a8', icon:'📊' },
+    'PALABRAS CLAVE FALTANTES':      { bg:'#fef9c3', border:'#ca8a04', title:'#854d0e', icon:'🔑' },
+    'ANÁLISIS DE FICHA TÉCNICA':     { bg:'#fff7ed', border:'#f97316', title:'#9a3412', icon:'📋' },
+    'ANÁLISIS DE DESCRIPCIÓN':       { bg:'#fdf4ff', border:'#a855f7', title:'#7e22ce', icon:'✍️' },
+    'TÍTULO ALTERNATIVO 1':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
+    'TÍTULO ALTERNATIVO 2':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
+    'TÍTULO ALTERNATIVO 3':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
+    'FICHA TÉCNICA PERFECTA':        { bg:'#fffbf0', border:'#f59e0b', title:'#92400e', icon:'📋' },
+    'DESCRIPCIÓN SUPERADORA':        { bg:'#f0fdf4', border:'#16a34a', title:'#14532d', icon:'📝' },
+  };
+
+  let out = '<div>';
+  let inSection = false;
+  let currentSectionId = '';
+  const copyableSections = new Set(['FICHA TÉCNICA PERFECTA', 'DESCRIPCIÓN SUPERADORA']);
+
+  text.split('\n').forEach(line => {
+    const h2 = line.match(/^## (.+)$/);
+    if (h2) {
+      if (inSection) out += '</div></div>';
+      const key = h2[1].trim();
+      const s = sectionMeta[key] || { bg:'#f8fafc', border:'#94a3b8', title:'#334155', icon:'▸' };
+      const needsCopy = copyableSections.has(key);
+      currentSectionId = needsCopy ? 'sec_' + Math.random().toString(36).slice(2,8) : '';
+      out += `<div style="background:${s.bg};border-left:4px solid ${s.border};border-radius:0 10px 10px 0;margin:14px 0 0;overflow:hidden">`;
+      out += `<div style="padding:8px 14px;background:${s.border}18;border-bottom:1px solid ${s.border}44;display:flex;justify-content:space-between;align-items:center">`;
+      out += `<strong style="color:${s.title};font-size:.88rem;letter-spacing:.03em">${s.icon} ${key}</strong>`;
+      if (needsCopy) {
+        out += `<button onclick="(function(b){var c=document.getElementById('${currentSectionId}');if(c){navigator.clipboard.writeText(c.innerText).then(function(){b.textContent='✓';setTimeout(function(){b.textContent='Copiar todo'},1400)})}})(this)" style="font-size:.72rem;padding:2px 8px;border:1px solid ${s.border};border-radius:4px;background:#fff;cursor:pointer;color:${s.title};white-space:nowrap;flex-shrink:0">Copiar todo</button>`;
+      }
+      out += `</div>`;
+      out += needsCopy
+        ? `<div id="${currentSectionId}" style="padding:10px 14px;font-size:.86rem;line-height:1.7">`
+        : `<div style="padding:10px 14px;font-size:.86rem;line-height:1.7">`;
+      inSection = true;
+      return;
+    }
+
+    // Bloques especiales dentro de secciones
+    if (/^► /.test(line)) {
+      out += `<div style="background:rgba(0,0,0,.04);border-radius:6px;padding:6px 10px;margin:6px 0;font-weight:600">${line}</div>`;
+    } else if (/^   (Encontrada en|Relevancia|Por qué importa):/.test(line)) {
+      out += `<div style="padding:1px 0 1px 16px;color:#374151;font-size:.83rem">${line.trim()}</div>`;
+    } else if (/^CAMPO:/.test(line)) {
+      out += `<div style="margin-top:10px;padding:5px 10px;background:rgba(0,0,0,.05);border-radius:6px;font-weight:600;font-size:.85rem">${line}</div>`;
+    } else if (/^(Mi valor|Competidores|Acción):/.test(line)) {
+      const isAccion = line.startsWith('Acción:');
+      out += `<div style="padding:2px 0 2px 14px;font-size:.83rem;${isAccion ? 'color:#166534;font-weight:600' : 'color:#374151'}">${line}</div>`;
+    } else if (/^---$/.test(line)) {
+      out += `<hr style="border:none;border-top:1px dashed #cbd5e1;margin:8px 0">`;
+    } else if (/^▸ /.test(line)) {
+      out += `<div style="padding:3px 0 3px 4px;font-size:.85rem"><span style="color:#3b82f6;font-weight:700">▸</span> ${line.slice(2)}</div>`;
+    } else if (/^TÍTULO: /.test(line) && inSection && out.includes('TÍTULO ALTERNATIVO')) {
+      // Título dentro de sección TÍTULO ALTERNATIVO — destacarlo con botón copiar
+      const t = line.replace('TÍTULO: ', '').trim();
+      const safeT = t.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+      out += `<div style="background:#d1fae5;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:700;font-size:.95rem;color:#14532d;display:flex;justify-content:space-between;align-items:center">
+        <span>${t}</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="font-size:.7rem;color:#6b7280">${t.length}/60 car.</span>
+          <button onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='Copiar',1400)})" data-t="${safeT}" style="font-size:.72rem;padding:2px 8px;border:1px solid #86efac;border-radius:4px;background:#fff;cursor:pointer;color:#166534;white-space:nowrap">Copiar</button>
+        </div></div>`;
+    } else if (/^PUNTAJE TOTAL/.test(line)) {
+      out += `<div style="margin-top:10px;padding:8px 12px;background:#6b21a8;color:#fff;border-radius:7px;font-weight:700;font-size:.92rem">${line}</div>`;
+    } else if (/^(TÍTULO|FICHA TÉCNICA|DESCRIPCIÓN|FOTOS|TIPO DE PUBLICACIÓN|ENVÍO):/.test(line)) {
+      const scoreMatch = line.match(/\[(\d+)\/10\]/);
+      const score = scoreMatch ? parseInt(scoreMatch[1]) : 5;
+      const color = score >= 8 ? '#16a34a' : score >= 5 ? '#d97706' : '#dc2626';
+      out += `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:.84rem">
+        <span style="font-weight:700;min-width:140px">${line.split(':')[0]}:</span>
+        <span style="color:${color};font-weight:700">${scoreMatch ? scoreMatch[0] : ''}</span>
+        <span style="color:#374151">${line.replace(/^[^:]+:/, '').replace(/\[\d+\/10\]/, '').trim()}</span>
+      </div>`;
+    } else if (/^(LONGITUD|ESTRUCTURA|ARGUMENTOS FALTANTES|ERRORES DETECTADOS|KEYWORDS EN DESCRIPCIÓN):/.test(line)) {
+      const [label, ...rest] = line.split(':');
+      out += `<div style="margin-top:8px"><span style="font-weight:700;color:#7e22ce;font-size:.8rem;text-transform:uppercase">${label}:</span> <span style="font-size:.85rem">${rest.join(':')}</span></div>`;
+    } else if (/^(Estrategia|Caracteres):/.test(line)) {
+      const [label, ...rest] = line.split(':');
+      out += `<div style="font-size:.82rem;color:#475569"><em>${label}:</em>${rest.join(':')}</div>`;
+    } else if (line.trim() === '') {
+      out += '<div style="height:6px"></div>';
+    } else {
+      // Inline formatting
+      let l = line
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:.83rem">$1</code>');
+      out += `<div>${l}</div>`;
+    }
+  });
+
+  if (inSection) out += '</div></div>';
+  out += '</div>';
+  return out;
+}
+
+// ── Bookmarklet ───────────────────────────────────────────────────────────────
+
+function toggleBookmarkletPanel() {
+  const p = document.getElementById('bookmarkletPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (p.style.display === 'block') _buildBookmarkletLink();
+}
+
+function _buildBookmarkletLink() {
+  const alias     = ALIAS_OPT || '';
+  const serverUrl = window.location.origin;   // ej: http://localhost:8080
+
+  // JS que corre en la página de ML al clickear el bookmarklet
+  const code = `(function(){
+  var id='';
+  var m=location.href.match(/MLA-?(\\d{7,12})/i);
+  if(m) id='MLA'+m[1];
+  if(!id){alert('No encontré un ID de MercadoLibre en esta página.');return;}
+
+  var title=(document.querySelector('h1.ui-pdp-title')||document.querySelector('h1[class*="title"]')||{}).textContent||'';
+  title=title.trim();
+
+  var descEl=document.querySelector('.ui-pdp-description__content')||
+             document.querySelector('[class*="description__content"]')||
+             document.querySelector('[data-testid="description-content"]');
+  var desc=(descEl&&descEl.innerText)||'';
+
+  var priceEl=document.querySelector('.andes-money-amount__fraction');
+  var price=priceEl?parseInt(priceEl.textContent.replace(/\\D/g,''),10)||0:0;
+
+  var thumb='';
+  var imgEl=document.querySelector('.ui-pdp-image.ui-pdp-gallery__figure__image')||
+            document.querySelector('[class*="gallery"] img');
+  if(imgEl) thumb=imgEl.src||imgEl.dataset.src||'';
+
+  var freeShip=!!(document.querySelector('[class*="free_shipping"]')||
+                  document.querySelector('[data-testid*="shipping_free"]'));
+
+  var attrs=[];
+  document.querySelectorAll('.andes-table__row,[class*="specs__row"]').forEach(function(row){
+    var cells=row.querySelectorAll('td,th');
+    if(cells.length>=2){
+      var n=(cells[0].textContent||'').trim();
+      var v=(cells[1].textContent||'').trim();
+      if(n&&v) attrs.push({name:n,value:v});
+    }
+  });
+
+  var data={alias:'${alias}',id:id,title:title,description:desc,price:price,
+            thumbnail:thumb,free_ship:freeShip,attributes:attrs,
+            photos_count:document.querySelectorAll('[class*="gallery"] img').length};
+
+  fetch('${serverUrl}/api/capturar-competidor',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(data)
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){
+      var btn=document.createElement('div');
+      btn.style.cssText='position:fixed;top:20px;right:20px;z-index:999999;background:#16a34a;color:#fff;'+
+        'padding:12px 20px;border-radius:10px;font-size:15px;font-weight:700;'+
+        'box-shadow:0 4px 20px rgba(0,0,0,.25);font-family:sans-serif';
+      btn.textContent='✅ Enviado a la herramienta: '+d.title.substring(0,40);
+      document.body.appendChild(btn);
+      setTimeout(function(){btn.remove();},3000);
+    } else {
+      alert('Error: '+(d.error||'desconocido'));
+    }
+  }).catch(function(e){alert('No se pudo conectar con la herramienta. ¿Está abierta en localhost:8080?');});
+})();`;
+
+  const href = 'javascript:' + encodeURIComponent(code);
+  document.getElementById('bookmarkletLink').href = href;
+}
+
+// ── Polling: detecta competidores enviados desde el bookmarklet ───────────────
+let _pollingInterval = null;
+
+function _startPolling() {
+  if (_pollingInterval) return;
+  _pollingInterval = setInterval(_pollPendingCompetitors, 3000);
+}
+
+function _stopPolling() {
+  if (_pollingInterval) { clearInterval(_pollingInterval); _pollingInterval = null; }
+}
+
+async function _pollPendingCompetitors() {
+  if (!ALIAS_OPT) return;
+  try {
+    const r = await fetch(`/api/pending-competidores?alias=${encodeURIComponent(ALIAS_OPT)}`);
+    const d = await r.json();
+    if (!d.ok || !d.competitors?.length) return;
+
+    d.competitors.forEach(comp => {
+      if (!selectedCompetitors[comp.id]) {
+        selectedCompetitors[comp.id] = comp;
+        updateRecentlyAdded(comp.id);
+      }
+    });
+
+    renderSelectedSection();
+
+    // Mostrar ping visual
+    const ping     = document.getElementById('bookmarkletPing');
+    const pingText = document.getElementById('bookmarkletPingText');
+    const names    = d.competitors.map(c => c.title.substring(0,30)).join(', ');
+    pingText.textContent = `${d.competitors.length} competidor${d.competitors.length>1?'es':''} recibido${d.competitors.length>1?'s':''}: ${names}`;
+    ping.style.display = 'block';
+    setTimeout(() => { ping.style.display = 'none'; }, 5000);
+
+  } catch(e) { /* silencioso */ }
+}
+
+// Arrancar el polling cuando la página esté lista
+document.addEventListener('DOMContentLoaded', () => {
+  _startPolling();
+  _buildBookmarkletLink();  // pre-generar el link
+});
+
+// ── Seguimiento post-optimización ────────────────────────────────────────────
+function refreshSeguimiento(itemId, alias) {
+  const btn = document.getElementById('btn-seg-' + itemId);
+  const box = document.getElementById('seg-' + itemId);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+
+  fetch(`/api/opt-seguimiento/${encodeURIComponent(alias)}/${itemId}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Actualizar'; }
+        return;
+      }
+
+      const v = d.veredicto;
+      const bgMap = { mejoro: '#dcfce7', empeoro: '#fee2e2', sin_cambio: '#fef3c7', muy_reciente: '#fef3c7', sin_dato: '#f1f5f9' };
+      const colMap = { mejoro: '#15803d', empeoro: '#dc2626', sin_cambio: '#92400e', muy_reciente: '#92400e', sin_dato: '#64748b' };
+      const lblMap = { mejoro: '✓ Mejoró', empeoro: '✗ Empeoró', sin_cambio: '↔ Sin cambio', muy_reciente: 'Muy reciente', sin_dato: 'Sin dato' };
+
+      let html = `
+        <i class="bi bi-graph-up-arrow" style="color:#0369a1;flex-shrink:0"></i>
+        <span style="font-size:.75rem;font-weight:700;color:#0369a1;flex-shrink:0">Seguimiento</span>
+        <span style="font-size:.73rem;padding:2px 8px;border-radius:20px;font-weight:700;background:${bgMap[v]||'#f1f5f9'};color:${colMap[v]||'#64748b'}">${lblMap[v]||v}</span>
+        <span style="font-size:.73rem;color:#334155;flex:1">${d.veredicto_txt}</span>`;
+
+      if (d.delta_pos !== null && d.delta_pos !== undefined) {
+        const posColor = d.delta_pos < 0 ? '#15803d' : '#dc2626';
+        const posSign  = d.delta_pos > 0 ? '+' : '';
+        html += `<span style="font-size:.73rem;font-weight:700;color:${posColor}">
+          Posición: ${d.baseline?.posicion_antes ?? '?'} → ${d.ahora?.posicion ?? '?'} (${posSign}${d.delta_pos})</span>`;
+      }
+      if (d.delta_vis !== null && d.delta_vis !== undefined) {
+        const visSign = d.delta_vis > 0 ? '+' : '';
+        html += `<span style="font-size:.73rem;color:#64748b">
+          Visitas: ${d.baseline?.visitas_antes ?? '?'} → ${d.ahora?.visitas ?? '?'} (${visSign}${d.delta_vis})</span>`;
+      }
+      if (d.dias_desde !== null) {
+        html += `<span style="font-size:.68rem;color:#94a3b8">hace ${d.dias_desde}d</span>`;
+      }
+
+      html += `<button onclick="refreshSeguimiento('${itemId}','${alias}')" id="btn-seg-${itemId}"
+                 style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+                 <i class="bi bi-arrow-clockwise me-1"></i>Actualizar</button>`;
+
+      box.innerHTML = html;
+    })
+    .catch(() => {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Actualizar'; }
+    });
+}
+
+// ── Mis Preguntas — señales de compradores ────────────────────
+function toggleMisPreguntas() {
+  const body = document.getElementById('mq-body');
+  const chev = document.getElementById('mq-chevron');
+  const open = body.style.display === '';
+  body.style.display = open ? 'none' : '';
+  chev.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function cargarMisPreguntas() {
+  const btn = document.getElementById('btn-mq-cargar');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analizando…';
+
+  // Abrir el panel si está cerrado
+  document.getElementById('mq-body').style.display = '';
+  document.getElementById('mq-chevron').style.transform = 'rotate(180deg)';
+  document.getElementById('mq-content').innerHTML = '<div class="text-muted small py-2"><span class="spinner-border spinner-border-sm me-2"></span>Obteniendo preguntas y analizando patrones con IA…</div>';
+
+  fetch(`/api/mis-preguntas-analisis/${encodeURIComponent(ALIAS_OPT)}`)
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Actualizar';
+
+      if (!d.ok) {
+        document.getElementById('mq-content').innerHTML = `<div class="alert alert-danger py-2 small">Error: ${d.error}</div>`;
+        return;
+      }
+      if (!d.items || d.items.length === 0) {
+        document.getElementById('mq-content').innerHTML = '<div class="text-muted small">No hay suficientes preguntas para analizar aún.</div>';
+        return;
+      }
+
+      const badge = document.getElementById('mq-badge');
+      badge.textContent = d.total_preguntas + ' preguntas';
+      badge.style.display = 'inline-block';
+
+      let html = `<div class="mb-3 small text-muted"><i class="bi bi-info-circle me-1"></i>Análisis de <strong>${d.total_preguntas}</strong> preguntas reales de compradores en <strong>${d.items.length}</strong> publicaciones.</div>`;
+
+      d.items.forEach(item => {
+        const an = item.analisis || {};
+        const mlUrl = `https://articulo.mercadolibre.com.ar/-${item.item_id.replace('MLA','')}-_JM`;
+        html += `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px;border-left:4px solid #f59e0b">
+          <div class="d-flex align-items-start gap-2 mb-2 flex-wrap">
+            <div style="font-weight:600;font-size:.88rem;flex:1">${item.titulo}</div>
+            <span style="background:#fef3c7;color:#92400e;border-radius:8px;padding:2px 8px;font-size:.7rem;font-weight:700;flex-shrink:0">${item.n_preguntas} preguntas</span>
+            <a href="${mlUrl}" target="_blank" style="font-size:.7rem;color:#64748b;flex-shrink:0">ML →</a>
+          </div>`;
+
+        if (an.patron_principal) {
+          html += `<div style="background:#fef9c3;border-radius:6px;padding:7px 10px;font-size:.8rem;margin-bottom:8px">
+            <strong>Duda principal:</strong> ${an.patron_principal}</div>`;
+        }
+
+        const cols = [];
+        if (an.falta_en_descripcion?.length) {
+          cols.push(`<div style="flex:1;min-width:180px">
+            <div style="font-size:.67rem;font-weight:800;text-transform:uppercase;color:#b45309;margin-bottom:4px">Agregar a descripción</div>
+            <ul style="margin:0;padding-left:16px;font-size:.78rem;color:#78350f">${an.falta_en_descripcion.map(x=>`<li>${x}</li>`).join('')}</ul>
+          </div>`);
+        }
+        if (an.falta_en_ficha?.length) {
+          cols.push(`<div style="flex:1;min-width:180px">
+            <div style="font-size:.67rem;font-weight:800;text-transform:uppercase;color:#1d4ed8;margin-bottom:4px">Completar ficha técnica</div>
+            <ul style="margin:0;padding-left:16px;font-size:.78rem;color:#1e3a8a">${an.falta_en_ficha.map(x=>`<li>${x}</li>`).join('')}</ul>
+          </div>`);
+        }
+        if (an.keywords_long_tail?.length) {
+          cols.push(`<div style="flex:1;min-width:180px">
+            <div style="font-size:.67rem;font-weight:800;text-transform:uppercase;color:#15803d;margin-bottom:4px">Keywords long-tail detectadas</div>
+            <div style="font-size:.78rem;color:#14532d">${an.keywords_long_tail.map(k=>`<span style="background:#dcfce7;border-radius:4px;padding:1px 6px;margin:1px;display:inline-block">"${k}"</span>`).join('')}</div>
+          </div>`);
+        }
+        if (cols.length) {
+          html += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">${cols.join('')}</div>`;
+        }
+
+        if (an.accion_prioritaria) {
+          html += `<div style="background:#eff6ff;border-radius:6px;padding:7px 10px;font-size:.8rem">
+            <i class="bi bi-lightning-charge-fill text-primary me-1"></i><strong>Acción prioritaria:</strong> ${an.accion_prioritaria}</div>`;
+        }
+
+        html += `</div>`;
+      });
+
+      document.getElementById('mq-content').innerHTML = html;
+    })
+    .catch(e => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Analizar mis preguntas';
+      document.getElementById('mq-content').innerHTML = `<div class="alert alert-danger py-2 small">Error: ${e}</div>`;
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,1671 @@
+{% extends "base.html" %}
+{% block title %} — Stock {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+  .stat-num { font-size:1.75rem; font-weight:700; line-height:1; }
+  .stat-label { font-size:.75rem; color:#6b7280; margin-top:3px; }
+  .costo-cell { cursor:pointer; }
+  .costo-cell:hover { background:#f0f9ff; }
+  .costo-inp { width:110px; font-size:.82rem; }
+  .capital-badge { background:#ede9fe; color:#5b21b6; border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
+  .sin-costo-badge { background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
+  .chk-col { width:28px; }
+  .updated-dot { width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px; }
+  .conv-ok   { color:#059669; font-weight:700; }
+  .conv-warn { color:#d97706; font-weight:700; }
+  .conv-bad  { color:#dc2626; font-weight:700; }
+  .diag-chip { font-size:.68rem; border-radius:4px; padding:1px 6px; font-weight:600; }
+  .diag-trafico  { background:#fee2e2; color:#991b1b; }
+  .diag-titulo   { background:#fef3c7; color:#92400e; }
+  .diag-ok       { background:#d1fae5; color:#065f46; }
+  .vis-skel { display:inline-block; width:50px; height:14px; background:#e5e7eb; border-radius:4px; animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .acciones-panel {
+    background:linear-gradient(135deg,#f8fafc 0%,#f0f9ff 100%);
+    border-top:1px solid #e0f2fe; padding:14px 20px;
+    display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start;
+  }
+  .accion-card {
+    background:#fff; border:1px solid #e5e7eb; border-radius:8px;
+    padding:10px 14px; flex:1; min-width:200px; max-width:280px;
+  }
+  .accion-card .ac-title { font-size:.72rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:.05em; margin-bottom:6px; }
+  .accion-card ul { margin:0; padding-left:14px; }
+  .accion-card ul li { font-size:.78rem; color:#374151; margin-bottom:3px; line-height:1.4; }
+  .accion-card.urgente { border-left:3px solid #ef4444; }
+  .accion-card.importante { border-left:3px solid #f59e0b; }
+  .accion-card.oportunidad { border-left:3px solid #3b82f6; }
+  .accion-card.ok { border-left:3px solid #10b981; }
+  .diag-chip { border:none; cursor:pointer; font-size:.68rem; border-radius:4px; padding:2px 7px; font-weight:600; }
+  .filter-chip {
+    border:1px solid #e5e7eb; background:#fff; border-radius:20px;
+    padding:4px 12px; font-size:.78rem; cursor:pointer; color:#374151;
+    transition:all .15s; white-space:nowrap;
+  }
+  .filter-chip:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
+  .filter-chip.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-box-seam me-2 text-primary"></i>Stock y rentabilidad</h1>
+    <div class="sub">{{ alias }} {% if fecha %}— actualizado {{ fecha }}{% endif %}</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if items %}
+    <button class="btn btn-sm btn-outline-primary" onclick="openCostosModal()">
+      <i class="bi bi-currency-dollar me-1"></i>Cargar costos
+      {% if sin_costo > 0 %}
+      <span class="badge bg-warning text-dark ms-1">{{ sin_costo }} sin costo</span>
+      {% endif %}
+    </button>
+    {% endif %}
+    {% if items %}
+    <button class="btn btn-sm btn-outline-secondary" id="vis-btn" onclick="loadVisitas(true)">
+      <i class="bi bi-eye me-1"></i>Actualizar visitas
+    </button>
+    {% endif %}
+    <button class="btn btn-sm btn-outline-secondary run-btn" onclick="runComando('stock-rentabilidad','{{ alias }}')">
+      <i class="bi bi-arrow-repeat me-1"></i>Re-analizar
+    </button>
+  </div>
+</div>
+
+{% if not items %}
+<div class="alert alert-info">
+  Sin datos. Hacé clic en <strong>Re-analizar</strong> para generar el análisis de stock.
+</div>
+{% else %}
+
+{% set sin_stock_list   = items | selectattr('alerta_stock', 'equalto', 'SIN_STOCK')   | list %}
+{% set criticos_list    = items | selectattr('alerta_stock', 'equalto', 'CRITICO')     | list %}
+{% set advertencia_list = items | selectattr('alerta_stock', 'equalto', 'ADVERTENCIA') | list %}
+{% set margen_neg_list  = items | selectattr('alerta_margen', 'equalto', 'NEGATIVO')   | list %}
+
+<!-- ── Stat boxes ──────────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-2">
+    <div class="stat-box {{ 'crit' if sin_stock_list else 'ok' }}">
+      <div class="num">{{ sin_stock_list | length }}</div>
+      <div class="lbl">Sin stock</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-box {{ 'crit' if criticos_list else 'ok' }}">
+      <div class="num">{{ criticos_list | length }}</div>
+      <div class="lbl">Críticos (&lt;7d)</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-box {{ 'warn' if advertencia_list else 'ok' }}">
+      <div class="num">{{ advertencia_list | length }}</div>
+      <div class="lbl">Stock bajo (&lt;15d)</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-box {{ 'crit' if margen_neg_list else 'ok' }}">
+      <div class="num">{{ margen_neg_list | length }}</div>
+      <div class="lbl">Margen negativo</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-box {{ 'warn' if sin_costo > 0 else 'ok' }}">
+      <div class="num {{ 'warn' if sin_costo > 0 else 'ok' }}">{{ sin_costo }}</div>
+      <div class="lbl">Sin costo cargado</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="stat-box blue">
+      <div class="num" style="font-size:1.2rem">${{ "{:,.0f}".format(capital_total / 1000) }}K</div>
+      <div class="lbl">Capital inmovilizado</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Experiencia de compra (nivel cuenta) ────────────────────────────────── -->
+{% if seller_metrics %}
+{% set sm = seller_metrics %}
+{% if sm.claims_rate > 2 %}
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-3 py-2" style="border-left:4px solid #dc2626;">
+  <span style="font-size:1.1rem">🔴</span>
+  <div class="small">
+    <strong>Reputación crítica de cuenta — {{ sm.claims_rate }}% reclamos (límite ML: 2%)</strong><br>
+    ML penaliza la visibilidad de <em>todas</em> tus publicaciones mientras estés sobre el límite. Resolver reclamos abiertos es prioritario antes de optimizar publicaciones individuales.
+  </div>
+</div>
+{% elif sm.claims_rate > 1 %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-3 py-2" style="border-left:4px solid #f59e0b;">
+  <span style="font-size:1.1rem">🟡</span>
+  <div class="small">
+    <strong>Reputación de cuenta en zona de riesgo — {{ sm.claims_rate }}% reclamos</strong>&nbsp;
+    (estás a {{ "%.1f"|format(2 - sm.claims_rate) }}% del límite de ML — monitorear de cerca)
+  </div>
+</div>
+{% endif %}
+<div class="card mb-3">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="fw-semibold small text-muted me-1">
+        <i class="bi bi-award-fill text-primary me-1"></i>Experiencia de compra de tu cuenta ({{ sm.period }}):
+      </span>
+      <span class="d-flex align-items-center gap-1 small">
+        🔴 Reclamos:
+        <strong class="{{ 'text-danger' if sm.claims_rate > 2 else ('text-warning' if sm.claims_rate > 1 else 'text-success') }}">
+          {{ sm.claims_rate }}%
+        </strong>
+        <span class="text-muted">({{ sm.claims_value }})</span>
+      </span>
+      <span class="text-muted">·</span>
+      <span class="d-flex align-items-center gap-1 small">
+        ⏱ Demoras:
+        <strong class="{{ 'text-danger' if sm.delays_rate > 5 else ('text-warning' if sm.delays_rate > 2 else 'text-success') }}">
+          {{ sm.delays_rate }}%
+        </strong>
+        <span class="text-muted">({{ sm.delays_value }})</span>
+      </span>
+      <span class="text-muted">·</span>
+      <span class="d-flex align-items-center gap-1 small">
+        ❌ Cancelaciones:
+        <strong class="{{ 'text-danger' if sm.cancel_rate > 2 else ('text-warning' if sm.cancel_rate > 0.5 else 'text-success') }}">
+          {{ sm.cancel_rate }}%
+        </strong>
+        <span class="text-muted">({{ sm.cancel_value }})</span>
+      </span>
+      <span class="text-muted ms-auto small fst-italic">Estas métricas afectan el posicionamiento de todas tus publicaciones</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Filtros ─────────────────────────────────────────────────────────────── -->
+<div class="d-flex gap-2 align-items-center flex-wrap mb-3">
+  <span class="text-muted small fw-semibold me-1">Filtrar:</span>
+  <button class="filter-chip active" data-filter="todos" onclick="setFilter(this,'todos')">Todos</button>
+  <button class="filter-chip" data-filter="sin_stock" onclick="setFilter(this,'sin_stock')">⛔ Sin stock</button>
+  <button class="filter-chip" data-filter="stock_critico" onclick="setFilter(this,'stock_critico')">🔴 Stock crítico</button>
+  <button class="filter-chip" data-filter="margen_neg" onclick="setFilter(this,'margen_neg')">💸 Margen negativo</button>
+  <button class="filter-chip" data-filter="conv_baja" onclick="setFilter(this,'conv_baja')">📉 Conversión baja</button>
+  <button class="filter-chip" data-filter="trafico_bajo" onclick="setFilter(this,'trafico_bajo')">👁 Tráfico bajo</button>
+  <button class="filter-chip" data-filter="sin_costo" onclick="setFilter(this,'sin_costo')">💰 Sin costo</button>
+  <button class="filter-chip" data-filter="optimos" onclick="setFilter(this,'optimos')">✅ Óptimos</button>
+  <div class="ms-auto">
+    <input type="text" id="table-search" class="form-control form-control-sm" placeholder="Buscar producto..." style="width:200px" oninput="applyFilters()">
+  </div>
+</div>
+
+<!-- ── Tabla principal ────────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span class="fw-semibold" id="visible-count">{{ items | length }} publicaciones</span>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <span class="badge badge-crit">⛔ Sin stock</span>
+      <span class="badge badge-warn">⚠ Crítico</span>
+      <span class="badge badge-ok">✓ OK</span>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" id="stock-table">
+        <thead>
+          <tr>
+            <th>Publicación</th>
+            <th class="text-end">Precio</th>
+            <th class="text-end">Stock</th>
+            <th class="text-end">Vel/día</th>
+            <th class="text-end">Días stock</th>
+            <th class="text-end">Costo</th>
+            <th class="text-end" title="Comisión + IVA + envío cobrado por ML (tomado de órdenes reales)">Fee ML</th>
+            <th class="text-end">Neto</th>
+            <th class="text-end">Margen</th>
+            <th class="text-end">Capital</th>
+            <th class="text-end" title="Visitas únicas últimos 30 días">Visitas 30d</th>
+            <th class="text-end" title="Conversión = ventas / visitas">Conversión</th>
+            <th class="text-center">Diagnóstico</th>
+            <th class="text-center">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          {% set row_class = 'row-crit' if (item.alerta_stock in ['SIN_STOCK','CRITICO'] or item.alerta_margen == 'NEGATIVO') else ('row-warn' if (item.alerta_stock == 'ADVERTENCIA' or item.alerta_margen == 'BAJO') else '') %}
+          <tr class="{{ row_class }}"
+              data-titulo="{{ item.titulo | lower }}"
+              data-alerta-stock="{{ item.alerta_stock or '' }}"
+              data-alerta-margen="{{ item.alerta_margen or '' }}"
+              data-costo="{{ '1' if item.costo else '0' }}"
+              data-conv="{{ item.conversion_pct if item.conversion_pct is not none else '' }}"
+              data-visitas="{{ item.visitas_30d if item.visitas_30d is not none else '' }}"
+              data-margen="{{ (item.margen_pct * 100) | round(1) if item.margen_pct is not none else '' }}"
+              data-velocidad="{{ item.velocidad or 0 }}"
+              data-id="{{ item.id }}"
+              data-titulo-full="{{ item.titulo }}">
+            <td style="max-width:240px">
+              <div class="text-truncate fw-semibold" title="{{ item.titulo }}" style="max-width:220px;font-size:.85rem">{{ item.titulo }}</div>
+              <div class="text-muted" style="font-size:.68rem">{{ item.id }}</div>
+            </td>
+            <td class="text-end">${{ "{:,.0f}".format(item.precio) }}</td>
+            <td class="text-end">
+              {% if item.stock == 0 %}
+                <strong class="text-danger">0 ⛔</strong>
+              {% elif item.alerta_stock == 'CRITICO' %}
+                <span class="text-danger fw-semibold">{{ item.stock }}</span>
+              {% elif item.alerta_stock == 'ADVERTENCIA' %}
+                <span class="text-warning fw-semibold">{{ item.stock }}</span>
+              {% else %}
+                {{ item.stock }}
+              {% endif %}
+            </td>
+            <td class="text-end text-muted" style="font-size:.82rem">{{ "%.1f"|format(item.velocidad) if item.velocidad else '—' }}</td>
+            <td class="text-end">
+              {% if item.dias_stock %}
+                {% if item.dias_stock <= 7 %}
+                  <span class="text-danger fw-semibold">{{ "%.0f"|format(item.dias_stock) }}d</span>
+                {% elif item.dias_stock <= 15 %}
+                  <span class="text-warning fw-semibold">{{ "%.0f"|format(item.dias_stock) }}d</span>
+                {% else %}
+                  <span class="text-success">{{ "%.0f"|format(item.dias_stock) }}d</span>
+                {% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-end costo-cell" onclick="editCostoInline(this,'{{ item.id }}','{{ item.titulo|replace("'","\\'") }}',{{ item.precio }},{{ item.costo if item.costo else 0 }})"
+                title="Clic para editar costo">
+              {% if item.costo %}
+                <span class="text-success fw-semibold">${{ "{:,.0f}".format(item.costo) }}</span>
+              {% else %}
+                <span class="sin-costo-badge"><i class="bi bi-pencil me-1"></i>Sin costo</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <span class="{{ 'text-muted' if item.fee_source == 'estimado' else 'text-dark' }}"
+                    title="{{ 'Estimado por tipo de publicación' if item.fee_source == 'estimado' else 'Calculado de órdenes reales' }}">
+                {{ "%.1f"|format(item.fee_rate * 100) }}%
+                {% if item.fee_source == 'estimado' %}
+                  <i class="bi bi-dash-circle text-warning" style="font-size:.7rem" title="Estimado — corré el análisis para obtener el valor real"></i>
+                {% else %}
+                  <i class="bi bi-check-circle text-success" style="font-size:.7rem" title="Dato real de tus órdenes"></i>
+                {% endif %}
+              </span>
+            </td>
+            <td class="text-end">${{ "{:,.0f}".format(item.neto) }}</td>
+            <td class="text-end">
+              {% if item.margen_pct is not none %}
+                {% set pct = item.margen_pct * 100 %}
+                <span class="{{ 'text-danger fw-semibold' if pct < 0 else ('text-warning fw-semibold' if pct < 10 else 'text-success fw-semibold') }}">
+                  {{ "%.1f"|format(pct) }}%
+                </span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end">
+              {% if item.capital %}
+                <span class="capital-badge">${{ "{:,.0f}".format(item.capital) }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end vis-cell" data-id="{{ item.id }}">
+              {% if item.visitas_30d is not none and item.visitas_30d > 0 %}
+                {{ "{:,}".format(item.visitas_30d) }}
+              {% else %}
+                <span class="vis-skel"></span>
+              {% endif %}
+            </td>
+            <td class="text-end conv-cell" data-id="{{ item.id }}">
+              {% if item.conversion_pct is not none %}
+                {% if item.conversion_pct >= 3 %}
+                  <span class="conv-ok">{{ "%.1f"|format(item.conversion_pct) }}%</span>
+                {% elif item.conversion_pct >= 1 %}
+                  <span class="conv-warn">{{ "%.1f"|format(item.conversion_pct) }}%</span>
+                {% else %}
+                  <span class="conv-bad">{{ "%.1f"|format(item.conversion_pct) }}%</span>
+                {% endif %}
+              {% else %}
+                <span class="vis-skel"></span>
+              {% endif %}
+            </td>
+            <td class="text-center diag-cell" data-id="{{ item.id }}">
+              {% if item.visitas_30d is not none %}
+                {% set v = item.visitas_30d %}
+                {% set c = item.conversion_pct %}
+                {% set vtas = item.ventas_30d or 0 %}
+                {% if v == 0 %}
+                  <button class="diag-chip diag-trafico" onclick="toggleAcciones('{{ item.id }}')">Sin exposición ▾</button>
+                {% elif v < 100 %}
+                  <button class="diag-chip diag-trafico" onclick="toggleAcciones('{{ item.id }}')">Tráfico bajo ▾</button>
+                {% elif vtas == 0 %}
+                  <button class="diag-chip diag-titulo" onclick="toggleAcciones('{{ item.id }}')">Sin ventas ▾</button>
+                {% elif c is not none and c < 1 %}
+                  <button class="diag-chip diag-titulo" onclick="toggleAcciones('{{ item.id }}')">Conv. baja ▾</button>
+                {% elif c is not none and c < 3 %}
+                  <button class="diag-chip" style="background:#dbeafe;color:#1e40af" onclick="toggleAcciones('{{ item.id }}')">Mejorable ▾</button>
+                {% else %}
+                  <button class="diag-chip diag-ok" onclick="toggleAcciones('{{ item.id }}')">Óptimo ▾</button>
+                {% endif %}
+              {% else %}
+                <span class="vis-skel" style="width:70px"></span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if item.alerta_stock == 'SIN_STOCK' %}
+                <span class="badge badge-crit">Sin stock</span>
+              {% elif item.alerta_stock == 'CRITICO' %}
+                <span class="badge badge-crit">Crítico</span>
+              {% elif item.alerta_stock == 'ADVERTENCIA' %}
+                <span class="badge badge-warn">Stock bajo</span>
+              {% elif item.alerta_margen == 'NEGATIVO' %}
+                <span class="badge badge-crit">Margen neg.</span>
+              {% elif item.alerta_margen == 'BAJO' %}
+                <span class="badge badge-warn">Margen bajo</span>
+              {% else %}
+                <span class="badge badge-ok">OK</span>
+              {% endif %}
+            </td>
+          </tr>
+          {# ── Fila expandible de acciones ── #}
+          <tr id="acc-{{ item.id }}" class="acciones-row" style="display:none">
+            <td colspan="12" style="padding:0;border-top:none">
+              <div class="acciones-panel" id="acc-panel-{{ item.id }}"
+                   data-id="{{ item.id }}"
+                   data-alias="{{ alias }}"
+                   data-titulo="{{ item.titulo or '' }}"
+                   data-precio="{{ item.precio or 0 }}"
+                   data-visitas="{{ item.visitas_30d or 0 }}"
+                   data-ventas="{{ item.ventas_30d or 0 }}"
+                   data-conv="{{ item.conversion_pct if item.conversion_pct is not none else '' }}"
+                   data-margen="{{ (item.margen_pct * 100) | round(1) if item.margen_pct is not none else '' }}"
+                   data-velocidad="{{ item.velocidad or 0 }}"
+                   data-dias-stock="{{ item.dias_stock or 0 }}"
+                   data-alerta-stock="{{ item.alerta_stock or '' }}"
+                   data-alerta-margen="{{ item.alerta_margen or '' }}"
+                   data-sin-costo="{{ '1' if not item.costo else '0' }}"
+                   data-listing-type="{{ item.listing_type or '' }}"
+                   data-free-ship="{{ '1' if item.free_shipping else '0' }}"
+                   data-posicion="{{ item.posicion if item.posicion is not none else '' }}"
+                   data-pos-trend="{{ item.pos_trend or '' }}"
+                   data-pos-best="{{ item.pos_best if item.pos_best is not none else '' }}"
+                   data-pos-best-date="{{ item.pos_best_date or '' }}"
+                   data-pos-query="{{ item.pos_query or '' }}"
+                   data-rep-reclamos="{{ item.rep_reclamos or 0 }}"
+                   data-rep-demoras="{{ item.rep_demoras or 0 }}"
+                   data-kw-faltantes="{{ (item.kw_faltantes or []) | join('|') }}"
+                   data-seo-gaps="{{ (item.seo_gaps or []) | join('|') }}"
+                   data-seo-keywords="{{ (item.seo_all_keywords or []) | join('|') }}">
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Modal: Cargar costos ──────────────────────────────────────────────── -->
+<div class="modal fade" id="costosModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-currency-dollar me-2"></i>Cargar costos — {{ alias }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="costos-loading" class="text-center py-4">
+          <div class="spinner-border text-primary"></div>
+          <div class="mt-2 text-muted small">Cargando publicaciones...</div>
+        </div>
+        <div id="costos-content" style="display:none">
+          <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+            <div class="small text-muted">
+              El <strong>costo</strong> es lo que te costó a vos el producto (sin comisión ni envío).<br>
+              El sistema calcula el margen real: <em>precio − comisión ML − envío − costo</em>.
+            </div>
+            <input type="text" id="costos-search" class="form-control form-control-sm" placeholder="Buscar..." style="width:200px" oninput="filterCostosModal()">
+          </div>
+
+          <!-- Bulk config -->
+          <div class="p-3 rounded mb-3" style="background:#f0fdf4;border:1px solid #86efac">
+            <div class="fw-semibold small mb-2"><i class="bi bi-lightning-charge me-1 text-success"></i>Estimación rápida para items sin costo</div>
+            <div class="row g-2 align-items-end">
+              <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">Costo = X% del precio de venta</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" id="bulk-costo-pct" class="form-control" style="width:80px" value="40" min="1" max="99">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-sm btn-success" onclick="applyBulkCosto()">
+                  <i class="bi bi-check-all me-1"></i>Aplicar a los sin costo
+                </button>
+              </div>
+              <div class="col-auto text-muted small">
+                Solo afecta publicaciones <strong>sin costo</strong> cargado.
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive" style="max-height:420px;overflow-y:auto">
+            <table class="table table-sm mb-0" id="costos-table">
+              <thead style="position:sticky;top:0;background:#fff;z-index:1">
+                <tr>
+                  <th>Publicación</th>
+                  <th class="text-end">Precio venta</th>
+                  <th class="text-end">Stock</th>
+                  <th class="text-end" style="width:130px">Costo ($)</th>
+                  <th class="text-end">Margen est.</th>
+                  <th class="text-end">Capital inm.</th>
+                  <th class="text-center">Última edición</th>
+                </tr>
+              </thead>
+              <tbody id="costos-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="costos-count" class="text-muted small me-auto"></span>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveCostos()" id="costos-save-btn" disabled>
+          <i class="bi bi-floppy me-1"></i>Guardar costos
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Inline edit popover ──────────────────────────────────────────────── -->
+<div id="inline-editor" style="display:none;position:fixed;z-index:9990;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px">
+  <div class="fw-semibold small mb-2" id="ie-titulo" style="max-width:220px"></div>
+  <div class="small text-muted mb-2" id="ie-precio"></div>
+  <div class="input-group input-group-sm mb-2">
+    <span class="input-group-text">$</span>
+    <input type="number" id="ie-input" class="form-control" placeholder="Costo" min="0" step="100">
+  </div>
+  <div class="small text-muted mb-2" id="ie-preview"></div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary btn-sm flex-fill" onclick="saveInlineCosto()">Guardar</button>
+    <button class="btn btn-outline-secondary btn-sm" onclick="closeInlineEditor()">Cancelar</button>
+  </div>
+</div>
+<div id="ie-backdrop" style="display:none;position:fixed;inset:0;z-index:9989" onclick="closeInlineEditor()"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS = {{ alias | tojson }};
+// Fee rates reales por item (fee_rate = comisión + IVA + envío, todo incluido)
+const FEE_RATES = {
+  {% for item in items %}
+  {{ item.id | tojson }}: {{ item.fee_rate if item.fee_rate else 0.31 }},
+  {% endfor %}
+};
+const FEE_FALLBACK = 0.31;
+let allCostosItems = [];
+let currentInlineItem = null;
+
+function fmt(n) {
+  return new Intl.NumberFormat('es-AR', {maximumFractionDigits:0}).format(n);
+}
+
+// ── Acciones expandibles ──────────────────────────────────────────────────────
+async function toggleAcciones(id) {
+  const row = document.getElementById(`acc-${id}`);
+  const panel = document.getElementById(`acc-panel-${id}`);
+  if (!row) return;
+
+  if (row.style.display === 'none') {
+    // Generar contenido base si está vacío
+    if (!panel.innerHTML.trim()) {
+      panel.innerHTML = buildAcciones(panel.dataset);
+      // Agregar sección de experiencia de compra con loader
+      const alias = panel.dataset.alias;
+      if (alias) {
+        const healthDiv = document.createElement('div');
+        healthDiv.id = `health-${id}`;
+        healthDiv.innerHTML = `<div style="padding:12px 16px;color:#6b7280;font-size:.8rem">
+          <span class="spinner-border spinner-border-sm me-2"></span>Consultando experiencia de compra en ML...
+        </div>`;
+        panel.appendChild(healthDiv);
+        // Cargar en paralelo sin bloquear la apertura del panel
+        loadItemHealth(alias, id, healthDiv);
+      }
+    }
+    row.style.display = '';
+    row.scrollIntoView({behavior:'smooth', block:'nearest'});
+  } else {
+    row.style.display = 'none';
+  }
+}
+
+async function loadItemHealth(alias, itemId, container) {
+  try {
+    const r = await fetch(`/api/item-health/${encodeURIComponent(alias)}/${itemId}`);
+    const data = await r.json();
+    if (!data.ok) { container.innerHTML = ''; return; }
+
+    const score      = data.health_score;
+    const tags       = data.tag_results || [];
+    const emptyAttrs = data.empty_attrs_count || 0;
+    const pics       = data.pic_count || 0;
+    const freeShip   = data.free_shipping;
+    const hasVideo   = data.has_video;
+    const listType   = data.listing_type || '';
+    const warranty   = data.warranty || '';
+    const ratingAvg  = data.rating_avg;
+    const ratingTotal = data.rating_total || 0;
+    const ratingLevels = data.rating_levels || {};
+    const negReviews = data.neg_reviews || [];
+    const unanswered = data.unanswered_questions || 0;
+    const descLen    = data.desc_len || 0;
+    // Variantes
+    const variantsTotal  = data.variants_total || 0;
+    const variantsDead   = data.variants_dead || 0;
+    const deadVariants   = data.dead_variants || [];
+    const activeVariants = data.active_variants || [];
+    // Posición
+    const posCurrentVal  = data.pos_current;
+    const posTrend       = data.pos_trend;
+    const posHistory     = data.pos_history || [];
+    // Tendencia visitas
+    const visitsW1       = data.visits_w1 || 0;
+    const visitsW2       = data.visits_w2 || 0;
+    const visitsDelta    = data.visits_delta || 0;
+    const visitsDeltaPct = data.visits_delta_pct;
+
+    const card = (title, items) => `
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:210px;flex:1">
+        <div style="font-size:.68rem;color:#6b7280;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">${title}</div>
+        <div style="display:flex;flex-direction:column;gap:4px">${items.map(i=>`<div style="font-size:.75rem;color:${i.col}">${i.txt}</div>`).join('')}</div>
+      </div>`;
+
+    let html = `<div style="padding:14px 16px 10px;border-top:2px solid #e0e7ff;margin-top:6px">
+      <div style="font-weight:700;font-size:.82rem;color:#1e40af;margin-bottom:10px">
+        <i class="bi bi-award-fill me-1"></i>Calidad de publicación — evaluación ML
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:stretch">`;
+
+    // ── Score ─────────────────────────────────────────────────
+    if (score !== null && score !== undefined) {
+      const pct = Math.round(score * 100);
+      const col = pct >= 70 ? '#059669' : pct >= 40 ? '#d97706' : '#dc2626';
+      const lbl = pct >= 70 ? 'Buena' : pct >= 40 ? 'Regular' : 'Baja';
+      html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:110px;text-align:center">
+        <div style="font-size:.68rem;color:#6b7280;font-weight:700;margin-bottom:4px">SCORE ML</div>
+        <div style="font-size:2rem;font-weight:800;color:${col};line-height:1">${pct}%</div>
+        <div style="font-size:.7rem;color:${col};font-weight:600;margin-top:2px">${lbl}</div>
+        <div style="background:#e5e7eb;border-radius:4px;height:5px;margin-top:6px">
+          <div style="background:${col};width:${pct}%;height:100%;border-radius:4px"></div>
+        </div>
+      </div>`;
+    }
+
+    // ── Publicación ───────────────────────────────────────────
+    const pubItems = [];
+    if (pics < 4)       pubItems.push({col:'#dc2626', txt:`🖼 Solo ${pics} foto — ML recomienda mínimo 6`});
+    else if (pics < 6)  pubItems.push({col:'#d97706', txt:`🖼 ${pics} fotos — podés agregar más`});
+    else                pubItems.push({col:'#059669', txt:`✓ ${pics} fotos`});
+    if (!freeShip)      pubItems.push({col:'#d97706', txt:'📦 Sin envío gratis — reduce ranking y conversión'});
+    else                pubItems.push({col:'#059669', txt:'✓ Envío gratis activo'});
+    if (!hasVideo)      pubItems.push({col:'#d97706', txt:'🎬 Sin video — ML premia publicaciones con video'});
+    else                pubItems.push({col:'#059669', txt:'✓ Tiene video'});
+    if (descLen === 0)  pubItems.push({col:'#dc2626', txt:'📝 Sin descripción — ML penaliza publicaciones vacías'});
+    else if (descLen < 200) pubItems.push({col:'#d97706', txt:`📝 Descripción muy corta (${descLen} caracteres)`});
+    else                pubItems.push({col:'#059669', txt:`✓ Descripción: ${descLen} caracteres`});
+    if (emptyAttrs > 0) pubItems.push({col:'#dc2626', txt:`📋 ${emptyAttrs} atributo${emptyAttrs!==1?'s':''} vacío${emptyAttrs!==1?'s':''} en ficha técnica`});
+    else                pubItems.push({col:'#059669', txt:'✓ Ficha técnica completa'});
+    if (listType === 'gold_special' || listType === 'gold_premium') {
+      pubItems.push({col:'#059669', txt:`✓ Publicación Premium (más exposición)`});
+    } else if (listType) {
+      pubItems.push({col:'#6b7280', txt:`Tipo: ${listType.replace('gold_','').replace('_',' ')}`});
+    }
+    for (const t of tags) {
+      if (t.status === 'problem') pubItems.push({col:'#dc2626', txt:t.label});
+    }
+    html += card('Publicación', pubItems);
+
+    // ── Reseñas ───────────────────────────────────────────────
+    if (ratingTotal > 0 || ratingAvg !== null) {
+      const revItems = [];
+      if (ratingAvg !== null) {
+        const stars = '★'.repeat(Math.round(ratingAvg)) + '☆'.repeat(5 - Math.round(ratingAvg));
+        const col = ratingAvg >= 4 ? '#059669' : ratingAvg >= 3 ? '#d97706' : '#dc2626';
+        revItems.push({col, txt:`${stars} ${ratingAvg.toFixed(1)} (${ratingTotal} reseñas)`});
+      }
+      const neg = (ratingLevels.one_star || 0) + (ratingLevels.two_star || 0);
+      if (neg > 0) {
+        const negPct = ratingTotal > 0 ? ((neg / ratingTotal) * 100).toFixed(0) : 0;
+        revItems.push({col: negPct > 10 ? '#dc2626' : '#d97706',
+          txt:`⚠ ${neg} reseñas negativas (${negPct}%)`});
+        for (const nr of negReviews.slice(0,2)) {
+          revItems.push({col:'#6b7280', txt:`${nr.rate}★ "${nr.title}"`});
+        }
+      } else {
+        revItems.push({col:'#059669', txt:'✓ Sin reseñas negativas recientes'});
+      }
+      html += card('Reseñas', revItems);
+    }
+
+    // ── Preguntas + Garantía ──────────────────────────────────
+    const otrosItems = [];
+    if (unanswered > 0) otrosItems.push({col:'#dc2626', txt:`❓ ${unanswered} pregunta${unanswered!==1?'s':''} sin responder — frena conversión`});
+    else                otrosItems.push({col:'#059669', txt:'✓ Sin preguntas sin responder'});
+    if (!warranty)      otrosItems.push({col:'#d97706', txt:'🛡 Sin garantía declarada'});
+    else                otrosItems.push({col:'#059669', txt:`✓ Garantía: ${warranty.slice(0,50)}`});
+    html += card('Preguntas y garantía', otrosItems);
+
+    // ── Posición en búsqueda ML ───────────────────────────────
+    if (posCurrentVal !== null && posCurrentVal !== undefined) {
+      const posCol = posCurrentVal <= 10 ? '#059669' : posCurrentVal <= 30 ? '#d97706' : '#dc2626';
+      const posLbl = posCurrentVal <= 10 ? 'Excelente visibilidad' : posCurrentVal <= 30 ? 'Visibilidad moderada' : 'Baja visibilidad';
+      let trendHtml = '';
+      if (posTrend !== null && posTrend !== undefined) {
+        if (posTrend < 0)      trendHtml = `<span style="color:#059669;font-size:.72rem">↑ subió ${Math.abs(posTrend)} lugares</span>`;
+        else if (posTrend > 0) trendHtml = `<span style="color:#dc2626;font-size:.72rem">↓ bajó ${posTrend} lugares</span>`;
+        else                   trendHtml = `<span style="color:#6b7280;font-size:.72rem">— estable</span>`;
+      }
+      let histHtml = '';
+      if (posHistory.length > 1) {
+        histHtml = `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">` +
+          posHistory.map(h => {
+            const c = h.pos <= 10 ? '#059669' : h.pos <= 30 ? '#d97706' : '#dc2626';
+            const fecha = h.fecha.slice(5); // MM-DD
+            return `<div style="text-align:center;font-size:.65rem">
+              <div style="font-weight:700;color:${c}">#${h.pos}</div>
+              <div style="color:#9ca3af">${fecha}</div>
+            </div>`;
+          }).join('') + `</div>`;
+      }
+      html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:160px">
+        <div style="font-size:.68rem;color:#6b7280;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">POSICIÓN EN ML</div>
+        <div style="font-size:2rem;font-weight:800;color:${posCol};line-height:1">#${posCurrentVal}</div>
+        <div style="font-size:.72rem;color:${posCol};font-weight:600;margin-top:2px">${posLbl}</div>
+        <div style="margin-top:3px">${trendHtml}</div>
+        ${histHtml}
+      </div>`;
+    }
+
+    // ── Variantes ─────────────────────────────────────────────
+    if (variantsTotal > 0) {
+      const varItems = [];
+      if (variantsDead === 0) {
+        varItems.push({col:'#059669', txt:`✓ Todas las variantes tienen stock (${variantsTotal})`});
+      } else {
+        varItems.push({col:'#dc2626', txt:`⚠ ${variantsDead} de ${variantsTotal} variantes sin stock — ML penaliza la publicación`});
+        for (const dv of deadVariants.slice(0,5)) {
+          varItems.push({col:'#ef4444', txt:`  • ${dv.name} → sin stock`});
+        }
+        if (activeVariants.length > 0) {
+          varItems.push({col:'#6b7280', txt:`Activas: ${activeVariants.map(v=>v.name).join(', ')}`});
+        }
+      }
+      html += card('Variantes', varItems);
+    }
+
+    // ── Tendencia de visitas (semana vs semana anterior) ──────
+    if (visitsW1 > 0 || visitsW2 > 0) {
+      const trendItems = [];
+      trendItems.push({
+        col: '#374151',
+        txt: `Esta semana: ${visitsW1.toLocaleString('es-AR')} visitas`
+      });
+      trendItems.push({
+        col: '#374151',
+        txt: `Semana anterior: ${visitsW2.toLocaleString('es-AR')} visitas`
+      });
+      if (visitsDeltaPct !== null && visitsDeltaPct !== undefined) {
+        const tCol = visitsDeltaPct >= 0 ? '#059669' : '#dc2626';
+        const tIcon = visitsDeltaPct >= 5 ? '↑' : visitsDeltaPct <= -5 ? '↓' : '→';
+        const tLbl = visitsDeltaPct >= 10 ? 'Creciendo fuerte'
+                   : visitsDeltaPct >= 0  ? 'Estable / leve suba'
+                   : visitsDeltaPct >= -10 ? 'Leve caída'
+                   : 'Caída importante — revisar posición y precio';
+        trendItems.push({
+          col: tCol,
+          txt: `${tIcon} ${visitsDeltaPct > 0 ? '+' : ''}${visitsDeltaPct}% — ${tLbl}`
+        });
+      }
+      html += card('Tendencia de visitas (7 días)', trendItems);
+    }
+
+    // ── Botón recomendación IA ────────────────────────────────
+    html += `<div id="ai-rec-block-${itemId}" style="width:100%;margin-top:4px">
+      <button onclick="loadAiRec('${alias}','${itemId}')" id="ai-rec-btn-${itemId}"
+        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;
+               border-radius:8px;padding:8px 16px;font-size:.78rem;font-weight:600;
+               cursor:pointer;display:flex;align-items:center;gap:6px">
+        <i class="bi bi-stars"></i> Analizar con IA — recomendación y decisión
+      </button>
+    </div>`;
+
+    html += '</div></div>';
+    container.innerHTML = html;
+
+    // Guardar datos del diagnóstico en el panel para el botón IA
+    const panel = container.closest('.acciones-panel');
+    if (panel) {
+      panel._healthData = data;
+    }
+  } catch(e) {
+    container.innerHTML = '';
+  }
+}
+
+async function loadAiRec(alias, itemId) {
+  const btn = document.getElementById(`ai-rec-btn-${itemId}`);
+  const block = document.getElementById(`ai-rec-block-${itemId}`);
+  if (!btn || !block) return;
+
+  // Recolectar datos del diagnóstico
+  const panel = btn.closest('.acciones-panel');
+  const healthData = panel?._healthData || {};
+  const d = panel?.dataset || {};
+
+  const diagnostico = {
+    titulo:         document.querySelector(`tr[data-id="${itemId}"]`)?.dataset?.tituloFull
+                    || document.querySelector(`tr[data-id="${itemId}"] .fw-semibold`)?.textContent?.trim()
+                    || itemId,
+    health_score:   healthData.health_score ?? null,
+    pic_count:      healthData.pic_count ?? 0,
+    free_shipping:  healthData.free_shipping ?? false,
+    has_video:      healthData.has_video ?? false,
+    desc_len:       healthData.desc_len ?? 0,
+    empty_attrs_count: healthData.empty_attrs_count ?? 0,
+    listing_type:   healthData.listing_type ?? '',
+    rating_avg:     healthData.rating_avg ?? null,
+    rating_total:   healthData.rating_total ?? 0,
+    neg_reviews:    healthData.neg_reviews ?? [],
+    unanswered_questions: healthData.unanswered_questions ?? 0,
+    warranty:       healthData.warranty ?? '',
+    ventas_30d:     parseInt(d.ventas) || 0,
+    visitas_30d:    parseInt(d.visitas) || 0,
+    conversion_pct: d.conv !== '' ? parseFloat(d.conv) : null,
+    margen_pct:     d.margen !== '' ? parseFloat(d.margen) / 100 : null,
+    alerta_stock:   d.alertaStock || '',
+    alerta_margen:  d.alertaMargen || '',
+    velocidad:      parseFloat(document.querySelector(`tr[data-id="${itemId}"]`)?.dataset?.velocidad || 0),
+    pos_current:    healthData.pos_current ?? null,
+    pos_trend:      healthData.pos_trend ?? null,
+    variants_total: healthData.variants_total ?? 0,
+    variants_dead:  healthData.variants_dead ?? 0,
+    visits_w1:      healthData.visits_w1 ?? 0,
+    visits_w2:      healthData.visits_w2 ?? 0,
+    visits_delta_pct: healthData.visits_delta_pct ?? null,
+  };
+
+  // Mostrar área de streaming
+  block.innerHTML = `<div id="ai-rec-content-${itemId}"
+    style="background:linear-gradient(135deg,#f5f3ff,#ede9fe);border:1px solid #c4b5fd;
+           border-radius:8px;padding:12px 14px;margin-top:4px;font-size:.78rem;line-height:1.6;
+           white-space:pre-wrap;min-height:60px">
+    <span style="color:#7c3aed;font-weight:600"><i class="bi bi-stars me-1"></i>Analizando con IA...</span>
+  </div>`;
+
+  const contentDiv = document.getElementById(`ai-rec-content-${itemId}`);
+  let fullText = '';
+
+  try {
+    const r = await fetch(`/api/item-ai-rec/${encodeURIComponent(alias)}/${itemId}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({diagnostico}),
+    });
+
+    if (!r.ok) throw new Error('Error al consultar IA');
+
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    contentDiv.innerHTML = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      fullText += decoder.decode(value, {stream: true});
+      // Render simple con negritas
+      contentDiv.innerHTML = fullText
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+    }
+
+    // Colorear el veredicto
+    const verdictColors = {
+      'SALVAR':   {bg:'#d1fae5', border:'#6ee7b7', text:'#065f46'},
+      'OPTIMIZAR':{bg:'#dbeafe', border:'#93c5fd', text:'#1e40af'},
+      'PAUSAR':   {bg:'#fef3c7', border:'#fcd34d', text:'#92400e'},
+      'ELIMINAR': {bg:'#fee2e2', border:'#fca5a5', text:'#991b1b'},
+    };
+    for (const [v, cols] of Object.entries(verdictColors)) {
+      if (fullText.includes(v)) {
+        contentDiv.style.background = cols.bg;
+        contentDiv.style.borderColor = cols.border;
+        contentDiv.style.color = cols.text;
+        break;
+      }
+    }
+
+  } catch(e) {
+    contentDiv.innerHTML = `<span style="color:#dc2626">Error: ${e.message}</span>`;
+  }
+}
+
+function buildAcciones(d) {
+  const visitas      = parseInt(d.visitas) || 0;
+  const ventas       = parseInt(d.ventas) || 0;
+  const conv         = d.conv !== '' ? parseFloat(d.conv) : null;
+  const margen       = d.margen !== '' ? parseFloat(d.margen) : null;
+  const precio       = parseFloat(d.precio) || 0;
+  const velocidad    = parseFloat(d.velocidad) || 0;
+  const diasStock    = parseFloat(d.diasStock) || 0;
+  const alertaStock  = d.alertaStock || '';
+  const alertaMargen = d.alertaMargen || '';
+  const sinCosto     = d.sinCosto === '1';
+  const listingType  = d.listingType || '';
+  const freeShip     = d.freeShip === '1';
+  const posicion     = d.posicion !== '' ? parseInt(d.posicion) : null;
+  const posTrend     = d.posTrend || '';
+  const posBest      = d.posBest !== '' ? parseInt(d.posBest) : null;
+  const posBestDate  = d.posBestDate || '';
+  const posQuery     = d.posQuery || '';
+  const repReclamos  = parseFloat(d.repReclamos) || 0;
+  const repDemoras   = parseFloat(d.repDemoras) || 0;
+  const titulo       = d.titulo || '';
+  const isPremium    = listingType === 'gold_special' || listingType === 'gold_pro';
+
+  const trendIcon = { subiendo: '📈', bajando: '📉', estable: '➡️' };
+  const cards = [];
+
+  // ── POSICIÓN EN BÚSQUEDAS ─────────────────────────────────────────────────
+  if (posicion !== null) {
+    if (posicion === 999) {
+      // Distinguish: volatile (was ranking before) vs truly absent
+      const wasRanking = posBest !== null && posBest < 999;
+      const bestDateStr = posBestDate ? ` (${posBestDate})` : '';
+      cards.push({
+        tipo: wasRanking ? 'importante' : 'urgente',
+        icono: wasRanking ? '⚠️' : '🔍',
+        titulo: wasRanking
+          ? `Posición volátil — el último monitoreo no la encontró (antes era #${posBest})`
+          : 'No aparece en búsquedas monitoreadas (fuera del top 300)',
+        acciones: [
+          posQuery ? `⚠️ Posición medida solo para la búsqueda: "${posQuery}" — puede rankear diferente para otras búsquedas` : null,
+          wasRanking
+            ? `Mejor posición registrada: #${posBest}${bestDateStr} — verificar manualmente en ML si sigue apareciendo`
+            : 'No encontrada en los primeros 50 resultados para esa búsqueda específica',
+          wasRanking
+            ? 'El monitoreo puede fallar si ML actualiza su HTML — no tomar decisiones solo en base a este dato'
+            : null,
+          titulo.length < 50 ? `Título corto: ${titulo.length}/60 caracteres — hay espacio para agregar más keywords` : `Título: ${titulo.length}/60 caracteres`,
+          !isPremium ? 'Publicación CLÁSICA — Premium da 40% más exposición y mejora posición directamente' : null,
+          !freeShip && precio < 150000 ? 'Sin envío gratis — ML prioriza publicaciones con envío gratis en el ranking' : null,
+          'Usá "Analizar con IA" para ver qué keywords reales buscan los compradores para este producto',
+        ].filter(Boolean)
+      });
+    } else if (posicion <= 5) {
+      if (posTrend === 'bajando') {
+        cards.push({
+          tipo: 'importante', icono: `📉`,
+          titulo: `Top ${posicion} pero bajando — un competidor te está ganando posición`,
+          acciones: [
+            posQuery ? `Búsqueda monitoreada: "${posQuery}"` : null,
+            `Posición actual: #${posicion} — tendencia descendente detectada`,
+            'Revisar si algún competidor mejoró su publicación recientemente',
+            'Usar "Optimizar con IA" para actualizar título y descripción antes de perder más posición',
+          ].filter(Boolean)
+        });
+      } else {
+        cards.push({
+          tipo: 'ok', icono: `${trendIcon[posTrend] || '✅'}`,
+          titulo: `Excelente posición — Top ${posicion} ${posTrend === 'subiendo' ? '(subiendo 📈)' : ''}`,
+          acciones: [
+            posQuery ? `Búsqueda monitoreada: "${posQuery}"` : null,
+            `Posición #${posicion} — muy buena visibilidad para esta búsqueda`,
+            conv !== null && conv >= 3 ? `Conversión ${conv.toFixed(1)}% + posición top = publicación optimizada` : 'Mantener el título y las keywords actuales',
+            'Escalar con Product Ads para capturar más tráfico pagado sobre esta base',
+          ].filter(Boolean)
+        });
+      }
+    } else if (posicion <= 20) {
+      cards.push({
+        tipo: 'importante', icono: `${trendIcon[posTrend] || '📊'}`,
+        titulo: `Posición #${posicion} — mejorable ${posTrend ? '(' + posTrend + ')' : ''}`,
+        acciones: [
+          posQuery ? `Búsqueda monitoreada: "${posQuery}"` : null,
+          `Posición #${posicion} — los primeros 5 resultados reciben ~70% del tráfico`,
+          !isPremium ? `Publicación CLÁSICA — Premium puede subir 5-10 posiciones directamente` : null,
+          !freeShip && precio < 150000 ? 'Sin envío gratis — activarlo mejora posición y conversión' : null,
+          'Usar "Investigar keywords" en Optimizaciones IA para ver qué buscan los compradores',
+        ].filter(Boolean)
+      });
+    } else {
+      cards.push({
+        tipo: 'urgente', icono: `📉`,
+        titulo: `Posición baja — #${posicion} ${posTrend ? '(' + posTrend + ')' : ''}`,
+        acciones: [
+          posQuery ? `Búsqueda monitoreada: "${posQuery}"` : null,
+          `Posición #${posicion} para esa búsqueda — puede rankear mejor en otras variantes`,
+          !isPremium ? 'Publicación CLÁSICA — urgente evaluar Premium para ganar visibilidad' : null,
+          titulo.length < 50 ? `Título usa solo ${titulo.length}/60 caracteres — hay espacio para más keywords` : null,
+          'Usar Optimizaciones IA para reescribir con keywords reales del motor de búsqueda',
+        ].filter(Boolean)
+      });
+    }
+  }
+
+  // ── TRÁFICO ───────────────────────────────────────────────────────────────
+  if (visitas === 0) {
+    cards.push({
+      tipo: 'urgente', icono: '🚫',
+      titulo: 'Sin visitas registradas',
+      acciones: [
+        'Verificar que la publicación esté activa (no pausada ni vencida)',
+        alertaStock === 'SIN_STOCK' ? 'Sin stock = publicación pausada automáticamente por ML' : null,
+        'Si está activa, los datos de visitas pueden tardar 24-48h en actualizarse',
+        'Correr "Actualizar stock y rentabilidad" para refrescar los datos',
+      ].filter(Boolean)
+    });
+  } else if (visitas < 100) {
+    cards.push({
+      tipo: 'urgente', icono: '👁',
+      titulo: `Tráfico muy bajo — ${visitas} visitas en 30 días (${(visitas/30).toFixed(1)}/día)`,
+      acciones: [
+        titulo.length < 50 ? `Título corto (${titulo.length}/60 chars) — estás desperdiciando espacio para keywords` : `Título: ${titulo.length}/60 chars`,
+        !isPremium ? 'Publicación CLÁSICA — Premium aumenta exposición 40% y mejora posición orgánica' : null,
+        !freeShip && precio < 150000 ? `Sin envío gratis ($${precio.toLocaleString('es-AR')}) — activarlo mejora el ranking por defecto de ML` : null,
+        'Usar "Optimizar con IA" → "Investigar keywords" para ver búsquedas reales del motor ML',
+      ].filter(Boolean)
+    });
+  } else if (visitas < 300) {
+    cards.push({
+      tipo: 'importante', icono: '📈',
+      titulo: `Tráfico moderado — ${visitas} visitas/mes (${(visitas/30).toFixed(1)}/día)`,
+      acciones: [
+        posicion !== null && posicion !== 999 ? `Posición #${posicion} — subir al top 5 duplicaría el tráfico estimado` : null,
+        !isPremium ? 'Evaluar Premium — suele subir 5-10 posiciones y aumentar visitas significativamente' : null,
+        'Investigar keywords del autosuggest ML para descubrir variantes de mayor volumen',
+      ].filter(Boolean)
+    });
+  }
+
+  // ── CONVERSIÓN ────────────────────────────────────────────────────────────
+  if (visitas > 0 && ventas === 0) {
+    cards.push({
+      tipo: 'urgente', icono: '💔',
+      titulo: `${visitas} visitas y 0 ventas — algo frena la compra`,
+      acciones: [
+        'Precio posiblemente fuera de mercado — comparar con los 5 primeros resultados en ML ahora',
+        !freeShip ? 'Sin envío gratis — el costo de envío puede estar frenando la decisión de compra' : null,
+        'Foto principal: en miniatura debe verse más atractiva que los competidores',
+        'Descripción: verificar que tenga garantía, tiempo de entrega y beneficios concretos',
+      ].filter(Boolean)
+    });
+  } else if (conv !== null && conv < 1 && visitas >= 100) {
+    cards.push({
+      tipo: 'urgente', icono: '📉',
+      titulo: `Conversión crítica — ${conv.toFixed(1)}% (${ventas} ventas de ${visitas} visitas)`,
+      acciones: [
+        `Hay tráfico (${visitas} visitas/mes) pero casi nadie compra — el problema está en la publicación, no en las keywords`,
+        !freeShip && precio < 150000 ? `Sin envío gratis a $${precio.toLocaleString('es-AR')} — activarlo puede subir la conversión 20-30%` : null,
+        'Comparar precio con los 5 primeros competidores en ML ahora mismo',
+        'Foto principal: en miniatura debe diferenciarse y verse más atractiva que la competencia',
+        'Usar "Optimizar con IA" con foco en descripción y argumentos de conversión',
+      ].filter(Boolean)
+    });
+  } else if (conv !== null && conv < 3 && visitas >= 100) {
+    cards.push({
+      tipo: 'importante', icono: '🔧',
+      titulo: `Conversión mejorable — ${conv.toFixed(1)}% (${ventas} ventas de ${visitas} visitas)`,
+      acciones: [
+        `Con ${visitas} visitas/mes y ${conv.toFixed(1)}% conversión → ${ventas} ventas. Subir a 4% daría ~${Math.round(visitas * 0.04)} ventas/mes`,
+        !freeShip ? 'Envío gratis puede subir conversión directamente — calculá si el precio lo absorbe' : null,
+        'Agregar más fotos mostrando el producto en uso real (mínimo 6 fotos)',
+        'Responder todas las preguntas públicas de la publicación',
+      ].filter(Boolean)
+    });
+  } else if (conv !== null && conv >= 3 && visitas >= 300) {
+    cards.push({
+      tipo: 'ok', icono: '✅',
+      titulo: `Conversión excelente — ${conv.toFixed(1)}% (${ventas} ventas de ${visitas} visitas)`,
+      acciones: [
+        `${conv.toFixed(1)}% conversión con ${visitas} visitas — publicación bien optimizada`,
+        velocidad > 0 ? `Ritmo de venta: ${velocidad.toFixed(2)} unidades/día → ${Math.round(velocidad * 30)} ventas proyectadas este mes` : null,
+        diasStock > 0 && diasStock < 45 ? `⚠️ Con este ritmo, el stock dura ${Math.round(diasStock)} días — planificar reposición` : null,
+        'Escalar con Product Ads para capturar más tráfico pagado sobre esta base sólida',
+      ].filter(Boolean)
+    });
+  }
+
+  // ── MARGEN ────────────────────────────────────────────────────────────────
+  if (alertaMargen === 'NEGATIVO') {
+    cards.push({
+      tipo: 'urgente', icono: '💸',
+      titulo: `Margen negativo — cada venta genera pérdida`,
+      acciones: [
+        sinCosto ? 'Cargar el costo real del producto — el margen negativo puede ser un error de cálculo' : `Margen actual: ${margen !== null ? margen.toFixed(1) + '%' : 'negativo'} — precio de venta no cubre costos`,
+        `Precio actual: $${precio.toLocaleString('es-AR')} — calcular el precio mínimo viable con tu costo`,
+        'Revisar si hay espacio para subir el precio sin perder competitividad',
+        'Si el precio no puede subir, evaluar si el producto es viable en este mercado',
+      ].filter(Boolean)
+    });
+  } else if (alertaMargen === 'BAJO') {
+    cards.push({
+      tipo: 'importante', icono: '⚠️',
+      titulo: `Margen bajo — ${margen !== null ? margen.toFixed(1) + '%' : '<10%'} (mínimo recomendado: 10%)`,
+      acciones: [
+        `Precio actual: $${precio.toLocaleString('es-AR')} con margen ${margen !== null ? margen.toFixed(1) + '%' : 'bajo'}`,
+        conv !== null && conv >= 3 ? 'Conversión buena — hay chance de subir el precio gradualmente sin perder ventas' : null,
+        'Comparar con proveedores alternativos para bajar el costo de adquisición',
+        velocidad > 0 ? `Velocidad: ${velocidad.toFixed(2)} u/día — evaluá si el volumen compensa el margen bajo` : null,
+      ].filter(Boolean)
+    });
+  }
+
+  // ── STOCK ─────────────────────────────────────────────────────────────────
+  if (alertaStock === 'SIN_STOCK') {
+    cards.push({
+      tipo: 'urgente', icono: '📦',
+      titulo: 'Sin stock — publicación pausada automáticamente',
+      acciones: [
+        'Reponer stock urgente — ML pausa la publicación y pierde posición cada día',
+        velocidad > 0 ? `Velocidad de venta era ${velocidad.toFixed(2)} u/día — calcular cantidad a reponer` : null,
+        'Ver módulo de Reposición para calcular cantidad óptima según lead time',
+      ].filter(Boolean)
+    });
+  } else if (alertaStock === 'CRITICO') {
+    cards.push({
+      tipo: 'urgente', icono: '⏳',
+      titulo: `Stock crítico — aproximadamente ${Math.round(diasStock)} días restantes`,
+      acciones: [
+        `Con ${velocidad.toFixed(2)} u/día de ritmo de venta, el stock dura ~${Math.round(diasStock)} días`,
+        'Iniciar reposición hoy considerando lead time de importación (30-45 días desde China)',
+        'Si es proveedor local, hacer pedido de emergencia esta semana',
+        'Ver módulo de Reposición para calcular cantidad exacta',
+      ]
+    });
+  } else if (alertaStock === 'ADVERTENCIA' && diasStock > 0) {
+    cards.push({
+      tipo: 'importante', icono: '📊',
+      titulo: `Stock para ~${Math.round(diasStock)} días — planificar reposición`,
+      acciones: [
+        `Ritmo actual: ${velocidad.toFixed(2)} u/día → stock se agota en ~${Math.round(diasStock)} días`,
+        'Buen momento para planificar la próxima importación con tiempo',
+        'Ver módulo de Reposición para cantidad óptima',
+      ]
+    });
+  }
+
+  // ── KEYWORDS ─────────────────────────────────────────────────────────────
+  // Note: kwFaltantes from competencia can mix different product types in same ML category
+  // Use AI analyzer (autosuggest-based) for accurate keyword recommendations instead
+
+  // ── SEO (autosuggest gaps) ────────────────────────────────────────────────
+  const seoKeywords = (d.seoKeywords || '').split('|').filter(Boolean);
+  const seoGaps     = (d.seoGaps     || '').split('|').filter(Boolean);
+  if (seoKeywords.length > 0 && seoGaps.length > 0) {
+    const presentes = seoKeywords.filter(k => !seoGaps.includes(k));
+    const pct = presentes.length / seoKeywords.length;
+    cards.push({
+      tipo: pct < 0.4 ? 'urgente' : 'importante', icono: '🔍',
+      titulo: `SEO: ${seoGaps.length} keywords de la categoría no cubiertas (${presentes.length}/${seoKeywords.length} presentes)`,
+      acciones: [
+        ...seoGaps.slice(0,4).map(k => `✗ Falta en título: "${k}"`),
+        presentes.length > 0 ? `✓ Ya tiene: ${presentes.slice(0,3).map(k=>`"${k}"`).join(', ')}` : null,
+      ].filter(Boolean)
+    });
+  }
+
+  // ── TIPO DE PUBLICACIÓN ───────────────────────────────────────────────────
+  if (!isPremium && visitas > 0 && (conv === null || conv >= 2)) {
+    cards.push({
+      tipo: 'oportunidad', icono: '⭐',
+      titulo: 'Publicación CLÁSICA — Premium puede aumentar visitas 40%',
+      acciones: [
+        `Con ${visitas} visitas/mes en CLÁSICA, Premium podría llevar a ~${Math.round(visitas * 1.4)} visitas/mes`,
+        conv !== null ? `Conversión actual ${conv.toFixed(1)}% × más visitas = más ventas directamente` : null,
+        'Evaluar si el costo adicional de Premium se recupera con las ventas extra',
+        'Especialmente recomendado si posición es > 5 — Premium sube posición directamente',
+      ].filter(Boolean)
+    });
+  }
+
+  // ── ENVÍO GRATIS ──────────────────────────────────────────────────────────
+  if (!freeShip && precio > 0 && precio < 200000 && visitas >= 50) {
+    cards.push({
+      tipo: 'oportunidad', icono: '🚚',
+      titulo: `Sin envío gratis — puede afectar conversión y ranking`,
+      acciones: [
+        `Precio actual: $${precio.toLocaleString('es-AR')} — ML prioriza publicaciones con envío gratis en el ordenamiento por defecto`,
+        'Las publicaciones con envío gratis aparecen antes cuando el comprador no filtra por precio',
+        'Calculá si absorbés el costo de envío en el precio y seguís siendo competitivo',
+      ]
+    });
+  }
+
+  // ── SIN COSTO ─────────────────────────────────────────────────────────────
+  if (sinCosto && alertaMargen === '') {
+    cards.push({
+      tipo: 'oportunidad', icono: '💰',
+      titulo: 'Sin costo cargado — no podés medir rentabilidad real',
+      acciones: [
+        'Cargar el costo para saber si estás ganando o perdiendo dinero en cada venta',
+        `Precio de venta: $${precio.toLocaleString('es-AR')} — necesitás el costo para calcular el margen neto`,
+        'Hacé clic en la celda de costo en la tabla para cargarlo',
+      ]
+    });
+  }
+
+  // ── BUSCAR POSICIÓN POR KEYWORD (siempre si hay posicion data) ──────────
+  const posCard = posicion !== null ? `
+    <div class="accion-card oportunidad" style="min-width:220px">
+      <div class="ac-title">🔎 Verificar posición por keyword</div>
+      <ul>
+        <li style="list-style:none;padding-left:0">Escribí una búsqueda para ver en qué puesto aparece esta publicación:</li>
+      </ul>
+      <div class="d-flex gap-1 mt-1">
+        <input type="text" id="pos-kw-${d.id}" class="form-control form-control-sm"
+               placeholder="ej: cortador de puntas" style="font-size:.78rem"
+               onkeydown="if(event.key==='Enter') buscarPosicion('${d.id}', this)">
+        <button class="btn btn-sm btn-primary px-2" onclick="buscarPosicion('${d.id}', document.getElementById('pos-kw-${d.id}'))">
+          <i class="bi bi-search"></i>
+        </button>
+      </div>
+      <div id="pos-result-${d.id}" style="margin-top:6px;font-size:.8rem;display:none"></div>
+    </div>` : '';
+
+  // ── DIAGNÓSTICO IA (siempre al final) ────────────────────────────────────
+  const iaCard = `
+    <div class="accion-card" style="border-left:3px solid #8b5cf6;background:linear-gradient(135deg,#faf5ff,#f3e8ff)">
+      <div class="ac-title">🤖 Diagnóstico profundo con IA</div>
+      <ul>
+        <li>Claude analiza todos tus datos reales (visitas, conversión, posición, reputación, precio) y genera recomendaciones específicas con números concretos</li>
+        <li>Incluye keywords reales del motor de búsqueda de ML para este producto</li>
+      </ul>
+      <button class="btn btn-sm fw-semibold mt-1" id="ia-btn-${d.id}"
+              style="background:#7c3aed;color:#fff;border:none"
+              onclick="diagnosticarConIA('${d.id}', '${d.alias}', this)">
+        <i class="bi bi-stars me-1"></i>Analizar con IA
+      </button>
+      <div id="ia-result-${d.id}" style="margin-top:10px;display:none"></div>
+    </div>`;
+
+  if (cards.length === 0) {
+    cards.push({
+      tipo: 'ok', icono: '✅',
+      titulo: 'Todo en orden',
+      acciones: [
+        conv !== null ? `Conversión: ${conv.toFixed(1)}% — buen rendimiento` : 'Métricas dentro de parámetros normales',
+        posicion !== null && posicion !== 999 ? `Posición: #${posicion} en búsquedas` : null,
+        `Stock para ~${Math.round(diasStock)} días — planificar reposición a tiempo`,
+      ].filter(Boolean)
+    });
+  }
+
+  return cards.map(card => `
+    <div class="accion-card ${card.tipo}">
+      <div class="ac-title">${card.icono} ${card.titulo}</div>
+      <ul>${card.acciones.map(a => `<li>${a}</li>`).join('')}</ul>
+    </div>`).join('') + posCard + iaCard;
+}
+
+// ── Buscar posición por keyword ────────────────────────────────────────────────
+async function buscarPosicion(itemId, input) {
+  const keyword = input.value.trim();
+  if (!keyword) return;
+  const resultEl = document.getElementById(`pos-result-${itemId}`);
+  const panel    = document.getElementById(`acc-panel-${itemId}`);
+  const alias    = panel ? panel.dataset.alias : '';
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1" style="width:.8rem;height:.8rem"></span>Buscando en ML (hasta 300 resultados)...</span>';
+
+  try {
+    const r = await fetch('/api/buscar-posicion', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({item_id: itemId, keyword, alias})
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Error');
+
+    const pos   = data.posicion;
+    const total = data.total ? ` de ${data.total.toLocaleString('es-AR')} resultados` : '';
+    if (pos === 999) {
+      resultEl.innerHTML = `<span style="color:#dc2626">❌ No encontrada en los primeros 300 resultados para <strong>"${keyword}"</strong>${total ? ` (hay ${data.total.toLocaleString('es-AR')} resultados en total)` : ''}</span>`;
+    } else if (pos <= 5) {
+      resultEl.innerHTML = `<span style="color:#059669">✅ Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — excelente visibilidad</span>`;
+    } else if (pos <= 20) {
+      resultEl.innerHTML = `<span style="color:#d97706">📊 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — página 1, mejorable</span>`;
+    } else if (pos <= 50) {
+      resultEl.innerHTML = `<span style="color:#dc2626">📉 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — página 2+, poca visibilidad</span>`;
+    } else {
+      resultEl.innerHTML = `<span style="color:#dc2626">📉 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — muy baja visibilidad</span>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<span style="color:#dc2626">Error: ${e.message}</span>`;
+  }
+}
+
+// ── Diagnóstico IA por item ────────────────────────────────────────────────────
+async function diagnosticarConIA(itemId, alias, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Analizando...';
+  const resultEl = document.getElementById(`ia-result-${itemId}`);
+  resultEl.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/diagnostico-item', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({item_id: itemId, alias})
+    });
+    const data = await r.json();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-stars me-1"></i>Analizar con IA';
+
+    if (!data.ok) {
+      resultEl.innerHTML = `<div style="color:#dc2626;font-size:.8rem">❌ ${data.error || 'Error desconocido'}</div>`;
+    } else {
+      resultEl.innerHTML = `
+        <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #ddd8fe;font-size:.82rem;line-height:1.7;white-space:pre-wrap">${data.diagnostico}</div>`;
+    }
+    resultEl.style.display = 'block';
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-stars me-1"></i>Analizar con IA';
+    resultEl.innerHTML = '<div style="color:#dc2626;font-size:.8rem">❌ Error de conexión</div>';
+    resultEl.style.display = 'block';
+  }
+}
+
+// ── Visitas async ─────────────────────────────────────────────────────────────
+// Si hay items sin visitas en el JSON, carga en background al abrir la página
+const HAS_MISSING_VISITS = document.querySelectorAll('.vis-skel').length > 0;
+
+async function loadVisitas(manual = false) {
+  const btn = document.getElementById('vis-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Cargando visitas...';
+  }
+  try {
+    const r = await fetch(`/api/visitas/${encodeURIComponent(ALIAS)}`);
+    const data = await r.json();
+    if (!data.ok) {
+      if (manual) showToast('Error: ' + data.error, 'danger');
+      return;
+    }
+    for (const it of data.items) {
+      updateVisitaCells(it.id, it.visitas_30d, it.ventas_30d, it.conversion_pct);
+    }
+    applyFilters();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-eye me-1"></i>Actualizar visitas';
+    }
+    if (manual) showToast(`✓ Visitas actualizadas`, 'success');
+  } catch(e) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-eye me-1"></i>Actualizar visitas';
+    }
+    if (manual) showToast('Error de conexión', 'danger');
+  }
+}
+
+function updateVisitaCells(id, visitas, ventas, conv) {
+  // Actualizar data-attributes de la fila para que los filtros funcionen
+  const row = document.querySelector(`#stock-table tr[data-id-row="${id}"]`) ||
+    [...document.querySelectorAll('#stock-table tbody tr')].find(r => {
+      const vc = r.querySelector(`.vis-cell[data-id="${id}"]`);
+      return vc != null;
+    });
+  if (row) {
+    row.dataset.conv    = conv !== null && conv !== undefined ? conv : '';
+    row.dataset.visitas = visitas || '';
+  }
+
+  const visCell = document.querySelector(`.vis-cell[data-id="${id}"]`);
+  const convCell = document.querySelector(`.conv-cell[data-id="${id}"]`);
+  const diagCell = document.querySelector(`.diag-cell[data-id="${id}"]`);
+
+  if (visCell) {
+    visCell.innerHTML = visitas > 0
+      ? new Intl.NumberFormat('es-AR').format(visitas)
+      : '<span class="text-muted">—</span>';
+  }
+
+  if (convCell) {
+    if (conv !== null && conv !== undefined) {
+      const cls = conv >= 3 ? 'conv-ok' : conv >= 1 ? 'conv-warn' : 'conv-bad';
+      convCell.innerHTML = `<span class="${cls}">${conv.toFixed(1)}%</span>`;
+    } else {
+      convCell.innerHTML = '<span class="text-muted">—</span>';
+    }
+  }
+
+  if (diagCell) {
+    let label = '', cls = '';
+    if (visitas === 0) {
+      label = 'Sin exposición'; cls = 'diag-trafico';
+    } else if (visitas < 100) {
+      label = 'Tráfico bajo'; cls = 'diag-trafico';
+    } else if (ventas === 0) {
+      label = 'Sin ventas'; cls = 'diag-titulo';
+    } else if (conv !== null && conv < 1) {
+      label = 'Conv. baja'; cls = 'diag-titulo';
+    } else if (conv !== null && conv < 3) {
+      label = 'Mejorable'; cls = '';
+    } else {
+      label = 'Óptimo'; cls = 'diag-ok';
+    }
+    const style = cls ? '' : 'style="background:#dbeafe;color:#1e40af"';
+    diagCell.innerHTML = `<button class="diag-chip ${cls}" ${style} onclick="toggleAcciones('${id}')">${label} ▾</button>`;
+
+    // Actualizar dataset del panel de acciones y regenerar si está abierto
+    const panel = document.getElementById(`acc-panel-${id}`);
+    if (panel) {
+      panel.dataset.visitas = visitas || '';
+      panel.dataset.ventas  = ventas || '';
+      panel.dataset.conv    = conv !== null ? conv : '';
+      const accRow = document.getElementById(`acc-${id}`);
+      if (accRow && accRow.style.display !== 'none') {
+        panel.innerHTML = buildAcciones(panel.dataset);
+      } else if (panel.innerHTML.trim()) {
+        panel.innerHTML = ''; // reset para que se regenere al abrir
+      }
+    }
+  }
+}
+
+// Auto-cargar si faltan datos de visitas
+if (HAS_MISSING_VISITS) {
+  setTimeout(() => loadVisitas(false), 800);
+}
+
+// ── Filtros ───────────────────────────────────────────────────────────────────
+let activeFilter = 'todos';
+
+function setFilter(btn, filter) {
+  document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilter = filter;
+  applyFilters();
+}
+
+function applyFilters() {
+  const q = (document.getElementById('table-search').value || '').toLowerCase();
+  const rows = document.querySelectorAll('#stock-table tbody tr');
+  let visible = 0;
+
+  rows.forEach(row => {
+    const titulo      = row.dataset.titulo || '';
+    const alertaStock = row.dataset.alertaStock || '';
+    const alertaMargen = row.dataset.alertaMargen || '';
+    const tieneCosto  = row.dataset.costo === '1';
+    const conv        = row.dataset.conv !== '' ? parseFloat(row.dataset.conv) : null;
+    const visitas     = row.dataset.visitas !== '' ? parseInt(row.dataset.visitas) : null;
+    const margen      = row.dataset.margen !== '' ? parseFloat(row.dataset.margen) : null;
+
+    let matchFilter = true;
+    switch (activeFilter) {
+      case 'sin_stock':
+        matchFilter = alertaStock === 'SIN_STOCK'; break;
+      case 'stock_critico':
+        matchFilter = alertaStock === 'CRITICO' || alertaStock === 'ADVERTENCIA'; break;
+      case 'margen_neg':
+        matchFilter = alertaMargen === 'NEGATIVO' || alertaMargen === 'BAJO'; break;
+      case 'conv_baja':
+        matchFilter = conv !== null && conv < 1; break;
+      case 'trafico_bajo':
+        matchFilter = visitas !== null && visitas < 100; break;
+      case 'sin_costo':
+        matchFilter = !tieneCosto; break;
+      case 'optimos':
+        matchFilter = alertaStock === '' && alertaMargen === '' &&
+                      conv !== null && conv >= 3 &&
+                      (margen === null || margen >= 10); break;
+      default:
+        matchFilter = true;
+    }
+
+    const matchSearch = !q || titulo.includes(q);
+    const show = matchFilter && matchSearch;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  const countEl = document.getElementById('visible-count');
+  if (countEl) {
+    const total = rows.length;
+    countEl.textContent = visible === total
+      ? `${total} publicaciones`
+      : `${visible} de ${total} publicaciones`;
+  }
+}
+
+// ── Inline editor ─────────────────────────────────────────────────────────────
+function editCostoInline(cell, id, titulo, precio, costoActual) {
+  currentInlineItem = {id, titulo, precio};
+  const rect = cell.getBoundingClientRect();
+  const ed = document.getElementById('inline-editor');
+  ed.style.display = 'block';
+  document.getElementById('ie-backdrop').style.display = 'block';
+
+  // Posicionar
+  const top = Math.min(rect.bottom + 6, window.innerHeight - 220);
+  const left = Math.min(rect.left, window.innerWidth - 260);
+  ed.style.top = top + 'px';
+  ed.style.left = left + 'px';
+
+  document.getElementById('ie-titulo').textContent = titulo.substring(0, 45);
+  document.getElementById('ie-precio').textContent = `Precio de venta: $${fmt(precio)}`;
+  const inp = document.getElementById('ie-input');
+  inp.value = costoActual || '';
+  inp.oninput = () => updatePreview(precio, parseFloat(inp.value), id);
+  inp.focus();
+  inp.onkeydown = e => { if(e.key === 'Enter') saveInlineCosto(); if(e.key === 'Escape') closeInlineEditor(); };
+
+  if (costoActual) updatePreview(precio, costoActual, id);
+  else document.getElementById('ie-preview').textContent = '';
+}
+
+function updatePreview(precio, costo, itemId) {
+  const prev = document.getElementById('ie-preview');
+  if (!costo || costo <= 0) { prev.textContent = ''; return; }
+  const feeRate = FEE_RATES[itemId] || FEE_FALLBACK;
+  const neto = precio * (1 - feeRate);
+  const ganancia = neto - costo;
+  const margen = (ganancia / precio * 100).toFixed(1);
+  const cls = ganancia < 0 ? 'text-danger' : margen < 10 ? 'text-warning' : 'text-success';
+  const feeStr = (feeRate * 100).toFixed(1);
+  prev.innerHTML = `Fee ML: ${feeStr}% → Neto: $${fmt(neto)} → Margen: <span class="${cls} fw-semibold">${margen}%</span> ($${fmt(ganancia)})`;
+}
+
+async function saveInlineCosto() {
+  const costo = parseFloat(document.getElementById('ie-input').value);
+  if (!currentInlineItem) return;
+  const {id, titulo, precio} = currentInlineItem;
+  try {
+    const r = await fetch('/api/costos-save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias: ALIAS, costos: [{id, titulo, precio, costo: costo || 0}]}),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast('Costo guardado', 'success');
+      closeInlineEditor();
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast('Error: ' + data.error, 'danger');
+    }
+  } catch(e) {
+    showToast('Error de conexión', 'danger');
+  }
+}
+
+function closeInlineEditor() {
+  document.getElementById('inline-editor').style.display = 'none';
+  document.getElementById('ie-backdrop').style.display = 'none';
+  currentInlineItem = null;
+}
+
+// ── Modal de costos ───────────────────────────────────────────────────────────
+let modalCostosLoaded = false;
+
+async function openCostosModal() {
+  const modal = new bootstrap.Modal(document.getElementById('costosModal'));
+  modal.show();
+  if (!modalCostosLoaded) await loadCostosItems();
+}
+
+async function loadCostosItems() {
+  document.getElementById('costos-loading').style.display = '';
+  document.getElementById('costos-content').style.display = 'none';
+  document.getElementById('costos-save-btn').disabled = true;
+  try {
+    const r = await fetch(`/api/costos-items/${encodeURIComponent(ALIAS)}`);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    allCostosItems = data.items;
+    renderCostosModal(allCostosItems);
+    modalCostosLoaded = true;
+  } catch(e) {
+    document.getElementById('costos-loading').innerHTML =
+      `<div class="alert alert-danger">Error al cargar: ${e.message}</div>`;
+  }
+}
+
+function renderCostosModal(items) {
+  // Sin costo primero
+  const sorted = [...items].sort((a,b) => (a.costo ? 1 : 0) - (b.costo ? 1 : 0));
+  const tbody = document.getElementById('costos-tbody');
+  tbody.innerHTML = sorted.map(it => {
+    const costo = it.costo || '';
+    const margenHtml = it.costo ? calcMargenHtml(it.precio, it.costo, it.id) : '<span class="text-muted">—</span>';
+    const capital = it.costo ? `$${fmt(it.costo * it.stock)}` : '—';
+    const updatedDot = it.updated
+      ? `<span class="updated-dot" style="background:#10b981" title="${it.updated}"></span>${it.updated}`
+      : `<span class="updated-dot" style="background:#fbbf24"></span><span class="text-warning small">Sin costo</span>`;
+    return `
+      <tr data-titulo="${it.titulo.toLowerCase()}" class="${!it.costo ? 'table-warning' : ''}">
+        <td>
+          <div class="fw-semibold text-truncate" style="max-width:240px;font-size:.82rem" title="${it.titulo}">${it.titulo}</div>
+          <div class="text-muted" style="font-size:.68rem">${it.id}</div>
+        </td>
+        <td class="text-end fw-semibold" style="font-size:.82rem">$${fmt(it.precio)}</td>
+        <td class="text-end" style="font-size:.82rem">${it.stock}</td>
+        <td class="text-end">
+          <div class="input-group input-group-sm justify-content-end">
+            <span class="input-group-text">$</span>
+            <input type="number" class="form-control costo-modal-inp" style="max-width:100px;text-align:right"
+                   data-id="${it.id}" data-titulo="${it.titulo.replace(/"/g,'&quot;')}"
+                   data-precio="${it.precio}" data-stock="${it.stock}"
+                   value="${costo}" min="0" step="100"
+                   oninput="updateRowMargen(this)">
+          </div>
+        </td>
+        <td class="text-end margen-cell" data-id="${it.id}">${margenHtml}</td>
+        <td class="text-end capital-cell" data-id="${it.id}">${capital}</td>
+        <td class="text-center" style="font-size:.72rem">${updatedDot}</td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('costos-loading').style.display = 'none';
+  document.getElementById('costos-content').style.display = '';
+  document.getElementById('costos-save-btn').disabled = false;
+  updateCostosCount();
+}
+
+function calcMargenHtml(precio, costo, itemId) {
+  const feeRate = FEE_RATES[itemId] || FEE_FALLBACK;
+  const neto = precio * (1 - feeRate);
+  const ganancia = neto - costo;
+  const margen = (ganancia / precio * 100).toFixed(1);
+  const cls = ganancia < 0 ? 'text-danger fw-semibold' : margen < 10 ? 'text-warning fw-semibold' : 'text-success fw-semibold';
+  return `<span class="${cls}" title="Fee ML: ${(feeRate*100).toFixed(1)}%">${margen}%</span>`;
+}
+
+function updateRowMargen(inp) {
+  const precio = parseFloat(inp.dataset.precio);
+  const stock  = parseInt(inp.dataset.stock);
+  const costo  = parseFloat(inp.value);
+  const id     = inp.dataset.id;
+
+  const margenCell  = document.querySelector(`.margen-cell[data-id="${id}"]`);
+  const capitalCell = document.querySelector(`.capital-cell[data-id="${id}"]`);
+  if (costo > 0) {
+    if (margenCell)  margenCell.innerHTML  = calcMargenHtml(precio, costo, id);
+    if (capitalCell) capitalCell.textContent = `$${fmt(costo * stock)}`;
+    inp.closest('tr').classList.remove('table-warning');
+  } else {
+    if (margenCell)  margenCell.innerHTML  = '<span class="text-muted">—</span>';
+    if (capitalCell) capitalCell.textContent = '—';
+  }
+  updateCostosCount();
+}
+
+function updateCostosCount() {
+  const conCosto = document.querySelectorAll('.costo-modal-inp').length;
+  const cargados = [...document.querySelectorAll('.costo-modal-inp')].filter(i => parseFloat(i.value) > 0).length;
+  document.getElementById('costos-count').textContent =
+    `${cargados} de ${conCosto} con costo cargado`;
+}
+
+function filterCostosModal() {
+  const q = document.getElementById('costos-search').value.toLowerCase();
+  document.querySelectorAll('#costos-table tbody tr').forEach(row => {
+    row.style.display = row.dataset.titulo.includes(q) ? '' : 'none';
+  });
+}
+
+function applyBulkCosto() {
+  const pct = parseFloat(document.getElementById('bulk-costo-pct').value) / 100;
+  document.querySelectorAll('.costo-modal-inp').forEach(inp => {
+    if (!parseFloat(inp.value)) {
+      inp.value = Math.round(parseFloat(inp.dataset.precio) * pct);
+      updateRowMargen(inp);
+    }
+  });
+}
+
+async function saveCostos() {
+  const btn = document.getElementById('costos-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Guardando...';
+
+  const costos = [...document.querySelectorAll('.costo-modal-inp')].map(inp => ({
+    id:     inp.dataset.id,
+    titulo: inp.dataset.titulo,
+    precio: parseFloat(inp.dataset.precio),
+    costo:  parseFloat(inp.value) || 0,
+  }));
+
+  try {
+    const r = await fetch('/api/costos-save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias: ALIAS, costos}),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast(`✓ ${data.saved} costos guardados`, 'success');
+      bootstrap.Modal.getInstance(document.getElementById('costosModal')).hide();
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      throw new Error(data.error);
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'danger');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Guardar costos';
+  }
+}
+
+function showToast(msg, type='success') {
+  const t = document.createElement('div');
+  t.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3`;
+  t.style.cssText = 'z-index:9999;max-width:360px;box-shadow:0 4px 12px rgba(0,0,0,.15)';
+  t.innerHTML = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+</script>
+{% endblock %}

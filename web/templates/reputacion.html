@@ -1,0 +1,757 @@
+{% extends "base.html" %}
+{% block title %} — Reputación {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+/* ── Stat boxes ───────────────────────────────────────────── */
+.stat-box { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1rem 1.1rem; text-align:center; height:100%; }
+.stat-box .num  { font-size:1.7rem; font-weight:700; line-height:1.1; }
+.stat-box .lbl  { font-size:.72rem; color:#64748b; margin-top:3px; }
+.stat-box.blue  .num { color:#2563eb; }
+.stat-box.ok    .num { color:#16a34a; }
+.stat-box.warn  .num { color:#d97706; }
+.stat-box.crit  .num { color:#dc2626; }
+.stat-box.dim   .num { color:#94a3b8; }
+
+/* ── Nivel badge ──────────────────────────────────────────── */
+.nivel-badge {
+  display:inline-flex; align-items:center; gap:.5rem;
+  padding:.45rem 1rem; border-radius:30px; font-weight:700;
+  font-size:.95rem; color:#fff;
+}
+.nivel-badge.platinum { background: linear-gradient(135deg,#7c3aed,#6d28d9); }
+.nivel-badge.gold     { background: linear-gradient(135deg,#d97706,#b45309); }
+.nivel-badge.leader   { background: linear-gradient(135deg,#2563eb,#1d4ed8); }
+.nivel-badge.good     { background: linear-gradient(135deg,#16a34a,#15803d); }
+.nivel-badge.new      { background: linear-gradient(135deg,#94a3b8,#64748b); }
+.nivel-badge.nd       { background: linear-gradient(135deg,#cbd5e1,#94a3b8); }
+
+/* ── Gauge metric ─────────────────────────────────────────── */
+.metric-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1rem 1.1rem; position:relative; overflow:hidden;
+}
+.metric-card .metric-val  { font-size:1.8rem; font-weight:700; line-height:1; }
+.metric-card .metric-lbl  { font-size:.72rem; color:#64748b; margin-top:2px; }
+.metric-card .metric-bar  { height:4px; border-radius:2px; margin-top:.7rem; background:#e2e8f0; }
+.metric-card .metric-fill { height:4px; border-radius:2px; transition:width .4s; }
+.metric-card .threshold   { font-size:.62rem; color:#94a3b8; margin-top:.2rem; }
+.metric-card.ok-card   { border-left:3px solid #22c55e; }
+.metric-card.warn-card { border-left:3px solid #f59e0b; }
+.metric-card.crit-card { border-left:3px solid #ef4444; }
+
+/* ── Claims table ─────────────────────────────────────────── */
+.claim-row { border-left:3px solid #ef4444; }
+
+/* ── Dashboard ventas ─────────────────────────────────────── */
+.dash-period {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1rem 1.2rem; text-align:center;
+}
+.dash-period .period-lbl { font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem; }
+.dash-period .period-amount { font-size:1.4rem; font-weight:700; color:#1e3a8a; line-height:1.1; }
+.dash-period .period-units  { font-size:.78rem; color:#16a34a; font-weight:600; margin-top:2px; }
+
+/* ── Top products ─────────────────────────────────────────── */
+.rank-badge {
+  width:24px; height:24px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:.68rem; font-weight:700; flex-shrink:0;
+}
+.rank-1 { background:#fde68a; color:#92400e; }
+.rank-2 { background:#e2e8f0; color:#374151; }
+.rank-3 { background:#fed7aa; color:#9a3412; }
+.rank-n { background:#f1f5f9; color:#64748b; }
+
+/* ── Historial chart ──────────────────────────────────────── */
+.section-title {
+  font-size:.78rem; font-weight:700; color:#374151;
+  text-transform:uppercase; letter-spacing:.05em;
+  display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem;
+}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-shield-check me-2 text-primary"></i>Reputación y ventas</h1>
+    <div class="sub">{{ alias }}</div>
+  </div>
+  <button class="btn btn-sm btn-outline-primary run-btn" onclick="runComando('reputacion','{{ alias }}')">
+    <i class="bi bi-arrow-clockwise me-1"></i>Actualizar métricas
+  </button>
+</div>
+
+{# ══ 1 — REPUTACIÓN ACTUAL ══════════════════════════════════ #}
+{% if rep_live %}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-shield-fill-check me-2 text-primary"></i>Reputación actual</span>
+    <span class="text-muted small">Datos en vivo desde MercadoLibre</span>
+  </div>
+  <div class="card-body">
+
+    <!-- Nivel + Power Seller -->
+    <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+      <span class="nivel-badge {{ nivel_slug }}">
+        {% if nivel_slug == 'platinum' %}<i class="bi bi-gem"></i>
+        {% elif nivel_slug == 'gold' %}<i class="bi bi-star-fill"></i>
+        {% elif nivel_slug == 'leader' %}<i class="bi bi-award-fill"></i>
+        {% else %}<i class="bi bi-person-check-fill"></i>{% endif %}
+        {{ nivel_label }}
+      </span>
+      {% if power_seller %}
+      <span class="badge bg-warning text-dark fw-semibold">
+        <i class="bi bi-lightning-fill me-1"></i>Power Seller: {{ power_seller | capitalize }}
+      </span>
+      {% endif %}
+      {% if transactions.get('total') %}
+      <span class="text-muted small">
+        <strong>{{ transactions.get('total', 0) }}</strong> transacciones históricas
+        · <span class="text-success fw-semibold">{{ transactions.get('completed', 0) }}</span> completadas
+        · <span class="text-danger">{{ transactions.get('canceled', 0) }}</span> canceladas
+      </span>
+      {% endif %}
+      {% if transactions.get('ratings') %}
+      {% set rat = transactions.get('ratings', {}) %}
+      <span class="text-muted small">
+        Calificaciones:
+        <span class="text-success fw-semibold">{{ rat.get('positive', 0) }} pos</span>
+        · <span class="text-danger">{{ rat.get('negative', 0) }} neg</span>
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- Métricas semáforo -->
+    {% macro metric_card(label, rate, verde, amarillo, unit='%', invert=true) %}
+    {% set pct = (rate * 100) if rate is not none else 0 %}
+    {% set card_class = 'crit-card' if pct > amarillo else ('warn-card' if pct > verde else 'ok-card') %}
+    {% set fill_color = '#ef4444' if pct > amarillo else ('#f59e0b' if pct > verde else '#22c55e') %}
+    {% set bar_width = [([pct / (amarillo * 1.5) * 100, 100] | min), 2] | max %}
+    <div class="metric-card {{ card_class }}">
+      <div class="metric-val" style="color:{{ fill_color }}">{{ '%.1f' | format(pct) }}{{ unit }}</div>
+      <div class="metric-lbl">{{ label }}</div>
+      <div class="metric-bar"><div class="metric-fill" style="width:{{ bar_width }}%;background:{{ fill_color }}"></div></div>
+      <div class="threshold">Óptimo ≤{{ verde }}{{ unit }} · Límite ≤{{ amarillo }}{{ unit }}</div>
+    </div>
+    {% endmacro %}
+
+    <div class="row g-3">
+      <div class="col-md-4">
+        {{ metric_card('Reclamos (últimos 60 días)',
+            metrics_raw.get('claims', {}).get('rate'), 1.0, 2.0) }}
+      </div>
+      <div class="col-md-4">
+        {{ metric_card('Demoras en despacho',
+            metrics_raw.get('delayed_handling_time', {}).get('rate'), 10.0, 15.0) }}
+      </div>
+      <div class="col-md-4">
+        {{ metric_card('Cancelaciones por vendedor',
+            metrics_raw.get('cancellations', {}).get('rate'), 2.0, 5.0) }}
+      </div>
+    </div>
+
+    <!-- Período de medición -->
+    {% if metrics_raw.get('claims', {}).get('period') %}
+    <div class="mt-2 text-muted" style="font-size:.7rem">
+      <i class="bi bi-info-circle me-1"></i>Período de medición: {{ metrics_raw.get('claims', {}).get('period', '60 días') }}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info mb-4">
+  <i class="bi bi-info-circle me-2"></i>
+  Sin datos de reputación en vivo. Verificá que la cuenta esté conectada o hacé click en
+  <strong>"Actualizar métricas"</strong> para generar el historial.
+</div>
+{% endif %}
+
+{# ══ 2 — RECLAMOS ════════════════════════════════════════════ #}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-flag me-2 text-danger"></i>Reclamos de compradores</span>
+    {% if claims %}
+    <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>{{ claims|length }} pendientes de resolver</span>
+    {% else %}
+    <span class="badge bg-success"><i class="bi bi-check me-1"></i>Sin reclamos abiertos</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+
+    {# Métrica de reclamos del período (de seller_reputation) #}
+    {% if rep_live %}
+    {% set claims_m = rep_live.get('metrics', {}).get('claims', {}) %}
+    {% set claims_rate = (claims_m.get('rate') or 0) * 100 %}
+    {% set claims_total = claims_m.get('value') or 0 %}
+    <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded"
+         style="background:{{ '#fee2e2' if claims_rate > 2 else ('#fef3c7' if claims_rate > 1 else '#f0fdf4') }};border:1px solid {{ '#fca5a5' if claims_rate > 2 else ('#fde68a' if claims_rate > 1 else '#bbf7d0') }}">
+      <div style="font-size:2rem;font-weight:800;color:{{ '#dc2626' if claims_rate > 2 else ('#d97706' if claims_rate > 1 else '#16a34a') }}">
+        {{ '%.1f' | format(claims_rate) }}%
+      </div>
+      <div>
+        <div style="font-size:.85rem;font-weight:600">
+          {{ claims_total }} reclamo{{ 's' if claims_total != 1 else '' }} en los últimos 60 días
+        </div>
+        <div style="font-size:.72rem;color:#64748b">
+          Límite ML: ≤1% óptimo · ≤2% máximo antes de afectar tu nivel
+        </div>
+      </div>
+      <a href="https://www.mercadolibre.com.ar/mis-ventas/reclamos"
+         target="_blank"
+         class="btn btn-sm ms-auto"
+         style="background:#2563eb;color:#fff;font-size:.78rem;white-space:nowrap">
+        <i class="bi bi-box-arrow-up-right me-1"></i>Ver todos en ML
+      </a>
+    </div>
+    {% endif %}
+
+    {# Reclamos pendientes (órdenes activas con mediación abierta) #}
+    {% if claims %}
+    <div class="section-title mb-2" style="color:#b45309">
+      <i class="bi bi-hourglass-split me-1"></i>Pendientes — requieren tu acción ahora
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Publicación</th><th>Fecha</th><th>Ir a resolver</th></tr></thead>
+        <tbody>
+          {% for c in claims %}
+          <tr style="border-left:3px solid #f59e0b">
+            <td class="small fw-semibold">{{ (c.get('item_title') or '—') | truncate(60) }}</td>
+            <td class="text-muted small">{{ c.get('date_created','')[:10] }}</td>
+            <td>
+              <a href="https://www.mercadolibre.com.ar/mis-ventas/reclamos"
+                 target="_blank"
+                 class="btn btn-xs btn-warning py-0 px-2" style="font-size:.72rem">
+                <i class="bi bi-flag me-1"></i>Ver reclamo en ML
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {# Aviso de permisos #}
+    <div class="mt-3 p-2 rounded d-flex align-items-center gap-2"
+         style="background:#f8fafc;border:1px solid #e2e8f0;font-size:.72rem;color:#64748b">
+      <i class="bi bi-info-circle text-primary"></i>
+      <span>
+        Para ver el detalle de cada reclamo (motivo, resolución, mensajes del comprador)
+        necesitás activar el permiso <strong>Postventa</strong> en tu cuenta.
+      </span>
+      <a href="/oauth/connect/{{ alias }}" class="btn btn-xs btn-outline-primary ms-auto py-0 px-2" style="font-size:.7rem;white-space:nowrap">
+        Activar permiso
+      </a>
+    </div>
+
+  </div>
+</div>
+
+{# ══ 2b — PUBLICACIONES AFECTADAS ════════════════════════════ #}
+<div class="card mb-4" id="pub-afectadas-card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span class="fw-semibold"><i class="bi bi-box-seam me-2 text-warning"></i>Publicaciones afectadas</span>
+    <span class="badge bg-secondary" id="pub-afectadas-badge">cargando…</span>
+  </div>
+  <div class="card-body" id="pub-afectadas-body">
+    <div class="text-center text-muted py-3" style="font-size:.85rem">
+      <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+      Buscando publicaciones con cancelaciones y reclamos…
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  fetch('/api/rep-items/{{ alias }}')
+    .then(r => r.json())
+    .then(data => {
+      const badge = document.getElementById('pub-afectadas-badge');
+      const body  = document.getElementById('pub-afectadas-body');
+      const mediaciones  = data.mediaciones   || [];  // reclamos escalados a ML
+      const vendCancels  = data.vend_cancels  || [];  // canceladas por el vendedor
+      const compCancels  = data.comp_cancels  || [];  // canceladas por comprador
+      const envioCancels = data.envio_cancels || [];  // canceladas por envío
+      const total        = mediaciones.length + vendCancels.length + compCancels.length + envioCancels.length;
+
+      if (total === 0) {
+        badge.textContent = 'Sin problemas';
+        badge.className   = 'badge bg-success';
+        body.innerHTML    = `<div class="text-center py-3">
+          <i class="bi bi-check-circle-fill text-success" style="font-size:1.4rem"></i>
+          <div class="text-muted mt-2" style="font-size:.85rem">
+            No se encontraron publicaciones con cancelaciones ni reclamos en los últimos 60 días.
+          </div></div>`;
+        return;
+      }
+
+      badge.textContent = total + ' publicaciones';
+      badge.className   = 'badge bg-warning text-dark';
+
+      function itemRows(list, icon, colorClass, emptyMsg) {
+        if (!list.length) return `<div class="text-muted small py-1 px-2">${emptyMsg}</div>`;
+        return list.map(it => {
+          const url = `https://articulo.mercadolibre.com.ar/${it.id.replace('MLA','MLA-')}`;
+          return `<tr>
+            <td><span class="${colorClass} rounded px-2 py-1" style="font-size:.75rem;font-weight:700">${icon} ${it.count}</span></td>
+            <td class="small">${it.title || it.id}</td>
+            <td><a href="${url}" target="_blank" class="text-muted small" title="Ver en ML"><i class="bi bi-box-arrow-up-right"></i></a></td>
+          </tr>`;
+        }).join('');
+      }
+
+      body.innerHTML = `
+        <div class="row g-3">
+          <div class="col-md-3">
+            <div class="section-title" style="color:#b91c1c"><i class="bi bi-shield-x me-1"></i>Mediaciones ML (reclamos)</div>
+            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">Órdenes donde el comprador escaló a ML · afectan tu reputación</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
+                <tbody>${itemRows(mediaciones,'⚑','bg-danger-subtle text-danger','Ninguna — bien ✓')}</tbody>
+              </table>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="section-title" style="color:#b91c1c"><i class="bi bi-x-circle text-danger me-1"></i>Canceladas por vos</div>
+            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">Afectan tu % de cancelaciones en reputación</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
+                <tbody>${itemRows(vendCancels,'✕','bg-danger-subtle text-danger','Ninguna — bien ✓')}</tbody>
+              </table>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="section-title"><i class="bi bi-person me-1 text-secondary"></i>Canceladas por el comprador</div>
+            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">No afectan tu reputación · solo informativo</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
+                <tbody>${itemRows(compCancels,'✕','bg-secondary-subtle text-secondary','Ninguna')}</tbody>
+              </table>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="section-title"><i class="bi bi-truck me-1 text-warning"></i>Canceladas por envío</div>
+            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">Canceladas por ML por problema de envío o fraude</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
+                <tbody>${itemRows(envioCancels,'⚠','bg-warning-subtle text-warning','Ninguna')}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="mt-2 text-muted" style="font-size:.7rem">
+          <i class="bi bi-info-circle me-1"></i>Datos de los últimos 60 días · Se actualiza al cargar la página
+        </div>`;
+    })
+    .catch(() => {
+      document.getElementById('pub-afectadas-badge').textContent = 'Error';
+      document.getElementById('pub-afectadas-badge').className   = 'badge bg-secondary';
+      document.getElementById('pub-afectadas-body').innerHTML    =
+        '<div class="text-muted small p-3">No se pudo cargar la información. Verificá que la cuenta esté conectada.</div>';
+    });
+})();
+</script>
+
+{# ══ 3 — PERFORMANCE DE ENVÍO (FLEX + TIMING) ═══════════════ #}
+<div class="card mb-4">
+  <div class="card-header fw-semibold">
+    <i class="bi bi-truck me-2 text-primary"></i>Performance de envío
+  </div>
+  <div class="card-body">
+    {% if shipping_metrics %}
+    <div class="row g-3">
+      <!-- Demoras -->
+      {% set del_m = shipping_metrics.get('delayed', {}) %}
+      <div class="col-md-4">
+        <div class="stat-box {{ 'crit' if (del_m.get('rate', 0) or 0) * 100 > 15 else ('warn' if (del_m.get('rate', 0) or 0) * 100 > 10 else 'ok') }}">
+          <div class="num">{{ '%.1f' | format((del_m.get('rate', 0) or 0) * 100) }}%</div>
+          <div class="lbl">Envíos demorados<br><small class="text-muted">Límite óptimo: ≤10% · Máximo: ≤15%</small></div>
+          {% if del_m.get('value') %}
+          <div style="font-size:.7rem;color:#94a3b8;margin-top:4px">{{ del_m.get('value') }} envíos demorados</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Flex / Tiempo de manejo -->
+      <div class="col-md-4">
+        <div class="stat-box blue">
+          <div class="num" style="font-size:1.1rem;padding-top:.3rem">
+            {% if (del_m.get('rate', 0) or 0) * 100 <= 10 %}
+            <i class="bi bi-lightning-fill text-success"></i> Óptimo
+            {% elif (del_m.get('rate', 0) or 0) * 100 <= 15 %}
+            <i class="bi bi-exclamation-circle text-warning"></i> En riesgo
+            {% else %}
+            <i class="bi bi-x-circle text-danger"></i> Fuera de límite
+            {% endif %}
+          </div>
+          <div class="lbl">Performance Flex / Despacho<br>
+            <small class="text-muted">Flex requiere despacho el mismo día hábil</small></div>
+        </div>
+      </div>
+
+      <!-- Cancelaciones -->
+      {% set can_m = shipping_metrics.get('cancels', {}) %}
+      <div class="col-md-4">
+        <div class="stat-box {{ 'crit' if (can_m.get('rate', 0) or 0) * 100 > 5 else ('warn' if (can_m.get('rate', 0) or 0) * 100 > 2 else 'ok') }}">
+          <div class="num">{{ '%.1f' | format((can_m.get('rate', 0) or 0) * 100) }}%</div>
+          <div class="lbl">Cancelaciones por vendedor<br><small class="text-muted">Límite óptimo: ≤2% · Máximo: ≤5%</small></div>
+          {% if can_m.get('value') %}
+          <div style="font-size:.7rem;color:#94a3b8;margin-top:4px">{{ can_m.get('value') }} cancelaciones</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="text-muted text-center py-3" style="font-size:.85rem">
+      <i class="bi bi-info-circle me-1"></i>Sin datos de envío disponibles. Actualizá las métricas.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ══ 4 — DASHBOARD DE VENTAS ════════════════════════════════ #}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span class="fw-semibold"><i class="bi bi-bar-chart-fill me-2 text-primary"></i>Dashboard de ventas</span>
+    <span class="text-muted small">Órdenes pagadas</span>
+  </div>
+  <div class="card-body">
+    {% if dashboard %}
+    <div class="row g-3 mb-3">
+      <div class="col-md-3">
+        <div class="dash-period" style="border-top:3px solid #2563eb">
+          <div class="period-lbl"><i class="bi bi-calendar-day me-1"></i>Hoy</div>
+          <div class="period-amount">
+            {% if dashboard.hoy.amount > 0 %}
+            ${{ "{:,.0f}".format(dashboard.hoy.amount) }}
+            {% else %}<span class="text-muted" style="font-size:1rem">Sin ventas aún</span>{% endif %}
+          </div>
+          {% if dashboard.hoy.units > 0 %}
+          <div class="period-units">{{ dashboard.hoy.units }} unidades</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="dash-period" style="border-top:3px solid #7c3aed">
+          <div class="period-lbl"><i class="bi bi-calendar-week me-1"></i>Últimos 7 días</div>
+          <div class="period-amount">
+            {% if dashboard.semana.amount > 0 %}
+            ${{ "{:,.0f}".format(dashboard.semana.amount) }}
+            {% else %}<span class="text-muted" style="font-size:1rem">$0</span>{% endif %}
+          </div>
+          {% if dashboard.semana.units > 0 %}
+          <div class="period-units">{{ dashboard.semana.units }} unidades</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="dash-period" style="border-top:3px solid #16a34a">
+          <div class="period-lbl"><i class="bi bi-calendar-month me-1"></i>Últimos 30 días</div>
+          <div class="period-amount">
+            {% if dashboard.mes.amount > 0 %}
+            ${{ "{:,.0f}".format(dashboard.mes.amount) }}
+            {% else %}<span class="text-muted" style="font-size:1rem">$0</span>{% endif %}
+          </div>
+          {% if dashboard.mes.units > 0 %}
+          <div class="period-units">{{ dashboard.mes.units }} unidades</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="dash-period" style="border-top:3px solid #f59e0b">
+          <div class="period-lbl"><i class="bi bi-shield-check me-1"></i>Últimos 60 días <small style="font-weight:400">(período ML)</small></div>
+          <div class="period-amount" style="color:#b45309">
+            {% if dashboard.sesenta.amount > 0 %}
+            ${{ "{:,.0f}".format(dashboard.sesenta.amount) }}
+            {% else %}<span class="text-muted" style="font-size:1rem">$0</span>{% endif %}
+          </div>
+          {% if dashboard.sesenta.units > 0 %}
+          <div class="period-units">{{ dashboard.sesenta.units }} unidades</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparación rápida hoy vs semana -->
+    {% if dashboard.semana.units > 0 and dashboard.hoy.units > 0 %}
+    {% set avg_daily = dashboard.semana.units / 7 %}
+    <div class="text-muted" style="font-size:.75rem;text-align:center">
+      Promedio diario últimos 7 días: <strong>{{ '%.1f' | format(avg_daily) }} unidades/día</strong>
+      {% if dashboard.hoy.units > avg_daily %}
+      · <span class="text-success fw-semibold">Hoy está por encima del promedio ↑</span>
+      {% elif dashboard.hoy.units < avg_daily %}
+      · <span class="text-warning">Hoy está por debajo del promedio</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="text-muted text-center py-3" style="font-size:.85rem">
+      <i class="bi bi-info-circle me-1"></i>Sin datos de órdenes. Verificá que la cuenta tenga el permiso "Órdenes" habilitado.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ══ 4b — RESUMEN DE STOCK ══════════════════════════════════ #}
+{% if total_stock_units > 0 %}
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <div class="d-flex align-items-center gap-4 flex-wrap">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-boxes text-primary" style="font-size:1.4rem"></i>
+        <div>
+          <div class="text-muted" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em">Stock total</div>
+          <div class="fw-bold" style="font-size:1.35rem;line-height:1.1">{{ "{:,}".format(total_stock_units) }} <span class="text-muted fw-normal" style="font-size:.85rem">unidades</span></div>
+        </div>
+      </div>
+      <div class="vr d-none d-sm-block" style="height:2.5rem"></div>
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-cash-stack text-success" style="font-size:1.4rem"></i>
+        <div>
+          <div class="text-muted" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em">Valor de venta total</div>
+          <div class="fw-bold" style="font-size:1.35rem;line-height:1.1">${{ "{:,.0f}".format(total_stock_value) }}</div>
+        </div>
+      </div>
+      <div class="ms-auto text-muted" style="font-size:.7rem">
+        <i class="bi bi-info-circle me-1"></i>Basado en último snapshot de stock
+        <br><a href="/stock/{{ alias }}" class="text-muted">Ver detalle por producto →</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ══ 5 — TOP 10 PRODUCTOS ═══════════════════════════════════ #}
+<div class="card mb-4">
+  <div class="card-header fw-semibold">
+    <i class="bi bi-trophy me-2 text-warning"></i>Top 10 productos — últimos 60 días
+  </div>
+  {% if top_products %}
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:42px">#</th>
+            <th>Producto</th>
+            <th class="text-end">Unidades</th>
+            <th class="text-end">Facturación</th>
+            <th class="text-end">Precio prom.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in top_products %}
+          <tr>
+            <td class="text-center">
+              <span class="rank-badge {{ 'rank-1' if loop.index == 1 else ('rank-2' if loop.index == 2 else ('rank-3' if loop.index == 3 else 'rank-n')) }}">
+                {{ loop.index }}
+              </span>
+            </td>
+            <td>
+              <div class="fw-semibold text-truncate" style="max-width:300px" title="{{ p.title }}">{{ p.title }}</div>
+              <div class="text-muted" style="font-size:.7rem">{{ p.id }}</div>
+            </td>
+            <td class="text-end">
+              <span class="fw-semibold {{ 'text-success' if p.units >= 10 else 'text-primary' }}">
+                {{ p.units }}
+              </span>
+            </td>
+            <td class="text-end text-muted">
+              ${{ "{:,.0f}".format(p.revenue) }}
+            </td>
+            <td class="text-end text-muted small">
+              {% if p.units > 0 %}${{ "{:,.0f}".format(p.revenue / p.units) }}{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card-body text-center py-3 text-muted" style="font-size:.85rem">
+    <i class="bi bi-info-circle me-1"></i>Sin datos de ventas del período.
+  </div>
+  {% endif %}
+</div>
+
+{# ══ 6 — HISTORIAL REPUTACIÓN ════════════════════════════════ #}
+{% if snapshots %}
+{% set snaps = snapshots | list %}
+{% set last  = snaps[-1] %}
+{% set first = snaps[0] %}
+{% set prev  = snaps[-2] if snaps | length > 1 else snaps[-1] %}
+
+<style>
+.trend-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1rem 1.1rem;
+}
+.trend-card .t-label { font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+.trend-card .t-val   { font-size:1.9rem; font-weight:800; line-height:1.1; margin:.2rem 0; }
+.trend-card .t-delta { font-size:.8rem; font-weight:600; }
+.trend-card .t-limit { font-size:.65rem; color:#94a3b8; margin-top:2px; }
+.trend-card.ok-card   { border-left:4px solid #22c55e; }
+.trend-card.warn-card { border-left:4px solid #f59e0b; }
+.trend-card.crit-card { border-left:4px solid #ef4444; }
+
+/* Sparkline CSS */
+.spark { display:flex; align-items:flex-end; gap:2px; height:36px; margin-top:.5rem; }
+.spark-b {
+  flex:1; border-radius:2px 2px 0 0; min-height:3px;
+  transition: opacity .2s;
+}
+
+/* Fila de historial compacto */
+.hist-row { display:flex; align-items:center; gap:.75rem; padding:.45rem .6rem; border-radius:6px; }
+.hist-row:hover { background:#f8fafc; }
+.hist-row .h-fecha { font-size:.7rem; color:#94a3b8; width:80px; flex-shrink:0; }
+.hist-row .h-pill  {
+  font-size:.72rem; font-weight:700; padding:.15rem .55rem;
+  border-radius:20px; white-space:nowrap;
+}
+.pill-ok   { background:#dcfce7; color:#15803d; }
+.pill-warn { background:#fef9c3; color:#a16207; }
+.pill-crit { background:#fee2e2; color:#b91c1c; }
+.h-arrow   { font-size:.75rem; font-weight:700; }
+.arrow-up  { color:#ef4444; }
+.arrow-dn  { color:#16a34a; }
+.arrow-eq  { color:#94a3b8; }
+</style>
+
+<div class="card mb-4">
+  <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-clock-history me-2 text-primary"></i>Evolución de reputación</span>
+    <span class="text-muted" style="font-size:.72rem">{{ snaps | length }} registros</span>
+  </div>
+  <div class="card-body">
+
+    {# ── Tarjetas de tendencia ── #}
+    {% macro trend_card(label, key, prev_val, curr_val, lim_ok, lim_warn, unit='%') %}
+      {% set delta = curr_val - prev_val %}
+      {% set is_crit = curr_val > lim_warn %}
+      {% set is_warn = curr_val > lim_ok %}
+      {% set card_cls = 'crit-card' if is_crit else ('warn-card' if is_warn else 'ok-card') %}
+      {% set val_cls  = 'text-danger' if is_crit else ('text-warning' if is_warn else 'text-success') %}
+      {% set arr_cls  = 'arrow-up' if delta > 0.05 else ('arrow-dn' if delta < -0.05 else 'arrow-eq') %}
+      {% set arr_sym  = '↑' if delta > 0.05 else ('↓' if delta < -0.05 else '→') %}
+      {% set delta_txt = ('+' if delta > 0 else '') + ('%.2f' | format(delta)) + unit %}
+    <div class="trend-card {{ card_cls }}">
+      <div class="t-label">{{ label }}</div>
+      <div class="t-val {{ val_cls }}">{{ '%.1f' | format(curr_val) }}{{ unit }}</div>
+      <div class="t-delta {{ arr_cls }}">{{ arr_sym }} {{ delta_txt }} vs registro anterior</div>
+      <div class="t-limit">Límite óptimo ≤{{ lim_ok }}{{ unit }} · máximo ≤{{ lim_warn }}{{ unit }}</div>
+      <div class="spark" id="spark-{{ key }}"></div>
+    </div>
+    {% endmacro %}
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        {{ trend_card('Reclamos', 'rec',
+            prev.reclamos_pct, last.reclamos_pct, 1.0, 2.0) }}
+      </div>
+      <div class="col-md-4">
+        {{ trend_card('Demoras en despacho', 'dem',
+            prev.demoras_pct, last.demoras_pct, 10.0, 15.0) }}
+      </div>
+      <div class="col-md-4">
+        {{ trend_card('Cancelaciones', 'can',
+            prev.cancelaciones_pct, last.cancelaciones_pct, 2.0, 5.0) }}
+      </div>
+    </div>
+
+    {# ── Historial compacto ── #}
+    <div class="section-title mt-2"><i class="bi bi-list-ul me-1"></i>Registros anteriores</div>
+    {% for snap in snaps | reverse %}
+    {% set i = loop.index0 %}
+    {% set prev_s = (snaps | reverse | list)[i+1] if not loop.last else snap %}
+    <div class="hist-row">
+      <span class="h-fecha">{{ snap.fecha[5:16] }}</span>
+
+      {# Reclamos #}
+      {% set v = snap.reclamos_pct %}
+      {% set vp = prev_s.reclamos_pct %}
+      <span class="h-pill {{ 'pill-crit' if v > 2 else ('pill-warn' if v > 1 else 'pill-ok') }}">
+        Rec {{ '%.1f' | format(v) }}%
+      </span>
+      {% if not loop.last %}
+        {% set d = v - vp %}
+        <span class="h-arrow {{ 'arrow-up' if d > 0.05 else ('arrow-dn' if d < -0.05 else 'arrow-eq') }}">
+          {{ '↑' if d > 0.05 else ('↓' if d < -0.05 else '→') }}
+        </span>
+      {% endif %}
+
+      {# Demoras #}
+      {% set v = snap.demoras_pct %}
+      {% set vp = prev_s.demoras_pct %}
+      <span class="h-pill {{ 'pill-crit' if v > 15 else ('pill-warn' if v > 10 else 'pill-ok') }}">
+        Dem {{ '%.1f' | format(v) }}%
+      </span>
+      {% if not loop.last %}
+        {% set d = v - vp %}
+        <span class="h-arrow {{ 'arrow-up' if d > 0.05 else ('arrow-dn' if d < -0.05 else 'arrow-eq') }}">
+          {{ '↑' if d > 0.05 else ('↓' if d < -0.05 else '→') }}
+        </span>
+      {% endif %}
+
+      {# Cancelaciones #}
+      {% set v = snap.cancelaciones_pct %}
+      {% set vp = prev_s.cancelaciones_pct %}
+      <span class="h-pill {{ 'pill-crit' if v > 5 else ('pill-warn' if v > 2 else 'pill-ok') }}">
+        Can {{ '%.1f' | format(v) }}%
+      </span>
+      {% if not loop.last %}
+        {% set d = v - vp %}
+        <span class="h-arrow {{ 'arrow-up' if d > 0.05 else ('arrow-dn' if d < -0.05 else 'arrow-eq') }}">
+          {{ '↑' if d > 0.05 else ('↓' if d < -0.05 else '→') }}
+        </span>
+      {% endif %}
+
+      <span class="text-muted ms-auto" style="font-size:.68rem">{{ snap.ventas_total or '' }} ventas</span>
+    </div>
+    {% endfor %}
+
+    <div class="mt-2" style="font-size:.65rem;color:#94a3b8">
+      ↑ sube = empeora · ↓ baja = mejora &nbsp;|&nbsp; Rec = reclamos · Dem = demoras · Can = cancelaciones
+    </div>
+
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if snapshots %}
+<script>
+// Sparklines CSS por métrica
+(function(){
+  const snaps = {{ snapshots | tojson }};
+  function buildSpark(elId, key, limOk, limWarn) {
+    const el = document.getElementById('spark-' + elId);
+    if (!el) return;
+    const vals = snaps.map(s => s[key] || 0);
+    const max  = Math.max(...vals, limWarn * 1.2) || 1;
+    vals.forEach((v, i) => {
+      const bar = document.createElement('div');
+      bar.className = 'spark-b';
+      bar.style.height = Math.max(4, (v / max) * 36) + 'px';
+      bar.style.background = v > limWarn ? '#ef4444' : v > limOk ? '#f59e0b' : '#22c55e';
+      bar.style.opacity = i === vals.length - 1 ? '1' : '0.55';
+      el.appendChild(bar);
+    });
+  }
+  buildSpark('rec', 'reclamos_pct',      1.0,  2.0);
+  buildSpark('dem', 'demoras_pct',       10.0, 15.0);
+  buildSpark('can', 'cancelaciones_pct', 2.0,  5.0);
+})();
+</script>
+{% endif %}
+{% endblock %}

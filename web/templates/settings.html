@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% block title %} — Configuración{% endblock %}
+
+{% block content %}
+<style>
+.settings-section { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.5rem; margin-bottom:1.5rem; }
+.settings-title { font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#64748b; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; }
+.form-label-sm { font-size:.82rem; font-weight:600; color:#374151; }
+.helper { font-size:.73rem; color:#94a3b8; margin-top:.2rem; }
+.badge-active { background:#dcfce7; color:#15803d; font-size:.7rem; font-weight:700; padding:3px 10px; border-radius:20px; }
+.badge-inactive { background:#f1f5f9; color:#64748b; font-size:.7rem; font-weight:700; padding:3px 10px; border-radius:20px; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-gear me-2 text-primary"></i>Configuración</h1>
+    <div class="sub">Ajustes del sistema y notificaciones</div>
+  </div>
+</div>
+
+<!-- ══ SCHEDULER ════════════════════════════════════════════════ -->
+<div class="settings-section">
+  <div class="settings-title">
+    <i class="bi bi-clock-history text-primary"></i>Actualización automática
+    <span id="sched-badge" class="badge-inactive ms-auto">Cargando…</span>
+  </div>
+  <p class="text-muted small mb-3">
+    El sistema actualiza automáticamente reputación, stock y posiciones todos los días a las <strong>7:00 AM</strong>.
+    No necesitás hacer nada — los datos siempre están frescos cuando abrís el dashboard.
+  </p>
+  <div id="sched-info" class="alert alert-info py-2" style="font-size:.82rem">Cargando estado del scheduler…</div>
+  <button class="btn btn-sm btn-outline-primary" onclick="forzarActualizacion()">
+    <i class="bi bi-arrow-repeat me-1"></i>Forzar actualización ahora
+  </button>
+</div>
+
+<!-- ══ NOTIFICACIONES EMAIL ═══════════════════════════════════ -->
+<div class="settings-section">
+  <div class="settings-title">
+    <i class="bi bi-envelope-fill text-primary"></i>Notificaciones por email
+    <span id="notif-badge" class="badge-inactive ms-auto">Desactivado</span>
+  </div>
+  <p class="text-muted small mb-3">
+    Recibís un email cada mañana después de la actualización automática (7 AM) con un resumen de todas las alertas críticas.
+    Solo se envía si hay alertas urgentes o importantes.
+  </p>
+
+  <form id="notif-form" onsubmit="guardarNotif(event)">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label form-label-sm">Email destino</label>
+        <input type="email" class="form-control form-control-sm" id="email_to" placeholder="tu@email.com" required>
+        <div class="helper">Adónde llegan las alertas</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label form-label-sm">Email remitente (Gmail)</label>
+        <input type="email" class="form-control form-control-sm" id="smtp_user" placeholder="tucuenta@gmail.com" required>
+        <div class="helper">Tu cuenta Gmail que manda los emails</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label form-label-sm">Contraseña de aplicación Gmail</label>
+        <input type="password" class="form-control form-control-sm" id="smtp_pass" placeholder="xxxx xxxx xxxx xxxx">
+        <div class="helper">
+          No es tu contraseña de Gmail. Generala en
+          <a href="https://myaccount.google.com/apppasswords" target="_blank">myaccount.google.com/apppasswords</a>
+          (requiere verificación en 2 pasos activada)
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label form-label-sm">Servidor SMTP</label>
+        <input type="text" class="form-control form-control-sm" id="smtp_host" value="smtp.gmail.com">
+        <label class="form-label form-label-sm mt-2">Puerto SMTP</label>
+        <input type="number" class="form-control form-control-sm" id="smtp_port" value="587">
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="notif_activo">
+          <label class="form-check-label form-label-sm" for="notif_activo">
+            Activar notificaciones diarias por email
+          </label>
+        </div>
+        <div class="form-check mt-1">
+          <input class="form-check-input" type="checkbox" id="siempre_enviar">
+          <label class="form-check-label" style="font-size:.78rem" for="siempre_enviar">
+            Enviar resumen aunque no haya alertas (incluye "todo en orden")
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-3 flex-wrap">
+      <button type="submit" class="btn btn-sm btn-primary">
+        <i class="bi bi-floppy me-1"></i>Guardar configuración
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="probarEmail()">
+        <i class="bi bi-send me-1"></i>Enviar email de prueba
+      </button>
+    </div>
+  </form>
+
+  <div id="notif-msg" class="mt-2" style="display:none"></div>
+
+  <div class="mt-3 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;font-size:.78rem">
+    <div class="fw-semibold mb-1"><i class="bi bi-info-circle me-1 text-primary"></i>Cómo configurar Gmail</div>
+    <ol class="mb-0 ps-3" style="color:#4b5563">
+      <li>Activá la verificación en 2 pasos en tu cuenta Google</li>
+      <li>Andá a <strong>myaccount.google.com/apppasswords</strong></li>
+      <li>Creá una nueva contraseña de aplicación → seleccioná "Otra"</li>
+      <li>Copiá la contraseña de 16 caracteres y pegala arriba</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ══ COSTOS CLAUDE AI ══════════════════════════════════════════ -->
+<div class="settings-section">
+  <div class="settings-title">
+    <i class="bi bi-cpu text-primary"></i>Costos Claude AI
+    <span class="ms-auto" style="font-size:.72rem;color:#94a3b8;font-weight:400">Actualiza en tiempo real con cada uso</span>
+  </div>
+
+  <!-- Resumen -->
+  <div class="row g-3 mb-3" id="cost-summary">
+    <div class="col-6 col-md-3">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px">
+        <div style="font-size:1.4rem;font-weight:800;color:#15803d" id="cost-mes">—</div>
+        <div style="font-size:.7rem;color:#64748b;margin-top:2px">Gasto este mes (USD)</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 16px">
+        <div style="font-size:1.4rem;font-weight:800;color:#1d4ed8" id="cost-total">—</div>
+        <div style="font-size:.7rem;color:#64748b;margin-top:2px">Gasto total acumulado (USD)</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:14px 16px">
+        <div style="font-size:1.4rem;font-weight:800;color:#92400e" id="cost-top-fn" style="font-size:.85rem">—</div>
+        <div style="font-size:.7rem;color:#64748b;margin-top:2px">Función más costosa</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:14px 16px">
+        <div style="font-size:1.4rem;font-weight:800;color:#7c3aed" id="cost-llamadas">—</div>
+        <div style="font-size:.7rem;color:#64748b;margin-top:2px">Total de llamadas IA</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla por función -->
+  <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:.5rem">Por función</div>
+  <div id="cost-by-func" style="margin-bottom:1.2rem">
+    <div style="color:#94a3b8;font-size:.82rem">Cargando…</div>
+  </div>
+
+  <!-- Historial reciente -->
+  <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:.5rem">
+    Últimas 50 llamadas
+    <button onclick="clearCostLog()" class="btn btn-xs btn-outline-danger ms-2" style="font-size:.65rem;padding:1px 7px">Limpiar historial</button>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="table table-sm" id="cost-recientes" style="font-size:.78rem;min-width:600px">
+      <thead>
+        <tr>
+          <th>Fecha/Hora</th>
+          <th>Función</th>
+          <th>Modelo</th>
+          <th class="text-end">Tokens in</th>
+          <th class="text-end">Tokens out</th>
+          <th class="text-end">Costo USD</th>
+        </tr>
+      </thead>
+      <tbody id="cost-rows"><tr><td colspan="6" class="text-muted text-center py-3">Sin datos aún. Ejecutá alguna función IA para ver los costos.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Cargar estado del scheduler ───────────────────────────────
+fetch('/api/scheduler-status').then(r => r.json()).then(d => {
+  const badge = document.getElementById('sched-badge');
+  const info  = document.getElementById('sched-info');
+  if (d.scheduler_active) {
+    badge.className = 'badge-active ms-auto';
+    badge.textContent = 'Activo';
+    const next = d.next_run ? new Date(d.next_run).toLocaleString('es-AR',{weekday:'long',hour:'2-digit',minute:'2-digit'}) : '?';
+    info.className = 'alert alert-success py-2';
+    info.style.fontSize = '.82rem';
+    info.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i>Scheduler activo — próxima actualización automática: <strong>${next}</strong>`;
+  } else {
+    badge.className = 'badge-inactive ms-auto';
+    badge.textContent = 'Inactivo';
+    info.className = 'alert alert-warning py-2';
+    info.style.fontSize = '.82rem';
+    info.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>El scheduler no está corriendo. Reiniciá el servidor para activarlo.';
+  }
+}).catch(() => {
+  document.getElementById('sched-info').textContent = 'No se pudo obtener el estado.';
+});
+
+// ── Forzar actualización ──────────────────────────────────────
+function forzarActualizacion() {
+  fetch('/api/scheduler-run-now', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        alert('Actualización iniciada. Puede tardar 2-3 minutos. Recargá el dashboard después.');
+      }
+    });
+}
+
+// ── Cargar config de notificaciones ──────────────────────────
+fetch('/api/notificaciones-config').then(r => r.json()).then(d => {
+  if (!d.ok) return;
+  const c = d.config;
+  document.getElementById('email_to').value   = c.email_to   || '';
+  document.getElementById('smtp_user').value  = c.smtp_user  || '';
+  document.getElementById('smtp_host').value  = c.smtp_host  || 'smtp.gmail.com';
+  document.getElementById('smtp_port').value  = c.smtp_port  || 587;
+  document.getElementById('notif_activo').checked   = !!c.activo;
+  document.getElementById('siempre_enviar').checked = !!c.siempre_enviar;
+  if (c.tiene_pass) {
+    document.getElementById('smtp_pass').placeholder = '(contraseña guardada — dejá en blanco para no cambiar)';
+  }
+  const badge = document.getElementById('notif-badge');
+  if (c.activo) {
+    badge.className = 'badge-active ms-auto';
+    badge.textContent = 'Activo';
+  }
+});
+
+// ── Guardar config ────────────────────────────────────────────
+function guardarNotif(e) {
+  e.preventDefault();
+  const pass = document.getElementById('smtp_pass').value;
+  const body = {
+    email_to:      document.getElementById('email_to').value,
+    smtp_user:     document.getElementById('smtp_user').value,
+    smtp_host:     document.getElementById('smtp_host').value,
+    smtp_port:     parseInt(document.getElementById('smtp_port').value),
+    activo:        document.getElementById('notif_activo').checked,
+    siempre_enviar: document.getElementById('siempre_enviar').checked,
+  };
+  if (pass) body.smtp_pass = pass;
+
+  fetch('/api/notificaciones-config', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  }).then(r => r.json()).then(d => {
+    const msg = document.getElementById('notif-msg');
+    msg.style.display = '';
+    if (d.ok) {
+      msg.className = 'alert alert-success py-2 mt-2';
+      msg.style.fontSize = '.82rem';
+      msg.innerHTML = '<i class="bi bi-check-circle me-1"></i>Configuración guardada correctamente.';
+      const badge = document.getElementById('notif-badge');
+      badge.className = body.activo ? 'badge-active ms-auto' : 'badge-inactive ms-auto';
+      badge.textContent = body.activo ? 'Activo' : 'Desactivado';
+    } else {
+      msg.className = 'alert alert-danger py-2 mt-2';
+      msg.style.fontSize = '.82rem';
+      msg.textContent = 'Error al guardar.';
+    }
+    setTimeout(() => { msg.style.display = 'none'; }, 4000);
+  });
+}
+
+// ── Enviar email de prueba ────────────────────────────────────
+function probarEmail() {
+  const msg = document.getElementById('notif-msg');
+  msg.style.display = '';
+  msg.className = 'alert alert-info py-2 mt-2';
+  msg.style.fontSize = '.82rem';
+  msg.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Enviando email de prueba…';
+
+  fetch('/api/notificaciones-test', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        msg.className = 'alert alert-success py-2 mt-2';
+        msg.innerHTML = '<i class="bi bi-check-circle me-1"></i>' + d.mensaje;
+      } else {
+        msg.className = 'alert alert-danger py-2 mt-2';
+        msg.innerHTML = '<i class="bi bi-x-circle me-1"></i>Error: ' + d.mensaje;
+      }
+    });
+}
+
+// ── Panel de costos Claude AI ─────────────────────────────────
+const MODEL_SHORT = {
+  'claude-opus-4-6':           'Opus 4.6',
+  'claude-sonnet-4-6':         'Sonnet 4.6',
+  'claude-haiku-4-5-20251001': 'Haiku 4.5',
+};
+
+function fmtUsd(v) {
+  if (v === 0) return '$0.00';
+  if (v < 0.001) return `$${v.toFixed(6)}`;
+  if (v < 0.01)  return `$${v.toFixed(4)}`;
+  return `$${v.toFixed(3)}`;
+}
+
+function loadCostPanel() {
+  fetch('/api/token-costs')
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) return;
+
+      document.getElementById('cost-mes').textContent   = fmtUsd(d.total_mes);
+      document.getElementById('cost-total').textContent = fmtUsd(d.total_all);
+
+      const totalLlamadas = d.recientes.length;
+      document.getElementById('cost-llamadas').textContent = d.por_funcion.reduce((a,f) => a + f.llamadas, 0);
+
+      // Top función
+      const topFn = d.por_funcion[0];
+      const topEl = document.getElementById('cost-top-fn');
+      if (topFn) {
+        topEl.textContent = topFn.funcion.replace(' — ', ' ');
+        topEl.style.fontSize = '.78rem';
+      }
+
+      // Tabla por función
+      if (d.por_funcion.length > 0) {
+        const maxUsd = d.por_funcion[0].usd || 1;
+        let html = '';
+        d.por_funcion.forEach(f => {
+          const pct = Math.round((f.usd / maxUsd) * 100);
+          const modelo = MODEL_SHORT[f.modelo] || f.modelo;
+          html += `
+          <div style="margin-bottom:.6rem">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span style="font-size:.8rem;font-weight:600;color:#1e293b">${f.funcion}</span>
+              <span style="font-size:.75rem;color:#64748b">${fmtUsd(f.usd)} · ${f.llamadas} llamada${f.llamadas!==1?'s':''} · ${modelo}</span>
+            </div>
+            <div style="background:#f1f5f9;border-radius:4px;height:5px">
+              <div style="background:#3b82f6;width:${pct}%;height:5px;border-radius:4px;transition:width .4s"></div>
+            </div>
+          </div>`;
+        });
+        document.getElementById('cost-by-func').innerHTML = html;
+      } else {
+        document.getElementById('cost-by-func').innerHTML = '<div style="color:#94a3b8;font-size:.82rem">Sin datos aún.</div>';
+      }
+
+      // Tabla recientes
+      if (d.recientes.length > 0) {
+        let rows = '';
+        d.recientes.forEach(e => {
+          const ts  = e.ts ? e.ts.replace('T', ' ').substring(0, 16) : '—';
+          const mod = MODEL_SHORT[e.modelo] || e.modelo;
+          rows += `<tr>
+            <td style="color:#64748b">${ts}</td>
+            <td>${e.funcion}</td>
+            <td><span style="background:#f1f5f9;border-radius:4px;padding:1px 6px;font-size:.72rem">${mod}</span></td>
+            <td class="text-end">${(e.in||0).toLocaleString('es-AR')}</td>
+            <td class="text-end">${(e.out||0).toLocaleString('es-AR')}</td>
+            <td class="text-end fw-semibold" style="color:${e.usd>0.05?'#dc2626':e.usd>0.01?'#d97706':'#15803d'}">${fmtUsd(e.usd)}</td>
+          </tr>`;
+        });
+        document.getElementById('cost-rows').innerHTML = rows;
+      }
+    }).catch(() => {});
+}
+
+loadCostPanel();
+
+function clearCostLog() {
+  if (!confirm('¿Eliminar el historial de costos? Esta acción no se puede deshacer.')) return;
+  fetch('/api/token-costs-clear', {method:'POST'})
+    .then(r => r.json())
+    .then(d => { if (d.ok) loadCostPanel(); });
+}
+</script>
+{% endblock %}

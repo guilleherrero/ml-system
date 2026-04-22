@@ -1,0 +1,762 @@
+{% extends "base.html" %}
+{% block title %} — Repricing {{ alias }}{% endblock %}
+{% block content %}
+<style>
+  .rep-card { background:#fff; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.07); padding:18px 20px; margin-bottom:18px; }
+  .item-row { border:1px solid #e5e7eb; border-radius:8px; padding:10px 14px; margin-bottom:8px; background:#fff; }
+  .item-row.configurado { border-color:#bfdbfe; background:#eff6ff; }
+  .price-inp { width:110px; font-size:.82rem; }
+  .result-row { border-radius:8px; padding:10px 14px; margin-bottom:6px; background:#f8fafc; border-left:4px solid #e5e7eb; }
+  .result-row.sube { border-left-color:#10b981; }
+  .result-row.baja { border-left-color:#ef4444; }
+  .result-row.igual { border-left-color:#d1d5db; }
+  .delta-up { color:#059669; font-weight:700; }
+  .delta-down { color:#dc2626; font-weight:700; }
+  .delta-eq { color:#9ca3af; }
+  .comp-badge { background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
+  .tab-btn { border:none; background:none; padding:8px 18px; border-bottom:2px solid transparent; font-size:.875rem; color:#6b7280; cursor:pointer; }
+  .tab-btn.active { color:#2563eb; border-bottom-color:#2563eb; font-weight:600; }
+  .tab-pane { display:none; }
+  .tab-pane.active { display:block; }
+  #applyBtn { display:none; }
+  .chk-col { width:28px; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-tags me-2 text-primary"></i>Repricing automático</h1>
+    <div class="sub">{{ alias }}</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if items %}
+    <button class="btn btn-sm btn-outline-secondary" onclick="openSetupModal()">
+      <i class="bi bi-gear me-1"></i>Configurar precios
+    </button>
+    <button id="simBtn" class="btn btn-sm btn-primary" onclick="simular()">
+      <i class="bi bi-arrow-repeat me-1"></i>Simular repricing
+    </button>
+    <button id="applyBtn" class="btn btn-sm btn-success" onclick="aplicar()">
+      <i class="bi bi-check2-circle me-1"></i>Aplicar cambios
+    </button>
+    {% else %}
+    <button class="btn btn-sm btn-primary" onclick="openSetupModal()">
+      <i class="bi bi-plus-circle me-1"></i>Configurar repricing
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Info banner ──────────────────────────────────────────────────────── -->
+<div class="alert alert-info d-flex gap-2 align-items-start mb-4 py-2">
+  <i class="bi bi-info-circle-fill mt-1 flex-shrink-0"></i>
+  <div class="small">
+    <strong>Cómo funciona:</strong>
+    Si hay competidor más barato → bajás 1% por debajo de él (nunca bajo tu mínimo) &nbsp;·&nbsp;
+    Si no hay competidores → subís 2% (hasta tu máximo) &nbsp;·&nbsp;
+    Si el competidor es 5%+ más caro → subís hacia él.
+  </div>
+</div>
+
+<!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
+<div style="border-bottom:1px solid #e5e7eb;margin-bottom:18px">
+  <button class="tab-btn active" onclick="showTab('reglas')">
+    <i class="bi bi-sliders me-1"></i>Reglas configuradas ({{ items|length }})
+  </button>
+  <button class="tab-btn" id="tab-resultados" onclick="showTab('resultados')" style="display:none">
+    <i class="bi bi-bar-chart me-1"></i>Resultados simulación
+  </button>
+</div>
+
+<!-- ── Tab: Reglas ───────────────────────────────────────────────────────── -->
+<div id="pane-reglas" class="tab-pane active">
+{% if not items %}
+<div class="no-data">
+  <i class="bi bi-tags" style="font-size:2.5rem;color:#d1d5db;display:block;margin-bottom:12px"></i>
+  <div class="fw-semibold mb-1">Sin reglas configuradas</div>
+  <div class="small text-muted mb-3">Configurá precios mínimos y máximos para que el sistema pueda ajustar automáticamente.</div>
+  <button class="btn btn-primary btn-sm" onclick="openSetupModal()">
+    <i class="bi bi-plus-circle me-1"></i>Configurar ahora
+  </button>
+</div>
+
+<div class="row g-3 mt-3">
+  <div class="col-md-4 text-center">
+    <div class="p-3 rounded" style="background:#fef9c3">
+      <i class="bi bi-graph-down-arrow" style="font-size:1.5rem;color:#d97706"></i>
+      <div class="fw-semibold mt-2 small">Hay competidor más barato</div>
+      <div class="small text-muted mt-1">Tu precio = precio del competidor × 0.99</div>
+    </div>
+  </div>
+  <div class="col-md-4 text-center">
+    <div class="p-3 rounded" style="background:#d1fae5">
+      <i class="bi bi-graph-up-arrow" style="font-size:1.5rem;color:#059669"></i>
+      <div class="fw-semibold mt-2 small">No hay competidores</div>
+      <div class="small text-muted mt-1">Tu precio sube 2% (hasta tu máximo)</div>
+    </div>
+  </div>
+  <div class="col-md-4 text-center">
+    <div class="p-3 rounded" style="background:#fee2e2">
+      <i class="bi bi-shield-check" style="font-size:1.5rem;color:#dc2626"></i>
+      <div class="fw-semibold mt-2 small">Protección de margen</div>
+      <div class="small text-muted mt-1">Nunca baja del precio mínimo configurado</div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="rep-card p-0">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Publicación</th>
+          <th class="text-end">Precio actual</th>
+          <th class="text-end">Precio mín.</th>
+          <th class="text-end">Precio máx.</th>
+          <th class="text-center">Posición en rango</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            <div class="text-truncate fw-semibold" style="max-width:240px" title="{{ item.titulo }}">{{ item.titulo }}</div>
+            <div class="text-muted" style="font-size:.7rem">{{ item.id }}</div>
+          </td>
+          <td class="text-end fw-semibold">${{ "{:,.0f}".format(item.precio) }}</td>
+          <td class="text-end text-danger">${{ "{:,.0f}".format(item.precio_min) }}</td>
+          <td class="text-end text-success">${{ "{:,.0f}".format(item.precio_max) }}</td>
+          <td class="text-center">
+            {% set rango = item.precio_max - item.precio_min %}
+            {% set pos = ((item.precio - item.precio_min) / rango * 100) if rango > 0 else 50 %}
+            <div style="width:100px;margin:0 auto">
+              <div class="progress" style="height:8px;border-radius:4px">
+                <div class="progress-bar {{ 'bg-danger' if pos < 20 else ('bg-success' if pos > 80 else 'bg-primary') }}"
+                     style="width:{{ [pos|int, 100]|min }}%"></div>
+              </div>
+              <div class="d-flex justify-content-between mt-1" style="font-size:.65rem;color:#9ca3af">
+                <span>mín</span><span>{{ pos|int }}%</span><span>máx</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <button class="btn btn-xs btn-outline-secondary"
+                    onclick="editItem('{{ item.id }}','{{ item.titulo|replace("'","\\'") }}',{{ item.precio }},{{ item.precio_min }},{{ item.precio_max }})">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+</div>
+
+<!-- ── Tab: Resultados ───────────────────────────────────────────────────── -->
+<div id="pane-resultados" class="tab-pane">
+  <div id="sim-loading" style="display:none" class="text-center py-5">
+    <div class="spinner-border text-primary"></div>
+    <div class="mt-3 text-muted small">Consultando competidores y calculando precios...</div>
+  </div>
+  <div id="sim-results"></div>
+</div>
+
+<!-- ── Modal: Setup / Editar item ────────────────────────────────────────── -->
+<div class="modal fade" id="setupModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-gear me-2"></i>Configurar repricing — {{ alias }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-loading" class="text-center py-4">
+          <div class="spinner-border text-primary"></div>
+          <div class="mt-2 text-muted small">Cargando publicaciones activas...</div>
+        </div>
+        <div id="modal-content" style="display:none">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="small text-muted">
+              Definí el precio mínimo (tu piso de rentabilidad) y precio máximo (techo competitivo) para cada publicación.
+            </div>
+            <div class="d-flex gap-2">
+              <input type="text" id="modal-search" class="form-control form-control-sm" placeholder="Buscar..." style="width:200px" oninput="filterModalItems()">
+              <button class="btn btn-sm btn-outline-secondary" onclick="selectAll()">Seleccionar todo</button>
+            </div>
+          </div>
+
+          <!-- Bulk config row -->
+          <div class="p-3 rounded mb-3" style="background:#f0f9ff;border:1px solid #bae6fd">
+            <div class="fw-semibold small mb-2"><i class="bi bi-lightning-charge me-1 text-primary"></i>Configuración masiva para items seleccionados</div>
+            <div class="row g-2 align-items-end">
+              <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">% mínimo bajo precio actual</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" id="bulk-min-pct" class="form-control" style="width:80px" value="15" min="1" max="50">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-auto">
+                <label class="form-label form-label-sm mb-1">% máximo sobre precio actual</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" id="bulk-max-pct" class="form-control" style="width:80px" value="20" min="1" max="100">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-sm btn-primary" onclick="applyBulk()">
+                  <i class="bi bi-check-all me-1"></i>Aplicar a seleccionados
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive" style="max-height:420px;overflow-y:auto">
+            <table class="table table-sm mb-0" id="items-table">
+              <thead style="position:sticky;top:0;background:#fff;z-index:1">
+                <tr>
+                  <th class="chk-col"><input type="checkbox" id="chk-all" onchange="toggleAll(this)"></th>
+                  <th>Publicación</th>
+                  <th class="text-end">Tu precio</th>
+                  <th class="text-end">Buy box actual</th>
+                  <th class="text-end">Precio mín. ($)</th>
+                  <th class="text-end">Precio máx. ($)</th>
+                </tr>
+              </thead>
+              <tbody id="items-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="modal-selected-count" class="text-muted small me-auto"></span>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveConfig()" id="save-btn" disabled>
+          <i class="bi bi-floppy me-1"></i>Guardar configuración
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const ALIAS = {{ alias | tojson }};
+let allModalItems = [];
+let simResults = [];
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('pane-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+
+// ── Simulación ────────────────────────────────────────────────────────────────
+async function simular() {
+  const btn = document.getElementById('simBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Simulando...';
+
+  // Show results tab
+  const tabRes = document.getElementById('tab-resultados');
+  tabRes.style.display = '';
+  showTab('resultados');
+  document.querySelectorAll('.tab-btn')[1].classList.add('active');
+  document.querySelectorAll('.tab-btn')[0].classList.remove('active');
+
+  document.getElementById('sim-loading').style.display = '';
+  document.getElementById('sim-results').innerHTML = '';
+  document.getElementById('applyBtn').style.display = 'none';
+
+  try {
+    const r = await fetch(`/api/repricing-simulate/${encodeURIComponent(ALIAS)}`);
+    const data = await r.json();
+
+    document.getElementById('sim-loading').style.display = 'none';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Simular repricing';
+
+    if (!data.ok) {
+      document.getElementById('sim-results').innerHTML =
+        `<div class="alert alert-danger">${data.error}</div>`;
+      return;
+    }
+
+    simResults = data.results;
+    renderSimResults(data);
+
+  } catch(e) {
+    document.getElementById('sim-loading').style.display = 'none';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Simular repricing';
+    document.getElementById('sim-results').innerHTML =
+      `<div class="alert alert-danger">Error de conexión: ${e.message}</div>`;
+  }
+}
+
+function fmt(n) {
+  return new Intl.NumberFormat('es-AR', {maximumFractionDigits:0}).format(n);
+}
+
+function renderSimResults(data) {
+  const results = data.results;
+  const cambios = results.filter(r => r.cambia);
+  const subidas = results.filter(r => r.delta > 0.5);
+  const bajadas = results.filter(r => r.delta < -0.5);
+  const iguales = results.filter(r => !r.cambia);
+  const enCatalogo = results.filter(r => r.is_catalog);
+  const ganandoBBX = results.filter(r => r.we_win_buy_box);
+
+  let html = `
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-2">
+        <div class="stat-box text-center">
+          <div class="num blue">${results.length}</div>
+          <div class="lbl">Analizados</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="stat-box text-center">
+          <div class="num" style="color:#0891b2">${enCatalogo.length}</div>
+          <div class="lbl">En catálogo</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="stat-box text-center">
+          <div class="num ok">${ganandoBBX.length}</div>
+          <div class="lbl">Ganando buy box</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="stat-box text-center">
+          <div class="num ok">${subidas.length}</div>
+          <div class="lbl">Suben precio</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="stat-box text-center">
+          <div class="num crit">${bajadas.length}</div>
+          <div class="lbl">Bajan precio</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="stat-box text-center">
+          <div class="num" style="color:#9ca3af">${iguales.length}</div>
+          <div class="lbl">Sin cambio</div>
+        </div>
+      </div>
+    </div>`;
+
+  // Leyenda calidad de comparación
+  const exact = results.filter(r => r.match_quality === 'exact').length;
+  const approx = results.filter(r => r.match_quality === 'approximate').length;
+  const noData = results.filter(r => r.match_quality === 'none').length;
+  html += `<div class="d-flex gap-3 mb-3 flex-wrap" style="font-size:.75rem">
+    ${exact ? `<span><span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-weight:600">★ Catálogo (${exact})</span> Comparación exacta del mismo producto</span>` : ''}
+    ${approx ? `<span><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-weight:600">~ Categoría (${approx})</span> Precio más bajo de la categoría (puede ser otro producto)</span>` : ''}
+    ${noData ? `<span><span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:4px;font-weight:600">Sin datos (${noData})</span></span>` : ''}
+  </div>`;
+
+  if (cambios.length === 0) {
+    html += `<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>
+      Todos los precios están optimizados. No se requieren cambios.</div>`;
+  } else {
+    html += `<div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="fw-semibold">${cambios.length} cambio${cambios.length !== 1 ? 's' : ''} sugerido${cambios.length !== 1 ? 's' : ''}</div>
+      <div class="d-flex gap-2 align-items-center">
+        <label class="small text-muted"><input type="checkbox" id="chk-all-apply" onchange="toggleApplyAll(this)" checked class="me-1">Seleccionar todos</label>
+      </div>
+    </div>`;
+  }
+
+  // Items con cambio primero, luego catálogo, luego el resto
+  const sorted = [...results].sort((a, b) => {
+    if (a.cambia !== b.cambia) return b.cambia - a.cambia;
+    if (a.is_catalog !== b.is_catalog) return b.is_catalog - a.is_catalog;
+    return Math.abs(b.delta) - Math.abs(a.delta);
+  });
+  html += '<div id="results-list">';
+  for (const r of sorted) {
+    const cls = r.delta > 0.5 ? 'sube' : r.delta < -0.5 ? 'baja' : 'igual';
+    const deltaStr = r.delta > 0.5
+      ? `<span class="delta-up">↑ +$${fmt(r.delta)}</span>`
+      : r.delta < -0.5
+      ? `<span class="delta-down">↓ -$${fmt(Math.abs(r.delta))}</span>`
+      : `<span class="delta-eq">— sin cambio</span>`;
+
+    // Badge competidor según tipo
+    let compStr;
+    if (r.is_catalog) {
+      const bbxIcon = r.we_win_buy_box
+        ? `<span style="background:#d1fae5;color:#065f46;border-radius:4px;padding:1px 6px;font-size:.7rem;font-weight:700">★ Ganás buy box</span>`
+        : `<span style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 6px;font-size:.7rem;font-weight:700">✗ No ganás buy box</span>`;
+      const compPrice = r.competidor
+        ? `<span class="comp-badge">Comp: $${fmt(r.competidor)}</span>` : '';
+      const sellers = r.total_sellers > 1 ? `<span class="text-muted" style="font-size:.68rem">${r.total_sellers} vendedores</span>` : '';
+      compStr = `${bbxIcon} ${compPrice} ${sellers}`;
+    } else if (r.competidor) {
+      compStr = `<span class="comp-badge"><i class="bi bi-person me-1"></i>Comp~: $${fmt(r.competidor)}</span>`;
+    } else {
+      compStr = `<span class="badge bg-light text-secondary border">Sin competidor</span>`;
+    }
+
+    // Badge tipo catálogo
+    const catBadge = r.is_catalog
+      ? `<span style="background:#cffafe;color:#0e7490;border-radius:4px;padding:1px 6px;font-size:.68rem;font-weight:600;margin-right:4px">Catálogo</span>`
+      : '';
+
+    const chkHtml = r.cambia
+      ? `<input type="checkbox" class="apply-chk" data-id="${r.id}" data-precio="${r.precio_nuevo}" checked onchange="updateApplyCount()">`
+      : `<i class="bi bi-dash text-muted"></i>`;
+
+    html += `
+      <div class="result-row ${cls} d-flex align-items-center gap-3">
+        <div class="chk-col flex-shrink-0">${chkHtml}</div>
+        <div style="flex:1;min-width:0">
+          <div class="fw-semibold text-truncate small" title="${r.titulo}">${catBadge}${r.titulo}</div>
+          <div class="text-muted" style="font-size:.7rem">${r.id} &nbsp;·&nbsp; ${r.razon}</div>
+        </div>
+        <div class="text-end flex-shrink-0">
+          <div class="small text-muted">Actual</div>
+          <div class="fw-semibold">$${fmt(r.precio_actual)}</div>
+        </div>
+        <div class="text-center flex-shrink-0 px-2">
+          <i class="bi bi-arrow-right text-muted"></i>
+        </div>
+        <div class="text-end flex-shrink-0">
+          <div class="small text-muted">Nuevo</div>
+          <div class="fw-bold">${r.cambia ? `$${fmt(r.precio_nuevo)}` : `<span class="text-muted">$${fmt(r.precio_nuevo)}</span>`}</div>
+        </div>
+        <div class="flex-shrink-0" style="width:160px;text-align:right">
+          ${deltaStr}<br><div class="mt-1">${compStr}</div>
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+
+  document.getElementById('sim-results').innerHTML = html;
+
+  if (cambios.length > 0) {
+    document.getElementById('applyBtn').style.display = '';
+    updateApplyCount();
+  }
+}
+
+function toggleApplyAll(chk) {
+  document.querySelectorAll('.apply-chk').forEach(c => c.checked = chk.checked);
+  updateApplyCount();
+}
+
+function updateApplyCount() {
+  const checked = document.querySelectorAll('.apply-chk:checked').length;
+  const btn = document.getElementById('applyBtn');
+  btn.textContent = checked > 0
+    ? `Aplicar ${checked} cambio${checked !== 1 ? 's' : ''} en ML`
+    : 'Aplicar cambios';
+  btn.disabled = checked === 0;
+  btn.style.display = '';
+  // Re-add icon
+  btn.innerHTML = `<i class="bi bi-check2-circle me-1"></i>${checked} cambio${checked !== 1 ? 's' : ''} → Aplicar en ML`;
+}
+
+// ── Aplicar cambios ───────────────────────────────────────────────────────────
+async function aplicar() {
+  const checked = document.querySelectorAll('.apply-chk:checked');
+  if (checked.length === 0) return;
+
+  if (!confirm(`¿Aplicar ${checked.length} cambio${checked.length !== 1 ? 's' : ''} de precio directamente en MercadoLibre?`)) return;
+
+  const btn = document.getElementById('applyBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+
+  const changes = Array.from(checked).map(c => ({
+    id: c.dataset.id,
+    precio_nuevo: parseFloat(c.dataset.precio),
+  }));
+
+  try {
+    const r = await fetch('/api/repricing-apply', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias: ALIAS, changes}),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      const errMsg = data.errors.length > 0
+        ? ` (${data.errors.length} error${data.errors.length !== 1 ? 'es' : ''})` : '';
+      showToast(`✓ ${data.applied} precio${data.applied !== 1 ? 's' : ''} actualizado${data.applied !== 1 ? 's' : ''} en ML${errMsg}`, data.errors.length ? 'warning' : 'success');
+      btn.innerHTML = `<i class="bi bi-check2-circle me-1"></i>${data.applied} aplicados`;
+      // Mark as applied
+      checked.forEach(c => {
+        c.closest('.result-row').style.opacity = '0.4';
+        c.disabled = true;
+      });
+      if (data.errors.length) {
+        let errHtml = '<div class="alert alert-warning mt-3"><strong>Errores:</strong><ul class="mb-0 mt-1">';
+        data.errors.forEach(e => { errHtml += `<li>${e.id}: ${e.error}</li>`; });
+        errHtml += '</ul></div>';
+        document.getElementById('sim-results').insertAdjacentHTML('afterbegin', errHtml);
+      }
+    } else {
+      showToast('Error: ' + data.error, 'danger');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Aplicar cambios';
+    }
+  } catch(e) {
+    showToast('Error de conexión', 'danger');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Aplicar cambios';
+  }
+}
+
+function showToast(msg, type='success') {
+  const t = document.createElement('div');
+  t.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3`;
+  t.style.cssText = 'z-index:9999;max-width:360px;box-shadow:0 4px 12px rgba(0,0,0,.15)';
+  t.innerHTML = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+// ── Setup modal ───────────────────────────────────────────────────────────────
+let modalLoaded = false;
+
+async function openSetupModal() {
+  const modal = new bootstrap.Modal(document.getElementById('setupModal'));
+  modal.show();
+  if (!modalLoaded) await loadModalItems();
+}
+
+async function editItem(id, titulo, precio, min, max) {
+  await openSetupModal();
+  // highlight the row
+  setTimeout(() => {
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if (row) {
+      row.scrollIntoView({behavior:'smooth', block:'center'});
+      row.style.background = '#fef9c3';
+      setTimeout(() => row.style.background = '', 2000);
+    }
+  }, 500);
+}
+
+async function loadModalItems() {
+  document.getElementById('modal-loading').style.display = '';
+  document.getElementById('modal-content').style.display = 'none';
+  document.getElementById('save-btn').disabled = true;
+
+  try {
+    const r = await fetch(`/api/repricing-items/${encodeURIComponent(ALIAS)}`);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    allModalItems = data.items;
+    renderModalItems(allModalItems);
+    modalLoaded = true;
+  } catch(e) {
+    document.getElementById('modal-loading').innerHTML =
+      `<div class="alert alert-danger">Error al cargar: ${e.message}</div>`;
+  }
+}
+
+function renderModalItems(items) {
+  // Mostrar solo activas (las pausadas de catálogo se usan internamente para repricing)
+  const visible = items.filter(i => i.status === 'active' || i.is_catalog);
+
+  // Catálogo primero, luego configurados, luego el resto
+  const sorted = [...visible].sort((a, b) => {
+    if (a.is_catalog !== b.is_catalog) return b.is_catalog - a.is_catalog;
+    if (a.configurado !== b.configurado) return b.configurado - a.configurado;
+    return a.titulo.localeCompare(b.titulo);
+  });
+
+  const catalogCount = sorted.filter(i => i.is_catalog).length;
+  const tbody = document.getElementById('items-tbody');
+
+  tbody.innerHTML = sorted.map(it => {
+    const catBadge = it.is_catalog
+      ? `<span style="background:#cffafe;color:#0e7490;border-radius:3px;padding:0 5px;font-size:.6rem;font-weight:700">CATÁLOGO</span> `
+      : '';
+    const statusBadge = it.status === 'paused'
+      ? `<span style="background:#fef3c7;color:#92400e;border-radius:3px;padding:0 5px;font-size:.6rem">pausada</span> `
+      : '';
+    const confBadge = it.configurado
+      ? `<span class="badge bg-primary" style="font-size:.6rem">configurado</span>`
+      : '';
+
+    // Columna buy box
+    let buyBoxCell = '<td class="text-end text-muted" style="font-size:.75rem">—</td>';
+    if (it.is_catalog && it.buy_box_price) {
+      const diff = it.precio - it.buy_box_price;
+      const diffPct = ((diff / it.buy_box_price) * 100).toFixed(1);
+      const bbxBadge = it.we_win_buy_box
+        ? `<span style="background:#d1fae5;color:#065f46;border-radius:3px;padding:0 5px;font-size:.6rem;font-weight:700">★ Vos ganás</span>`
+        : `<span style="background:#fee2e2;color:#991b1b;border-radius:3px;padding:0 5px;font-size:.6rem;font-weight:700">✗ Otro gana</span>`;
+      const diffStr = diff > 0
+        ? `<span style="color:#dc2626;font-size:.68rem">+$${fmt(diff)} (${diffPct}% más caro)</span>`
+        : diff < 0
+        ? `<span style="color:#059669;font-size:.68rem">-$${fmt(Math.abs(diff))} (más barato)</span>`
+        : `<span style="color:#6b7280;font-size:.68rem">igual</span>`;
+      const sellers = it.buy_box_winners > 0 ? `<div style="font-size:.65rem;color:#9ca3af">${it.buy_box_winners} vendedores</div>` : '';
+      buyBoxCell = `<td class="text-end" style="font-size:.75rem">
+        <div class="fw-semibold">$${fmt(it.buy_box_price)}</div>
+        <div>${bbxBadge}</div>
+        <div>${diffStr}</div>
+        ${sellers}
+      </td>`;
+    } else if (it.is_catalog) {
+      buyBoxCell = '<td class="text-end text-muted" style="font-size:.75rem"><span style="font-size:.7rem">Sin datos</span></td>';
+    }
+
+    return `
+    <tr data-id="${it.id}" data-titulo="${it.titulo.replace(/"/g,'&quot;')}"
+        data-precio="${it.precio}" class="${it.configurado ? 'table-primary' : ''}">
+      <td><input type="checkbox" class="item-chk" data-id="${it.id}" onchange="updateModalCount()"></td>
+      <td>
+        <div class="fw-semibold text-truncate" style="max-width:220px;font-size:.82rem" title="${it.titulo}">${catBadge}${it.titulo}</div>
+        <div class="text-muted" style="font-size:.68rem">${it.id} ${statusBadge}${confBadge}</div>
+      </td>
+      <td class="text-end fw-semibold" style="font-size:.82rem">$${fmt(it.precio)}</td>
+      ${buyBoxCell}
+      <td class="text-end">
+        <input type="number" class="form-control form-control-sm price-inp text-end min-inp"
+               data-id="${it.id}" value="${it.precio_min}" min="0" step="100"
+               oninput="validatePrices(this)" style="display:inline-block">
+      </td>
+      <td class="text-end">
+        <input type="number" class="form-control form-control-sm price-inp text-end max-inp"
+               data-id="${it.id}" value="${it.precio_max}" min="0" step="100"
+               oninput="validatePrices(this)" style="display:inline-block">
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Actualizar contador del tab y mostrar info catálogo
+  document.getElementById('modal-loading').style.display = 'none';
+  document.getElementById('modal-content').style.display = '';
+  document.getElementById('save-btn').disabled = false;
+
+  // Mostrar resumen arriba del modal
+  const existingInfo = document.getElementById('catalog-info-banner');
+  if (existingInfo) existingInfo.remove();
+  if (catalogCount > 0) {
+    const banner = document.createElement('div');
+    banner.id = 'catalog-info-banner';
+    banner.className = 'alert alert-info py-2 small mb-3';
+    banner.innerHTML = `<i class="bi bi-info-circle me-2"></i><strong>${catalogCount} publicaciones de catálogo</strong> encontradas. Para estas, el sistema compara contra todos los vendedores del mismo producto exacto en ML.`;
+    document.getElementById('items-table').parentElement.insertAdjacentElement('beforebegin', banner);
+  }
+
+  updateModalCount();
+}
+
+function validatePrices(inp) {
+  const row = inp.closest('tr');
+  const minInp = row.querySelector('.min-inp');
+  const maxInp = row.querySelector('.max-inp');
+  if (parseFloat(minInp.value) > parseFloat(maxInp.value)) {
+    minInp.classList.add('is-invalid');
+    maxInp.classList.add('is-invalid');
+  } else {
+    minInp.classList.remove('is-invalid');
+    maxInp.classList.remove('is-invalid');
+  }
+}
+
+function filterModalItems() {
+  const q = document.getElementById('modal-search').value.toLowerCase();
+  document.querySelectorAll('#items-tbody tr').forEach(row => {
+    const title = row.dataset.titulo.toLowerCase();
+    const id = row.dataset.id.toLowerCase();
+    row.style.display = (title.includes(q) || id.includes(q)) ? '' : 'none';
+  });
+}
+
+function selectAll() {
+  document.querySelectorAll('.item-chk').forEach(c => { c.checked = true; });
+  document.getElementById('chk-all').checked = true;
+  updateModalCount();
+}
+
+function toggleAll(chk) {
+  document.querySelectorAll('.item-chk:not([style*="display: none"])').forEach(c => {
+    const row = c.closest('tr');
+    if (row.style.display !== 'none') c.checked = chk.checked;
+  });
+  updateModalCount();
+}
+
+function updateModalCount() {
+  const n = document.querySelectorAll('.item-chk:checked').length;
+  document.getElementById('modal-selected-count').textContent =
+    n > 0 ? `${n} publicación${n !== 1 ? 'es' : ''} seleccionada${n !== 1 ? 's' : ''}` : '';
+}
+
+function applyBulk() {
+  const minPct = parseFloat(document.getElementById('bulk-min-pct').value) / 100;
+  const maxPct = parseFloat(document.getElementById('bulk-max-pct').value) / 100;
+  document.querySelectorAll('.item-chk:checked').forEach(chk => {
+    const id = chk.dataset.id;
+    const row = chk.closest('tr');
+    const precio = parseFloat(row.dataset.precio);
+    row.querySelector('.min-inp').value = Math.round(precio * (1 - minPct));
+    row.querySelector('.max-inp').value = Math.round(precio * (1 + maxPct));
+  });
+}
+
+async function saveConfig() {
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Guardando...';
+
+  // Collect only items with checked checkbox OR already configured
+  const items = [];
+  document.querySelectorAll('#items-tbody tr').forEach(row => {
+    const chk = row.querySelector('.item-chk');
+    const isConf = row.classList.contains('table-primary');
+    if (chk.checked || isConf) {
+      items.push({
+        id: row.dataset.id,
+        titulo: row.dataset.titulo,
+        precio: parseFloat(row.dataset.precio),
+        precio_min: parseFloat(row.querySelector('.min-inp').value),
+        precio_max: parseFloat(row.querySelector('.max-inp').value),
+      });
+    }
+  });
+
+  if (items.length === 0) {
+    showToast('Seleccioná al menos una publicación', 'warning');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Guardar configuración';
+    return;
+  }
+
+  try {
+    const r = await fetch('/api/repricing-config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias: ALIAS, items}),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      showToast(`✓ ${data.saved} publicaciones guardadas`, 'success');
+      bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      throw new Error(data.error);
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'danger');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Guardar configuración';
+  }
+}
+</script>
+{% endblock %}

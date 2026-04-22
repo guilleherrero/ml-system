@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %} — Funnel de Conversión {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+.diag-pill { font-size:.68rem; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+.diag-trafico_sin_venta { background:#fee2e2; color:#dc2626; }
+.diag-conversion_baja   { background:#fef3c7; color:#d97706; }
+.diag-preguntas_sin_venta { background:#fef3c7; color:#d97706; }
+.diag-sin_trafico       { background:#f1f5f9; color:#64748b; }
+.diag-revisar           { background:#dbeafe; color:#2563eb; }
+.diag-normal            { background:#dcfce7; color:#15803d; }
+.diag-excelente         { background:#dcfce7; color:#15803d; }
+
+.funnel-row { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.85rem 1rem; margin-bottom:.6rem; }
+.funnel-row.critico { border-left:4px solid #ef4444; }
+.funnel-row.advertencia { border-left:4px solid #f59e0b; }
+.funnel-row.ok { border-left:4px solid #10b981; }
+.funnel-row.gris { border-left:4px solid #cbd5e1; }
+
+.funnel-steps { display:flex; align-items:center; gap:.3rem; flex-wrap:wrap; margin:.5rem 0; }
+.f-step { text-align:center; min-width:70px; }
+.f-step .f-val { font-size:1rem; font-weight:800; color:#1e293b; }
+.f-step .f-lbl { font-size:.62rem; color:#94a3b8; }
+.f-arrow { color:#cbd5e1; font-size:.8rem; }
+.f-rate  { font-size:.7rem; font-weight:700; padding:1px 6px; border-radius:10px; }
+.f-rate.ok  { background:#dcfce7; color:#15803d; }
+.f-rate.warn { background:#fef3c7; color:#d97706; }
+.f-rate.bad  { background:#fee2e2; color:#dc2626; }
+
+.accion-box { font-size:.78rem; color:#4b5563; background:#f8fafc; border-radius:6px; padding:.4rem .65rem; margin-top:.4rem; }
+
+.filter-pill { border:1px solid #e5e7eb; border-radius:20px; padding:.28rem .75rem; font-size:.75rem; cursor:pointer; color:#374151; background:#fff; transition:all .15s; white-space:nowrap; }
+.filter-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
+.filter-pill.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
+
+.skel { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:shimmer 1.3s infinite; border-radius:6px; display:block; }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-funnel me-2 text-primary"></i>Funnel de conversión</h1>
+    <div class="sub">{{ alias }} — visitas → preguntas → ventas · últimos 30 días</div>
+  </div>
+  <a href="/optimizaciones/{{ alias }}" class="btn btn-sm btn-primary">
+    <i class="bi bi-stars me-1"></i>Optimizar IA
+  </a>
+</div>
+
+<!-- ══ RESUMEN ══════════════════════════════════════════════════ -->
+<div class="row g-3 mb-3" id="resumen-funnel">
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3" style="border-top:3px solid #ef4444">
+      <div style="font-size:1.8rem;font-weight:800;color:#dc2626" id="cnt-critico"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
+      <div style="font-size:.72rem;color:#64748b;font-weight:600">TRÁFICO SIN VENTA</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3" style="border-top:3px solid #f59e0b">
+      <div style="font-size:1.8rem;font-weight:800;color:#d97706" id="cnt-warn"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
+      <div style="font-size:.72rem;color:#64748b;font-weight:600">CONVERSIÓN BAJA</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3" style="border-top:3px solid #10b981">
+      <div style="font-size:1.8rem;font-weight:800;color:#059669" id="cnt-ok"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
+      <div style="font-size:.72rem;color:#64748b;font-weight:600">CONVIRTIENDO BIEN</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3" style="border-top:3px solid #2563eb">
+      <div style="font-size:1.8rem;font-weight:800;color:#1d4ed8" id="cnt-total"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
+      <div style="font-size:.72rem;color:#64748b;font-weight:600">PUBLICACIONES</div>
+    </div>
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="d-flex gap-2 flex-wrap mb-3" id="filtros">
+  <button class="filter-pill active" onclick="filtrar('todos',this)">Todos</button>
+  <button class="filter-pill" onclick="filtrar('critico',this)" style="border-color:#fecaca">
+    <i class="bi bi-exclamation-octagon me-1 text-danger"></i>Críticos
+  </button>
+  <button class="filter-pill" onclick="filtrar('advertencia',this)" style="border-color:#fde68a">
+    <i class="bi bi-exclamation-triangle me-1 text-warning"></i>A mejorar
+  </button>
+  <button class="filter-pill" onclick="filtrar('ok',this)" style="border-color:#bbf7d0">
+    <i class="bi bi-check-circle me-1 text-success"></i>Bien
+  </button>
+</div>
+
+<!-- Listado -->
+<div id="funnel-list">
+  {% for i in range(6) %}
+  <div class="funnel-row">
+    <div class="skel" style="height:14px;width:60%;margin-bottom:8px">&nbsp;</div>
+    <div class="skel" style="height:10px;width:80%">&nbsp;</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const alias = {{ alias | tojson }};
+
+const DIAG_LABELS = {
+  trafico_sin_venta:    'Tráfico sin venta',
+  conversion_baja:      'Conversión baja',
+  preguntas_sin_venta:  'Preguntas sin cierre',
+  sin_trafico:          'Sin tráfico',
+  revisar:              'Pocos datos',
+  normal:               'Normal',
+  excelente:            'Excelente',
+};
+
+const DIAG_GRUPO = {
+  trafico_sin_venta:   'critico',
+  conversion_baja:     'advertencia',
+  preguntas_sin_venta: 'advertencia',
+  sin_trafico:         'gris',
+  revisar:             'gris',
+  normal:              'ok',
+  excelente:           'ok',
+};
+
+function rateClass(pct) {
+  if (pct === 0) return 'bad';
+  if (pct < 1)   return 'warn';
+  return 'ok';
+}
+
+fetch(`/api/funnel/${encodeURIComponent(alias)}`)
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) {
+      document.getElementById('funnel-list').innerHTML = `<div class="alert alert-warning">Error: ${d.error}</div>`;
+      return;
+    }
+
+    const items = d.items;
+    const criticos    = items.filter(i => DIAG_GRUPO[i.diagnostico] === 'critico').length;
+    const advertencia = items.filter(i => DIAG_GRUPO[i.diagnostico] === 'advertencia').length;
+    const ok          = items.filter(i => DIAG_GRUPO[i.diagnostico] === 'ok').length;
+
+    document.getElementById('cnt-critico').textContent = criticos;
+    document.getElementById('cnt-warn').textContent    = advertencia;
+    document.getElementById('cnt-ok').textContent      = ok;
+    document.getElementById('cnt-total').textContent   = items.length;
+
+    const mlUrl = id => `https://articulo.mercadolibre.com.ar/-${id.replace('MLA','')}-_JM`;
+
+    let html = '';
+    items.forEach(item => {
+      const grupo = DIAG_GRUPO[item.diagnostico] || 'gris';
+      const diagLabel = DIAG_LABELS[item.diagnostico] || item.diagnostico;
+
+      html += `
+      <div class="funnel-row ${grupo}" data-grupo="${grupo}">
+        <div class="d-flex align-items-start gap-2 flex-wrap">
+          <span class="diag-pill diag-${item.diagnostico}">${diagLabel}</span>
+          <div class="flex-grow-1 min-w-0">
+            <div style="font-weight:600;font-size:.88rem;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                 title="${item.titulo}">${item.titulo}</div>
+          </div>
+          <a href="${mlUrl(item.item_id)}" target="_blank"
+             style="font-size:.7rem;color:#64748b;text-decoration:none;flex-shrink:0"
+             onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#64748b'">
+            ML →
+          </a>
+        </div>
+
+        <div class="funnel-steps">
+          <div class="f-step">
+            <div class="f-val">${(item.visitas_30d||0).toLocaleString('es-AR')}</div>
+            <div class="f-lbl">Visitas</div>
+          </div>
+          <div class="f-arrow">→</div>
+          <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_preg) : ''}"
+                title="% visitas que preguntaron">
+            ${item.vis_to_preg}%
+          </span>
+          <div class="f-arrow">→</div>
+          <div class="f-step">
+            <div class="f-val">${(item.preguntas_30d||0)}</div>
+            <div class="f-lbl">Preguntas</div>
+          </div>
+          <div class="f-arrow">→</div>
+          <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_vta) : ''}"
+                title="% visitas que compraron">
+            ${item.vis_to_vta}%
+          </span>
+          <div class="f-arrow">→</div>
+          <div class="f-step">
+            <div class="f-val" style="color:#2563eb">${(item.ventas_30d||0)}</div>
+            <div class="f-lbl">Ventas</div>
+          </div>
+        </div>
+
+        <div class="accion-box">
+          <i class="bi bi-lightbulb me-1 text-warning"></i>${item.accion}
+          ${grupo === 'critico' || grupo === 'advertencia' ?
+            `<a href="/optimizaciones/${encodeURIComponent(alias)}" class="ms-2" style="font-size:.73rem;color:#2563eb;font-weight:600">Optimizar →</a>` : ''}
+        </div>
+      </div>`;
+    });
+
+    document.getElementById('funnel-list').innerHTML = html || '<div class="alert alert-info">No hay publicaciones activas.</div>';
+  })
+  .catch(e => {
+    document.getElementById('funnel-list').innerHTML = `<div class="alert alert-danger">Error: ${e}</div>`;
+  });
+
+function filtrar(tipo, btn) {
+  document.querySelectorAll('#filtros .filter-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#funnel-list .funnel-row').forEach(row => {
+    if (tipo === 'todos' || row.dataset.grupo === tipo) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+</script>
+{% endblock %}

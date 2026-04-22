@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sistema ML{% block title %}{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --sb: #0f1117;
+      --sb2: #161920;
+      --sbw: 240px;
+      --accent: #3b82f6;
+      --accent2: #6366f1;
+    }
+    body { background:#f0f2f7; font-family:'Segoe UI',system-ui,sans-serif; }
+
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    #sidebar {
+      width:var(--sbw); min-height:100vh; background:var(--sb);
+      position:fixed; top:0; left:0; z-index:100;
+      display:flex; flex-direction:column; overflow-y:auto;
+    }
+
+    /* Brand */
+    .brand {
+      padding:20px 18px 16px; border-bottom:1px solid #1e2128;
+      display:flex; align-items:center; gap:10px;
+    }
+    .brand-icon {
+      width:34px; height:34px; border-radius:9px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex; align-items:center; justify-content:center;
+      font-size:1rem; color:#fff; flex-shrink:0;
+    }
+    .brand-text { line-height:1.2; }
+    .brand-text .name { color:#fff; font-size:.95rem; font-weight:700; }
+    .brand-text .sub  { color:#4b5563; font-size:.65rem; text-transform:uppercase; letter-spacing:.06em; }
+
+    /* Section labels */
+    .sec {
+      padding:14px 18px 4px;
+      font-size:.6rem; text-transform:uppercase;
+      letter-spacing:.1em; color:#374151; font-weight:700;
+    }
+    .sec-account {
+      padding:12px 18px 2px 18px;
+      font-size:.72rem; font-weight:700; color:#fff;
+      display:flex; align-items:center; gap:6px;
+      border-top:1px solid #1e2128; margin-top:6px;
+    }
+    .sec-account i { color:var(--accent); font-size:.8rem; }
+
+    /* Nav links */
+    #sidebar nav a {
+      display:flex; align-items:center; gap:9px;
+      padding:7px 18px; color:#6b7280; text-decoration:none;
+      font-size:.845rem; transition:all .15s;
+      border-left:3px solid transparent; position:relative;
+    }
+    #sidebar nav a:hover  { color:#e5e7eb; background:#1a1d26; border-left-color:#374151; }
+    #sidebar nav a.active { color:#fff; background:#1a1d26; border-left-color:var(--accent); }
+    #sidebar nav a i { font-size:.9rem; width:16px; text-align:center; flex-shrink:0; }
+
+    /* Primary action link (Optimizar IA) */
+    #sidebar nav a.nav-primary {
+      color:#93c5fd; font-weight:600;
+    }
+    #sidebar nav a.nav-primary:hover,
+    #sidebar nav a.nav-primary.active {
+      color:#fff; background:#1e2d4a; border-left-color:var(--accent);
+    }
+    #sidebar nav a.nav-primary i { color:#60a5fa; }
+
+    /* Divider */
+    .nav-divider { height:1px; background:#1e2128; margin:6px 0; }
+
+    /* ── Main content ────────────────────────────────────────── */
+    #main { margin-left:var(--sbw); padding:28px 32px; }
+
+    .page-header {
+      margin-bottom:22px; display:flex;
+      align-items:center; justify-content:space-between;
+      flex-wrap:wrap; gap:10px;
+    }
+    .page-header h1 { font-size:1.3rem; font-weight:700; color:#111827; margin:0; }
+    .page-header .sub { font-size:.82rem; color:#6b7280; margin-top:2px; }
+
+    /* ── Cards ───────────────────────────────────────────────── */
+    .card { border:none; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.07); }
+    .card-header {
+      background:transparent; border-bottom:1px solid #f1f3f9;
+      font-weight:600; padding:13px 18px; font-size:.9rem;
+    }
+
+    /* ── Badges ──────────────────────────────────────────────── */
+    .badge-ok   { background:#d1fae5; color:#065f46; }
+    .badge-warn { background:#fef3c7; color:#92400e; }
+    .badge-crit { background:#fee2e2; color:#991b1b; }
+    .badge-dim  { background:#f3f4f6; color:#6b7280; }
+
+    /* ── Tables ──────────────────────────────────────────────── */
+    .table thead th {
+      font-size:.75rem; text-transform:uppercase;
+      letter-spacing:.05em; color:#6b7280;
+      border-bottom:2px solid #e5e7eb;
+    }
+    .table td { vertical-align:middle; font-size:.875rem; }
+    tr.row-crit td:first-child { border-left:3px solid #ef4444; }
+    tr.row-warn td:first-child { border-left:3px solid #f59e0b; }
+
+    /* ── Position pills ──────────────────────────────────────── */
+    .pos-top  { background:#d1fae5; color:#065f46; border-radius:4px; padding:1px 5px; font-weight:600; font-size:.8rem; }
+    .pos-mid  { background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 5px; font-size:.8rem; }
+    .pos-low  { color:#9ca3af; font-size:.8rem; }
+    .pos-none { color:#d1d5db; font-size:.8rem; }
+
+    /* ── Stat boxes ──────────────────────────────────────────── */
+    .stat-box { background:#fff; border-radius:12px; padding:16px 18px; box-shadow:0 1px 4px rgba(0,0,0,.07); }
+    .stat-box .num { font-size:1.75rem; font-weight:700; line-height:1; }
+    .stat-box .lbl { font-size:.75rem; color:#6b7280; margin-top:3px; }
+    .stat-box.crit .num { color:#ef4444; }
+    .stat-box.warn .num { color:#f59e0b; }
+    .stat-box.ok   .num { color:#10b981; }
+    .stat-box.blue .num { color:#3b82f6; }
+
+    /* ── Event cards ─────────────────────────────────────────── */
+    .event-card { border-radius:12px; padding:16px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.07); border-left:4px solid #e5e7eb; height:100%; }
+    .event-card.urgent { border-left-color:#ef4444; }
+    .event-card.soon   { border-left-color:#f59e0b; }
+    .event-card.plan   { border-left-color:#3b82f6; }
+
+    /* ── Misc ────────────────────────────────────────────────── */
+    .run-btn { font-size:.78rem; }
+    .btn-xs { padding:2px 8px; font-size:.75rem; }
+    .no-data { background:#f8fafc; border:2px dashed #e5e7eb; border-radius:10px; padding:32px; text-align:center; color:#9ca3af; }
+    .mod-card { display:block; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:14px 14px 12px; text-decoration:none; color:#111827; transition:box-shadow .15s,border-color .15s; height:100%; }
+    .mod-card:hover { box-shadow:0 4px 12px rgba(59,130,246,.15); border-color:#93c5fd; color:#1d4ed8; }
+    .mod-card i { font-size:1.4rem; display:block; margin-bottom:6px; }
+    .mod-card .mod-name { font-size:.85rem; font-weight:600; }
+    .mod-card .mod-desc { font-size:.73rem; color:#6b7280; margin-top:2px; }
+  </style>
+</head>
+<body>
+
+{% set accounts = accounts if accounts is defined else [] %}
+
+<div id="sidebar">
+
+  <!-- Brand -->
+  <div class="brand">
+    <div class="brand-icon"><i class="bi bi-stars"></i></div>
+    <div class="brand-text">
+      <div class="name">Sistema ML</div>
+      <div class="sub">Control total de cuentas</div>
+    </div>
+  </div>
+
+  <nav>
+
+    <!-- ── CONTROL GLOBAL ─────────────────────────────────────── -->
+    <div class="sec">Control</div>
+    <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
+      <i class="bi bi-speedometer2"></i> Command Center
+    </a>
+    <a href="/alertas" class="{{ 'active' if request.path == '/alertas' else '' }}" id="nav-alertas">
+      <i class="bi bi-bell"></i> Alertas
+      <span id="alertas-global-badge" style="display:none;background:#dc2626;color:#fff;border-radius:12px;padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
+    </a>
+
+    <!-- ── POR CUENTA ─────────────────────────────────────────── -->
+    {% if accounts %}
+    {% for acc in accounts %}
+
+    <div class="sec-account">
+      <i class="bi bi-shop"></i>{{ acc.alias }}
+    </div>
+
+    <!-- Publicaciones -->
+    <div class="sec">Publicaciones</div>
+    <a href="/ventas/{{ acc.alias }}" class="{{ 'active' if request.path == '/ventas/'~acc.alias else '' }}">
+      <i class="bi bi-bar-chart-line"></i> Ventas por Producto
+    </a>
+    <a href="/stock/{{ acc.alias }}" class="{{ 'active' if request.path == '/stock/'~acc.alias else '' }}">
+      <i class="bi bi-grid-1x2"></i> Mis Publicaciones
+    </a>
+    <a href="/salud/{{ acc.alias }}" class="{{ 'active' if request.path == '/salud/'~acc.alias else '' }}">
+      <i class="bi bi-heart-pulse"></i> Salud del Catálogo
+    </a>
+    <a href="/posiciones/{{ acc.alias }}" class="{{ 'active' if request.path == '/posiciones/'~acc.alias else '' }}">
+      <i class="bi bi-graph-up-arrow"></i> Monitor de Evolución
+    </a>
+
+    <!-- Inteligencia -->
+    <div class="sec">Inteligencia</div>
+    <a href="/optimizaciones/{{ acc.alias }}"
+       class="nav-primary {{ 'active' if request.path == '/optimizaciones/'~acc.alias else '' }}">
+      <i class="bi bi-stars"></i> Optimizar IA
+    </a>
+    <a href="/funnel/{{ acc.alias }}" class="{{ 'active' if request.path == '/funnel/'~acc.alias else '' }}">
+      <i class="bi bi-funnel"></i> Funnel de Conversión
+    </a>
+
+    <!-- Operaciones -->
+    <div class="sec">Operaciones</div>
+    <a href="/preguntas/{{ acc.alias }}" class="{{ 'active' if request.path == '/preguntas/'~acc.alias else '' }}"
+       id="nav-preguntas-{{ acc.alias | replace(' ','_') }}">
+      <i class="bi bi-chat-dots"></i> Preguntas IA
+      <span class="nav-q-badge" id="badge-{{ acc.alias | replace(' ','_') }}"
+            style="display:none;background:#dc2626;color:#fff;border-radius:12px;
+                   padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
+    </a>
+    <a href="/repricing/{{ acc.alias }}" class="{{ 'active' if request.path == '/repricing/'~acc.alias else '' }}">
+      <i class="bi bi-tags"></i> Repricing
+    </a>
+    <a href="/reputacion/{{ acc.alias }}" class="{{ 'active' if request.path == '/reputacion/'~acc.alias else '' }}">
+      <i class="bi bi-shield-check"></i> Reputación
+    </a>
+    {% endfor %}
+    {% endif %}
+
+    <!-- ── HERRAMIENTAS GLOBALES ──────────────────────────────── -->
+    <div class="nav-divider"></div>
+    <div class="sec">Herramientas</div>
+    <a href="/lanzar-nuevo" class="{{ 'active' if request.path in ['/lanzar-nuevo','/lanzamientos','/evaluar-producto'] else '' }}">
+      <i class="bi bi-rocket-takeoff"></i> Lanzar Producto
+    </a>
+    <a href="/meli-ads" class="nav-primary {{ 'active' if request.path == '/meli-ads' else '' }}">
+      <i class="bi bi-megaphone"></i> Meli ADS
+    </a>
+    <a href="/multicuenta" class="{{ 'active' if request.path == '/multicuenta' else '' }}">
+      <i class="bi bi-diagram-3"></i> Multicuenta
+    </a>
+
+    <div class="nav-divider"></div>
+    <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
+      <i class="bi bi-gear"></i> Configuración
+    </a>
+
+  </nav>
+</div>
+
+<div id="main">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+          {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+function runComando(comando, alias) {
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Corriendo...';
+
+  const tiempoEspera = {
+    'stock-rentabilidad': 180000,
+    'optimizar':          120000,
+    'competencia':        120000,
+    'todo':               180000,
+  };
+  const espera = tiempoEspera[comando] || 8000;
+
+  fetch('/api/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({comando, alias: alias || ''})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      let secsLeft = Math.round(espera / 1000);
+      const tick = setInterval(() => {
+        secsLeft--;
+        if (secsLeft > 0) {
+          btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${secsLeft}s...`;
+        } else {
+          clearInterval(tick);
+          location.reload();
+        }
+      }, 1000);
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '❌ Error';
+    }
+  });
+}
+</script>
+{% block scripts %}{% endblock %}
+<script>
+(function loadAlertasBadge() {
+  fetch('/api/alertas')
+    .then(r => r.json())
+    .then(data => {
+      const badge = document.getElementById('alertas-global-badge');
+      if (badge && data.urgentes > 0) {
+        badge.textContent = data.urgentes;
+        badge.style.display = 'inline-block';
+      }
+    }).catch(() => {});
+})();
+
+(function loadQuestionCounts() {
+  const aliases = [{% for acc in accounts %}{{ acc.alias | tojson }}{% if not loop.last %},{% endif %}{% endfor %}];
+  aliases.forEach(alias => {
+    const key = alias.replace(/\s+/g,'_');
+    fetch(`/api/preguntas-count/${encodeURIComponent(alias)}`)
+      .then(r => r.json())
+      .then(data => {
+        const badge = document.getElementById(`badge-${key}`);
+        if (badge && data.count > 0) {
+          badge.textContent = data.count;
+          badge.style.display = 'inline-block';
+        }
+      }).catch(() => {});
+  });
+})();
+</script>
+</body>
+</html>

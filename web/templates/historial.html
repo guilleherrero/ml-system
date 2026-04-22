@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %} — Historial {{ alias }}{% endblock %}
+{% block content %}
+<style>
+/* ── Trend badges ────────────────────────────────────────────────────────── */
+.trend-up   { background:#d1fae5; color:#065f46; border-radius:5px; padding:2px 8px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+.trend-down { background:#fee2e2; color:#991b1b; border-radius:5px; padding:2px 8px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+.trend-eq   { background:#f3f4f6; color:#6b7280; border-radius:5px; padding:2px 8px; font-size:.75rem; white-space:nowrap; }
+
+/* ── Position badge ──────────────────────────────────────────────────────── */
+.pos-badge { display:inline-flex; align-items:center; justify-content:center;
+  min-width:36px; height:36px; border-radius:8px; font-size:1rem; font-weight:800; }
+.pos-badge.top3  { background:#d1fae5; color:#065f46; border:2px solid #6ee7b7; }
+.pos-badge.top10 { background:#dbeafe; color:#1e40af; border:2px solid #93c5fd; }
+.pos-badge.top50 { background:#fef3c7; color:#92400e; border:2px solid #fcd34d; }
+.pos-badge.low   { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
+.pos-badge.out   { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; font-size:.65rem; }
+
+/* ── Publication row card ────────────────────────────────────────────────── */
+.pub-row { display:flex; align-items:center; gap:12px; padding:12px 16px;
+  border-bottom:1px solid #f1f5f9; transition:background .1s; }
+.pub-row:last-child { border-bottom:none; }
+.pub-row:hover { background:#f8fafc; }
+.pub-title { font-size:.85rem; font-weight:600; color:#1e293b; line-height:1.3;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; }
+.pub-id { font-size:.7rem; color:#94a3b8; margin-top:1px; }
+
+/* ── Mini sparkline ──────────────────────────────────────────────────────── */
+.sparkline { display:flex; align-items:flex-end; gap:2px; height:28px; }
+.spark-bar { width:6px; border-radius:2px 2px 0 0; min-height:3px; transition:height .2s; }
+
+/* ── Reputation pills ────────────────────────────────────────────────────── */
+.rep-pill { display:inline-flex; align-items:center; gap:4px; border-radius:5px;
+  padding:2px 8px; font-size:.75rem; font-weight:600; }
+.rep-ok   { background:#d1fae5; color:#065f46; }
+.rep-warn { background:#fef3c7; color:#92400e; }
+.rep-crit { background:#fee2e2; color:#991b1b; }
+
+/* ── Rep snapshot card ───────────────────────────────────────────────────── */
+.rep-snap { border-radius:10px; padding:14px 16px; text-align:center; }
+.rep-snap .rs-num { font-size:1.6rem; font-weight:800; line-height:1; }
+.rep-snap .rs-lbl { font-size:.68rem; color:#64748b; font-weight:600; margin-top:3px; text-transform:uppercase; letter-spacing:.04em; }
+.rep-snap.ok   { background:#f0fdf4; border:1px solid #86efac; }
+.rep-snap.ok   .rs-num { color:#16a34a; }
+.rep-snap.warn { background:#fefce8; border:1px solid #fde68a; }
+.rep-snap.warn .rs-num { color:#ca8a04; }
+.rep-snap.crit { background:#fef2f2; border:1px solid #fca5a5; }
+.rep-snap.crit .rs-num { color:#dc2626; }
+.rep-snap.dim  { background:#f8fafc; border:1px solid #e2e8f0; }
+.rep-snap.dim  .rs-num { color:#94a3b8; }
+
+/* ── Rep history row ─────────────────────────────────────────────────────── */
+.rep-row { display:flex; align-items:center; gap:12px; padding:10px 16px;
+  border-bottom:1px solid #f1f5f9; font-size:.83rem; }
+.rep-row:last-child { border-bottom:none; }
+.rep-date { font-size:.75rem; color:#94a3b8; min-width:80px; flex-shrink:0; }
+.delta-up   { color:#dc2626; font-weight:700; font-size:.72rem; }
+.delta-down { color:#16a34a; font-weight:700; font-size:.72rem; }
+.delta-eq   { color:#94a3b8; font-size:.72rem; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-clock-history me-2 text-primary"></i>Historial — {{ alias }}</h1>
+    <div class="sub">Posiciones y reputación · últimos {{ pos_dates|length }} días registrados</div>
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-sm btn-primary run-btn" onclick="runComando('posiciones','{{ alias }}')">
+      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar hoy
+    </button>
+  </div>
+</div>
+
+{% if not pos_items and not rep_snapshots %}
+<!-- ── Sin datos ──────────────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-body text-center py-5">
+    <i class="bi bi-graph-up" style="font-size:2.5rem;color:#94a3b8;display:block;margin-bottom:1rem"></i>
+    <h3 style="font-size:1.1rem;font-weight:600;color:#475569">Sin datos todavía</h3>
+    <p class="text-muted mb-4">
+      Hacé clic en <strong>"Actualizar hoy"</strong> y volvé mañana a ver la evolución.<br>
+      Cuantos más días seguidos lo corrás, más útil se vuelve.
+    </p>
+    <button class="btn btn-primary" onclick="runComando('posiciones','{{ alias }}')">
+      <i class="bi bi-arrow-clockwise me-2"></i>Registrar posiciones de hoy
+    </button>
+  </div>
+</div>
+
+{% else %}
+
+{# ── Variables útiles ──────────────────────────────────────────────────── #}
+{% set items_con_dato = pos_items | selectattr('has_data') | list %}
+{% set items_sin_dato = pos_items | rejectattr('has_data') | list %}
+{% set mejoraron  = items_con_dato | selectattr('tendencia') | selectattr('tendencia', 'lt', -2) | list %}
+{% set empeoraron = items_con_dato | selectattr('tendencia') | selectattr('tendencia', 'gt', 2)  | list %}
+{% set en_top10   = items_con_dato | selectattr('best', 'le', 10) | list %}
+
+<!-- ── Resumen rápido ─────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-box blue">
+      <div class="num">{{ pos_total }}</div>
+      <div class="lbl">Publicaciones activas</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-box {{ 'ok' if en_top10|length > 0 else '' }}">
+      <div class="num">{{ en_top10|length }}</div>
+      <div class="lbl">En top 10</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-box {{ 'ok' if mejoraron|length > 0 else '' }}">
+      <div class="num">{{ mejoraron|length }}</div>
+      <div class="lbl">Subieron posición</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-box {{ 'crit' if empeoraron|length > 3 else ('warn' if empeoraron|length > 0 else '') }}">
+      <div class="num">{{ empeoraron|length }}</div>
+      <div class="lbl">Cayeron posición</div>
+    </div>
+  </div>
+</div>
+
+{% if items_con_dato %}
+<!-- ── Publicaciones con posición visible ─────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header">
+    <i class="bi bi-list-check me-2 text-success"></i>
+    <span>Posición en el buscador de MercadoLibre — {{ items_con_dato|length }} publicaciones</span>
+  </div>
+
+  <!-- Explicación rápida -->
+  <div style="padding:10px 16px;background:#f0f9ff;border-bottom:1px solid #bae6fd;font-size:.78rem;color:#0369a1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <i class="bi bi-info-circle-fill flex-shrink-0"></i>
+    <span>
+      El <strong>número de posición</strong> es el lugar donde aparece tu publicación cuando alguien busca ese producto en ML.
+      <strong>#1 = primero en resultados</strong> (máxima visibilidad).
+      <strong>#50 = página 3 o más</strong> (casi nadie llega).
+      Cuanto más bajo el número, mejor.
+    </span>
+  </div>
+
+  <!-- Leyenda de colores -->
+  <div style="padding:8px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:.68rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Cómo leer los colores:</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.75rem">
+      <span style="background:#d1fae5;color:#065f46;border-radius:5px;padding:2px 8px;font-weight:700">#1–3</span>
+      Primeros 3 resultados — excelente
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.75rem">
+      <span style="background:#dbeafe;color:#1e40af;border-radius:5px;padding:2px 8px;font-weight:700">#4–10</span>
+      Primera página — buena visibilidad
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.75rem">
+      <span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:2px 8px;font-weight:700">#11–50</span>
+      Páginas 2 y 3 — poca visibilidad
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:.75rem">
+      <span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:2px 8px;font-weight:700">+200</span>
+      No aparece en búsquedas — sin visitas
+    </span>
+  </div>
+
+  <div class="card-body p-0">
+
+    {% for item in items_con_dato | sort(attribute='best') %}
+    {% set last_real = item.positions | reject('none') | reject('equalto', 999) | list %}
+    {% set latest_pos = last_real[-1] if last_real else none %}
+    {% set has_positions = last_real | length > 0 %}
+
+    <div class="pub-row">
+
+      <!-- Posición actual en el buscador -->
+      <div style="flex-shrink:0;text-align:center" title="Posición actual en el buscador de MercadoLibre">
+        <div style="font-size:.55rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px">Posición<br>actual</div>
+        {% if latest_pos is not none %}
+          {% if latest_pos <= 3 %}
+            <div class="pos-badge top3">{{ latest_pos }}</div>
+          {% elif latest_pos <= 10 %}
+            <div class="pos-badge top10">{{ latest_pos }}</div>
+          {% elif latest_pos <= 50 %}
+            <div class="pos-badge top50">{{ latest_pos }}</div>
+          {% else %}
+            <div class="pos-badge low">{{ latest_pos }}</div>
+          {% endif %}
+        {% else %}
+          <div class="pos-badge out">+200</div>
+        {% endif %}
+      </div>
+
+      <!-- Título y link -->
+      <div style="flex:1;min-width:0">
+        <div class="pub-title" title="{{ item.title }}">{{ item.title }}</div>
+        <div class="pub-id">
+          <a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] if item.id.startswith('MLA') else item.id }}"
+             target="_blank" style="color:#94a3b8;text-decoration:none">
+            {{ item.id }} <i class="bi bi-box-arrow-up-right" style="font-size:.6rem"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Mejor posición histórica -->
+      <div style="flex-shrink:0;text-align:center;min-width:70px" title="La mejor posición que tuvo esta publicación desde que empezaste a registrar datos">
+        <div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Mejor posición</div>
+        <div style="font-size:.88rem;font-weight:700;color:#374151">#{{ item.best }}</div>
+        <div style="font-size:.6rem;color:#94a3b8">histórica</div>
+      </div>
+
+      <!-- Mini sparkline (últimos días) -->
+      <div style="flex-shrink:0;min-width:60px" title="Evolución de la posición en los últimos días — barra más alta = mejor posición">
+        <div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Evolución</div>
+        <div class="sparkline" id="spark-{{ loop.index }}"></div>
+        <div style="font-size:.55rem;color:#d1d5db;margin-top:2px">últimos días →</div>
+      </div>
+
+      <!-- Tendencia -->
+      <div style="flex-shrink:0;min-width:110px;text-align:right">
+        {% if item.tendencia < -5 %}
+          <span class="trend-up">↑ subió {{ item.tendencia|abs }} lugares</span>
+        {% elif item.tendencia < -2 %}
+          <span class="trend-up">↑ subió {{ item.tendencia|abs }} lugares</span>
+        {% elif item.tendencia > 5 %}
+          <span class="trend-down">↓ bajó {{ item.tendencia }} lugares</span>
+        {% elif item.tendencia > 2 %}
+          <span class="trend-down">↓ bajó {{ item.tendencia }} lugares</span>
+        {% elif item.tendencia != 0 %}
+          <span class="trend-eq">≈ sin cambios</span>
+        {% else %}
+          <span class="trend-eq">sin cambios</span>
+        {% endif %}
+      </div>
+
+      <!-- Acción -->
+      <div style="flex-shrink:0">
+        <a href="/optimizaciones/{{ alias }}" class="btn btn-xs btn-outline-primary" title="Optimizar con IA">
+          <i class="bi bi-magic"></i>
+        </a>
+      </div>
+
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Publicaciones sin posición visible ─────────────────────────────────── -->
+{% if items_sin_dato %}
+<div class="card mb-4" style="border-color:#fde68a">
+  <div class="card-header" style="background:#fefce8;border-bottom-color:#fde68a">
+    <i class="bi bi-eye-slash me-2 text-warning"></i>
+    <span class="fw-semibold" style="color:#92400e">{{ items_sin_dato|length }} publicaciones fuera del top 200</span>
+    <span class="text-muted small ms-2">— no aparecen en búsquedas orgánicas</span>
+  </div>
+  <div class="card-body p-0">
+    <div style="padding:10px 16px;background:#fff7ed;border-bottom:1px solid #fde68a;font-size:.8rem;color:#92400e">
+      <i class="bi bi-lightbulb me-1"></i>
+      Usá <a href="/optimizaciones/{{ alias }}" style="color:#b45309;font-weight:600">Optimizar IA</a> para mejorar el título y recuperar posiciones.
+    </div>
+    {% for item in items_sin_dato %}
+    <div class="pub-row">
+      <div style="flex-shrink:0"><div class="pos-badge out">+200</div></div>
+      <div style="flex:1;min-width:0">
+        <div class="pub-title" title="{{ item.title }}" style="color:#92400e">{{ item.title }}</div>
+        <div class="pub-id">{{ item.id }}</div>
+      </div>
+      <div style="flex-shrink:0">
+        <a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] if item.id.startswith('MLA') else item.id }}"
+           target="_blank" class="btn btn-xs btn-outline-secondary">
+          <i class="bi bi-box-arrow-up-right"></i> Ver
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Reputación ─────────────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-header">
+    <i class="bi bi-shield-check me-2 text-primary"></i>Reputación de la cuenta
+  </div>
+  <div class="card-body">
+
+    {% if not rep_snapshots %}
+    <div class="no-data">
+      <i class="bi bi-shield" style="font-size:1.8rem;display:block;margin-bottom:8px;color:#d1d5db"></i>
+      <div class="fw-semibold mb-1">Sin datos de reputación</div>
+      <div class="small text-muted">Corré el módulo de reputación para empezar a trackear.</div>
+    </div>
+
+    {% else %}
+    {% set rep_latest = rep_snapshots[-1] %}
+
+    <!-- Snapshot actual: 3 métricas -->
+    <div class="row g-3 mb-4">
+      <div class="col-4">
+        {% set rc = rep_latest.reclamos_pct %}
+        <div class="rep-snap {{ 'crit' if rc > 2 else ('warn' if rc > 1 else 'ok') }}">
+          <div class="rs-num">{{ "%.1f"|format(rc) }}%</div>
+          <div class="rs-lbl">Reclamos</div>
+          <div style="font-size:.67rem;margin-top:4px;color:#64748b">
+            {% if rc <= 1 %}✓ Bueno{% elif rc <= 2 %}⚠ Cuidado{% else %}✗ Crítico{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-4">
+        {% set dm = rep_latest.demoras_pct %}
+        <div class="rep-snap {{ 'crit' if dm > 15 else ('warn' if dm > 10 else 'ok') }}">
+          <div class="rs-num">{{ "%.1f"|format(dm) }}%</div>
+          <div class="rs-lbl">Demoras</div>
+          <div style="font-size:.67rem;margin-top:4px;color:#64748b">
+            {% if dm <= 10 %}✓ Bueno{% elif dm <= 15 %}⚠ Cuidado{% else %}✗ Crítico{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-4">
+        {% set cn = rep_latest.cancelaciones_pct %}
+        <div class="rep-snap {{ 'crit' if cn > 5 else ('warn' if cn > 2 else 'ok') }}">
+          <div class="rs-num">{{ "%.1f"|format(cn) }}%</div>
+          <div class="rs-lbl">Cancelaciones</div>
+          <div style="font-size:.67rem;margin-top:4px;color:#64748b">
+            {% if cn <= 2 %}✓ Bueno{% elif cn <= 5 %}⚠ Cuidado{% else %}✗ Crítico{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if rep_snapshots|length > 1 %}
+    <!-- Historial de reputación como lista visual -->
+    <div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
+      Historial — {{ rep_snapshots|length }} registros
+    </div>
+    <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+      <!-- Header -->
+      <div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;background:#f8fafc;padding:8px 16px;border-bottom:1px solid #e2e8f0;font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em">
+        <span>Fecha</span>
+        <span style="text-align:center">Reclamos</span>
+        <span style="text-align:center">Demoras</span>
+        <span style="text-align:center">Cancelaciones</span>
+      </div>
+      {% for i, snap in rep_snapshots | reverse | enumerate %}
+        {% set prev = rep_snapshots[-(i+2)] if i < rep_snapshots|length - 1 else none %}
+        <div style="display:grid;grid-template-columns:90px 1fr 1fr 1fr;padding:9px 16px;border-bottom:{% if not loop.last %}1px solid #f1f5f9{% else %}none{% endif %};align-items:center">
+          <span class="rep-date">{{ snap.fecha }}</span>
+
+          <!-- Reclamos -->
+          <div style="text-align:center">
+            {% set rv = snap.reclamos_pct %}
+            <span class="rep-pill {{ 'rep-crit' if rv > 2 else ('rep-warn' if rv > 1 else 'rep-ok') }}">
+              {{ "%.1f"|format(rv) }}%
+            </span>
+            {% if prev %}
+              {% set d = rv - prev.reclamos_pct %}
+              {% if d > 0.05 %}<span class="delta-up ms-1">↑{{ "%.1f"|format(d) }}</span>
+              {% elif d < -0.05 %}<span class="delta-down ms-1">↓{{ "%.1f"|format(d|abs) }}</span>
+              {% else %}<span class="delta-eq ms-1">=</span>{% endif %}
+            {% endif %}
+          </div>
+
+          <!-- Demoras -->
+          <div style="text-align:center">
+            {% set dv = snap.demoras_pct %}
+            <span class="rep-pill {{ 'rep-crit' if dv > 15 else ('rep-warn' if dv > 10 else 'rep-ok') }}">
+              {{ "%.1f"|format(dv) }}%
+            </span>
+            {% if prev %}
+              {% set d = dv - prev.demoras_pct %}
+              {% if d > 0.05 %}<span class="delta-up ms-1">↑{{ "%.1f"|format(d) }}</span>
+              {% elif d < -0.05 %}<span class="delta-down ms-1">↓{{ "%.1f"|format(d|abs) }}</span>
+              {% else %}<span class="delta-eq ms-1">=</span>{% endif %}
+            {% endif %}
+          </div>
+
+          <!-- Cancelaciones -->
+          <div style="text-align:center">
+            {% set cv = snap.cancelaciones_pct %}
+            <span class="rep-pill {{ 'rep-crit' if cv > 5 else ('rep-warn' if cv > 2 else 'rep-ok') }}">
+              {{ "%.1f"|format(cv) }}%
+            </span>
+            {% if prev %}
+              {% set d = cv - prev.cancelaciones_pct %}
+              {% if d > 0.05 %}<span class="delta-up ms-1">↑{{ "%.1f"|format(d) }}</span>
+              {% elif d < -0.05 %}<span class="delta-down ms-1">↓{{ "%.1f"|format(d|abs) }}</span>
+              {% else %}<span class="delta-eq ms-1">=</span>{% endif %}
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Sparklines por publicación ────────────────────────────────────────────────
+{% set items_con_dato = pos_items | selectattr('has_data') | list %}
+{% for item in items_con_dato | sort(attribute='best') %}
+(function() {
+  const positions = {{ item.positions | tojson }};
+  const el = document.getElementById('spark-{{ loop.index }}');
+  if (!el) return;
+
+  // Tomar últimos 7 puntos con datos
+  const vals = positions
+    .filter(v => v !== null && v !== 999)
+    .slice(-7);
+
+  if (!vals.length) {
+    el.innerHTML = '<span style="font-size:.65rem;color:#94a3b8">sin datos</span>';
+    return;
+  }
+
+  const maxPos = Math.max(...vals);
+  const minPos = Math.min(...vals);
+
+  vals.forEach((pos, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'spark-bar';
+    // Altura inversamente proporcional a la posición (menor posición = mejor = más alto)
+    const range = maxPos - minPos || 1;
+    const heightPct = Math.round(((maxPos - pos) / range) * 85 + 15);
+    bar.style.height = heightPct + '%';
+    // Color por posición
+    if (pos <= 3) bar.style.background = '#16a34a';
+    else if (pos <= 10) bar.style.background = '#3b82f6';
+    else if (pos <= 50) bar.style.background = '#f59e0b';
+    else bar.style.background = '#d1d5db';
+    bar.title = '#' + pos;
+    el.appendChild(bar);
+  });
+})();
+{% endfor %}
+</script>
+{% endblock %}

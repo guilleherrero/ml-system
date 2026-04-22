@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+{% block title %} — Monitor de Evolución {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+/* ── Variables de color ───────────────────────────────────── */
+:root {
+  --sube-bg: #f0fdf4; --sube-border: #86efac; --sube-text: #15803d;
+  --cae-bg:  #fef2f2; --cae-border:  #fca5a5; --cae-text:  #b91c1c;
+  --flat-bg: #f8fafc; --flat-border: #e2e8f0; --flat-text: #64748b;
+  --ia-bg:   #eff6ff; --ia-border:   #bfdbfe; --ia-text:   #1d4ed8;
+}
+
+/* ── Stat cards ───────────────────────────────────────────── */
+.mon-stat {
+  border-radius:12px; padding:16px 18px; text-align:center;
+  border:1px solid #e2e8f0; background:#fff;
+}
+.mon-stat .num { font-size:2rem; font-weight:800; line-height:1; }
+.mon-stat .lbl { font-size:.7rem; font-weight:600; text-transform:uppercase;
+                  letter-spacing:.05em; color:#64748b; margin-top:4px; }
+.mon-stat.sube { background:#f0fdf4; border-color:#86efac; }
+.mon-stat.sube .num { color:#15803d; }
+.mon-stat.cae  { background:#fef2f2; border-color:#fca5a5; }
+.mon-stat.cae  .num { color:#b91c1c; }
+.mon-stat.top  { background:#eff6ff; border-color:#bfdbfe; }
+.mon-stat.top  .num { color:#1d4ed8; }
+.mon-stat.ia   { background:#fdf4ff; border-color:#e9d5ff; }
+.mon-stat.ia   .num { color:#7c3aed; }
+
+/* ── Filter pills ─────────────────────────────────────────── */
+.f-pill {
+  border:1px solid #e5e7eb; border-radius:20px;
+  padding:.28rem .85rem; font-size:.78rem; cursor:pointer;
+  background:#fff; color:#374151; transition:all .15s; white-space:nowrap;
+  font-weight:500;
+}
+.f-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
+.f-pill.active { background:#1d4ed8; border-color:#1d4ed8; color:#fff; font-weight:600; }
+.f-pill.sube.active { background:#15803d; border-color:#15803d; }
+.f-pill.cae.active  { background:#b91c1c; border-color:#b91c1c; }
+.f-pill.ia.active   { background:#7c3aed; border-color:#7c3aed; }
+
+/* ── Publication cards ────────────────────────────────────── */
+.pub-card {
+  background:#fff; border-radius:14px;
+  border:1px solid #e2e8f0; overflow:hidden;
+  transition:box-shadow .15s, border-color .15s;
+}
+.pub-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.08); border-color:#93c5fd; }
+.pub-card.trend-sube       { border-left:4px solid #22c55e; }
+.pub-card.trend-sube-fuerte{ border-left:4px solid #16a34a; box-shadow:0 0 0 1px #86efac; }
+.pub-card.trend-cae        { border-left:4px solid #f87171; }
+.pub-card.trend-cae-fuerte { border-left:4px solid #dc2626; box-shadow:0 0 0 1px #fca5a5; }
+.pub-card.trend-estable    { border-left:4px solid #cbd5e1; }
+.pub-card.trend-sin-dato   { border-left:4px solid #e2e8f0; opacity:.7; }
+
+.pub-card-head {
+  padding:11px 14px 8px;
+  display:flex; align-items:flex-start; gap:8px;
+}
+.pub-title {
+  font-size:.84rem; font-weight:600; color:#0f172a;
+  overflow:hidden; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  flex:1; line-height:1.35;
+}
+.pub-pos-badge {
+  flex-shrink:0; min-width:48px; text-align:center;
+  border-radius:10px; padding:5px 8px;
+  display:flex; flex-direction:column; align-items:center;
+}
+.pub-pos-badge .pos-num  { font-size:1.3rem; font-weight:800; line-height:1; }
+.pub-pos-badge .pos-lbl  { font-size:.55rem; font-weight:700; text-transform:uppercase;
+                             letter-spacing:.05em; margin-top:1px; }
+.pub-pos-badge.top10  { background:#dcfce7; color:#15803d; }
+.pub-pos-badge.mid    { background:#fef9c3; color:#854d0e; }
+.pub-pos-badge.low    { background:#fee2e2; color:#b91c1c; }
+.pub-pos-badge.na     { background:#f1f5f9; color:#94a3b8; }
+
+/* ── Sparkline container ──────────────────────────────────── */
+.sparkline-wrap {
+  padding:0 14px; position:relative; height:72px;
+}
+.sparkline-wrap canvas { width:100% !important; }
+
+/* ── Veredicto ────────────────────────────────────────────── */
+.veredicto-line {
+  padding:6px 14px; font-size:.78rem; font-weight:600;
+  display:flex; align-items:center; gap:6px;
+}
+.veredicto-line.sube-fuerte { background:#dcfce7; color:#14532d; }
+.veredicto-line.sube        { background:#f0fdf4; color:#15803d; }
+.veredicto-line.cae-fuerte  { background:#fee2e2; color:#991b1b; }
+.veredicto-line.cae         { background:#fef2f2; color:#b91c1c; }
+.veredicto-line.estable     { background:#f8fafc; color:#475569; }
+.veredicto-line.sin-dato    { background:#f8fafc; color:#94a3b8; font-weight:400; }
+
+/* ── Metrics row ──────────────────────────────────────────── */
+.pub-metrics {
+  padding:8px 14px 10px;
+  display:flex; gap:14px; flex-wrap:wrap;
+  border-top:1px solid #f1f5f9;
+}
+.pub-metric { display:flex; flex-direction:column; gap:1px; }
+.pub-metric .m-val { font-size:.82rem; font-weight:700; color:#0f172a; }
+.pub-metric .m-lbl { font-size:.62rem; color:#94a3b8; font-weight:500; text-transform:uppercase; letter-spacing:.04em; }
+
+/* ── IA impact strip ──────────────────────────────────────── */
+.ia-strip {
+  padding:5px 14px; font-size:.73rem; font-weight:600;
+  background:#eff6ff; border-top:1px solid #bfdbfe;
+  color:#1d4ed8; display:flex; align-items:center; gap:6px;
+}
+
+/* ── Alerta caída ─────────────────────────────────────────── */
+.alerta-caida {
+  background:#fef2f2; border:1px solid #fca5a5;
+  border-radius:10px; padding:12px 16px; margin-bottom:8px;
+  display:flex; align-items:center; gap:10px;
+}
+
+/* ── Trend arrow ──────────────────────────────────────────── */
+.trend-arrow { font-size:.72rem; font-weight:700; padding:2px 7px;
+               border-radius:20px; white-space:nowrap; }
+.trend-arrow.up   { background:#dcfce7; color:#15803d; }
+.trend-arrow.down { background:#fee2e2; color:#b91c1c; }
+.trend-arrow.flat { background:#f1f5f9; color:#64748b; }
+
+/* ── Section divider ──────────────────────────────────────── */
+.sec-divider {
+  font-size:.68rem; font-weight:800; text-transform:uppercase;
+  letter-spacing:.08em; color:#94a3b8;
+  padding:4px 0; margin:16px 0 10px;
+  display:flex; align-items:center; gap:8px;
+}
+.sec-divider::after { content:''; flex:1; height:1px; background:#e2e8f0; }
+</style>
+
+<!-- ── PAGE HEADER ──────────────────────────────────────────── -->
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Monitor de Evolución</h1>
+    <div class="sub">{{ alias }} — seguimiento de posiciones y resultados post-optimización</div>
+  </div>
+  <button class="btn btn-sm btn-outline-primary run-btn"
+          onclick="runComando('posiciones','{{ alias }}')">
+    <i class="bi bi-arrow-clockwise me-1"></i>Actualizar posiciones
+  </button>
+</div>
+
+{% if not items %}
+<!-- ── ESTADO VACÍO ──────────────────────────────────────────── -->
+<div style="background:#fff;border-radius:14px;padding:48px 32px;text-align:center;border:2px dashed #e2e8f0">
+  <i class="bi bi-graph-up" style="font-size:3rem;color:#cbd5e1;display:block;margin-bottom:14px"></i>
+  <div style="font-size:1.1rem;font-weight:700;color:#1e293b;margin-bottom:8px">Sin datos de posición todavía</div>
+  <div class="text-muted" style="font-size:.88rem;margin-bottom:20px">
+    Hacé clic en <strong>Actualizar posiciones</strong> para registrar el día de hoy.<br>
+    Con al menos 3 días de datos el monitor empieza a mostrar tendencias.
+  </div>
+  <button class="btn btn-primary" onclick="runComando('posiciones','{{ alias }}')">
+    <i class="bi bi-arrow-clockwise me-2"></i>Registrar posiciones de hoy
+  </button>
+</div>
+
+{% elif all_search_blocked %}
+<!-- ── API BLOQUEADA ─────────────────────────────────────────── -->
+<div class="alert alert-warning d-flex gap-2 align-items-start mb-4">
+  <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+  <div>
+    <strong>Se requiere el permiso "Ítems y búsqueda" en tu app ML.</strong><br>
+    Activalo en el panel de desarrolladores de MercadoLibre para rastrear posiciones reales.<br>
+    <span class="text-muted small">Mientras tanto, podés ver el estado de tus publicaciones abajo.</span>
+  </div>
+</div>
+{% set con_ventas = items | selectattr('ventas_30d', 'gt', 0) | list %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="mon-stat"><div class="num">{{ items|length }}</div><div class="lbl">Publicaciones</div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="mon-stat sube"><div class="num">{{ con_ventas|length }}</div><div class="lbl">Con ventas 30d</div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="mon-stat cae"><div class="num">{{ items | selectattr('alerta','eq','SIN_STOCK') | list | length }}</div><div class="lbl">Sin stock</div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="mon-stat top"><div class="num">{{ con_ventas | sum(attribute='ventas_30d') }}</div><div class="lbl">Ventas totales 30d</div></div>
+  </div>
+</div>
+<div class="card"><div class="card-body p-0">
+  <table class="table table-sm table-hover mb-0">
+    <thead><tr>
+      <th>Publicación</th><th class="text-end">Precio</th><th class="text-end">Ventas 30d</th>
+      <th class="text-end">Visitas</th><th class="text-end">Conv.</th><th class="text-center">Stock</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for item in items | sort(attribute='ventas_30d', reverse=True) %}
+    <tr>
+      <td>
+        <div class="fw-semibold text-truncate" style="max-width:260px" title="{{ item.title }}">{{ item.title }}</div>
+        <div class="text-muted" style="font-size:.7rem">{{ item.id }}</div>
+      </td>
+      <td class="text-end text-muted small">{% if item.precio %}${{ "{:,.0f}".format(item.precio) }}{% else %}—{% endif %}</td>
+      <td class="text-end">{% if item.ventas_30d > 0 %}<span class="fw-semibold text-success">{{ item.ventas_30d }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+      <td class="text-end" style="font-size:.82rem">{% if item.visitas_30d is not none %}{{ item.visitas_30d }}{% else %}—{% endif %}</td>
+      <td class="text-end" style="font-size:.82rem">{% if item.conversion_pct is not none %}{{ "%.1f"|format(item.conversion_pct) }}%{% else %}—{% endif %}</td>
+      <td class="text-center">
+        {% if item.alerta == 'SIN_STOCK' %}<span class="badge bg-danger">Sin stock</span>
+        {% elif item.alerta == 'CRITICO' %}<span class="badge bg-warning text-dark">Crítico</span>
+        {% elif item.stock != '—' %}<span class="text-muted small">{{ item.stock }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td><a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] }}" target="_blank" class="btn btn-xs btn-outline-secondary"><i class="bi bi-box-arrow-up-right"></i></a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+
+{% else %}
+<!-- ══ VISTA PRINCIPAL CON DATOS DE POSICIÓN ═══════════════════ -->
+{% set items_con_pos  = items | selectattr('has_pos') | list %}
+{% set items_sin_pos  = items | rejectattr('has_pos') | list %}
+{% set items_opt      = items | selectattr('optimizado') | list %}
+{% set items_subiendo = items_con_pos | selectattr('trend_7d', 'gt', 2) | list %}
+{% set items_cayendo  = items_con_pos | selectattr('caida_rapida') | list %}
+{% set items_top10    = items_con_pos | selectattr('latest', 'le', 10) | list %}
+
+<!-- ── RESUMEN EJECUTIVO ──────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="mon-stat"><div class="num">{{ items_con_pos|length }}</div><div class="lbl">Con posición visible</div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="mon-stat sube"><div class="num">{{ items_subiendo|length }}</div><div class="lbl">Subiendo esta semana ↑</div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="mon-stat cae"><div class="num">{{ items_cayendo|length }}</div><div class="lbl">Cayendo >5 lugares ⚠</div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="mon-stat top"><div class="num">{{ items_top10|length }}</div><div class="lbl">En el top 10 ★</div></div>
+  </div>
+</div>
+
+<!-- ── ALERTAS DE CAÍDA RÁPIDA ───────────────────────────────── -->
+{% if items_cayendo %}
+<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:14px 18px;margin-bottom:18px">
+  <div style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#991b1b;margin-bottom:8px">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ items_cayendo|length }} publicación{{ 'es' if items_cayendo|length > 1 }} cayendo rápido
+  </div>
+  {% for item in items_cayendo %}
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:.82rem">
+    <span style="color:#b91c1c;font-weight:700;flex-shrink:0">▼ {{ item.trend_7d | abs }} pos</span>
+    <span style="color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ item.title }}</span>
+    <a href="/optimizaciones/{{ alias }}" style="font-size:.72rem;color:#1d4ed8;font-weight:600;flex-shrink:0">Optimizar →</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── FILTER PILLS ───────────────────────────────────────────── -->
+<div class="d-flex gap-2 flex-wrap mb-4">
+  <button class="f-pill active" onclick="filtrar('todos',this)">
+    Todos <span style="background:#e2e8f0;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px">{{ items_con_pos|length }}</span>
+  </button>
+  <button class="f-pill sube" onclick="filtrar('sube',this)" {% if not items_subiendo %}style="opacity:.5"{% endif %}>
+    <i class="bi bi-arrow-up-short"></i>Subiendo
+    <span style="background:#bbf7d0;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:#15803d">{{ items_subiendo|length }}</span>
+  </button>
+  <button class="f-pill cae" onclick="filtrar('cae',this)" {% if not items_cayendo %}style="opacity:.5"{% endif %}>
+    <i class="bi bi-arrow-down-short"></i>Cayendo
+    <span style="background:#fecaca;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:#b91c1c">{{ items_cayendo|length }}</span>
+  </button>
+  <button class="f-pill" onclick="filtrar('top10',this)" {% if not items_top10 %}style="opacity:.5"{% endif %}>
+    ★ Top 10 <span style="background:#bfdbfe;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:#1d4ed8">{{ items_top10|length }}</span>
+  </button>
+  {% if items_opt %}
+  <button class="f-pill ia" onclick="filtrar('ia',this)">
+    <i class="bi bi-stars me-1"></i>Con IA
+    <span style="background:#e9d5ff;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:#7c3aed">{{ items_opt|length }}</span>
+  </button>
+  {% endif %}
+</div>
+
+<!-- ── CARDS GRID ─────────────────────────────────────────────── -->
+<div class="row g-3" id="cards-grid">
+  {% for item in items_con_pos %}
+  {% set vt = item.veredicto_tipo %}
+  {% set trend_class = {
+    'sube_fuerte': 'trend-sube-fuerte',
+    'sube':        'trend-sube',
+    'cae_fuerte':  'trend-cae-fuerte',
+    'cae':         'trend-cae',
+    'estable':     'trend-estable',
+    'sin_dato':    'trend-sin-dato',
+  }.get(vt, 'trend-estable') %}
+  {% set sube_data = 'true' if vt in ['sube','sube_fuerte'] else 'false' %}
+  {% set cae_data  = 'true' if item.caida_rapida else 'false' %}
+  {% set top10_data = 'true' if item.latest <= 10 else 'false' %}
+  <div class="col-12 col-md-6 col-xl-4"
+       data-cat-sube="{{ sube_data }}"
+       data-cat-cae="{{ cae_data }}"
+       data-cat-top10="{{ top10_data }}"
+       data-cat-ia="{{ 'true' if item.optimizado else 'false' }}">
+    <div class="pub-card {{ trend_class }}">
+
+      <!-- HEADER -->
+      <div class="pub-card-head">
+        <div class="pub-title" title="{{ item.title }}">{{ item.title }}</div>
+        {% if item.latest != 999 %}
+          {% if item.latest <= 10 %}
+            <div class="pub-pos-badge top10"><div class="pos-num">{{ item.latest }}</div><div class="pos-lbl">Pos.</div></div>
+          {% elif item.latest <= 50 %}
+            <div class="pub-pos-badge mid"><div class="pos-num">{{ item.latest }}</div><div class="pos-lbl">Pos.</div></div>
+          {% else %}
+            <div class="pub-pos-badge low"><div class="pos-num">{{ item.latest }}</div><div class="pos-lbl">Pos.</div></div>
+          {% endif %}
+        {% else %}
+          <div class="pub-pos-badge na"><div class="pos-num" style="font-size:.9rem">+200</div><div class="pos-lbl">Pos.</div></div>
+        {% endif %}
+      </div>
+
+      <!-- SPARKLINE -->
+      <div class="sparkline-wrap" id="wrap-{{ item.id }}">
+        <canvas id="sc-{{ item.id }}"></canvas>
+      </div>
+
+      <!-- VEREDICTO -->
+      <div class="veredicto-line {{ vt | replace('_','-') }}">
+        {% if vt == 'sube_fuerte' %}<i class="bi bi-rocket-takeoff-fill"></i>
+        {% elif vt == 'sube' %}<i class="bi bi-arrow-up-circle-fill"></i>
+        {% elif vt == 'cae_fuerte' %}<i class="bi bi-exclamation-triangle-fill"></i>
+        {% elif vt == 'cae' %}<i class="bi bi-arrow-down-circle-fill"></i>
+        {% elif vt == 'estable' %}<i class="bi bi-dash-circle-fill"></i>
+        {% else %}<i class="bi bi-question-circle"></i>{% endif %}
+        {{ item.veredicto }}
+      </div>
+
+      <!-- METRICS -->
+      <div class="pub-metrics">
+        <div class="pub-metric">
+          <span class="m-val">
+            {% if item.trend_7d is not none %}
+              {% if item.trend_7d > 0 %}
+                <span style="color:#15803d">↑{{ item.trend_7d }}</span>
+              {% elif item.trend_7d < 0 %}
+                <span style="color:#b91c1c">↓{{ item.trend_7d | abs }}</span>
+              {% else %}
+                <span style="color:#64748b">=</span>
+              {% endif %}
+            {% else %}<span style="color:#94a3b8">—</span>{% endif %}
+          </span>
+          <span class="m-lbl">7 días</span>
+        </div>
+        <div class="pub-metric">
+          <span class="m-val {% if item.ventas_30d >= 10 %}text-success{% elif item.ventas_30d > 0 %}text-primary{% else %}text-muted{% endif %}">
+            {{ item.ventas_30d or 0 }}
+          </span>
+          <span class="m-lbl">Ventas 30d</span>
+        </div>
+        {% if item.visitas_30d is not none %}
+        <div class="pub-metric">
+          <span class="m-val">{{ item.visitas_30d }}</span>
+          <span class="m-lbl">Visitas</span>
+        </div>
+        {% endif %}
+        {% if item.conversion_pct is not none %}
+        <div class="pub-metric">
+          <span class="m-val {% if item.conversion_pct >= 3 %}text-success{% elif item.conversion_pct >= 1 %}text-warning{% else %}text-danger{% endif %}">
+            {{ "%.1f"|format(item.conversion_pct) }}%
+          </span>
+          <span class="m-lbl">Conv.</span>
+        </div>
+        {% endif %}
+        <div class="pub-metric ms-auto">
+          <a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] }}"
+             target="_blank" style="font-size:.72rem;color:#64748b;text-decoration:none">
+            ML <i class="bi bi-box-arrow-up-right"></i>
+          </a>
+          {% if item.optimizado %}
+          <a href="/optimizaciones/{{ alias }}" style="font-size:.72rem;color:#7c3aed;text-decoration:none">
+            <i class="bi bi-stars"></i> IA
+          </a>
+          {% else %}
+          <a href="/optimizaciones/{{ alias }}" style="font-size:.72rem;color:#2563eb;text-decoration:none">
+            Optimizar
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- IA IMPACT STRIP -->
+      {% if item.opt_veredicto %}
+      <div class="ia-strip">
+        <i class="bi bi-stars"></i>{{ item.opt_veredicto }}
+      </div>
+      {% elif item.optimizado %}
+      <div class="ia-strip" style="color:#7c3aed;background:#faf5ff;border-top-color:#e9d5ff">
+        <i class="bi bi-stars"></i>Análisis IA aplicado — acumulando datos
+      </div>
+      {% endif %}
+
+    </div><!-- /pub-card -->
+  </div>
+  {% endfor %}
+</div><!-- /cards-grid -->
+
+<!-- ── SIN POSICIÓN (colapsado) ───────────────────────────────── -->
+{% if items_sin_pos %}
+<details class="mt-3" id="sin-pos-section">
+  <summary style="cursor:pointer;list-style:none;padding:.7rem 1rem;
+                  background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+                  color:#64748b;font-size:.82rem;user-select:none">
+    <i class="bi bi-eye-slash me-2"></i>
+    {{ items_sin_pos|length }} publicaciones fuera del top 200 (sin posición rastreable)
+    <i class="bi bi-chevron-down ms-2" style="font-size:.7rem"></i>
+  </summary>
+  <div class="card mt-1"><div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead><tr>
+        <th>Publicación</th><th class="text-end">Ventas 30d</th><th class="text-end">Visitas</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for item in items_sin_pos | sort(attribute='ventas_30d', reverse=True) %}
+        <tr>
+          <td>
+            <div style="font-size:.82rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px" title="{{ item.title }}">
+              {% if item.optimizado %}<span style="color:#7c3aed;font-size:.7rem;margin-right:4px"><i class="bi bi-stars"></i></span>{% endif %}
+              {{ item.title }}
+            </div>
+            <div style="font-size:.68rem;color:#cbd5e1">{{ item.id }}</div>
+          </td>
+          <td class="text-end text-muted small">{{ item.ventas_30d or '—' }}</td>
+          <td class="text-end text-muted small">{{ item.visitas_30d or '—' }}</td>
+          <td class="text-end">
+            <a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] }}"
+               target="_blank" class="btn btn-xs btn-outline-secondary">
+              <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+</details>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CHART_DATA = {{ chart_data | tojson | safe }};
+
+// ── Sparkline por publicación ────────────────────────────────
+function buildSparkline(itemId) {
+  const d = CHART_DATA[itemId];
+  if (!d || !d.data) return;
+
+  const valid = d.data.filter(v => v !== null);
+  if (valid.length < 2) return;
+
+  const ctx = document.getElementById('sc-' + itemId);
+  if (!ctx) return;
+
+  // Tendencia: si bajó el número de posición → mejoró
+  const firstValid = valid[0];
+  const lastValid  = valid[valid.length - 1];
+  const improving  = lastValid < firstValid;  // número más bajo = mejor posición
+  const dropping   = lastValid > firstValid + 3;
+
+  // Gradiente de color
+  const canvasCtx = ctx.getContext('2d');
+  const h = ctx.parentElement.offsetHeight || 72;
+  const gradient = canvasCtx.createLinearGradient(0, 0, 0, h);
+  if (improving) {
+    gradient.addColorStop(0, 'rgba(34,197,94,.25)');
+    gradient.addColorStop(1, 'rgba(34,197,94,.02)');
+  } else if (dropping) {
+    gradient.addColorStop(0, 'rgba(239,68,68,.22)');
+    gradient.addColorStop(1, 'rgba(239,68,68,.02)');
+  } else {
+    gradient.addColorStop(0, 'rgba(59,130,246,.15)');
+    gradient.addColorStop(1, 'rgba(59,130,246,.02)');
+  }
+
+  const lineColor = improving ? '#22c55e' : dropping ? '#ef4444' : '#3b82f6';
+
+  // Puntos de optimización
+  const optSet = new Set(d.opt_dates || []);
+  const ptColors = d.data.map((v, i) =>
+    optSet.has(d.labels[i]) ? '#f59e0b' :
+    (v !== null && v <= 10 ? '#16a34a' : lineColor)
+  );
+  const ptRadius = d.data.map((v, i) =>
+    optSet.has(d.labels[i]) ? 7 :
+    (v !== null ? 2.5 : 0)
+  );
+  const ptBorderW = d.data.map((v, i) => optSet.has(d.labels[i]) ? 2 : 1);
+
+  const minVal = Math.max(1, Math.min(...valid) - 4);
+  const maxVal = Math.min(250, Math.max(...valid) + 6);
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: d.labels,
+      datasets: [{
+        data: d.data,
+        borderColor: lineColor,
+        borderWidth: 1.8,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.35,
+        spanGaps: true,
+        pointBackgroundColor: ptColors,
+        pointBorderColor: ptColors,
+        pointRadius: ptRadius,
+        pointBorderWidth: ptBorderW,
+        pointHoverRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: '#1e293b',
+          titleFont: { size: 11 },
+          bodyFont: { size: 11 },
+          padding: 8,
+          callbacks: {
+            title: items => items[0]?.label ? `📅 ${items[0].label}` : '',
+            label: item => {
+              const v = item.raw;
+              if (v === null) return '  Sin dato';
+              const isOpt = optSet.has(item.label);
+              const icon  = v <= 10 ? '★' : v <= 50 ? '●' : '○';
+              return `  ${icon} Posición: ${v}${isOpt ? '  ★ Opt. aplicada' : ''}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          reverse: true,
+          min: minVal,
+          max: maxVal,
+          grid: { color: '#f1f5f9', lineWidth: 0.8 },
+          border: { display: false },
+          ticks: {
+            font: { size: 9 }, color: '#cbd5e1',
+            maxTicksLimit: 4,
+            callback: v => v <= 10 ? `★${v}` : v
+          }
+        },
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: {
+            font: { size: 8 }, color: '#cbd5e1',
+            maxTicksLimit: 8,
+            maxRotation: 0,
+          }
+        }
+      }
+    }
+  });
+}
+
+// Inicializar todos los sparklines
+document.addEventListener('DOMContentLoaded', () => {
+  Object.keys(CHART_DATA).forEach(itemId => buildSparkline(itemId));
+});
+
+// ── Filtros ──────────────────────────────────────────────────
+function filtrar(tipo, btn) {
+  document.querySelectorAll('.f-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#cards-grid > div').forEach(col => {
+    let visible = true;
+    if (tipo === 'sube')  visible = col.dataset.catSube  === 'true';
+    if (tipo === 'cae')   visible = col.dataset.catCae   === 'true';
+    if (tipo === 'top10') visible = col.dataset.catTop10 === 'true';
+    if (tipo === 'ia')    visible = col.dataset.catIa    === 'true';
+    col.style.display = visible ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,527 @@
+{% extends "base.html" %}
+{% block title %} — Lanzar producto{% endblock %}
+{% block content %}
+<style>
+.stat-box { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.9rem 1rem; text-align:center; }
+.stat-box .num { font-size:1.5rem; font-weight:700; line-height:1.1; }
+.stat-box .lbl { font-size:.72rem; color:#64748b; margin-top:2px; }
+.stat-box.blue .num { color:#2563eb; }
+.stat-box.ok   .num { color:#16a34a; }
+
+/* ── Resultado estructurado ───────────────────────── */
+.result-section { display:flex; flex-direction:column; gap:.85rem; }
+
+.rs-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;
+}
+.rs-card-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:.55rem 1rem; border-bottom:1px solid #f1f5f9;
+  background:#f8fafc;
+}
+.rs-card-header .rs-label {
+  font-size:.68rem; font-weight:700; color:#374151; text-transform:uppercase;
+  letter-spacing:.06em; display:flex; align-items:center; gap:.35rem;
+}
+.rs-card-body { padding:.85rem 1rem; }
+
+/* Keywords */
+.kw-principal {
+  display:inline-flex; align-items:center; gap:.4rem;
+  background:#1d4ed8; color:#fff; border-radius:6px;
+  padding:.3rem .75rem; font-size:.82rem; font-weight:700;
+  margin-bottom:.5rem;
+}
+.kw-chip {
+  display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0;
+  border-radius:20px; padding:.2rem .6rem; font-size:.72rem; color:#334155;
+  margin:.15rem .15rem 0 0;
+}
+.kw-longtail { color:#64748b; font-size:.75rem; margin-top:.4rem; }
+
+/* Títulos */
+.titulo-card {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+  padding:.65rem 1rem; margin-bottom:.4rem;
+  display:flex; align-items:flex-start; gap:.75rem;
+}
+.titulo-num {
+  min-width:1.4rem; height:1.4rem; background:#2563eb; color:#fff;
+  border-radius:50%; font-size:.7rem; font-weight:700;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:.05rem;
+}
+.titulo-text { font-weight:600; color:#1e293b; flex:1; font-size:.88rem; line-height:1.45; }
+.titulo-meta { display:flex; align-items:center; gap:.5rem; flex-shrink:0; margin-top:.1rem; }
+.char-count {
+  font-size:.65rem; color:#fff; background:#94a3b8; border-radius:10px;
+  padding:.1rem .4rem; white-space:nowrap;
+}
+.char-count.ok  { background:#16a34a; }
+.char-count.warn{ background:#d97706; }
+
+/* Ficha */
+.ficha-box {
+  background:#f8fafc; border-radius:6px;
+  padding:.75rem 1rem; font-family:'JetBrains Mono',monospace; font-size:.77rem;
+  white-space:pre-wrap; max-height:280px; overflow-y:auto; color:#334155;
+  line-height:1.65;
+}
+
+/* Descripción */
+.desc-box {
+  background:#fff; font-size:.85rem; line-height:1.8; color:#1e293b;
+  max-height:320px; overflow-y:auto; white-space:pre-wrap;
+}
+
+/* ── Comp chips ───────────────────────────────────── */
+.comp-chip {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+  padding:.4rem .7rem; font-size:.75rem;
+}
+.comp-chip .comp-price { font-weight:700; color:#1d4ed8; }
+.comp-chip .comp-sold  { color:#16a34a; font-size:.7rem; }
+
+/* ── Streaming panels ─────────────────────────────── */
+.stream-panel {
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+  padding:.85rem 1rem; font-size:.82rem; line-height:1.75;
+  max-height:340px; overflow-y:auto; white-space:pre-wrap;
+  font-family:'Segoe UI',system-ui,sans-serif;
+}
+
+/* ── History cards ────────────────────────────────── */
+.lanz-card { border-radius:12px; overflow:hidden; }
+.lanz-card .card-header { background:#f8fafc; }
+.has-result { border-color:#86efac !important; }
+.has-result .card-header { background:linear-gradient(135deg,#f0fdf4,#ecfdf5) !important; border-bottom-color:#86efac; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-rocket-takeoff me-2 text-primary"></i>Lanzar Producto</h1>
+    <div class="sub">Encontrá oportunidades, evaluá si vale la pena y generá la publicación perfecta</div>
+  </div>
+</div>
+
+<!-- ── Hub de herramientas ────────────────────────────────────────── -->
+<div class="d-flex gap-2 mb-4 flex-wrap">
+  <a href="/lanzar-nuevo"
+     class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
+     style="background:#2563eb;color:#fff;font-size:.85rem">
+    <i class="bi bi-stars"></i> Analizar y lanzar
+  </a>
+  <a href="/radar"
+     class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
+     style="background:#fff;border:1px solid #e2e8f0;color:#374151;font-size:.85rem">
+    <i class="bi bi-compass text-primary"></i> Radar de oportunidades
+  </a>
+  <a href="/evaluar-producto"
+     class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
+     style="background:#fff;border:1px solid #e2e8f0;color:#374151;font-size:.85rem">
+    <i class="bi bi-clipboard2-pulse text-primary"></i> Evaluar entrada al mercado
+  </a>
+</div>
+
+<!-- ── Formulario ──────────────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-search me-2 text-primary"></i>Analizar nuevo producto</div>
+  <div class="card-body">
+    <form id="launchForm" class="row g-3">
+      <div class="col-md-7">
+        <label class="form-label fw-semibold">¿Qué producto querés lanzar?</label>
+        <input type="text" id="productoInput" name="producto" class="form-control"
+               placeholder="Ej: faja postparto con varillas, termo 500ml doble pared, joystick gaming celular..."
+               autocomplete="off" required>
+        <div class="form-text">Sé descriptivo — buscará los mejores competidores reales en ML y analizará su ficha, descripción y ventas.</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Foto del producto <span class="text-muted fw-normal">(opcional)</span></label>
+        <input type="file" id="imagenInput" name="imagen" class="form-control" accept="image/*">
+        <div class="form-text">La IA la usa para sugerencias visuales.</div>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" id="launchBtn" class="btn btn-primary w-100">
+          <i class="bi bi-rocket-takeoff me-1"></i>Analizar
+        </button>
+      </div>
+    </form>
+    <div id="imgPreview" class="mt-3" style="display:none">
+      <img id="imgThumb" src="" style="max-height:100px;border-radius:8px;border:1px solid #e5e7eb">
+    </div>
+  </div>
+</div>
+
+<!-- ── Panel de análisis en tiempo real ───────────────────────── -->
+<div id="analysisPanel" style="display:none">
+  <div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2">
+      <span class="spinner-border spinner-border-sm text-primary" id="spinner"></span>
+      <span id="stepMsg" class="fw-semibold">Iniciando análisis...</span>
+    </div>
+
+    <!-- Datos de mercado -->
+    <div id="marketBox" class="card-body border-bottom pb-3" style="display:none">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <div class="stat-box blue">
+            <div class="num" id="mktTotal">—</div>
+            <div class="lbl">Productos en ML</div>
+          </div>
+        </div>
+        <div class="col-md-9">
+          <div class="text-muted fw-semibold mb-1" style="font-size:.72rem;text-transform:uppercase">Categoría detectada</div>
+          <div id="mktCat" class="fw-semibold mb-2">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Competidores reales -->
+    <div id="compsBox" class="card-body border-bottom pb-3" style="display:none">
+      <div class="text-muted fw-semibold mb-2" style="font-size:.72rem;text-transform:uppercase">
+        <i class="bi bi-people me-1"></i>Competidores reales encontrados (por ventas)
+      </div>
+      <div id="compsList" class="d-flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- ML data OK -->
+    <div id="mlDataBox" class="card-body border-bottom py-2" style="display:none;font-size:.78rem;color:#15803d;background:#f0fdf4">
+      <i class="bi bi-check-circle me-2"></i><span id="mlDataMsg"></span>
+    </div>
+
+    <!-- Streaming análisis -->
+    <div id="analisisWrap" class="card-body border-bottom pb-3" style="display:none">
+      <div class="text-muted fw-semibold mb-2" style="font-size:.72rem;text-transform:uppercase">
+        <i class="bi bi-bar-chart-steps me-1"></i>Análisis de competencia
+      </div>
+      <div id="analisisOutput" class="stream-panel"></div>
+    </div>
+
+    <!-- Streaming síntesis -->
+    <div id="sintesisWrap" class="card-body border-bottom pb-3" style="display:none">
+      <div class="text-muted fw-semibold mb-2" style="font-size:.72rem;text-transform:uppercase">
+        <i class="bi bi-stars me-1 text-primary"></i>Generando publicación perfecta...
+      </div>
+      <div id="sintesisOutput" class="stream-panel"></div>
+    </div>
+
+    <!-- Resultado estructurado -->
+    <div id="resultBox" class="card-body" style="display:none">
+      <div class="result-section">
+
+        <!-- Keywords -->
+        <div class="rs-card" id="keywordsBlock" style="display:none">
+          <div class="rs-card-header">
+            <div class="rs-label"><i class="bi bi-tags"></i>Keywords</div>
+          </div>
+          <div class="rs-card-body">
+            <div id="kwPrincipal"></div>
+            <div id="kwSecundarias"></div>
+            <div id="kwLongTail"></div>
+          </div>
+        </div>
+
+        <!-- 3 Títulos -->
+        <div class="rs-card">
+          <div class="rs-card-header">
+            <div class="rs-label"><i class="bi bi-type"></i>3 Títulos optimizados</div>
+          </div>
+          <div class="rs-card-body pb-2">
+            <div id="titulosResult"></div>
+          </div>
+        </div>
+
+        <!-- Ficha técnica -->
+        <div class="rs-card">
+          <div class="rs-card-header">
+            <div class="rs-label"><i class="bi bi-list-check"></i>Ficha técnica perfecta</div>
+            <button class="btn btn-xs btn-outline-secondary" onclick="copyText('fichaResult')">
+              <i class="bi bi-clipboard me-1"></i>Copiar
+            </button>
+          </div>
+          <div class="rs-card-body p-0">
+            <div id="fichaResult" class="ficha-box" style="border-radius:0 0 12px 12px;border:none"></div>
+          </div>
+        </div>
+
+        <!-- Descripción -->
+        <div class="rs-card">
+          <div class="rs-card-header">
+            <div class="rs-label"><i class="bi bi-text-paragraph"></i>Descripción superadora</div>
+            <button class="btn btn-xs btn-outline-secondary" onclick="copyText('descResult')">
+              <i class="bi bi-clipboard me-1"></i>Copiar
+            </button>
+          </div>
+          <div class="rs-card-body">
+            <div id="descResult" class="desc-box"></div>
+          </div>
+        </div>
+
+        <div id="proyeccionResult" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────── -->
+<div id="addToast" style="position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999"></div>
+
+<!-- ── Análisis anteriores ─────────────────────────────────────── -->
+{% if lanzamientos %}
+<h2 class="fw-semibold mb-3 mt-2" style="font-size:1.05rem">
+  <i class="bi bi-clock-history me-2 text-muted"></i>Análisis anteriores
+</h2>
+
+{% for item in lanzamientos %}
+<div class="card mb-3 lanz-card {% if item.titulos %}has-result{% endif %}">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>
+      <i class="bi bi-rocket me-2 text-primary"></i>
+      <strong>{{ item.producto or item.archivo }}</strong>
+      {% if item.comps_count %}
+        <span class="badge bg-light text-muted border ms-2" style="font-size:.68rem">
+          {{ item.comps_count }} competidores analizados
+        </span>
+      {% endif %}
+      {% if item.cat_name %}
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1" style="font-size:.68rem">
+          {{ item.cat_name }}
+        </span>
+      {% endif %}
+    </span>
+    <span class="text-muted small">{{ item.fecha }}</span>
+  </div>
+
+  <div class="card-body">
+    {% if item.titulos %}
+    <!-- ── Resultado estructurado ──────────────────── -->
+    <div class="result-section mb-3">
+      <div class="rs-label"><i class="bi bi-check2-circle"></i>Publicación lista para aplicar</div>
+
+      <!-- Títulos -->
+      <div class="mb-3">
+        <div style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;margin-bottom:.4rem">
+          <i class="bi bi-type me-1"></i>Títulos optimizados
+        </div>
+        {% for t in item.titulos %}
+        <div class="titulo-card">
+          <div class="titulo-text">{{ loop.index }}. {{ t }}</div>
+          <div class="char-count">{{ t|length }}/60</div>
+          <button class="btn btn-xs btn-outline-success flex-shrink-0"
+                  onclick="navigator.clipboard.writeText(this.closest('.titulo-card').querySelector('.titulo-text').textContent.substring(3));showToast('Título copiado')">
+            <i class="bi bi-clipboard"></i>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Ficha técnica -->
+      {% if item.ficha %}
+      <div class="mb-3">
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <div style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase">
+            <i class="bi bi-list-check me-1"></i>Ficha técnica perfecta
+          </div>
+          <button class="btn btn-xs btn-outline-success"
+                  onclick="navigator.clipboard.writeText(this.closest('.mb-3').querySelector('.ficha-box').textContent);showToast('Ficha copiada')">
+            <i class="bi bi-clipboard me-1"></i>Copiar todo
+          </button>
+        </div>
+        <div class="ficha-box">{{ item.ficha }}</div>
+      </div>
+      {% endif %}
+
+      <!-- Descripción -->
+      {% if item.descripcion %}
+      <details class="mb-2">
+        <summary style="cursor:pointer;font-size:.78rem;font-weight:600;color:#15803d;padding:.4rem 0;list-style:none">
+          <i class="bi bi-text-paragraph me-1"></i>Ver descripción completa
+          <button class="btn btn-xs btn-outline-success ms-2"
+                  onclick="event.preventDefault();navigator.clipboard.writeText(`{{ item.descripcion | replace('`','\'') }}`);showToast('Descripción copiada')">
+            <i class="bi bi-clipboard me-1"></i>Copiar
+          </button>
+        </summary>
+        <div class="desc-box mt-2">{{ item.descripcion }}</div>
+      </details>
+      {% endif %}
+
+      <!-- Proyección -->
+      {% if item.proyeccion %}
+      <div class="p-2 rounded" style="background:#fff;border:1px solid #bbf7d0;font-size:.78rem;color:#374155">
+        <i class="bi bi-graph-up-arrow me-1 text-success"></i><strong>Proyección:</strong> {{ item.proyeccion }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Análisis competencia colapsado -->
+    {% if item.analisis_competencia %}
+    <details>
+      <summary style="cursor:pointer;list-style:none;font-size:.78rem;color:#64748b;padding:.35rem 0">
+        <i class="bi bi-bar-chart-steps me-1"></i>Ver análisis de competencia completo
+      </summary>
+      <div class="stream-panel mt-2" style="max-height:300px">{{ item.analisis_competencia }}</div>
+    </details>
+    {% endif %}
+
+    {% elif item.analisis %}
+    <!-- ── Formato antiguo (texto blob) ──────────────── -->
+    <details>
+      <summary style="cursor:pointer;list-style:none;font-size:.78rem;color:#64748b;padding:.35rem 0">
+        <i class="bi bi-file-text me-1"></i>Ver análisis completo
+      </summary>
+      <div class="p-3 rounded mt-2" style="background:#f8fafc;white-space:pre-wrap;font-size:.875rem;max-height:400px;overflow-y:auto;line-height:1.6">{{ item.analisis }}</div>
+    </details>
+    {% else %}
+    <div class="text-muted small">Sin análisis guardado</div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="no-data mt-2">
+  <i class="bi bi-rocket-takeoff" style="font-size:2rem;display:block;margin-bottom:8px"></i>
+  Sin análisis previos — usá el formulario de arriba para empezar.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Vista previa imagen ────────────────────────────────────────
+document.getElementById('imagenInput').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) { document.getElementById('imgPreview').style.display = 'none'; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('imgThumb').src = e.target.result;
+    document.getElementById('imgPreview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+});
+
+// ── Toast ──────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'alert alert-success py-2 px-3 mb-2';
+  t.style.cssText = 'font-size:.8rem;box-shadow:0 2px 8px rgba(0,0,0,.15);border-radius:8px';
+  t.innerHTML = `<i class="bi bi-check me-1"></i>${msg}`;
+  document.getElementById('addToast').appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+}
+
+// ── Copy helpers ───────────────────────────────────────────────
+function copyText(elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent || el.innerText);
+  showToast('¡Copiado!');
+}
+
+// ── Markdown mínimo ────────────────────────────────────────────
+function renderMd(text) {
+  return text
+    .replace(/## (.+)/g, '<strong style="font-size:.9rem;display:block;margin-top:1em;color:#1d4ed8">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+}
+
+// ── Precargar query desde Evaluar producto ─────────────────────
+(function() {
+  const q = new URLSearchParams(window.location.search).get('q');
+  if (q) {
+    document.getElementById('productoInput').value = q;
+    document.getElementById('productoInput').focus();
+  }
+})();
+
+// ── Envío del formulario ───────────────────────────────────────
+document.getElementById('launchForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const producto = document.getElementById('productoInput').value.trim();
+  if (!producto) return;
+
+  // Reset UI
+  document.getElementById('analysisPanel').style.display = 'block';
+  document.getElementById('marketBox').style.display    = 'none';
+  document.getElementById('compsBox').style.display     = 'none';
+  document.getElementById('mlDataBox').style.display    = 'none';
+  document.getElementById('analisisWrap').style.display = 'none';
+  document.getElementById('sintesisWrap').style.display = 'none';
+  document.getElementById('resultBox').style.display    = 'none';
+  document.getElementById('keywordsBlock').style.display = 'none';
+  document.getElementById('stepMsg').textContent = 'Buscando keywords y competidores...';
+  document.getElementById('spinner').style.display = '';
+  document.getElementById('launchBtn').disabled = true;
+  document.getElementById('analysisPanel').scrollIntoView({behavior:'smooth', block:'start'});
+
+  fetch('/api/lanzar-producto', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({query: producto})
+  })
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('launchBtn').disabled = false;
+    if (!d.ok) {
+      document.getElementById('stepMsg').textContent = '❌ ' + (d.error || 'Error');
+      return;
+    }
+    document.getElementById('stepMsg').textContent = '✓ Análisis completado';
+    renderLaunchResult(d);
+  })
+  .catch(err => {
+    document.getElementById('stepMsg').textContent = 'Error: ' + err;
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('launchBtn').disabled = false;
+  });
+});
+
+function renderLaunchResult(d) {
+  const lr = d.launch_result || {};
+
+  // ── Keywords ──────────────────────────────────────────────────
+  const kws = lr.keywords || {};
+  if (kws.principal || (kws.secundarias || []).length) {
+    const chip = k => `<span class="kw-chip">${k}</span>`;
+
+    document.getElementById('kwPrincipal').innerHTML = kws.principal
+      ? `<div class="kw-principal"><i class="bi bi-star-fill" style="font-size:.65rem"></i>${kws.principal}</div>` : '';
+    document.getElementById('kwSecundarias').innerHTML = (kws.secundarias || []).length
+      ? `<div>${(kws.secundarias).map(chip).join('')}</div>` : '';
+    document.getElementById('kwLongTail').innerHTML = (kws.long_tail || []).length
+      ? `<div class="kw-longtail"><i class="bi bi-arrow-return-right me-1"></i>${kws.long_tail.join(' · ')}</div>` : '';
+
+    document.getElementById('keywordsBlock').style.display = 'block';
+  }
+
+  // ── Títulos ───────────────────────────────────────────────────
+  const titulos = (lr.titulos_alt || []).map(t => typeof t === 'string' ? t : (t.titulo || ''));
+  document.getElementById('titulosResult').innerHTML = titulos.map((t, i) => {
+    const len = t.length;
+    const cls = len <= 60 ? 'ok' : len <= 80 ? 'warn' : '';
+    return `
+    <div class="titulo-card">
+      <div class="titulo-num">${i+1}</div>
+      <div class="titulo-text">${t}</div>
+      <div class="titulo-meta">
+        <span class="char-count ${cls}">${len}</span>
+        <button class="btn btn-xs btn-outline-secondary"
+                onclick="navigator.clipboard.writeText(${JSON.stringify(t)});showToast('Título ${i+1} copiado')">
+          <i class="bi bi-clipboard"></i>
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── Ficha técnica ─────────────────────────────────────────────
+  document.getElementById('fichaResult').textContent = lr.ficha_perfecta || '—';
+
+  // ── Descripción ───────────────────────────────────────────────
+  document.getElementById('descResult').textContent = lr.descripcion_nueva || '—';
+
+  document.getElementById('resultBox').style.display = 'block';
+  document.getElementById('resultBox').scrollIntoView({behavior:'smooth', block:'start'});
+}
+</script>
+{% endblock %}

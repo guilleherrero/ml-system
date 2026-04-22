@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+{% block title %} — Análisis de competencia{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-binoculars me-2 text-primary"></i>Inteligencia Competitiva</h1>
+    <div class="sub">{{ alias }}{% if fecha %} — datos del {{ fecha }}{% endif %}</div>
+  </div>
+  <button class="btn btn-sm btn-outline-secondary run-btn" onclick="runComando('competencia','{{ alias }}')">
+    <i class="bi bi-arrow-clockwise me-1"></i>Actualizar datos base
+  </button>
+</div>
+
+<!-- ── Selector de publicación ─────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-search me-2 text-primary"></i>Elegí una publicación para analizar</div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label fw-semibold">Buscar entre tus publicaciones</label>
+        <input type="text" id="searchPub" class="form-control"
+               placeholder="Escribí para filtrar..." autocomplete="off">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold">O ingresar ID de MercadoLibre</label>
+        <div class="input-group">
+          <span class="input-group-text text-muted" style="font-size:.82rem">MLA-</span>
+          <input type="text" id="customId" class="form-control"
+                 placeholder="ej: 123456789" autocomplete="off">
+        </div>
+      </div>
+      <div class="col-12">
+        <label class="form-label fw-semibold">
+          Contexto adicional para la IA
+          <span class="text-muted fw-normal">(opcional)</span>
+        </label>
+        <textarea id="contextoExtra" class="form-control" rows="2"
+                  placeholder="Ej: Mi producto incluye envío gratis y viene con garantía de 2 años. Es el único en ML con certificación X. Mi diferencial es que trae accesorios que los competidores venden por separado..."></textarea>
+        <div class="form-text">Claude va a incorporar este diferencial en el análisis y las sugerencias.</div>
+      </div>
+      <div class="col-md-3">
+        <button id="analyzeBtn" class="btn btn-primary w-100" onclick="startAnalysis()">
+          <i class="bi bi-stars me-1"></i>Analizar con IA
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Panel de análisis en tiempo real ───────────────────────── -->
+<div id="analysisPanel" style="display:none" class="mb-4">
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <span class="spinner-border spinner-border-sm text-primary" id="spinner"></span>
+        <span id="stepMsg" class="fw-semibold">Iniciando...</span>
+      </div>
+      <button class="btn btn-xs btn-outline-secondary" onclick="document.getElementById('analysisPanel').style.display='none'">
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+
+    <!-- Info del ítem + competidores -->
+    <div id="infoBox" style="display:none" class="card-body border-bottom pb-3">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="text-muted fw-semibold mb-1" style="font-size:.72rem;text-transform:uppercase">Publicación analizada</div>
+          <div id="itemTitle" class="fw-semibold"></div>
+          <div id="itemMeta" class="text-muted small mt-1"></div>
+        </div>
+        <div class="col-md-6">
+          <div class="text-muted fw-semibold mb-1" style="font-size:.72rem;text-transform:uppercase">Competidores encontrados</div>
+          <div id="compsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output streaming -->
+    <div class="card-body">
+      <div id="claudeOutput"
+           style="white-space:pre-wrap;font-size:.875rem;line-height:1.75;
+                  font-family:'Segoe UI',system-ui,sans-serif;
+                  min-height:80px;max-height:70vh;overflow-y:auto">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Análisis guardados (últimas 48hs) ──────────────────────── -->
+{% if saved_analyses %}
+<div class="mb-4">
+  <h2 class="fw-semibold mb-3" style="font-size:1rem">
+    <i class="bi bi-clock-history me-2 text-muted"></i>Análisis guardados (últimas 48 hs)
+  </h2>
+  {% for an in saved_analyses %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>
+        <i class="bi bi-file-earmark-text me-2 text-primary"></i>
+        <strong>{{ an.titulo[:60] }}</strong>
+        <span class="text-muted ms-2 small">{{ an.item_id }}</span>
+      </span>
+      <div class="d-flex align-items-center gap-3">
+        <span class="text-muted small">{{ an.fecha }}</span>
+        <button class="btn btn-xs btn-outline-primary"
+                onclick="loadSavedAnalysis('{{ an.item_id }}', `{{ an.analisis | replace('`','\\`') | replace('\\n','\\n') }}`)"  >
+          <i class="bi bi-arrow-repeat me-1"></i>Re-analizar
+        </button>
+      </div>
+    </div>
+    <div class="card-body">
+      {% if an.competidores %}
+      <div class="mb-2 d-flex flex-wrap gap-1">
+        {% for c in an.competidores[:4] %}
+        <span class="badge bg-light text-dark border" style="font-size:.72rem">{{ c.title[:35] }} · ${{ "{:,.0f}".format(c.price) }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="p-3 rounded"
+           style="background:#f8fafc;white-space:pre-wrap;font-size:.85rem;
+                  line-height:1.7;max-height:350px;overflow-y:auto">{{ an.analisis }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Lista de publicaciones rankeadas ────────────────────────── -->
+{% if publications %}
+<div class="card">
+  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span>
+      <i class="bi bi-exclamation-triangle me-2 text-warning"></i>Problemas detectados por publicación
+      <span class="text-muted fw-normal small ms-2">Ordenadas por urgencia — las que más afectan tu posicionamiento primero</span>
+    </span>
+    <div class="d-flex align-items-center gap-3 text-muted small">
+      {% set n_crit = publications | selectattr('urgencia','eq','critico') | list | length %}
+      {% set n_mej  = publications | selectattr('urgencia','in',['mejorar','revisar']) | list | length %}
+      {% set n_ok   = publications | selectattr('urgencia','eq','ok') | list | length %}
+      {% if n_crit %}<span class="badge bg-danger">{{ n_crit }} críticas</span>{% endif %}
+      {% if n_mej %}<span class="badge bg-warning text-dark">{{ n_mej }} a mejorar</span>{% endif %}
+      {% if n_ok %}<span class="badge bg-success">{{ n_ok }} OK</span>{% endif %}
+      <span>{{ publications|length }} publicaciones{% if fecha %} · {{ fecha }}{% endif %}</span>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" id="pubsTable">
+        <thead>
+          <tr>
+            <th style="width:32%">Publicación</th>
+            <th>Categoría</th>
+            <th class="text-end">Precio</th>
+            <th>Problemas detectados</th>
+            <th class="text-center">Urgencia</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pub in publications %}
+          <tr class="pub-row" data-id="{{ pub.id }}" data-title="{{ pub.titulo|lower }}">
+            <td>
+              <div class="text-truncate fw-semibold" style="max-width:280px" title="{{ pub.titulo }}">{{ pub.titulo }}</div>
+              <div class="d-flex gap-2 align-items-center mt-1">
+                <span class="text-muted" style="font-size:.7rem">{{ pub.id }}</span>
+                <a href="https://articulo.mercadolibre.com.ar/MLA-{{ pub.id[3:] if pub.id.startswith('MLA') else pub.id }}"
+                   target="_blank" class="text-muted" style="font-size:.7rem" title="Ver en ML">
+                  <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+              </div>
+            </td>
+            <td class="text-muted small">{{ pub.categoria[:28] }}</td>
+            <td class="text-end">${{ "{:,.0f}".format(pub.precio) }}</td>
+            <td>
+              {% if pub.problems %}
+                {% for prob in pub.problems[:3] %}
+                <div class="d-flex align-items-start gap-1 mb-1">
+                  {% if prob.nivel == 'critico' %}
+                  <i class="bi bi-x-circle-fill text-danger flex-shrink-0 mt-1" style="font-size:.8rem"></i>
+                  {% else %}
+                  <i class="bi bi-exclamation-circle text-warning flex-shrink-0 mt-1" style="font-size:.8rem"></i>
+                  {% endif %}
+                  <span style="font-size:.78rem" title="{{ prob.accion }}">
+                    {{ prob.problema }}
+                    <span class="text-muted d-none d-lg-inline"> — {{ prob.accion[:60] }}{% if prob.accion|length > 60 %}…{% endif %}</span>
+                  </span>
+                </div>
+                {% endfor %}
+                {% if pub.problems|length > 3 %}
+                <span class="text-muted" style="font-size:.72rem">+{{ pub.problems|length - 3 }} problemas más</span>
+                {% endif %}
+              {% else %}
+                <span class="text-success small"><i class="bi bi-check-circle-fill me-1"></i>Sin problemas detectados</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if pub.urgencia == 'critico' %}
+              <span class="badge bg-danger px-2">Crítico</span>
+              {% elif pub.urgencia == 'mejorar' %}
+              <span class="badge bg-warning text-dark px-2">Mejorar</span>
+              {% elif pub.urgencia == 'revisar' %}
+              <span class="badge bg-primary px-2">Revisar</span>
+              {% else %}
+              <span class="badge bg-success px-2">OK</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <button class="btn btn-xs btn-outline-primary"
+                      onclick="selectPub('{{ pub.id }}', '{{ pub.titulo|replace("'","") }}')">
+                <i class="bi bi-stars me-1"></i>Analizar
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="no-data">
+  <i class="bi bi-binoculars" style="font-size:2rem;display:block;margin-bottom:8px"></i>
+  Sin datos de publicaciones aún.<br>
+  <span class="text-muted small">Hacé clic en <strong>Actualizar datos base</strong> para escanear tus publicaciones.</span>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS = '{{ alias }}';
+let selectedItemId = '';
+
+// ── Filtro de búsqueda ───────────────────────────────────────────
+document.getElementById('searchPub').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('.pub-row').forEach(row => {
+    const match = row.dataset.title.includes(q) || row.dataset.id.toLowerCase().includes(q);
+    row.style.display = match ? '' : 'none';
+  });
+});
+
+// ── Seleccionar publicación desde la tabla ───────────────────────
+function selectPub(id, title) {
+  selectedItemId = id;
+  document.getElementById('searchPub').value = title;
+  document.getElementById('customId').value = '';
+  // Highlight
+  document.querySelectorAll('.pub-row').forEach(r =>
+    r.classList.toggle('table-active', r.dataset.id === id)
+  );
+  startAnalysis();
+}
+
+// ── Iniciar análisis ─────────────────────────────────────────────
+function startAnalysis() {
+  // Prioridad: ID manual > selección de tabla
+  let itemId = '';
+  const customVal = document.getElementById('customId').value.trim();
+  if (customVal) {
+    itemId = 'MLA' + customVal.replace(/^MLA-?/i, '');
+  } else if (selectedItemId) {
+    itemId = selectedItemId;
+  } else {
+    alert('Seleccioná una publicación o ingresá un ID de MercadoLibre.');
+    return;
+  }
+
+  // Reset panel
+  document.getElementById('analysisPanel').style.display = 'block';
+  document.getElementById('infoBox').style.display = 'none';
+  document.getElementById('claudeOutput').innerHTML = '';
+  document.getElementById('claudeOutput').dataset.raw = '';
+  document.getElementById('stepMsg').textContent = 'Conectando...';
+  document.getElementById('spinner').style.display = '';
+  document.getElementById('analyzeBtn').disabled = true;
+
+  // Scroll al panel
+  document.getElementById('analysisPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  fetch('/api/analizar-pub', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      alias: ALIAS,
+      item_id: itemId,
+      contexto: document.getElementById('contextoExtra').value.trim()
+    })
+  }).then(resp => {
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer    = '';
+
+    function readChunk() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          document.getElementById('spinner').style.display = 'none';
+          document.getElementById('analyzeBtn').disabled = false;
+          return;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop();
+        lines.forEach(line => {
+          if (!line.startsWith('data: ')) return;
+          try { handleEvent(JSON.parse(line.slice(6))); } catch {}
+        });
+        readChunk();
+      });
+    }
+    readChunk();
+  }).catch(err => {
+    document.getElementById('stepMsg').textContent = '❌ ' + err;
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('analyzeBtn').disabled = false;
+  });
+}
+
+// ── Procesar eventos SSE ─────────────────────────────────────────
+function handleEvent(ev) {
+  if (ev.type === 'step') {
+    document.getElementById('stepMsg').textContent = ev.msg;
+  }
+  else if (ev.type === 'item_ok') {
+    document.getElementById('itemTitle').textContent = ev.title;
+    const pos  = ev.position ? `· Posición #${ev.position}` : '· fuera del top 50 ⚠️';
+    const req  = ev.missing_required > 0 ? `· ⚠️ ${ev.missing_required} attrs requeridos faltantes` : '· atributos OK ✓';
+    document.getElementById('itemMeta').innerHTML =
+      `$${ev.price.toLocaleString('es-AR')} · ${ev.category} · ${ev.listing_type || '?'} · ${ev.attrs_count} attrs ${req} ${pos}`;
+    document.getElementById('infoBox').style.display = 'block';
+  }
+  else if (ev.type === 'comps_ok') {
+    const el = document.getElementById('compsList');
+    // Mostrar badge de calidad del dato
+    let qualityBadge = '';
+    if (ev.data_source === 'search_real') {
+      qualityBadge = '<span class="badge bg-success mb-1">✓ Datos reales de ML</span>';
+    } else if (ev.data_source === 'cache_catalogo') {
+      qualityBadge = '<span class="badge bg-warning text-dark mb-1">⚠️ Datos del catálogo (sin precios reales) — activar permiso "Ítems y búsqueda"</span>';
+    } else {
+      qualityBadge = '<div class="alert alert-danger py-2 px-2 mb-1 small"><strong>⛔ Sin datos de competencia.</strong> Activá el permiso "Ítems y búsqueda" en tu app de ML Developers y generá nuevos tokens. El análisis de keywords y título sí funciona, pero sin precios ni ventas reales.</div>';
+    }
+    const compsHtml = (ev.comps || []).map(c =>
+      `<div class="d-flex justify-content-between small border-bottom pb-1 mb-1">
+        <div class="me-2" style="min-width:0">
+          <div class="text-truncate" style="max-width:200px">${c.title}</div>
+          ${c.seller && c.seller !== '—' ? `<div class="text-muted" style="font-size:.7rem">${c.seller}</div>` : ''}
+        </div>
+        <span class="text-muted flex-shrink-0">
+          $${Math.round(c.price).toLocaleString('es-AR')} · ${c.sold} vendidos
+          ${c.free_ship ? ' · 🚚' : ''}
+        </span>
+      </div>`
+    ).join('');
+    // Mostrar nombres del caché si no hay datos reales
+    const cacheHtml = (ev.cache_names || []).map(n =>
+      `<div class="small text-muted border-bottom pb-1 mb-1">· ${n.substring(0,55)}</div>`
+    ).join('');
+    el.innerHTML = qualityBadge + (compsHtml || cacheHtml || '');
+  }
+  else if (ev.type === 'token') {
+    const out = document.getElementById('claudeOutput');
+    out.dataset.raw = (out.dataset.raw || '') + ev.text;
+    out.innerHTML = renderMd(out.dataset.raw);
+    out.scrollTop = out.scrollHeight;
+  }
+  else if (ev.type === 'done') {
+    document.getElementById('stepMsg').textContent = '✅ Análisis completo';
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+  else if (ev.type === 'error') {
+    document.getElementById('stepMsg').textContent = '❌ ' + ev.msg;
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+// ── Cargar análisis guardado en el panel ─────────────────────────
+function loadSavedAnalysis(itemId, text) {
+  selectedItemId = itemId;
+  document.getElementById('analysisPanel').style.display = 'block';
+  document.getElementById('infoBox').style.display = 'none';
+  document.getElementById('spinner').style.display = 'none';
+  document.getElementById('stepMsg').textContent = '✅ Análisis guardado';
+  const out = document.getElementById('claudeOutput');
+  out.dataset.raw = text;
+  out.innerHTML = renderMd(text);
+  document.getElementById('analysisPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Renderizado Markdown básico ──────────────────────────────────
+function renderMd(text) {
+  return text
+    .replace(/^## (.+)$/gm, '<strong style="font-size:1rem;display:block;margin-top:1.2em;margin-bottom:.3em;color:#1d4ed8">$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^• /gm, '&nbsp;&nbsp;• ')
+    .replace(/🔴/g, '<span style="color:#dc2626">🔴</span>')
+    .replace(/🟡/g, '<span style="color:#d97706">🟡</span>')
+    .replace(/🟢/g, '<span style="color:#16a34a">🟢</span>');
+}
+</script>
+{% endblock %}

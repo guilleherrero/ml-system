@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+{% block title %} — Multi-cuenta{% endblock %}
+{% block content %}
+<style>
+/* ── Revenue ───────────────────────────────────────────── */
+.rev-mini {
+  display:flex; gap:.5rem; margin:.5rem 0;
+}
+.rev-box {
+  flex:1; background:#f8fafc; border:1px solid #e2e8f0;
+  border-radius:8px; padding:.45rem .6rem; text-align:center;
+}
+.rev-box .rv-lbl { font-size:.6rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+.rev-box .rv-amt { font-size:.95rem; font-weight:800; line-height:1.2; }
+.rev-box .rv-u   { font-size:.6rem; color:#94a3b8; }
+.rev-box.hoy    .rv-amt { color:#1d4ed8; }
+.rev-box.semana .rv-amt { color:#6d28d9; }
+.rev-box.mes    .rv-amt { color:#15803d; }
+
+.skel {
+  background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);
+  background-size:200% 100%; animation:shimmer 1.3s infinite;
+  border-radius:4px; display:inline-block;
+}
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ── Account card ──────────────────────────────────────── */
+.acc-mc-card {
+  background:#fff; border-radius:14px; overflow:hidden;
+  box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:1rem;
+}
+.acc-mc-header {
+  background:linear-gradient(135deg,#1e3a8a,#1d4ed8);
+  color:#fff; padding:.7rem 1rem;
+  display:flex; align-items:center; justify-content:space-between; gap:.5rem;
+}
+.acc-mc-name { font-size:.95rem; font-weight:700; }
+.acc-mc-nick { font-size:.72rem; opacity:.75; }
+
+.nivel-pill {
+  font-size:.63rem; font-weight:700; padding:2px 8px; border-radius:20px;
+  color:#fff; white-space:nowrap;
+}
+.nivel-pill.platinum { background:#7c3aed; }
+.nivel-pill.gold     { background:#d97706; }
+.nivel-pill.leader   { background:#2563eb; }
+.nivel-pill.good     { background:#16a34a; }
+.nivel-pill.new      { background:#64748b; }
+
+/* ── Chips ─────────────────────────────────────────────── */
+.chip-row { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.5rem; }
+.chip-mc {
+  display:inline-flex; align-items:center; gap:.25rem;
+  padding:.22rem .6rem; border-radius:20px; font-size:.7rem; font-weight:600;
+  text-decoration:none; transition:opacity .15s;
+}
+.chip-mc:hover { opacity:.8; text-decoration:none; }
+.chip-red    { background:#fee2e2; color:#dc2626; }
+.chip-amber  { background:#fef3c7; color:#d97706; }
+.chip-green  { background:#dcfce7; color:#16a34a; }
+.chip-blue   { background:#dbeafe; color:#2563eb; }
+.chip-violet { background:#ede9fe; color:#6d28d9; }
+.chip-gray   { background:#f1f5f9; color:#64748b; }
+
+/* ── Rep metrics ───────────────────────────────────────── */
+.rep-strip {
+  display:flex; flex-wrap:wrap; gap:.6rem; align-items:center;
+  padding:.45rem .75rem; background:#f8fafc;
+  border-top:1px solid #f1f5f9; font-size:.73rem;
+}
+.rep-strip .rv { font-weight:700; }
+
+/* ── Module pills ──────────────────────────────────────── */
+.mod-row { display:flex; flex-wrap:wrap; gap:.3rem; padding:.6rem .75rem .75rem; }
+.mod-p {
+  display:inline-flex; align-items:center; gap:.3rem;
+  padding:.25rem .65rem; border-radius:20px; font-size:.72rem; font-weight:500;
+  border:1px solid #e2e8f0; background:#fff; color:#374151;
+  text-decoration:none; transition:all .15s;
+}
+.mod-p:hover { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; text-decoration:none; }
+.mod-p.pri { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
+.mod-p.pri:hover { background:#1d4ed8; color:#fff; }
+
+/* ── Summary boxes ─────────────────────────────────────── */
+.stat-box { background:#fff; border-radius:10px; padding:.7rem .9rem; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.07); }
+.stat-box .num { font-size:1.5rem; font-weight:800; line-height:1.1; }
+.stat-box .lbl { font-size:.68rem; color:#6b7280; margin-top:2px; }
+.stat-box.blue .num { color:#2563eb; }
+.stat-box.ok   .num { color:#16a34a; }
+.stat-box.warn .num { color:#d97706; }
+.stat-box.crit .num { color:#ef4444; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-diagram-3 me-2 text-primary"></i>Multi-cuenta</h1>
+    <div class="sub">Consolidado de todas tus cuentas MercadoLibre</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/alertas" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-bell me-1"></i>Centro de alertas
+    </a>
+    <button class="btn btn-sm btn-success" onclick="abrirModalCuenta()">
+      <i class="bi bi-plus-circle me-1"></i>Agregar cuenta
+    </button>
+    <button class="btn btn-sm btn-outline-primary" onclick="runComando('multicuenta','')">
+      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+    </button>
+  </div>
+</div>
+
+<!-- ── Modal: Agregar cuenta nueva ───────────────────────────────────────────── -->
+<div class="modal fade" id="cuentaModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2 text-success"></i>Agregar cuenta de MercadoLibre</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small">
+          <i class="bi bi-info-circle me-1"></i>
+          Necesitás una aplicación creada en
+          <a href="https://developers.mercadolibre.com.ar/apps/list" target="_blank">developers.mercadolibre.com.ar</a>
+          con el Redirect URI configurado como <code>https://frizzenderpro.com/oauth</code>.
+        </div>
+        <div id="modal-error" class="alert alert-danger py-2 small" style="display:none"></div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Alias <span class="text-muted fw-normal">(nombre interno para identificar la cuenta)</span></label>
+          <input type="text" id="nc-alias" class="form-control" placeholder="Ej: Tienda Principal, Cuenta 2...">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Client ID</label>
+          <input type="text" id="nc-client-id" class="form-control" placeholder="Número de tu app en ML Developers" autocomplete="off">
+          <div class="form-text">Lo encontrás en tu app → Credenciales.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Client Secret</label>
+          <input type="password" id="nc-client-secret" class="form-control" placeholder="Secret de tu app" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm" id="nc-save-btn" onclick="guardarCuentaNueva()">
+          <i class="bi bi-arrow-right-circle me-1"></i>Continuar con autorización
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not rows %}
+<div class="no-data">
+  <i class="bi bi-diagram-3" style="font-size:2rem;display:block;margin-bottom:8px"></i>
+  No hay cuentas configuradas.
+</div>
+{% else %}
+
+<!-- ══ RESUMEN CONSOLIDADO ══════════════════════════════════ -->
+<div class="row g-2 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-box blue">
+      <div class="num">{{ rows|length }}</div>
+      <div class="lbl">Cuentas activas</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-box blue">
+      <div class="num">{{ rows|sum(attribute='total') }}</div>
+      <div class="lbl">Publicaciones totales</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    {% set t_sin = rows|sum(attribute='sin_stock') %}
+    <div class="stat-box {{ 'crit' if t_sin > 0 else 'ok' }}">
+      <div class="num">{{ t_sin }}</div>
+      <div class="lbl">Sin stock</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    {% set t_baj = rows|sum(attribute='bajaron') %}
+    <div class="stat-box {{ 'warn' if t_baj > 0 else 'ok' }}">
+      <div class="num">{{ t_baj }}</div>
+      <div class="lbl">Posiciones bajaron</div>
+    </div>
+  </div>
+</div>
+
+<!-- Revenue consolidado (async) -->
+<div class="row g-2 mb-4">
+  <div class="col-4">
+    <div class="stat-box blue">
+      <div class="lbl" style="text-align:left"><i class="bi bi-calendar-day me-1"></i>Ventas hoy (todas)</div>
+      <div class="num" id="total-hoy"><span class="skel" style="width:70px;height:28px">&nbsp;</span></div>
+      <div class="lbl" id="total-hoy-u">&nbsp;</div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="stat-box" style="border-top:3px solid #7c3aed">
+      <div class="lbl" style="text-align:left"><i class="bi bi-calendar-week me-1"></i>Últimos 7 días</div>
+      <div class="num" style="color:#6d28d9" id="total-sem"><span class="skel" style="width:70px;height:28px">&nbsp;</span></div>
+      <div class="lbl" id="total-sem-u">&nbsp;</div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="stat-box" style="border-top:3px solid #16a34a">
+      <div class="lbl" style="text-align:left"><i class="bi bi-calendar-month me-1"></i>Últimos 30 días</div>
+      <div class="num" style="color:#15803d" id="total-mes"><span class="skel" style="width:70px;height:28px">&nbsp;</span></div>
+      <div class="lbl" id="total-mes-u">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CARDS POR CUENTA ══════════════════════════════════════ -->
+{% for row in rows %}
+{% set rk = row.alias | replace(' ','_') %}
+<div class="acc-mc-card">
+
+  <!-- Header azul -->
+  <div class="acc-mc-header">
+    <div>
+      <div class="acc-mc-name"><i class="bi bi-shop me-2"></i>{{ row.alias }}
+        {% if row.nickname %}<span class="acc-mc-nick ms-1">@{{ row.nickname }}</span>{% endif %}
+      </div>
+      {% if row.stock_fecha %}<div style="font-size:.62rem;opacity:.7;margin-top:1px"><i class="bi bi-clock me-1"></i>Stock actualizado: {{ row.stock_fecha[:16] }}</div>{% endif %}
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      {% if '5_green' in row.nivel_id %}
+        <span class="nivel-pill platinum"><i class="bi bi-gem me-1"></i>Platinum</span>
+      {% elif '4_light' in row.nivel_id %}
+        <span class="nivel-pill gold"><i class="bi bi-star-fill me-1"></i>Gold</span>
+      {% elif '3_yellow' in row.nivel_id %}
+        <span class="nivel-pill leader"><i class="bi bi-award-fill me-1"></i>Líder</span>
+      {% elif '2_orange' in row.nivel_id %}
+        <span class="nivel-pill good">Bueno</span>
+      {% elif row.nivel_id %}
+        <span class="nivel-pill new">Nuevo</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="padding:.6rem .75rem">
+
+    <!-- Revenue mini -->
+    <div class="rev-mini">
+      <div class="rev-box hoy">
+        <div class="rv-lbl">Hoy</div>
+        <div class="rv-amt" id="mc-hoy-{{ rk }}"><span class="skel" style="width:50px;height:18px">&nbsp;</span></div>
+        <div class="rv-u"  id="mc-hoy-u-{{ rk }}">&nbsp;</div>
+      </div>
+      <div class="rev-box semana">
+        <div class="rv-lbl">7 días</div>
+        <div class="rv-amt" id="mc-sem-{{ rk }}"><span class="skel" style="width:50px;height:18px">&nbsp;</span></div>
+        <div class="rv-u"  id="mc-sem-u-{{ rk }}">&nbsp;</div>
+      </div>
+      <div class="rev-box mes">
+        <div class="rv-lbl">30 días</div>
+        <div class="rv-amt" id="mc-mes-{{ rk }}"><span class="skel" style="width:50px;height:18px">&nbsp;</span></div>
+        <div class="rv-u"  id="mc-mes-u-{{ rk }}">&nbsp;</div>
+      </div>
+    </div>
+
+    <!-- Chips de alertas -->
+    <div class="chip-row">
+      <!-- Preguntas (async) -->
+      <a href="/preguntas/{{ row.alias }}" class="chip-mc chip-gray" id="mc-q-{{ rk }}">
+        <i class="bi bi-chat-dots"></i>
+        <span id="mc-q-txt-{{ rk }}">Preguntas…</span>
+      </a>
+      {% if row.sin_stock > 0 %}
+      <a href="/stock/{{ row.alias }}" class="chip-mc chip-red">
+        <i class="bi bi-exclamation-octagon-fill"></i>{{ row.sin_stock }} sin stock
+      </a>
+      {% endif %}
+      {% if row.criticos > 0 %}
+      <a href="/stock/{{ row.alias }}" class="chip-mc chip-amber">
+        <i class="bi bi-exclamation-triangle-fill"></i>{{ row.criticos }} stock crítico
+      </a>
+      {% endif %}
+      {% if row.bajaron > 0 %}
+      <a href="/posiciones/{{ row.alias }}" class="chip-mc chip-amber">
+        <i class="bi bi-arrow-down-circle-fill"></i>{{ row.bajaron }} pos. bajaron
+      </a>
+      {% endif %}
+      {% if row.margen_neg > 0 %}
+      <a href="/stock/{{ row.alias }}" class="chip-mc chip-red">
+        <i class="bi bi-graph-down-arrow"></i>{{ row.margen_neg }} margen negativo
+      </a>
+      {% endif %}
+      {% if row.sin_stock == 0 and row.criticos == 0 and row.bajaron == 0 and row.margen_neg == 0 %}
+      <span class="chip-mc chip-green">
+        <i class="bi bi-check-circle-fill"></i>Sin alertas críticas
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- Reputación inline -->
+    {% if row.rep_latest %}
+    <div class="rep-strip">
+      <span class="text-muted">Reclamos</span>
+      <span class="rv {{ 'text-danger' if row.rep_latest.reclamos_pct > 2 else ('text-warning' if row.rep_latest.reclamos_pct > 1 else 'text-success') }}">
+        {{ "%.1f"|format(row.rep_latest.reclamos_pct) }}%
+      </span>
+      <span class="text-muted ms-2">Demoras</span>
+      <span class="rv {{ 'text-danger' if row.rep_latest.demoras_pct > 15 else ('text-warning' if row.rep_latest.demoras_pct > 10 else 'text-success') }}">
+        {{ "%.1f"|format(row.rep_latest.demoras_pct) }}%
+      </span>
+      {% if row.rep_latest.cancelaciones_pct is defined %}
+      <span class="text-muted ms-2">Cancelaciones</span>
+      <span class="rv {{ 'text-danger' if row.rep_latest.cancelaciones_pct > 5 else ('text-warning' if row.rep_latest.cancelaciones_pct > 2 else 'text-success') }}">
+        {{ "%.1f"|format(row.rep_latest.cancelaciones_pct) }}%
+      </span>
+      {% endif %}
+      <a href="/reputacion/{{ row.alias }}" class="chip-mc chip-blue ms-auto" style="padding:1px 8px">Ver reputación →</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Módulos -->
+  <div class="mod-row">
+    <a href="/preguntas/{{ row.alias }}"    class="mod-p pri"><i class="bi bi-chat-dots"></i>Preguntas IA</a>
+    <a href="/optimizaciones/{{ row.alias }}" class="mod-p pri"><i class="bi bi-magic"></i>Optimizar IA</a>
+    <a href="/stock/{{ row.alias }}"        class="mod-p"><i class="bi bi-box-seam"></i>Stock</a>
+    <a href="/posiciones/{{ row.alias }}"   class="mod-p"><i class="bi bi-graph-up"></i>Posiciones</a>
+    <a href="/competencia/{{ row.alias }}"  class="mod-p"><i class="bi bi-binoculars"></i>Competencia</a>
+    <a href="/repricing/{{ row.alias }}"    class="mod-p"><i class="bi bi-tags"></i>Repricing</a>
+    <a href="/reputacion/{{ row.alias }}"   class="mod-p"><i class="bi bi-shield-check"></i>Reputación</a>
+  </div>
+
+</div>
+{% endfor %}
+
+<!-- ══ HERRAMIENTAS GLOBALES ══════════════════════════════════ -->
+<div class="card mt-2">
+  <div class="card-header fw-semibold"><i class="bi bi-tools me-2 text-primary"></i>Herramientas globales</div>
+  <div class="card-body d-flex flex-wrap gap-2">
+    <a href="/lanzamientos" class="mod-p"><i class="bi bi-rocket-takeoff text-primary"></i>Lanzar producto</a>
+    <a href="/radar"        class="mod-p"><i class="bi bi-radar text-primary"></i>Radar de nichos</a>
+    <a href="/calendario"   class="mod-p"><i class="bi bi-calendar-event text-primary"></i>Calendario</a>
+    <a href="/alertas"      class="mod-p"><i class="bi bi-bell text-danger"></i>Centro de alertas</a>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fmt(n) {
+  if (n >= 1000000) return '$' + (n/1000000).toFixed(1).replace('.',',') + 'M';
+  if (n >= 1000)    return '$' + (n/1000).toFixed(0) + 'K';
+  return '$' + Math.round(n).toLocaleString('es-AR');
+}
+
+const aliases = [{% for row in rows %}{{ row.alias|tojson }}{% if not loop.last %},{% endif %}{% endfor %}];
+
+let totHoy = 0, totHoyU = 0, totHoyO = 0;
+let totSem = 0, totSemU = 0, totSemO = 0;
+let totMes = 0, totMesU = 0, totMesO = 0;
+let pending = aliases.length;
+
+function updateTotals() {
+  const elH = document.getElementById('total-hoy');
+  const elS = document.getElementById('total-sem');
+  const elM = document.getElementById('total-mes');
+  if (elH) { elH.textContent = fmt(totHoy); document.getElementById('total-hoy-u').textContent = `${totHoyU} unid · ${totHoyO} ventas`; }
+  if (elS) { elS.textContent = fmt(totSem); document.getElementById('total-sem-u').textContent = `${totSemU} unid · ${totSemO} ventas`; }
+  if (elM) { elM.textContent = fmt(totMes); document.getElementById('total-mes-u').textContent = `${totMesU} unid · ${totMesO} ventas`; }
+}
+
+aliases.forEach(alias => {
+  const k = alias.replace(/\s+/g,'_');
+
+  // Revenue
+  fetch(`/api/revenue-quick/${encodeURIComponent(alias)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) return;
+      // Por cuenta
+      const hEl = document.getElementById(`mc-hoy-${k}`);
+      const sEl = document.getElementById(`mc-sem-${k}`);
+      const mEl = document.getElementById(`mc-mes-${k}`);
+      if (hEl) hEl.textContent = d.hoy.amount > 0 ? fmt(d.hoy.amount) : '—';
+      document.getElementById(`mc-hoy-u-${k}`).textContent = d.hoy.units > 0 ? `${d.hoy.units}u · ${d.hoy.orders}v` : '';
+      if (sEl) sEl.textContent = fmt(d.semana.amount);
+      document.getElementById(`mc-sem-u-${k}`).textContent = `${d.semana.units}u · ${d.semana.orders}v`;
+      if (mEl) mEl.textContent = fmt(d.mes.amount);
+      document.getElementById(`mc-mes-u-${k}`).textContent = `${d.mes.units}u · ${d.mes.orders}v`;
+      // Totales consolidados
+      totHoy += d.hoy.amount; totHoyU += d.hoy.units; totHoyO += d.hoy.orders;
+      totSem += d.semana.amount; totSemU += d.semana.units; totSemO += d.semana.orders;
+      totMes += d.mes.amount; totMesU += d.mes.units; totMesO += d.mes.orders;
+      updateTotals();
+    })
+    .catch(() => {
+      ['hoy','sem','mes'].forEach(p => {
+        const el = document.getElementById(`mc-${p}-${k}`);
+        if (el) el.innerHTML = '<span style="color:#94a3b8;font-size:.75rem">—</span>';
+      });
+    });
+
+  // Preguntas pendientes
+  fetch(`/api/preguntas-count/${encodeURIComponent(alias)}`)
+    .then(r => r.json())
+    .then(data => {
+      const chip    = document.getElementById(`mc-q-${k}`);
+      const chipTxt = document.getElementById(`mc-q-txt-${k}`);
+      if (!chip || !chipTxt) return;
+      if (data.count > 0) {
+        chipTxt.textContent = `${data.count} preguntas`;
+        chip.className = 'chip-mc chip-red';
+      } else {
+        chipTxt.textContent = 'Sin preguntas';
+        chip.className = 'chip-mc chip-green';
+      }
+    }).catch(() => {});
+});
+
+// ── Agregar cuenta nueva ──────────────────────────────────────────────────────
+function abrirModalCuenta() {
+  document.getElementById('nc-alias').value = '';
+  document.getElementById('nc-client-id').value = '';
+  document.getElementById('nc-client-secret').value = '';
+  document.getElementById('modal-error').style.display = 'none';
+  new bootstrap.Modal(document.getElementById('cuentaModal')).show();
+}
+
+async function guardarCuentaNueva() {
+  const alias    = document.getElementById('nc-alias').value.trim();
+  const clientId = document.getElementById('nc-client-id').value.trim();
+  const secret   = document.getElementById('nc-client-secret').value.trim();
+  const errEl    = document.getElementById('modal-error');
+  const btn      = document.getElementById('nc-save-btn');
+
+  errEl.style.display = 'none';
+  if (!alias || !clientId || !secret) {
+    errEl.textContent = 'Completá todos los campos.';
+    errEl.style.display = '';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Guardando...';
+
+  try {
+    const r = await fetch('/api/cuenta-nueva', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias, client_id: clientId, client_secret: secret}),
+    });
+    const data = await r.json();
+    if (!data.ok) {
+      errEl.textContent = data.error;
+      errEl.style.display = '';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-right-circle me-1"></i>Continuar con autorización';
+      return;
+    }
+    // Redirigir al flujo OAuth
+    window.location.href = `/oauth/connect/${encodeURIComponent(data.alias)}`;
+  } catch(e) {
+    errEl.textContent = 'Error de conexión.';
+    errEl.style.display = '';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-right-circle me-1"></i>Continuar con autorización';
+  }
+}
+</script>
+{% endblock %}

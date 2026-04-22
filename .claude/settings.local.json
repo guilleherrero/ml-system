@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(textutil:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(curl -s 'https://api.mercadolibre.com/items?ids=MLA44710221,MLA28450757' -H 'Authorization: Bearer APP_USR-2867161491044537-040213-26cb05d8bd36877e2e37ab16f92c13e4-55993545')",
+      "Bash(curl -s https://api.mercadolibre.com/items/MLA1461008923 -H 'Authorization: Bearer APP_USR-2867161491044537-040213-26cb05d8bd36877e2e37ab16f92c13e4-55993545')"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+# Credenciales y tokens — NUNCA subir
+config/accounts.json
+.env
+
+# Datos de negocio personales
+config/costos.json
+config/repricing.json
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/

@@ -1,0 +1,920 @@
+{% extends "base.html" %}
+{% block title %} — Meli ADS{% endblock %}
+{% block content %}
+
+{% set as = api_status if api_status is defined else {} %}
+
+<style>
+/* ── Layout ──────────────────────────────────────────────────────────────────── */
+.ads-header    { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:.75rem; }
+.ads-title     { font-size:1.3rem; font-weight:800; color:#1e293b; }
+.ads-subtitle  { font-size:.75rem; color:#64748b; margin-top:.1rem; }
+
+/* ── Status bar ─────────────────────────────────────────────────────────────── */
+.status-bar    { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+.stat-pill     { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:.4rem .8rem; font-size:.75rem; color:#374151; display:flex; align-items:center; gap:.4rem; }
+.stat-pill.ok  { border-color:#bbf7d0; background:#f0fdf4; color:#16a34a; }
+.stat-pill.err { border-color:#fecaca; background:#fef2f2; color:#dc2626; }
+
+/* ── Campaign card ───────────────────────────────────────────────────────────── */
+.camp-card     { background:#fff; border:1px solid #e2e8f0; border-radius:16px; margin-bottom:1.5rem; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.camp-head     { padding:1.1rem 1.25rem .9rem; border-bottom:1px solid #f1f5f9; display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.camp-name     { font-size:1rem; font-weight:800; color:#1e293b; }
+.camp-meta     { font-size:.72rem; color:#64748b; margin-top:.2rem; display:flex; gap:.75rem; flex-wrap:wrap; }
+.camp-body     { padding:1.1rem 1.25rem; }
+.camp-status   { display:inline-flex; align-items:center; gap:.3rem; padding:.25rem .6rem; border-radius:20px; font-size:.7rem; font-weight:700; }
+.camp-status.active { background:#dcfce7; color:#15803d; }
+.camp-status.paused { background:#fef3c7; color:#92400e; }
+
+/* ── Metrics grid ────────────────────────────────────────────────────────────── */
+.metrics-grid  { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:.75rem; margin-bottom:1.1rem; }
+.m-box         { background:#f8fafc; border:1px solid #f1f5f9; border-radius:10px; padding:.65rem .8rem; }
+.m-box .mv     { font-size:1.1rem; font-weight:800; color:#1e293b; line-height:1; }
+.m-box .ml     { font-size:.65rem; color:#94a3b8; margin-top:.2rem; text-transform:uppercase; letter-spacing:.05em; }
+.m-box.good .mv { color:#16a34a; }
+.m-box.warn .mv { color:#d97706; }
+.m-box.bad  .mv { color:#dc2626; }
+
+/* ── ACoS bar ────────────────────────────────────────────────────────────────── */
+.acos-bar-wrap { position:relative; background:#f1f5f9; border-radius:99px; height:10px; margin:.5rem 0; overflow:visible; }
+.acos-bar-fill { height:100%; border-radius:99px; transition:width .4s; }
+.acos-bar-target { position:absolute; top:-3px; width:2px; height:16px; background:#ef4444; border-radius:1px; }
+.acos-label    { font-size:.7rem; color:#64748b; display:flex; justify-content:space-between; }
+
+/* ── Claude analysis ─────────────────────────────────────────────────────────── */
+.claude-box    { background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%); border:1px solid #bae6fd; border-radius:12px; padding:1rem 1.1rem; margin-bottom:1.1rem; }
+.claude-box h4 { font-size:.7rem; font-weight:800; color:#0369a1; text-transform:uppercase; letter-spacing:.06em; margin-bottom:.5rem; display:flex; align-items:center; gap:.4rem; }
+.claude-text   { font-size:.82rem; color:#1e3a5f; line-height:1.55; white-space:pre-wrap; }
+
+/* ── Action panel ────────────────────────────────────────────────────────────── */
+.action-panel  { background:#f8fafc; border-radius:12px; padding:1rem 1.1rem; display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; }
+.action-label  { font-size:.72rem; font-weight:700; color:#374151; flex-shrink:0; }
+.budget-input-wrap { display:flex; align-items:center; gap:.4rem; background:#fff; border:1px solid #d1d5db; border-radius:8px; padding:.3rem .6rem; }
+.budget-input-wrap span { font-size:.8rem; color:#64748b; }
+.budget-input  { border:none; outline:none; width:90px; font-size:.85rem; font-weight:700; color:#1e293b; background:transparent; }
+.btn-action    { display:inline-flex; align-items:center; gap:.35rem; padding:.38rem .85rem; border-radius:8px; font-size:.78rem; font-weight:700; cursor:pointer; border:none; transition:all .15s; }
+.btn-primary   { background:#2563eb; color:#fff; }
+.btn-primary:hover { background:#1d4ed8; }
+.btn-success   { background:#16a34a; color:#fff; }
+.btn-success:hover { background:#15803d; }
+.btn-danger    { background:#dc2626; color:#fff; }
+.btn-danger:hover  { background:#b91c1c; }
+.btn-warning   { background:#d97706; color:#fff; }
+.btn-warning:hover { background:#b45309; }
+.btn-ghost     { background:#f1f5f9; color:#374151; border:1px solid #d1d5db; }
+.btn-ghost:hover { background:#e2e8f0; }
+
+/* ── Items list ──────────────────────────────────────────────────────────────── */
+.items-toggle  { font-size:.72rem; color:#2563eb; cursor:pointer; margin-top:.75rem; display:inline-flex; align-items:center; gap:.3rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:.28rem .65rem; font-weight:600; }
+.items-toggle:hover { background:#dbeafe; }
+.items-list    { display:none; margin-top:.75rem; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+.items-list.open { display:block; }
+.items-list-loading { padding:1.2rem; text-align:center; color:#94a3b8; font-size:.78rem; }
+
+/* Item row */
+.item-row      { padding:.65rem .9rem; border-bottom:1px solid #f1f5f9; display:grid; grid-template-columns:auto 1fr auto; gap:.75rem; align-items:start; }
+.item-row:last-child { border-bottom:none; }
+.item-row:hover { background:#f8fafc; }
+.item-thumb    { width:40px; height:40px; border-radius:6px; object-fit:cover; background:#f1f5f9; flex-shrink:0; }
+.item-thumb-placeholder { width:40px; height:40px; border-radius:6px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#cbd5e1; font-size:1.1rem; flex-shrink:0; }
+.item-main     { min-width:0; }
+.item-title    { font-size:.78rem; font-weight:600; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.item-meta     { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.2rem; align-items:center; }
+.item-price    { font-size:.72rem; color:#374151; font-weight:700; }
+.item-actions  { display:flex; flex-direction:column; gap:.35rem; align-items:flex-end; flex-shrink:0; }
+
+/* Level badge */
+.lvl-badge     { display:inline-flex; align-items:center; gap:.25rem; padding:.15rem .5rem; border-radius:20px; font-size:.65rem; font-weight:700; }
+.lvl-green     { background:#dcfce7; color:#15803d; }
+.lvl-yellow    { background:#fef9c3; color:#92400e; }
+.lvl-red       { background:#fee2e2; color:#dc2626; }
+.lvl-unknown   { background:#f1f5f9; color:#64748b; }
+
+/* Mini buttons */
+.btn-mini      { display:inline-flex; align-items:center; gap:.2rem; padding:.22rem .55rem; border-radius:5px; font-size:.67rem; font-weight:700; cursor:pointer; border:1px solid transparent; transition:all .12s; white-space:nowrap; }
+.btn-mini-move { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+.btn-mini-move:hover { background:#dbeafe; }
+.btn-mini-del  { background:#fff1f2; border-color:#fecdd3; color:#be123c; }
+.btn-mini-del:hover { background:#ffe4e6; }
+
+/* Item suggestion */
+.item-suggest  { font-size:.67rem; color:#64748b; margin-top:.3rem; line-height:1.4; }
+.item-suggest.has-issue { color:#92400e; }
+
+/* Move dropdown */
+.move-dropdown { position:relative; display:inline-block; }
+.move-menu     { position:absolute; right:0; top:100%; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12); z-index:100; min-width:200px; display:none; }
+.move-menu.open { display:block; }
+.move-menu-item { padding:.5rem .85rem; font-size:.74rem; cursor:pointer; display:flex; align-items:center; gap:.4rem; }
+.move-menu-item:hover { background:#f8fafc; }
+.move-menu-item:first-child { border-radius:8px 8px 0 0; }
+.move-menu-item:last-child  { border-radius:0 0 8px 8px; }
+
+/* ── Feedback toast ──────────────────────────────────────────────────────────── */
+#ads-toast     { position:fixed; bottom:1.5rem; right:1.5rem; background:#1e293b; color:#fff; padding:.75rem 1.2rem; border-radius:12px; font-size:.82rem; z-index:9999; opacity:0; transform:translateY(8px); transition:all .25s; pointer-events:none; max-width:340px; }
+#ads-toast.show { opacity:1; transform:translateY(0); }
+#ads-toast.ok  { background:#16a34a; }
+#ads-toast.err { background:#dc2626; }
+
+/* ── Warnings ────────────────────────────────────────────────────────────────── */
+.warn-box      { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:.6rem 1rem; margin-bottom:1rem; font-size:.76rem; color:#92400e; }
+
+/* ── Empty state ─────────────────────────────────────────────────────────────── */
+.empty-state   { text-align:center; padding:3rem 1rem; color:#94a3b8; }
+.empty-state i { font-size:2.5rem; margin-bottom:.75rem; display:block; }
+</style>
+
+{# ─── Header ──────────────────────────────────────────────────────────────────── #}
+<div class="ads-header">
+  <div>
+    <div class="ads-title"><i class="bi bi-megaphone-fill me-2" style="color:#2563eb"></i>Meli ADS — Monitor de Campañas</div>
+    <div class="ads-subtitle">Análisis en tiempo real con datos de la API + recomendaciones de Claude AI</div>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    <button class="btn-action btn-ghost" onclick="location.reload()"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
+    {% if account_alias %}
+    <a class="btn-action" href="/oauth/connect/{{ account_alias }}"
+       style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:8px;padding:.4rem .85rem;font-size:.78rem;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem">
+      <i class="bi bi-key-fill"></i> Reconectar / Activar publicidad
+    </a>
+    {% endif %}
+    <button class="btn-action btn-primary" onclick="openDistribution()" id="btn-dist">
+      <i class="bi bi-diagram-3"></i> Optimizar distribución
+    </button>
+  </div>
+</div>
+
+{# ─── Status bar ──────────────────────────────────────────────────────────────── #}
+<div class="status-bar">
+  {% if as.api_connected %}
+    <span class="stat-pill ok"><i class="bi bi-wifi"></i> API conectada</span>
+  {% else %}
+    <span class="stat-pill err"><i class="bi bi-wifi-off"></i> Sin conexión API</span>
+  {% endif %}
+  {% if as.campaigns_count %}
+    <span class="stat-pill"><i class="bi bi-collection"></i> {{ as.campaigns_count }} campaña{{ 's' if as.campaigns_count != 1 else '' }}</span>
+  {% endif %}
+  {% if as.ads_count %}
+    <span class="stat-pill"><i class="bi bi-box"></i> {{ as.ads_count }} productos activos</span>
+  {% endif %}
+  {% if as.advertiser_id %}
+    <span class="stat-pill"><i class="bi bi-person-badge"></i> Advertiser {{ as.advertiser_id }}</span>
+  {% endif %}
+</div>
+
+{# ─── Resumen global ROAS ──────────────────────────────────────────────────────── #}
+{% if campaigns %}
+{% set total_spend   = campaigns | sum(attribute='metrics.spend') | default(0) %}
+{% set total_revenue = campaigns | sum(attribute='metrics.revenue_ads') | default(0) %}
+{% set total_clicks  = campaigns | sum(attribute='metrics.clicks') | default(0) %}
+{% set total_conv    = campaigns | sum(attribute='metrics.conversions') | default(0) %}
+{% set global_roas   = (total_revenue / total_spend) if total_spend > 0 else none %}
+{% set roas_color    = '#16a34a' if global_roas and global_roas >= 5 else ('#d97706' if global_roas and global_roas >= 2 else '#dc2626') %}
+<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:1.25rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem">
+  <div style="text-align:center;border-right:1px solid #f1f5f9;padding-right:.75rem">
+    <div style="font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem">ROAS total</div>
+    <div style="font-size:2rem;font-weight:800;color:{{ roas_color }}">
+      {{ '%.1f×'|format(global_roas) if global_roas else '—' }}
+    </div>
+    <div style="font-size:.68rem;color:#94a3b8">
+      {% if global_roas %}
+        {% if global_roas >= 5 %}Excelente retorno{% elif global_roas >= 2 %}Retorno aceptable{% else %}Retorno bajo — revisá{% endif %}
+      {% else %}Sin inversión{% endif %}
+    </div>
+  </div>
+  <div style="text-align:center;border-right:1px solid #f1f5f9;padding-right:.75rem">
+    <div style="font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem">Gasto total 30d</div>
+    <div style="font-size:1.5rem;font-weight:800;color:#dc2626">${{ '{:,.0f}'.format(total_spend) }}</div>
+    <div style="font-size:.68rem;color:#94a3b8">{{ campaigns|length }} campaña{{ 's' if campaigns|length != 1 else '' }}</div>
+  </div>
+  <div style="text-align:center;border-right:1px solid #f1f5f9;padding-right:.75rem">
+    <div style="font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem">Revenue por ads</div>
+    <div style="font-size:1.5rem;font-weight:800;color:#16a34a">${{ '{:,.0f}'.format(total_revenue) }}</div>
+    <div style="font-size:.68rem;color:#94a3b8">
+      {% if total_spend > 0 %}Ganás ${{ '{:,.0f}'.format(total_revenue - total_spend) }} neto de ads{% endif %}
+    </div>
+  </div>
+  <div style="text-align:center">
+    <div style="font-size:.65rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem">Conversiones</div>
+    <div style="font-size:1.5rem;font-weight:800;color:#2563eb">{{ total_conv }}</div>
+    <div style="font-size:.68rem;color:#94a3b8">{{ '{:,}'.format(total_clicks) }} clicks</div>
+  </div>
+</div>
+{% endif %}
+
+{# ─── Warnings ─────────────────────────────────────────────────────────────────── #}
+{% if as.warnings %}
+  <div class="warn-box">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    {{ as.warnings | join(' · ') }}
+  </div>
+{% endif %}
+
+{# ─── Banner OAuth Publicidad ─────────────────────────────────────────────────── #}
+{% if account_alias %}
+<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:.85rem 1.1rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.85rem">
+  <i class="bi bi-key-fill" style="color:#c2410c;font-size:1.1rem;flex-shrink:0;margin-top:.1rem"></i>
+  <div style="flex:1">
+    <div style="font-size:.8rem;font-weight:700;color:#92400e;margin-bottom:.25rem">Los botones de acción requieren permiso de escritura en Advertising</div>
+    <div style="font-size:.76rem;color:#9a3412;line-height:1.55">
+      Los cambios de presupuesto, pausar campaña y mover productos devuelven error 401 porque la cuenta no tiene el permiso
+      <strong>Publicidad (write)</strong> habilitado en el portal developer de ML.
+      Seguí el proceso de reconexión para activarlo — dura 5 minutos.
+    </div>
+  </div>
+  <a href="/oauth/connect/{{ account_alias }}"
+     style="flex-shrink:0;background:#c2410c;color:#fff;border:none;border-radius:8px;padding:.45rem .9rem;font-size:.76rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;white-space:nowrap">
+    <i class="bi bi-arrow-right-circle-fill"></i> Resolver ahora
+  </a>
+</div>
+{% endif %}
+
+{# ─── No campaigns ────────────────────────────────────────────────────────────── #}
+{% if not campaigns %}
+  <div class="empty-state">
+    <i class="bi bi-megaphone"></i>
+    <div style="font-size:.95rem;font-weight:700;color:#374151;margin-bottom:.4rem">No se encontraron campañas</div>
+    <div style="font-size:.8rem">
+      {% if not as.api_connected %}
+        Conectá tu cuenta de MercadoLibre para ver tus campañas.
+        <br><a href="/cuentas" class="btn-action btn-primary mt-2" style="display:inline-flex;margin-top:.75rem">Conectar cuenta</a>
+      {% else %}
+        No hay campañas de Product Ads activas en esta cuenta.
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{# ─── Campaign cards ──────────────────────────────────────────────────────────── #}
+{% for camp in campaigns %}
+{% set m    = camp.metrics or {} %}
+{% set acos = m.acos | default(none) %}
+{% set roas = m.roas | default(none) %}
+{% set acos_target_dec = (camp.acos_target or 10) / 100 %}
+{% set acos_pct = (acos * 100) | round(1) if acos is not none else none %}
+{% set target_pct = (camp.acos_target or 10) | round(1) %}
+
+{# Color classes #}
+{% if acos is none %}
+  {% set acos_cls = '' %}
+{% elif acos <= acos_target_dec %}
+  {% set acos_cls = 'good' %}
+{% elif acos <= acos_target_dec * 1.3 %}
+  {% set acos_cls = 'warn' %}
+{% else %}
+  {% set acos_cls = 'bad' %}
+{% endif %}
+
+{% if roas is none %}
+  {% set roas_cls = '' %}
+{% elif roas >= 5 %}
+  {% set roas_cls = 'good' %}
+{% elif roas >= 2 %}
+  {% set roas_cls = 'warn' %}
+{% else %}
+  {% set roas_cls = 'bad' %}
+{% endif %}
+
+<div class="camp-card">
+  {# Head #}
+  <div class="camp-head">
+    <div>
+      <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+        <span class="camp-name">{{ camp.name }}</span>
+        <span class="camp-status {{ camp.status | lower }}">
+          <i class="bi bi-{{ 'play-fill' if camp.status == 'active' else 'pause-fill' }}"></i>
+          {{ 'Activa' if camp.status == 'active' else 'Pausada' }}
+        </span>
+      </div>
+      <div class="camp-meta">
+        <span><i class="bi bi-hash"></i> ID {{ camp.id }}</span>
+        <span><i class="bi bi-currency-dollar"></i> Presupuesto: ${{ '{:,.0f}'.format(camp.budget) }}/día</span>
+        <span><i class="bi bi-bullseye"></i> Estrategia: {{ camp.strategy or 'N/A' }}</span>
+        <span><i class="bi bi-percent"></i> Target ACoS: {{ target_pct }}%</span>
+        <span><i class="bi bi-box-seam"></i> {{ camp.items_count }} productos</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="camp-body">
+
+    {# Metrics #}
+    <div class="metrics-grid">
+      <div class="m-box">
+        <div class="mv">${{ '{:,.0f}'.format(m.spend or 0) }}</div>
+        <div class="ml">Gasto 30d</div>
+      </div>
+      <div class="m-box">
+        <div class="mv">${{ '{:,.0f}'.format(m.revenue_ads or 0) }}</div>
+        <div class="ml">Revenue ads</div>
+      </div>
+      <div class="m-box {{ acos_cls }}">
+        <div class="mv">{{ '%.1f%%'|format(acos_pct) if acos_pct is not none else '—' }}</div>
+        <div class="ml">ACoS actual</div>
+      </div>
+      <div class="m-box {{ roas_cls }}">
+        <div class="mv">{{ '%.1f×'|format(roas) if roas is not none else '—' }}</div>
+        <div class="ml">ROAS</div>
+      </div>
+      <div class="m-box">
+        <div class="mv">{{ m.conversions or 0 }}</div>
+        <div class="ml">Conversiones</div>
+      </div>
+      <div class="m-box">
+        <div class="mv">{{ '{:,}'.format(m.clicks or 0) }}</div>
+        <div class="ml">Clicks</div>
+      </div>
+      <div class="m-box">
+        <div class="mv">{{ '{:,}'.format(m.impressions or 0) }}</div>
+        <div class="ml">Impresiones</div>
+      </div>
+      <div class="m-box">
+        <div class="mv">{{ '%.2f%%'|format((m.ctr or 0) * 100) }}</div>
+        <div class="ml">CTR</div>
+      </div>
+    </div>
+
+    {# ACoS bar vs target #}
+    {% if acos is not none %}
+    <div style="margin-bottom:1rem">
+      {% set bar_pct = [acos_pct / target_pct * 100, 100] | min %}
+      {% set bar_color = '#16a34a' if acos_cls == 'good' else '#d97706' if acos_cls == 'warn' else '#dc2626' %}
+      {% set target_pos = 100 %}
+      <div class="acos-bar-wrap">
+        <div class="acos-bar-fill" style="width:{{ bar_pct | round(1) }}%;background:{{ bar_color }}"></div>
+        <div class="acos-bar-target" style="left:{{ target_pos }}%"></div>
+      </div>
+      <div class="acos-label">
+        <span>ACoS {{ '%.1f%%'|format(acos_pct) }} {% if acos_pct <= target_pct %}<span style="color:#16a34a">✓ bajo target</span>{% else %}<span style="color:#dc2626">↑ sobre target</span>{% endif %}</span>
+        <span>Target: {{ target_pct }}%</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Presupuesto hoy #}
+    {% set t_spend = camp.today_spend | default(0) %}
+    {% set t_pct   = camp.today_pct   | default(0) %}
+    {% set t_color = '#16a34a' if t_pct < 60 else '#d97706' if t_pct < 85 else '#dc2626' %}
+    {% set t_label = 'Normal' if t_pct < 60 else 'Elevado' if t_pct < 85 else ('Agotado — pausado antes del cierre' if t_pct >= 100 else 'Casi agotado') %}
+    <div style="margin-bottom:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
+        <span style="font-size:.73rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em">
+          <i class="bi bi-calendar-day" style="color:{{ t_color }}"></i> Presupuesto hoy
+        </span>
+        <span style="font-size:.72rem;font-weight:700;color:{{ t_color }}">
+          {{ t_label }} — ${{ '{:,.0f}'.format(t_spend) }} de ${{ '{:,.0f}'.format(camp.budget) }} ({{ '%.0f%%'|format(t_pct) }})
+        </span>
+      </div>
+      <div style="background:#f1f5f9;border-radius:99px;height:8px;overflow:hidden">
+        <div style="height:100%;border-radius:99px;background:{{ t_color }};width:{{ [t_pct, 100]|min | round(1) }}%;transition:width .4s"></div>
+      </div>
+      {% if t_pct >= 85 %}
+      <div style="margin-top:.4rem;font-size:.71rem;color:{{ t_color }};line-height:1.4">
+        {% if t_pct >= 100 %}
+        ⚠ La campaña agotó su presupuesto hoy. Los anuncios dejaron de mostrarse antes del cierre del día. Considerá aumentar el presupuesto diario.
+        {% else %}
+        ⚠ La campaña consumió más del 85% del presupuesto. Puede dejar de mostrar anuncios antes de medianoche.
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    {# Stock alerts #}
+    {% set sa = camp.stock_alerts | default({}) %}
+    {% if sa.count | default(0) > 0 %}
+    <div style="margin-bottom:1rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:.75rem 1rem">
+      <div style="font-size:.73rem;font-weight:700;color:#c2410c;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em">
+        <i class="bi bi-box-seam"></i> {{ sa.count }} producto{{ 's' if sa.count > 1 else '' }} con stock crítico
+      </div>
+      {% for it in sa.alerts_list %}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;{% if not loop.last %}border-bottom:1px solid #fed7aa;{% endif %}">
+        <div style="font-size:.75rem;color:#1e293b;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ it.title }}">
+          {{ it.title | truncate(50, true, '…') }}
+        </div>
+        <div style="flex-shrink:0;margin-left:.75rem;text-align:right">
+          <span style="font-size:.7rem;font-weight:700;color:#c2410c">{{ it.stock }} uds</span>
+          <span style="font-size:.68rem;color:#9a3412;margin-left:.3rem">
+            {% if it.days_left < 1 %}sin stock{% elif it.days_left < 2 %}≈1 día{% else %}≈{{ it.days_left | round(0) | int }} días{% endif %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+      <div style="font-size:.69rem;color:#9a3412;margin-top:.45rem">Al ritmo de ventas actual estos productos se quedarán sin stock pronto. Considerá pausar sus anuncios o reponer stock antes de seguir invirtiendo.</div>
+    </div>
+    {% endif %}
+
+    {# Claude analysis #}
+    {% if camp.claude_analysis %}
+    <div class="claude-box">
+      <h4><i class="bi bi-robot"></i> Análisis Claude AI</h4>
+      <div class="claude-text">{{ camp.claude_analysis }}</div>
+    </div>
+    {% endif %}
+
+    {# Action panel #}
+    <div class="action-panel">
+      <span class="action-label">Ejecutar en ML:</span>
+
+      {# Budget change #}
+      <div class="budget-input-wrap">
+        <span>$</span>
+        <input type="number" class="budget-input" id="budget-{{ camp.id }}"
+               value="{{ camp.budget | int }}" min="100" step="100"
+               placeholder="{{ camp.budget | int }}">
+        <span>/día</span>
+      </div>
+      <button class="btn-action btn-primary"
+              onclick="updateBudget({{ camp.id }}, '{{ camp.name | replace("'","\\'")}}')"
+              title="Actualizar presupuesto diario en MercadoLibre">
+        <i class="bi bi-currency-dollar"></i> Aplicar presupuesto
+      </button>
+
+      {# Status toggle #}
+      {% if camp.status == 'active' %}
+      <button class="btn-action btn-warning"
+              onclick="updateStatus({{ camp.id }}, 'paused', '{{ camp.name | replace("'","\\'")}}')"
+              title="Pausar campaña en MercadoLibre">
+        <i class="bi bi-pause-fill"></i> Pausar
+      </button>
+      {% else %}
+      <button class="btn-action btn-success"
+              onclick="updateStatus({{ camp.id }}, 'active', '{{ camp.name | replace("'","\\'")}}')"
+              title="Activar campaña en MercadoLibre">
+        <i class="bi bi-play-fill"></i> Activar
+      </button>
+      {% endif %}
+    </div>
+
+    {# Items list (lazy load) #}
+    {% if camp.items_count %}
+    <button class="items-toggle" id="toggle-{{ camp.id }}"
+            onclick="loadItems({{ camp.id }}, this)">
+      <i class="bi bi-chevron-down"></i> Ver {{ camp.items_count }} productos (señales de calidad)
+    </button>
+    <div class="items-list" id="items-{{ camp.id }}">
+      <div class="items-list-loading"><i class="bi bi-hourglass-split me-1"></i> Cargando productos...</div>
+    </div>
+    {% endif %}
+
+  </div>{# /camp-body #}
+</div>{# /camp-card #}
+{% endfor %}
+
+{# ─── Panel distribución ─────────────────────────────────────────────────────── #}
+<div id="dist-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:800" onclick="closeDistribution()"></div>
+<div id="dist-panel" style="display:none;position:fixed;top:0;right:0;width:min(640px,100vw);height:100vh;background:#fff;z-index:900;overflow-y:auto;box-shadow:-4px 0 24px rgba(0,0,0,.15)">
+  <div style="padding:1.25rem 1.5rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:10">
+    <div>
+      <div style="font-size:1rem;font-weight:800;color:#1e293b"><i class="bi bi-diagram-3 me-2" style="color:#2563eb"></i>Optimizar distribución</div>
+      <div style="font-size:.72rem;color:#64748b;margin-top:.1rem">¿Qué productos están en la campaña correcta?</div>
+    </div>
+    <button onclick="closeDistribution()" style="background:none;border:none;font-size:1.3rem;color:#64748b;cursor:pointer;padding:.2rem .4rem">×</button>
+  </div>
+
+  <div id="dist-body" style="padding:1.25rem 1.5rem">
+    <div style="text-align:center;padding:2rem;color:#94a3b8">
+      <i class="bi bi-diagram-3" style="font-size:2rem;display:block;margin-bottom:.75rem"></i>
+      <div style="font-weight:600;color:#374151;margin-bottom:.4rem">Analizá la distribución de tus productos</div>
+      <div style="font-size:.8rem;margin-bottom:1.25rem">Compara el volumen de ventas de cada producto contra su campaña actual. Tarda ~30 segundos.</div>
+      <button class="btn-action btn-primary" onclick="runDistributionAnalysis()">
+        <i class="bi bi-search"></i> Ejecutar análisis
+      </button>
+    </div>
+  </div>
+</div>
+
+{# ─── Toast ───────────────────────────────────────────────────────────────────── #}
+<div id="ads-toast"></div>
+
+<script>
+// ── Datos de campañas (evita quoting issues en onclick) ───────────────────────
+const CAMP_DATA = {
+  {% for camp in campaigns %}
+  {% set other_camps = campaigns | selectattr('id', 'ne', camp.id) | list %}
+  {{ camp.id }}: {
+    otherIds:   {{ other_camps | map(attribute='id')   | list | tojson }},
+    otherNames: {{ other_camps | map(attribute='name') | list | tojson }},
+  },
+  {% endfor %}
+};
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  const t = document.getElementById('ads-toast');
+  t.textContent = msg;
+  t.className   = 'show ' + (type || '');
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => { t.className = ''; }, 4200);
+}
+
+// ── Campaign budget ───────────────────────────────────────────────────────────
+function updateBudget(campId, campName) {
+  const input = document.getElementById('budget-' + campId);
+  const val   = parseFloat(input.value);
+  if (!val || val < 100) { showToast('El presupuesto mínimo es $100.', 'err'); return; }
+  fetch('/api/meli-ads/campaign/update-budget', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({campaign_id: campId, budget: val})
+  }).then(r => r.json()).then(d => {
+    showToast((d.ok ? '✓ ' : '✗ ') + d.mensaje, d.ok ? 'ok' : 'err');
+  }).catch(e => showToast('Error de red: ' + e, 'err'));
+}
+
+// ── Campaign status ───────────────────────────────────────────────────────────
+function updateStatus(campId, status, campName) {
+  const label = status === 'active' ? 'activar' : 'pausar';
+  if (!confirm('¿Confirmas ' + label + ' la campaña "' + campName + '"?')) return;
+  fetch('/api/meli-ads/campaign/update-status', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({campaign_id: campId, status: status})
+  }).then(r => r.json()).then(d => {
+    showToast((d.ok ? '✓ ' : '✗ ') + d.mensaje, d.ok ? 'ok' : 'err');
+    if (d.ok) setTimeout(() => location.reload(), 1500);
+  }).catch(e => showToast('Error de red: ' + e, 'err'));
+}
+
+// ── Lazy load items ───────────────────────────────────────────────────────────
+const _loadedCamps = new Set();
+
+function loadItems(campId, btn) {
+  const list = document.getElementById('items-' + campId);
+  const open = list.classList.toggle('open');
+
+  if (!open) {
+    btn.innerHTML = '<i class="bi bi-chevron-down"></i> Ver productos (señales de calidad)';
+    return;
+  }
+  btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Cargando...';
+
+  if (_loadedCamps.has(campId)) {
+    btn.innerHTML = '<i class="bi bi-chevron-up"></i> Ocultar productos';
+    return;
+  }
+
+  const { otherIds = [], otherNames = [] } = CAMP_DATA[campId] || {};
+
+  fetch('/api/meli-ads/campaign/' + campId + '/items')
+    .then(r => r.json())
+    .then(d => {
+      _loadedCamps.add(campId);
+      if (!d.ok || !d.items || d.items.length === 0) {
+        list.innerHTML = '<div class="items-list-loading">Sin productos cargados.</div>';
+        btn.innerHTML  = '<i class="bi bi-chevron-up"></i> Sin productos';
+        return;
+      }
+      list.innerHTML = d.items.map(item => renderItem(item, otherIds, otherNames)).join('');
+      btn.innerHTML  = '<i class="bi bi-chevron-up"></i> Ocultar ' + d.total + ' productos';
+    })
+    .catch(e => {
+      list.innerHTML = '<div class="items-list-loading" style="color:#dc2626">Error al cargar: ' + e + '</div>';
+      btn.innerHTML  = '<i class="bi bi-chevron-down"></i> Ver productos';
+    });
+}
+
+function levelBadge(level) {
+  const map = {
+    green:  ['lvl-green', '● Verde', 'Salud OK'],
+    yellow: ['lvl-yellow', '● Amarillo', 'Mejorar ficha'],
+    red:    ['lvl-red', '● Rojo', 'Problema crítico'],
+  };
+  const [cls, icon, label] = map[level] || ['lvl-unknown', '○', 'Sin dato'];
+  return `<span class="lvl-badge ${cls}" title="${label}">${icon} ${label}</span>`;
+}
+
+function renderItem(item, otherCampIds, otherCampNames) {
+  if (item.error) {
+    return `<div class="item-row"><div class="item-thumb-placeholder"><i class="bi bi-exclamation"></i></div><div class="item-main"><div class="item-title">${item.id}</div><div class="item-suggest">Error al cargar datos.</div></div><div></div></div>`;
+  }
+
+  const thumb = item.thumbnail
+    ? `<img class="item-thumb" src="${item.thumbnail}" loading="lazy" onerror="this.style.display='none'">`
+    : `<div class="item-thumb-placeholder"><i class="bi bi-box"></i></div>`;
+
+  const buyBox = item.buy_box
+    ? `<span style="font-size:.64rem;color:#16a34a;font-weight:700">✓ Buy Box</span>`
+    : `<span style="font-size:.64rem;color:#94a3b8">Sin Buy Box</span>`;
+
+  const price = '$' + (item.price || 0).toLocaleString('es-AR', {maximumFractionDigits:0});
+
+  const hasIssue = item.level !== 'green' || !item.buy_box;
+  const suggestCls = hasIssue ? 'has-issue' : '';
+
+  // "Mover a campaña" dropdown
+  let moveMenu = '';
+  if (otherCampIds && otherCampIds.length) {
+    const menuItems = otherCampIds.map((id, i) =>
+      `<div class="move-menu-item" onclick="moveItem('${item.id}', ${id}, '${(otherCampNames[i]||'').replace(/'/g,"\\'")}', this)">
+        <i class="bi bi-arrow-right-circle"></i> ${otherCampNames[i] || id}
+      </div>`
+    ).join('');
+    moveMenu = `
+      <div class="move-dropdown" id="move-dd-${item.id}">
+        <button class="btn-mini btn-mini-move" onclick="toggleMoveMenu('${item.id}')">
+          <i class="bi bi-arrow-right-circle"></i> Mover a...
+        </button>
+        <div class="move-menu" id="move-menu-${item.id}">${menuItems}</div>
+      </div>`;
+  }
+
+  return `
+    <div class="item-row" id="item-row-${item.id}">
+      ${thumb}
+      <div class="item-main">
+        <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.2rem">
+          <code style="font-size:.66rem;font-weight:700;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:.1rem .3rem;cursor:pointer;user-select:all;flex-shrink:0"
+                title="Hacé click para copiar el ID"
+                onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='#dcfce7';setTimeout(()=>this.style.background='#eff6ff',1200)})">${item.id}</code>
+        </div>
+        <div class="item-title" title="${item.title}">${item.title}</div>
+        <div class="item-meta">
+          <span class="item-price">${price}</span>
+          ${levelBadge(item.level)}
+          ${buyBox}
+          ${item.listing_type ? `<span style="font-size:.63rem;color:#64748b">${item.listing_type}</span>` : ''}
+        </div>
+        <div class="item-suggest ${suggestCls}">${item.suggestion}</div>
+      </div>
+      <div class="item-actions">
+        <a href="${item.permalink}" target="_blank" class="btn-mini btn-mini-move" style="text-decoration:none">
+          <i class="bi bi-box-arrow-up-right"></i> Ver en ML
+        </a>
+        ${moveMenu}
+        <button class="btn-mini btn-mini-del" onclick="removeItem('${item.id}', '${item.title.substring(0,30).replace(/'/g,"\\'")}...')">
+          <i class="bi bi-x-circle"></i> Quitar de campaña
+        </button>
+      </div>
+    </div>`;
+}
+
+// ── Move dropdown ─────────────────────────────────────────────────────────────
+function toggleMoveMenu(itemId) {
+  const menu = document.getElementById('move-menu-' + itemId);
+  menu.classList.toggle('open');
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function closer(e) {
+      if (!e.target.closest('#move-dd-' + itemId)) {
+        menu.classList.remove('open');
+        document.removeEventListener('click', closer);
+      }
+    });
+  }, 10);
+}
+
+// ── Move item ─────────────────────────────────────────────────────────────────
+function moveItem(itemId, newCampId, newCampName, menuEl) {
+  menuEl.closest('.move-menu').classList.remove('open');
+  if (!confirm('¿Mover "' + itemId + '" a la campaña "' + newCampName + '"?')) return;
+
+  fetch('/api/meli-ads/item/move', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({item_id: itemId, campaign_id: newCampId})
+  }).then(r => r.json()).then(d => {
+    showToast((d.ok ? '✓ ' : '✗ ') + d.mensaje, d.ok ? 'ok' : 'err');
+    if (d.ok) {
+      const row = document.getElementById('item-row-' + itemId);
+      if (row) row.style.opacity = '0.4';
+    }
+  }).catch(e => showToast('Error: ' + e, 'err'));
+}
+
+// ── Remove item ───────────────────────────────────────────────────────────────
+function removeItem(itemId, title) {
+  if (!confirm('¿Eliminar "' + title + '" de la campaña de Product Ads?\n\nEsto detiene los ads de este producto.')) return;
+
+  fetch('/api/meli-ads/item/remove', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({item_id: itemId})
+  }).then(r => r.json()).then(d => {
+    showToast((d.ok ? '✓ ' : '✗ ') + d.mensaje, d.ok ? 'ok' : 'err');
+    if (d.ok) {
+      const row = document.getElementById('item-row-' + itemId);
+      if (row) { row.style.opacity = '0.3'; row.style.textDecoration = 'line-through'; }
+    }
+  }).catch(e => showToast('Error: ' + e, 'err'));
+}
+
+// ── Distribution analysis panel ───────────────────────────────────────────────
+function openDistribution() {
+  document.getElementById('dist-panel').style.display   = 'block';
+  document.getElementById('dist-overlay').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+function closeDistribution() {
+  document.getElementById('dist-panel').style.display   = 'none';
+  document.getElementById('dist-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function runDistributionAnalysis() {
+  const body = document.getElementById('dist-body');
+  body.innerHTML = `
+    <div style="text-align:center;padding:3rem 1rem;color:#64748b">
+      <div style="font-size:2rem;margin-bottom:.75rem">⏳</div>
+      <div style="font-weight:700;color:#374151;margin-bottom:.3rem">Analizando tus 26 productos...</div>
+      <div style="font-size:.78rem">Consultando la API de MercadoLibre. Puede tardar hasta 40 segundos.</div>
+    </div>`;
+
+  fetch('/api/meli-ads/distribution-analysis')
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) {
+        body.innerHTML = `<div style="padding:1.5rem;color:#dc2626">Error: ${d.mensaje}</div>`;
+        return;
+      }
+      renderDistribution(d, body);
+    })
+    .catch(e => {
+      body.innerHTML = `<div style="padding:1.5rem;color:#dc2626">Error de red: ${e}</div>`;
+    });
+}
+
+function renderDistribution(d, body) {
+  const s = d.summary;
+  const statusCfg = {
+    subir:   { bg:'#dcfce7', color:'#15803d', icon:'⬆', label:'Subir de campaña' },
+    bajar:   { bg:'#fef3c7', color:'#92400e', icon:'⬇', label:'Bajar de campaña' },
+    revisar: { bg:'#fee2e2', color:'#dc2626', icon:'⚠', label:'Revisar publicación' },
+    ok:      { bg:'#f1f5f9', color:'#475569', icon:'✓', label:'Bien ubicado'       },
+  };
+
+  // Summary pills
+  let html = `
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1.25rem">
+      <span style="background:#dcfce7;color:#15803d;padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">⬆ ${s.subir} para subir</span>
+      <span style="background:#fef3c7;color:#92400e;padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">⬇ ${s.bajar} para bajar</span>
+      <span style="background:#fee2e2;color:#dc2626;padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">⚠ ${s.revisar} a revisar</span>
+      <span style="background:#f1f5f9;color:#475569;padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">✓ ${s.ok} bien ubicados</span>
+    </div>`;
+
+  // Camp rank legend
+  html += `<div style="font-size:.7rem;color:#64748b;margin-bottom:1rem">
+    <strong>Jerarquía detectada por ventas:</strong>
+    ${d.camps_ranked.map((c,i) => `<span style="background:#e0f2fe;color:#0369a1;padding:.15rem .45rem;border-radius:4px;margin:0 .2rem;font-weight:700">${i+1}º ${c.name} (avg ${c.avg_sold} ventas)</span>`).join(' → ')}
+  </div>`;
+
+  // Group items by campaign (in rank order)
+  const byCamp = {};
+  d.items.forEach(item => {
+    if (!byCamp[item.campaign_id]) byCamp[item.campaign_id] = [];
+    byCamp[item.campaign_id].push(item);
+  });
+
+  d.camps_ranked.forEach(camp => {
+    const items = byCamp[camp.id] || [];
+    const hasActions = items.some(i => i.status !== 'ok');
+
+    html += `<div style="margin-bottom:1.25rem">
+      <div style="font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+        <span>${camp.name}</span>
+        <span style="font-weight:400">· ${items.length} productos · avg ${camp.avg_sold} ventas</span>
+        ${hasActions ? '<span style="background:#fef3c7;color:#92400e;padding:.1rem .4rem;border-radius:4px;font-size:.65rem">acciones sugeridas</span>' : ''}
+      </div>`;
+
+    items.forEach(item => {
+      const cfg   = statusCfg[item.status] || statusCfg.ok;
+      const soldBar = Math.round(item.perf_pct);
+      const barColor = item.perf_tier === 'alto' ? '#16a34a' : item.perf_tier === 'medio' ? '#d97706' : '#94a3b8';
+      const lvlColors = {green:'#16a34a', yellow:'#d97706', red:'#dc2626', unknown:'#94a3b8'};
+      const lvlColor  = lvlColors[item.level] || '#94a3b8';
+
+      html += `
+        <div style="border:1px solid #e2e8f0;border-radius:10px;padding:.7rem .9rem;margin-bottom:.5rem;background:#fff">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem">
+            <div style="flex:1;min-width:0">
+              <!-- ID copiable -->
+              <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.25rem">
+                <code style="font-size:.7rem;font-weight:700;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:.1rem .35rem;cursor:pointer;user-select:all"
+                      title="Hacé click para copiar"
+                      onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='#dcfce7';setTimeout(()=>this.style.background='#eff6ff',1200)})">${item.id}</code>
+                <span style="font-size:.65rem;color:#64748b">· hacé click para copiar</span>
+              </div>
+              <!-- Título completo -->
+              <div style="font-size:.78rem;font-weight:600;color:#1e293b;line-height:1.4;word-break:break-word">${item.title}</div>
+              <div style="display:flex;gap:.5rem;align-items:center;margin-top:.3rem;flex-wrap:wrap">
+                <span style="font-size:.7rem;font-weight:700;color:#374151">$${item.price.toLocaleString('es-AR',{maximumFractionDigits:0})}</span>
+                <span style="font-size:.7rem;color:#374151"><strong>${item.sold_quantity}</strong> vendidos</span>
+                <span style="font-size:.7rem;color:#64748b">${item.stock} en stock</span>
+                <span style="font-size:.65rem;color:${lvlColor};font-weight:700">● ${item.level}</span>
+                ${item.buy_box ? '<span style="font-size:.65rem;color:#16a34a;font-weight:700">Buy Box ✓</span>' : ''}
+              </div>
+              <!-- Mini sales bar -->
+              <div style="margin-top:.4rem;background:#f1f5f9;border-radius:99px;height:4px;width:100%">
+                <div style="height:100%;border-radius:99px;background:${barColor};width:${soldBar}%"></div>
+              </div>
+              ${item.status !== 'ok' ? `<div style="font-size:.7rem;color:${cfg.color};margin-top:.35rem;line-height:1.4">${cfg.icon} ${item.suggestion}</div>` : ''}
+            </div>
+            ${item.status !== 'ok' && item.target_campaign_id ? `
+            <div style="flex-shrink:0">
+              <button class="btn-mini btn-mini-move"
+                      onclick="moveItem('${item.id}', ${item.target_campaign_id}, '${(item.target_campaign_name||'').replace(/'/g,"\\'")}', this)"
+                      style="font-size:.7rem">
+                ${cfg.icon} Mover a ${item.target_campaign_name}
+              </button>
+            </div>` : ''}
+          </div>
+        </div>`;
+    });
+
+    html += '</div>';
+  });
+
+  body.innerHTML = html;
+}
+</script>
+
+<!-- ── Sección explicativa ──────────────────────────────────────────────────── -->
+<div style="margin-top:2.5rem;padding:2rem 2.25rem;background:linear-gradient(135deg,#f0f9ff 0%,#f8fafc 100%);border:1px solid #bae6fd;border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
+
+  <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1.5rem">
+    <span style="font-size:1.4rem">📊</span>
+    <div>
+      <div style="font-size:1.05rem;font-weight:800;color:#0c4a6e">¿Qué es Meli ADS y para qué sirve?</div>
+      <div style="font-size:.78rem;color:#0369a1;margin-top:.1rem">Guía de uso de esta sección</div>
+    </div>
+  </div>
+
+  <!-- Qué es -->
+  <div style="margin-bottom:1.5rem">
+    <div style="font-size:.82rem;font-weight:700;color:#1e293b;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em">¿Qué hace esta sección?</div>
+    <p style="font-size:.83rem;color:#334155;line-height:1.65;margin:0">
+      Meli ADS te permite gestionar tus campañas de publicidad dentro de MercadoLibre directamente desde este panel. Podés ver en tiempo real el rendimiento de cada campaña —cuánto gastás, cuánto vendés y si tu inversión publicitaria es eficiente— sin tener que entrar al Centro de Vendedores. Cada campaña muestra métricas clave como el <strong>ACoS</strong> (porcentaje de gasto sobre ventas), las <strong>impresiones</strong>, los <strong>clics</strong> y la <strong>tasa de conversión</strong>, junto con un análisis redactado por <strong>Claude AI</strong> que interpreta esos números y te da una lectura directa del estado de la campaña.
+    </p>
+  </div>
+
+  <!-- Cómo se usa -->
+  <div style="margin-bottom:1.5rem">
+    <div style="font-size:.82rem;font-weight:700;color:#1e293b;margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.04em">¿Cómo se usa?</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.85rem">
+
+      <div style="background:#fff;border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+        <div style="font-size:1rem;margin-bottom:.35rem">💰</div>
+        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Ajustar presupuesto</div>
+        <div style="font-size:.77rem;color:#475569;line-height:1.55">Ingresá el nuevo monto diario en el campo de presupuesto de cada campaña y hacé clic en <em>Aplicar</em>. El cambio se ejecuta directo en MercadoLibre vía API.</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+        <div style="font-size:1rem;margin-bottom:.35rem">⏸️</div>
+        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Pausar o activar</div>
+        <div style="font-size:.77rem;color:#475569;line-height:1.55">Usá el botón de estado (verde/amarillo) para pausar una campaña que esté gastando sin convertir, o reactivarla cuando tengas stock listo para vender.</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+        <div style="font-size:1rem;margin-bottom:.35rem">📦</div>
+        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Ver productos de la campaña</div>
+        <div style="font-size:.77rem;color:#475569;line-height:1.55">Abrí el desplegable <em>Ver publicaciones</em> en cualquier campaña para ver la calidad individual de cada producto: nivel (verde/amarillo/rojo), ventas, stock y sugerencias de mejora.</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+        <div style="font-size:1rem;margin-bottom:.35rem">🔀</div>
+        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Optimizar distribución</div>
+        <div style="font-size:.77rem;color:#475569;line-height:1.55">El botón <em>Optimizar distribución</em> analiza todos tus productos y detecta cuáles están mal ubicados: productos que venden mucho pero están en IMPULSO, o productos que apenas convierten pero ocupan presupuesto de TOP.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Beneficios -->
+  <div>
+    <div style="font-size:.82rem;font-weight:700;color:#1e293b;margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.04em">Beneficios de usar esta sección</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem">
+
+      <div style="background:#fff;border:1px solid #dcfce7;border-radius:10px;padding:.6rem .85rem;display:flex;align-items:flex-start;gap:.5rem;flex:1;min-width:200px">
+        <span style="color:#16a34a;font-size:.9rem;flex-shrink:0">✓</span>
+        <div style="font-size:.77rem;color:#374151;line-height:1.5"><strong>Reducís el ACoS</strong> moviendo los productos más rentables a las campañas con mayor presupuesto, sin gastar de más en los que no convierten.</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #dcfce7;border-radius:10px;padding:.6rem .85rem;display:flex;align-items:flex-start;gap:.5rem;flex:1;min-width:200px">
+        <span style="color:#16a34a;font-size:.9rem;flex-shrink:0">✓</span>
+        <div style="font-size:.77rem;color:#374151;line-height:1.5"><strong>Ahorrás tiempo</strong> al tener en un solo lugar los números de las 3 campañas y las recomendaciones de IA, sin necesitar revisar cada publicación manualmente.</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #dcfce7;border-radius:10px;padding:.6rem .85rem;display:flex;align-items:flex-start;gap:.5rem;flex:1;min-width:200px">
+        <span style="color:#16a34a;font-size:.9rem;flex-shrink:0">✓</span>
+        <div style="font-size:.77rem;color:#374151;line-height:1.5"><strong>Tomás mejores decisiones</strong> con datos reales de ventas por producto: sabés cuándo una publicación merece más inversión y cuándo es hora de bajarla.</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #dcfce7;border-radius:10px;padding:.6rem .85rem;display:flex;align-items:flex-start;gap:.5rem;flex:1;min-width:200px">
+        <span style="color:#16a34a;font-size:.9rem;flex-shrink:0">✓</span>
+        <div style="font-size:.77rem;color:#374151;line-height:1.5"><strong>Ejecutás cambios al instante</strong> desde el mismo panel vía API, sin tener que navegar por las pantallas del Centro de Vendedores de ML.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Indicadores clave -->
+  <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid #bae6fd">
+    <div style="font-size:.75rem;font-weight:700;color:#0369a1;margin-bottom:.65rem;text-transform:uppercase;letter-spacing:.04em">Glosario rápido de métricas</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+      <span style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>ACoS</strong> — Gasto publicitario ÷ Ventas generadas. Menor es mejor.</span>
+      <span style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Impresiones</strong> — Cuántas veces apareció tu anuncio en los resultados.</span>
+      <span style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Clics</strong> — Cuántas personas entraron a tu publicación desde el anuncio.</span>
+      <span style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>CTR</strong> — Tasa de clics: Clics ÷ Impresiones × 100.</span>
+      <span style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Conversión</strong> — Porcentaje de clics que terminan en venta.</span>
+      <span style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Nivel (verde/amarillo/rojo)</strong> — Calidad de la publicación según ML: fotos, descripción, precio y reputación.</span>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

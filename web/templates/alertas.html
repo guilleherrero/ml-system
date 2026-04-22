@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %} — Centro de alertas{% endblock %}
+{% block content %}
+<style>
+  .alerta-card {
+    background:#fff; border-radius:10px; padding:14px 16px;
+    box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:8px;
+    display:flex; align-items:flex-start; gap:14px;
+    border-left:4px solid #e5e7eb; transition:box-shadow .15s;
+  }
+  .alerta-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.1); }
+  .alerta-card.urgente   { border-left-color:#ef4444; }
+  .alerta-card.importante{ border-left-color:#f59e0b; }
+  .alerta-card.info      { border-left-color:#3b82f6; }
+  .alerta-icon { width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem; }
+  .urgente   .alerta-icon { background:#fee2e2;color:#dc2626; }
+  .importante .alerta-icon{ background:#fef3c7;color:#d97706; }
+  .info      .alerta-icon { background:#dbeafe;color:#2563eb; }
+  .alerta-body { flex:1; min-width:0; }
+  .alerta-titulo { font-size:.875rem;font-weight:600;color:#111827;line-height:1.3; }
+  .alerta-detalle{ font-size:.78rem;color:#6b7280;margin-top:2px;line-height:1.4; }
+  .alerta-meta { display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap; }
+  .alerta-alias { background:#f3f4f6;color:#374151;border-radius:4px;padding:1px 8px;font-size:.7rem;font-weight:600; }
+  .alerta-cat   { border-radius:4px;padding:1px 8px;font-size:.7rem;font-weight:600; }
+  .cat-Stock      { background:#ede9fe;color:#5b21b6; }
+  .cat-Margen     { background:#fee2e2;color:#991b1b; }
+  .cat-Posiciones { background:#fef3c7;color:#92400e; }
+  .cat-Reputación { background:#d1fae5;color:#065f46; }
+  .cat-Conversión { background:#dbeafe;color:#1e40af; }
+  .alerta-link  { font-size:.72rem;color:#2563eb;text-decoration:none;font-weight:600;white-space:nowrap; }
+  .alerta-link:hover { text-decoration:underline; }
+
+  .nivel-tab { border:none;background:none;padding:8px 16px;border-bottom:2px solid transparent;
+    font-size:.85rem;cursor:pointer;color:#6b7280;font-weight:500; }
+  .nivel-tab.active { border-bottom-color:#2563eb;color:#2563eb;font-weight:700; }
+  .nivel-tab .badge-cnt { display:inline-flex;align-items:center;justify-content:center;
+    min-width:18px;height:18px;border-radius:10px;font-size:.65rem;font-weight:700;
+    margin-left:5px;padding:0 5px; }
+  .cnt-urgente   { background:#fee2e2;color:#dc2626; }
+  .cnt-importante{ background:#fef3c7;color:#d97706; }
+  .cnt-todas     { background:#f3f4f6;color:#374151; }
+
+  .empty-state { text-align:center;padding:48px 24px;color:#9ca3af; }
+  .empty-state i { font-size:2.5rem;display:block;margin-bottom:12px; }
+
+  .filter-bar { display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center; }
+  .cat-chip { border:1px solid #e5e7eb;background:#fff;border-radius:16px;
+    padding:3px 12px;font-size:.75rem;cursor:pointer;color:#374151; }
+  .cat-chip.active { background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600; }
+  .skel { background:#e5e7eb;border-radius:6px;animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-bell me-2 text-primary"></i>Centro de alertas</h1>
+    <div class="sub">Todas las cuentas — actualizado al instante desde los datos locales</div>
+  </div>
+  <button class="btn btn-sm btn-outline-secondary" onclick="reload()">
+    <i class="bi bi-arrow-repeat me-1"></i>Actualizar
+  </button>
+</div>
+
+<!-- ── Resumen ────────────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4" id="summary-row">
+  <div class="col-6 col-md-3">
+    <div class="stat-box crit">
+      <div class="num" id="cnt-urgente"><span class="skel" style="width:40px;height:32px;display:inline-block"></span></div>
+      <div class="lbl">Urgentes</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-box warn">
+      <div class="num" id="cnt-importante"><span class="skel" style="width:40px;height:32px;display:inline-block"></span></div>
+      <div class="lbl">Importantes</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-box blue">
+      <div class="num" id="cnt-total"><span class="skel" style="width:40px;height:32px;display:inline-block"></span></div>
+      <div class="lbl">Total alertas</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-box ok">
+      <div class="num" id="cnt-cuentas">{{ accounts|length }}</div>
+      <div class="lbl">Cuentas monitoreadas</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tabs de nivel + filtro de categoría ───────────────────────────────── -->
+<div style="border-bottom:1px solid #e5e7eb;margin-bottom:16px">
+  <button class="nivel-tab active" onclick="setNivel(this,'todas')">
+    Todas <span class="badge-cnt cnt-todas" id="tab-cnt-todas">—</span>
+  </button>
+  <button class="nivel-tab" onclick="setNivel(this,'urgente')">
+    🔴 Urgentes <span class="badge-cnt cnt-urgente" id="tab-cnt-urgente">—</span>
+  </button>
+  <button class="nivel-tab" onclick="setNivel(this,'importante')">
+    🟡 Importantes <span class="badge-cnt cnt-importante" id="tab-cnt-importante">—</span>
+  </button>
+</div>
+
+<div class="filter-bar" id="filter-bar">
+  <span class="text-muted small fw-semibold">Categoría:</span>
+  <button class="cat-chip active" onclick="setCat(this,'todas')">Todas</button>
+  <button class="cat-chip" onclick="setCat(this,'Stock')">📦 Stock</button>
+  <button class="cat-chip" onclick="setCat(this,'Margen')">💸 Margen</button>
+  <button class="cat-chip" onclick="setCat(this,'Conversión')">📉 Conversión</button>
+  <button class="cat-chip" onclick="setCat(this,'Posiciones')">📍 Posiciones</button>
+  <button class="cat-chip" onclick="setCat(this,'Reputación')">⭐ Reputación</button>
+  {% if accounts|length > 1 %}
+  <div class="ms-auto d-flex gap-2 align-items-center">
+    <span class="text-muted small fw-semibold">Cuenta:</span>
+    <select id="alias-filter" class="form-select form-select-sm" style="width:auto" onchange="applyFilters()">
+      <option value="">Todas</option>
+      {% for acc in accounts %}
+      <option value="{{ acc.alias }}">{{ acc.alias }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Lista de alertas ───────────────────────────────────────────────────── -->
+<div id="alertas-loading" class="text-center py-5">
+  <div class="spinner-border text-primary"></div>
+  <div class="mt-3 text-muted small">Analizando todas las cuentas...</div>
+</div>
+<div id="alertas-list" style="display:none"></div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+let allAlerts = [];
+let activeNivel = 'todas';
+let activeCat   = 'todas';
+
+async function loadAlertas() {
+  try {
+    const r = await fetch('/api/alertas');
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Error');
+
+    allAlerts = data.alerts;
+
+    // Stat boxes
+    document.getElementById('cnt-urgente').textContent   = data.urgentes;
+    document.getElementById('cnt-importante').textContent = data.importantes;
+    document.getElementById('cnt-total').textContent      = data.total;
+
+    // Tab badges
+    document.getElementById('tab-cnt-todas').textContent      = data.total;
+    document.getElementById('tab-cnt-urgente').textContent    = data.urgentes;
+    document.getElementById('tab-cnt-importante').textContent = data.importantes;
+
+    document.getElementById('alertas-loading').style.display = 'none';
+    document.getElementById('alertas-list').style.display = '';
+    applyFilters();
+  } catch(e) {
+    document.getElementById('alertas-loading').innerHTML =
+      `<div class="alert alert-danger">Error al cargar alertas: ${e.message}</div>`;
+  }
+}
+
+function reload() {
+  document.getElementById('alertas-loading').style.display = '';
+  document.getElementById('alertas-list').style.display = 'none';
+  loadAlertas();
+}
+
+function setNivel(btn, nivel) {
+  document.querySelectorAll('.nivel-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeNivel = nivel;
+  applyFilters();
+}
+
+function setCat(btn, cat) {
+  document.querySelectorAll('.cat-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeCat = cat;
+  applyFilters();
+}
+
+function applyFilters() {
+  const aliasFilter = document.getElementById('alias-filter')?.value || '';
+
+  const filtered = allAlerts.filter(a => {
+    if (activeNivel !== 'todas' && a.nivel !== activeNivel) return false;
+    if (activeCat   !== 'todas' && a.categoria !== activeCat) return false;
+    if (aliasFilter && a.alias !== aliasFilter) return false;
+    return true;
+  });
+
+  const container = document.getElementById('alertas-list');
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <i class="bi bi-check-circle text-success"></i>
+        <div class="fw-semibold text-success mb-1">Sin alertas en esta categoría</div>
+        <div class="small">Todo en orden para los filtros seleccionados.</div>
+      </div>`;
+    return;
+  }
+
+  // Agrupar por alias para mostrar separadores
+  const byAlias = {};
+  filtered.forEach(a => {
+    if (!byAlias[a.alias]) byAlias[a.alias] = [];
+    byAlias[a.alias].push(a);
+  });
+
+  let html = '';
+  for (const [alias, alerts] of Object.entries(byAlias)) {
+    if (Object.keys(byAlias).length > 1) {
+      html += `<div class="text-muted small fw-semibold mb-2 mt-3" style="text-transform:uppercase;letter-spacing:.06em">
+        <i class="bi bi-shop me-1"></i>${alias} — ${alerts.length} alerta${alerts.length !== 1 ? 's' : ''}
+      </div>`;
+    }
+    alerts.forEach(a => {
+      const mlNum = a.item_id ? a.item_id.replace(/^MLA/, 'MLA-') : null;
+      const mlUrl = a.item_id ? `https://articulo.mercadolibre.com.ar/${a.item_id.replace('MLA','MLA-')}` : null;
+      const itemBadge = mlNum
+        ? `<a href="${mlUrl}" target="_blank" class="alerta-link"
+              style="background:#f1f5f9;color:#374151;border-radius:4px;padding:1px 8px;font-size:.7rem;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+             <i class="bi bi-box-arrow-up-right" style="font-size:.65rem"></i>${mlNum}
+           </a>`
+        : '';
+      html += `
+      <div class="alerta-card ${a.nivel}">
+        <div class="alerta-icon"><i class="bi ${a.icono}"></i></div>
+        <div class="alerta-body">
+          <div class="alerta-titulo">${a.titulo}</div>
+          <div class="alerta-detalle">${a.detalle}</div>
+          <div class="alerta-meta">
+            <span class="alerta-alias">${a.alias}</span>
+            <span class="alerta-cat cat-${a.categoria}">${a.categoria}</span>
+            ${itemBadge}
+            <a href="${a.link}" class="alerta-link ms-auto">${a.link_txt} →</a>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+
+  container.innerHTML = html;
+}
+
+loadAlertas();
+</script>
+{% endblock %}

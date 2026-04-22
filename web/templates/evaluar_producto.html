@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block title %} — Evaluar producto{% endblock %}
+{% block content %}
+<style>
+/* ── Cards de resultado ───────────────────────────── */
+.ev-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; margin-bottom:.85rem;
+}
+.ev-card-header {
+  background:#f8fafc; border-bottom:1px solid #f1f5f9;
+  padding:.55rem 1rem; display:flex; align-items:center; gap:.4rem;
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#374151;
+}
+.ev-card-body { padding:.85rem 1rem; }
+
+/* ── Decisión ─────────────────────────────────────── */
+.decision-badge {
+  display:inline-flex; align-items:center; gap:.5rem;
+  border-radius:10px; padding:.55rem 1.1rem; font-size:1rem; font-weight:800;
+}
+.decision-lanzar        { background:#d1fae5; color:#065f46; }
+.decision-cautela       { background:#fef3c7; color:#92400e; }
+.decision-no            { background:#fee2e2; color:#991b1b; }
+
+/* ── Score bars ───────────────────────────────────── */
+.score-row { display:flex; align-items:center; gap:.75rem; margin-bottom:.5rem; }
+.score-label { width:11rem; font-size:.78rem; color:#374151; flex-shrink:0; }
+.score-bar-wrap { flex:1; background:#f1f5f9; border-radius:20px; height:8px; overflow:hidden; }
+.score-bar { height:100%; border-radius:20px; transition:width .4s; }
+.score-val { width:2.5rem; text-align:right; font-size:.75rem; font-weight:700; color:#374151; }
+
+/* ── Chips ────────────────────────────────────────── */
+.kw-chip {
+  display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0;
+  border-radius:20px; padding:.2rem .6rem; font-size:.72rem; color:#334155;
+  margin:.15rem .15rem 0 0;
+}
+.comp-row {
+  display:flex; align-items:center; gap:.5rem; padding:.45rem 0;
+  border-bottom:1px solid #f1f5f9; font-size:.8rem;
+}
+.comp-row:last-child { border-bottom:none; }
+.risk-item {
+  display:flex; align-items:flex-start; gap:.5rem;
+  padding:.4rem 0; font-size:.82rem; color:#374151;
+  border-bottom:1px solid #f8fafc;
+}
+.risk-item:last-child { border-bottom:none; }
+.angle-box {
+  background:linear-gradient(135deg,#eff6ff,#eef2ff);
+  border:1px solid #bfdbfe; border-radius:8px;
+  padding:.75rem 1rem; font-size:.86rem; color:#1e3a8a; font-weight:500;
+}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-clipboard2-pulse me-2 text-primary"></i>Evaluar entrada al mercado</h1>
+    <div class="sub">Analizá el potencial de un producto antes de publicarlo en ML</div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 mb-4 flex-wrap">
+  <a href="/lanzar-nuevo" class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
+     style="background:#fff;border:1px solid #e2e8f0;color:#374151;font-size:.85rem">
+    <i class="bi bi-stars text-primary"></i> Analizar y lanzar
+  </a>
+  <a href="/radar" class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
+     style="background:#fff;border:1px solid #e2e8f0;color:#374151;font-size:.85rem">
+    <i class="bi bi-compass text-primary"></i> Radar de oportunidades
+  </a>
+  <a href="/evaluar-producto" class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
+     style="background:#2563eb;color:#fff;font-size:.85rem">
+    <i class="bi bi-clipboard2-pulse"></i> Evaluar entrada al mercado
+  </a>
+</div>
+
+<!-- Formulario -->
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-search me-2 text-primary"></i>Producto a evaluar</div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-9">
+        <label class="form-label fw-semibold">¿Qué producto querés evaluar?</label>
+        <input type="text" id="evalInput" class="form-control form-control-lg"
+               placeholder="Ej: auriculares bluetooth inalámbricos, silla gamer ergonómica..."
+               autocomplete="off">
+        <div class="form-text">Analizá demanda, competencia y viabilidad antes de publicar.</div>
+      </div>
+      <div class="col-md-3">
+        <button id="evalBtn" class="btn btn-primary w-100 btn-lg">
+          <i class="bi bi-clipboard2-pulse me-2"></i>Evaluar producto
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Panel de progreso -->
+<div id="evalProgress" style="display:none" class="card mb-4">
+  <div class="card-header d-flex align-items-center gap-2">
+    <span class="spinner-border spinner-border-sm text-primary" id="evalSpinner"></span>
+    <span id="evalStepMsg" class="fw-semibold">Iniciando análisis...</span>
+  </div>
+  <div class="card-body py-2 px-3">
+    <div class="d-flex gap-3" style="font-size:.78rem">
+      <div id="step1" style="color:#94a3b8"><i class="bi bi-circle me-1"></i>Keywords</div>
+      <div id="step2" style="color:#94a3b8"><i class="bi bi-circle me-1"></i>Competidores</div>
+      <div id="step3" style="color:#94a3b8"><i class="bi bi-circle me-1"></i>Dictamen IA</div>
+    </div>
+  </div>
+</div>
+
+<!-- Contenedor de resultados -->
+<div id="evalResults" style="display:none"></div>
+
+<!-- Historial de evaluaciones -->
+{% if historial %}
+<h2 class="fw-semibold mb-3 mt-2" style="font-size:1.05rem">
+  <i class="bi bi-clock-history me-2 text-muted"></i>Evaluaciones anteriores
+</h2>
+{% for item in historial %}
+{% set dec = item.ai_eval.decision if item.ai_eval and item.ai_eval.decision else item.scores.decision_preliminar %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>
+      <i class="bi bi-clipboard2-pulse me-2 text-primary"></i>
+      <strong>{{ item.query }}</strong>
+      {% if dec %}
+        <span class="badge ms-2
+          {% if dec == 'LANZAR' %}bg-success
+          {% elif 'CAUTELA' in dec %}bg-warning text-dark
+          {% else %}bg-danger{% endif %}"
+          style="font-size:.68rem">{{ dec }}</span>
+      {% endif %}
+      {% if item.category %}
+        <span class="badge bg-light text-muted border ms-1" style="font-size:.68rem">{{ item.category }}</span>
+      {% endif %}
+    </span>
+    <span class="text-muted small">{{ item.fecha }}</span>
+  </div>
+  <div class="card-body py-2" style="font-size:.8rem">
+    {% if item.ai_eval and item.ai_eval.recommended_angle %}
+    <div class="mb-2" style="color:#1e3a8a">
+      <i class="bi bi-lightbulb me-1"></i><strong>Ángulo:</strong> {{ item.ai_eval.recommended_angle }}
+    </div>
+    {% endif %}
+    {% if item.scores %}
+    <div class="d-flex flex-wrap gap-3" style="color:#64748b">
+      <span><i class="bi bi-graph-up me-1"></i>Demanda: <strong>{{ item.scores.demand_score }}</strong></span>
+      <span><i class="bi bi-people me-1"></i>Saturación: <strong>{{ item.scores.saturation_score }}</strong></span>
+      <span><i class="bi bi-shield me-1"></i>Dificultad: <strong>{{ item.scores.difficulty_score }}</strong></span>
+    </div>
+    {% endif %}
+    {% if item.ai_eval and item.ai_eval.main_risks %}
+    <div class="mt-2" style="color:#92400e">
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ item.ai_eval.main_risks[0] }}
+    </div>
+    {% endif %}
+    {% if item.query %}
+    <div class="mt-2">
+      <a href="/lanzamientos?q={{ item.query | urlencode }}" class="btn btn-xs btn-outline-primary">
+        <i class="bi bi-rocket-takeoff me-1"></i>Lanzar este producto
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('evalBtn').addEventListener('click', function() {
+  const query = document.getElementById('evalInput').value.trim();
+  if (!query) { document.getElementById('evalInput').focus(); return; }
+
+  document.getElementById('evalProgress').style.display = 'block';
+  document.getElementById('evalResults').style.display  = 'none';
+  document.getElementById('evalSpinner').style.display  = '';
+  document.getElementById('evalBtn').disabled = true;
+
+  function setStep(n, msg) {
+    document.getElementById('evalStepMsg').textContent = msg;
+    ['step1','step2','step3'].forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (i + 1 < n) {
+        el.style.color = '#16a34a';
+        el.querySelector('i').className = 'bi bi-check-circle-fill me-1';
+      } else if (i + 1 === n) {
+        el.style.color = '#2563eb';
+        el.querySelector('i').className = 'bi bi-arrow-right-circle-fill me-1';
+      } else {
+        el.style.color = '#94a3b8';
+        el.querySelector('i').className = 'bi bi-circle me-1';
+      }
+    });
+  }
+
+  setStep(1, 'Buscando keywords del autosuggest...');
+
+  // Simular paso 2 tras ~2s (el fetch es sincrónico, pero damos feedback visual)
+  const t2 = setTimeout(() => setStep(2, 'Analizando competidores en ML...'), 800);
+  const t3 = setTimeout(() => setStep(3, 'Consultando IA para el dictamen final...'), 2800);
+
+  fetch('/api/evaluar-producto', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({query})
+  })
+  .then(r => r.json())
+  .then(d => {
+    clearTimeout(t2); clearTimeout(t3);
+    document.getElementById('evalSpinner').style.display = 'none';
+    document.getElementById('evalBtn').disabled = false;
+    if (!d.ok) {
+      document.getElementById('evalStepMsg').textContent = '❌ ' + (d.error || 'Error');
+      return;
+    }
+    setStep(4, '✓ Evaluación completada');
+    renderEval(d);
+  })
+  .catch(err => {
+    clearTimeout(t2); clearTimeout(t3);
+    document.getElementById('evalSpinner').style.display = 'none';
+    document.getElementById('evalBtn').disabled = false;
+    document.getElementById('evalStepMsg').textContent = 'Error: ' + err;
+  });
+});
+
+function renderEval(d) {
+  const ai    = d.ai_eval   || {};
+  const sc    = d.scores    || {};
+  const comps = d.competitors || [];
+  const kws   = d.autosuggest_kws || [];
+
+  // Decisión
+  const dec     = (ai.decision || d.decision_preliminar || '').toUpperCase();
+  const decCls  = dec === 'LANZAR' ? 'decision-lanzar' : dec.includes('CAUTELA') ? 'decision-cautela' : 'decision-no';
+  const decIcon = dec === 'LANZAR' ? 'bi-rocket-takeoff' : dec.includes('CAUTELA') ? 'bi-exclamation-triangle' : 'bi-x-circle';
+
+  // Score bars
+  const scoreColor = v => v >= 65 ? '#16a34a' : v >= 40 ? '#d97706' : '#dc2626';
+  const scoreRow = (label, val) => `
+    <div class="score-row">
+      <div class="score-label">${label}</div>
+      <div class="score-bar-wrap"><div class="score-bar" style="width:${val}%;background:${scoreColor(val)}"></div></div>
+      <div class="score-val">${val}</div>
+    </div>`;
+
+  // Competidores
+  const listingLabel = t => t === 'gold_special' ? '<span class="badge badge-ok ms-1" style="font-size:.62rem">Premium</span>' :
+                            t === 'gold_pro'     ? '<span class="badge badge-ok ms-1" style="font-size:.62rem">Gold Pro</span>' : '';
+  const compsHtml = comps.map(c => `
+    <div class="comp-row">
+      <div style="flex:1;font-weight:500">${c.title}</div>
+      <div style="color:#1d4ed8;font-weight:700;white-space:nowrap">$${(c.price||0).toLocaleString('es-AR')}</div>
+      <div style="color:#16a34a;font-size:.74rem;white-space:nowrap"><i class="bi bi-bag me-1"></i>${c.sold_quantity||0}</div>
+      ${c.free_shipping ? '<span style="color:#0891b2;font-size:.72rem"><i class="bi bi-truck"></i></span>' : ''}
+      ${listingLabel(c.listing_type_id||'')}
+    </div>`).join('') || '<div class="text-muted small">Sin datos</div>';
+
+  // Keywords
+  const kwsHtml = kws.slice(0, 15).map(k => `<span class="kw-chip">${k}</span>`).join('');
+
+  // Why bullets
+  const whyHtml  = (ai.why || []).map(r => `<li class="mb-1">${r}</li>`).join('');
+  const riskHtml = (ai.main_risks || []).map(r => `
+    <div class="risk-item"><i class="bi bi-exclamation-triangle text-warning flex-shrink-0" style="margin-top:.15rem"></i><span>${r}</span></div>`
+  ).join('') || '<div class="text-muted small">Sin riesgos identificados</div>';
+
+  document.getElementById('evalResults').style.display = 'block';
+  document.getElementById('evalResults').innerHTML = `
+
+    <!-- Decisión -->
+    <div class="ev-card">
+      <div class="ev-card-header"><i class="bi bi-stars"></i>Dictamen IA</div>
+      <div class="ev-card-body d-flex flex-wrap align-items-start gap-3">
+        <div class="decision-badge ${decCls}"><i class="bi ${decIcon}"></i>${dec}</div>
+        ${d.category ? `<div style="font-size:.8rem;color:#64748b;margin-top:.35rem"><i class="bi bi-tag me-1"></i>Categoría: <strong>${d.category}</strong></div>` : ''}
+      </div>
+      ${whyHtml ? `<div class="ev-card-body border-top pt-2"><ul class="mb-0 ps-3" style="font-size:.83rem;color:#374151">${whyHtml}</ul></div>` : ''}
+    </div>
+
+    <!-- Ángulo recomendado -->
+    ${ai.recommended_angle ? `
+    <div class="ev-card">
+      <div class="ev-card-header"><i class="bi bi-lightbulb"></i>Ángulo recomendado</div>
+      <div class="ev-card-body"><div class="angle-box"><i class="bi bi-arrow-right-circle me-2"></i>${ai.recommended_angle}</div></div>
+    </div>` : ''}
+
+    <!-- Scores -->
+    <div class="ev-card">
+      <div class="ev-card-header"><i class="bi bi-bar-chart-line"></i>Scores de mercado</div>
+      <div class="ev-card-body">
+        ${scoreRow('Demanda',            sc.demand_score               || 0)}
+        ${scoreRow('Saturación',         sc.saturation_score           || 0)}
+        ${scoreRow('Compet. de precio',  sc.price_competitiveness_score|| 0)}
+        ${scoreRow('Diferenciación',     sc.differentiation_score      || 0)}
+        ${scoreRow('Dificultad entrada', sc.difficulty_score           || 0)}
+      </div>
+    </div>
+
+    <!-- Riesgos -->
+    <div class="ev-card">
+      <div class="ev-card-header"><i class="bi bi-shield-exclamation"></i>Riesgos principales</div>
+      <div class="ev-card-body">${riskHtml}</div>
+    </div>
+
+    <!-- Competidores -->
+    <div class="ev-card">
+      <div class="ev-card-header"><i class="bi bi-people"></i>Competidores top (por ventas)</div>
+      <div class="ev-card-body p-0 px-3">${compsHtml}</div>
+    </div>
+
+    <!-- Keywords -->
+    <div class="ev-card">
+      <div class="ev-card-header"><i class="bi bi-tags"></i>Keywords del autosuggest (${kws.length})</div>
+      <div class="ev-card-body">${kwsHtml}</div>
+    </div>
+  `;
+
+  // ── CTA hacia Lanzar producto ─────────────────────────────────────────────
+  const dec2 = (ai.decision || d.decision_preliminar || '').toUpperCase();
+  let ctaHtml = '';
+  if (dec2 === 'LANZAR') {
+    ctaHtml = `
+      <div class="ev-card" style="border-color:#86efac">
+        <div class="ev-card-body d-flex align-items-center justify-content-between flex-wrap gap-2"
+             style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5)">
+          <div>
+            <div style="font-weight:700;color:#15803d;font-size:.95rem">
+              <i class="bi bi-rocket-takeoff me-2"></i>Este producto tiene potencial — pasá a lanzarlo
+            </div>
+            <div style="font-size:.78rem;color:#166534;margin-top:.2rem">
+              La query ya estará precargada en el Lanzador de productos.
+            </div>
+          </div>
+          <a href="/lanzamientos?q=${encodeURIComponent(d.query)}"
+             class="btn btn-success flex-shrink-0">
+            <i class="bi bi-rocket-takeoff me-2"></i>Ir a Lanzar producto
+          </a>
+        </div>
+      </div>`;
+  } else if (dec2.includes('CAUTELA')) {
+    ctaHtml = `
+      <div class="ev-card" style="border-color:#fde68a">
+        <div class="ev-card-body d-flex align-items-center justify-content-between flex-wrap gap-2"
+             style="background:linear-gradient(135deg,#fffbeb,#fef9c3)">
+          <div>
+            <div style="font-weight:700;color:#92400e;font-size:.95rem">
+              <i class="bi bi-exclamation-triangle me-2"></i>Podés lanzar, pero considerá los riesgos primero
+            </div>
+            <div style="font-size:.78rem;color:#78350f;margin-top:.2rem">
+              Revisá los riesgos detectados antes de continuar.
+            </div>
+          </div>
+          <a href="/lanzamientos?q=${encodeURIComponent(d.query)}"
+             class="btn btn-warning flex-shrink-0">
+            <i class="bi bi-rocket-takeoff me-2"></i>Ir a Lanzar producto
+          </a>
+        </div>
+      </div>`;
+  } else {
+    ctaHtml = `
+      <div class="ev-card" style="border-color:#fca5a5">
+        <div class="ev-card-body" style="background:linear-gradient(135deg,#fff1f2,#fee2e2)">
+          <div style="font-weight:700;color:#991b1b;font-size:.9rem">
+            <i class="bi bi-x-circle me-2"></i>No recomendado para lanzar en este momento
+          </div>
+          <div style="font-size:.78rem;color:#7f1d1d;margin-top:.3rem">
+            Podés igualmente ir al Lanzador si querés generar el contenido de todas formas.
+            <a href="/lanzamientos?q=${encodeURIComponent(d.query)}" class="ms-2" style="font-size:.78rem">
+              Ir de todas formas →
+            </a>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  document.getElementById('evalResults').insertAdjacentHTML('afterbegin', ctaHtml);
+  document.getElementById('evalResults').scrollIntoView({behavior:'smooth', block:'start'});
+}
+</script>
+{% endblock %}

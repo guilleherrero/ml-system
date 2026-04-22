@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %} — Calendario{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-calendar-event me-2 text-primary"></i>Calendario de ventas</h1>
+    <div class="subtitle">Fechas comerciales clave de Argentina</div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for ev in eventos %}
+  <div class="col-md-6 col-lg-4">
+    <div class="event-card {{ 'urgent' if ev.dias <= 15 else ('soon' if ev.dias <= 30 else ('plan' if ev.dias <= 60 else 'future')) }}">
+      <div class="d-flex justify-content-between align-items-start">
+        <div style="font-size:2rem;line-height:1">{{ ev.icono }}</div>
+        <div class="text-end">
+          {% if ev.dias <= 0 %}
+            <span class="badge bg-danger">HOY</span>
+          {% elif ev.dias <= 15 %}
+            <span class="badge bg-danger">{{ ev.dias }} días</span>
+          {% elif ev.dias <= 30 %}
+            <span class="badge bg-warning text-dark">{{ ev.dias }} días</span>
+          {% elif ev.dias <= 60 %}
+            <span class="badge bg-primary">{{ ev.dias }} días</span>
+          {% else %}
+            <span class="badge bg-secondary">{{ ev.dias }} días</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="fw-semibold mt-2 fs-6">{{ ev.nombre }}</div>
+      <div class="text-muted small mb-2">{{ ev.fecha_str }}</div>
+      <div class="small text-secondary">{{ ev.consejo }}</div>
+
+      <div class="mt-3 pt-2 border-top">
+        <small class="fw-semibold text-uppercase" style="font-size:.68rem;letter-spacing:.05em;color:#9ca3af">Acción</small><br>
+        <small class="{{ 'text-danger fw-semibold' if ev.dias <= 15 else ('text-warning fw-semibold' if ev.dias <= 30 else 'text-secondary') }}">
+          {% if ev.dias <= 7 %}Revisá stock y precios AHORA
+          {% elif ev.dias <= 15 %}Activar publicidad y revisar precios
+          {% elif ev.dias <= 30 %}Preparar stock y optimizar publicaciones
+          {% elif ev.dias <= 60 %}Planificar pedidos a proveedores
+          {% else %}Sin acción inmediata
+          {% endif %}
+        </small>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
