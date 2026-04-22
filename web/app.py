@@ -6197,7 +6197,8 @@ def multicuenta():
             'stock_fecha': (stock_data or {}).get('fecha'),
         })
 
-    return render_template('multicuenta.html', rows=rows, accounts=accounts)
+    return render_template('multicuenta.html', rows=rows, accounts=accounts,
+                           ml_redirect_uri=ML_REDIRECT_URI)
 
 
 # ── API ───────────────────────────────────────────────────────────────────────
