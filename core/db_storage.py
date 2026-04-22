@@ -27,6 +27,7 @@ def _get_conn():
                     updated_at TIMESTAMP DEFAULT NOW()
                 )
             """)
+        _migrate_keys(_conn)
     return _conn
 
 
@@ -37,6 +38,25 @@ def use_db() -> bool:
 def _key(path: str) -> str:
     """Normalize path to a stable PostgreSQL key (resolves ../ components)."""
     return os.path.normpath(os.path.abspath(path))
+
+
+def _migrate_keys(conn):
+    """Rename any un-normalized keys left from before the _key() fix."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SELECT key FROM kv_store')
+            rows = cur.fetchall()
+        for (old_key,) in rows:
+            new_key = os.path.normpath(os.path.abspath(old_key))
+            if new_key != old_key:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        'UPDATE kv_store SET key = %s WHERE key = %s AND NOT EXISTS '
+                        '(SELECT 1 FROM kv_store WHERE key = %s)',
+                        (new_key, old_key, new_key)
+                    )
+    except Exception as e:
+        print(f'[db] key migration: {e}')
 
 
 def db_load(path: str):
