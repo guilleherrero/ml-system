@@ -9982,40 +9982,42 @@ def api_notificaciones_test():
 
 def _scheduler_run_all():
     """Actualiza datos de todas las cuentas una vez por día: reputación, stock y posiciones."""
-    import subprocess as _sp
-    import sys as _sys
-    accounts = get_accounts()
+    from core.account_manager import AccountManager
+    from modules.preguntas_reputacion import run_reputacion
+    from modules.stock_rentabilidad import run as run_stock
+    from modules.monitor_posicionamiento import run as run_pos
+
+    mgr = AccountManager()
+    accounts = mgr.list_accounts()
     if not accounts:
+        print('[scheduler] Sin cuentas activas, nada que actualizar.')
         return
 
     print(f'\n[scheduler] Iniciando actualización diaria — {datetime.now().strftime("%Y-%m-%d %H:%M")}')
 
     for acc in accounts:
-        alias = acc.get('alias', '')
+        alias = acc.alias
         print(f'[scheduler] Actualizando {alias}...')
         try:
-            # Reputación
-            _sp.run([_sys.executable, 'main.py', 'reputacion', alias],
-                    capture_output=True, timeout=120,
-                    cwd=os.path.dirname(os.path.dirname(__file__)))
+            client = mgr.get_client(alias)
+        except Exception as e:
+            print(f'[scheduler] {alias} — no se pudo obtener cliente: {e}')
+            continue
+
+        try:
+            run_reputacion(client, alias)
             print(f'[scheduler] {alias} — reputación OK')
         except Exception as e:
             print(f'[scheduler] {alias} — reputación ERROR: {e}')
 
         try:
-            # Stock y rentabilidad
-            _sp.run([_sys.executable, 'main.py', 'stock-rentabilidad', alias],
-                    capture_output=True, timeout=180,
-                    cwd=os.path.dirname(os.path.dirname(__file__)))
+            run_stock(client, alias)
             print(f'[scheduler] {alias} — stock OK')
         except Exception as e:
             print(f'[scheduler] {alias} — stock ERROR: {e}')
 
         try:
-            # Posiciones
-            _sp.run([_sys.executable, 'main.py', 'posiciones', alias],
-                    capture_output=True, timeout=120,
-                    cwd=os.path.dirname(os.path.dirname(__file__)))
+            run_pos(client, alias)
             print(f'[scheduler] {alias} — posiciones OK')
         except Exception as e:
             print(f'[scheduler] {alias} — posiciones ERROR: {e}')
