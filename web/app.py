@@ -10093,9 +10093,10 @@ def api_scheduler_run_now():
 
 _app_scheduler = None
 
+# Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
+_app_scheduler = _start_scheduler()
 
 if __name__ == '__main__':
     print('\n  Sistema ML — Interfaz web')
     print('  Abrí en tu navegador: http://localhost:8080\n')
-    _app_scheduler = _start_scheduler()
     app.run(debug=False, host='0.0.0.0', port=8080)
