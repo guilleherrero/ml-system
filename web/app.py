@@ -3069,14 +3069,19 @@ def api_ventas_producto(alias):
     """Ranking de ventas agrupadas por item para los últimos 7, 30 y 60 días."""
     from datetime import datetime as _dt, timedelta as _td
     import time as _t
+    from core.account_manager import AccountManager as _AM
 
-    all_accs = get_accounts()
-    account  = next((a for a in all_accs if a.get('alias') == alias), None)
-    if not account:
-        return jsonify({'ok': False, 'error': 'cuenta no encontrada'}), 404
+    try:
+        _mgr    = _AM()
+        _client = _mgr.get_client(alias)
+        _client._ensure_token()
+        token   = _client.account.access_token
+        user_id = str(_client.account.user_id or '')
+        if not user_id:
+            user_id = str(_client.get_me().get('id', ''))
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Token inválido: {e}'}), 401
 
-    token   = account.get('access_token', '')
-    user_id = str(account.get('user_id', ''))
     heads   = {'Authorization': f'Bearer {token}'}
     now     = _dt.now()
     ML      = 'https://api.mercadolibre.com'
