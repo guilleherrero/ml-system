@@ -34,6 +34,11 @@ def use_db() -> bool:
     return bool(_db_url)
 
 
+def _key(path: str) -> str:
+    """Normalize path to a stable PostgreSQL key (resolves ../ components)."""
+    return os.path.normpath(os.path.abspath(path))
+
+
 def db_load(path: str):
     """Load JSON from PostgreSQL (by path key) or from filesystem."""
     if not use_db():
@@ -44,7 +49,7 @@ def db_load(path: str):
     try:
         conn = _get_conn()
         with conn.cursor() as cur:
-            cur.execute('SELECT value FROM kv_store WHERE key = %s', (path,))
+            cur.execute('SELECT value FROM kv_store WHERE key = %s', (_key(path),))
             row = cur.fetchone()
             return json.loads(row[0]) if row else None
     except Exception:
@@ -67,6 +72,6 @@ def db_save(path: str, data):
                 VALUES (%s, %s, NOW())
                 ON CONFLICT (key) DO UPDATE
                     SET value = EXCLUDED.value, updated_at = NOW()
-            """, (path, payload))
+            """, (_key(path), payload))
     except Exception as e:
         raise RuntimeError(f'db_save failed for {path}: {e}') from e
