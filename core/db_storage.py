@@ -6,7 +6,7 @@ Persistent storage layer.
 import json
 import os
 
-_db_url = os.environ.get('DATABASE_URL', '')
+_db_url = os.environ.get('DATABASE_URL', '').strip()
 _conn   = None
 
 
@@ -14,7 +14,10 @@ def _get_conn():
     global _conn
     if _conn is None or _conn.closed:
         import psycopg2
-        _conn = psycopg2.connect(_db_url)
+        url = _db_url
+        if 'sslmode' not in url:
+            url += ('&' if '?' in url else '?') + 'sslmode=require'
+        _conn = psycopg2.connect(url)
         _conn.autocommit = True
         with _conn.cursor() as cur:
             cur.execute("""
