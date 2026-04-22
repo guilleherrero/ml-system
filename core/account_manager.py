@@ -1,9 +1,9 @@
-import json
 import os
 from typing import Optional
 
 from .models import MLAccount
 from .ml_client import MLClient
+from .db_storage import db_load, db_save
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "accounts.json")
 
@@ -19,22 +19,11 @@ class AccountManager:
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def _load(self):
-        if not os.path.exists(self.config_path):
-            self._accounts = []
-            return
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        self._accounts = [MLAccount.from_dict(a) for a in data.get("accounts", [])]
+        data = db_load(self.config_path)
+        self._accounts = [MLAccount.from_dict(a) for a in (data or {}).get("accounts", [])]
 
     def _save(self):
-        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {"accounts": [a.to_dict() for a in self._accounts]},
-                f,
-                indent=2,
-                ensure_ascii=False,
-            )
+        db_save(self.config_path, {"accounts": [a.to_dict() for a in self._accounts]})
 
     def _on_token_refresh(self, account: MLAccount):
         """Called by MLClient after a token refresh — persists new tokens."""

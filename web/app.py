@@ -21,6 +21,7 @@ from flask import Flask, render_template, redirect, url_for, jsonify, request, R
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from core.fees import get_fee_rates, get_rate
+from core.db_storage import db_load, db_save
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'ml-sistema-local-secret-2026')
@@ -37,10 +38,10 @@ TOKEN_LOG_PATH  = os.path.join(DATA_DIR, 'token_log.json')
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def load_json(path):
-    if not os.path.exists(path):
-        return None
-    with open(path, encoding='utf-8') as f:
-        return json.load(f)
+    return db_load(path)
+
+def save_json(path, data):
+    db_save(path, data)
 
 
 # ── Token cost logger ─────────────────────────────────────────────────────────
@@ -68,8 +69,7 @@ def _log_token_usage(funcion: str, modelo: str, input_tokens: int, output_tokens
         log['entries'].append(entry)
         if len(log['entries']) > 1000:
             log['entries'] = log['entries'][-1000:]
-        with open(TOKEN_LOG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(log, f, ensure_ascii=False)
+        save_json(TOKEN_LOG_PATH, log)
     except Exception:
         pass
 
@@ -1699,9 +1699,7 @@ def api_costos_save():
                     del costos_data[item_id]
                     deleted += 1
 
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(os.path.join(CONFIG_DIR, 'costos.json'), 'w', encoding='utf-8') as f:
-            json.dump(costos_data, f, indent=2, ensure_ascii=False)
+        save_json(os.path.join(CONFIG_DIR, 'costos.json'), costos_data)
 
         return jsonify({'ok': True, 'saved': saved, 'deleted': deleted})
     except Exception as e:
@@ -2323,8 +2321,7 @@ def posiciones(alias):
                     _changed = True
         if _changed:
             try:
-                with open(_opt_path, 'w', encoding='utf-8') as _f:
-                    json.dump(_opt_file, _f, indent=2, ensure_ascii=False)
+                save_json(_opt_path, _opt_file)
             except Exception:
                 pass
 
@@ -3660,8 +3657,7 @@ def api_opt_seguimiento(alias, item_id):
         if o.get('item_id') == item_id:
             o['seguimiento'] = result
             break
-    with open(opt_path, 'w', encoding='utf-8') as f:
-        json.dump(opt_data, f, indent=2, ensure_ascii=False)
+    save_json(opt_path, opt_data)
 
     return jsonify(result)
 
@@ -3676,8 +3672,7 @@ def api_borrar_optimizacion():
     path = os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')
     data = load_json(path) or {'optimizaciones': []}
     data['optimizaciones'] = [o for o in data.get('optimizaciones', []) if o.get('item_id') != item_id]
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    save_json(path, data)
     return jsonify({'ok': True})
 
 
@@ -3848,8 +3843,7 @@ def api_aplicar_optimizacion():
                 json_updated   = True
                 break
         if json_updated:
-            with open(opt_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            save_json(opt_path, data)
 
     result = {'ok': True, 'applied': applied, 'json_updated': json_updated}
     if attrs_errors:
@@ -4894,8 +4888,7 @@ Respondé SOLO con este JSON, sin texto adicional:
         safe_q = query[:30].replace(' ', '_').replace('/', '-')
         ts     = datetime.now().strftime('%Y%m%d_%H%M')
         path   = os.path.join(DATA_DIR, f'evaluacion_{safe_q}_{ts}.json')
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump({
+        save_json(path, {
                 'fecha':               datetime.now().strftime('%Y-%m-%d %H:%M'),
                 'query':               query,
                 'category_id':         category_id,
@@ -4904,7 +4897,7 @@ Respondé SOLO con este JSON, sin texto adicional:
                 'competitors':         competitors,
                 'scores':              scores,
                 'ai_eval':             ai_eval,
-            }, f, indent=2, ensure_ascii=False)
+            })
     except Exception as e:
         app.logger.warning(f'[evaluar-producto] Error guardando evaluación: {e}')
 
@@ -5150,9 +5143,7 @@ def api_repricing_config():
                 'alias': alias,
             }
 
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(os.path.join(CONFIG_DIR, 'repricing.json'), 'w', encoding='utf-8') as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        save_json(os.path.join(CONFIG_DIR, 'repricing.json'), cfg)
 
         return jsonify({'ok': True, 'saved': len(items_data)})
     except Exception as e:
@@ -5336,9 +5327,7 @@ def api_repricing_apply():
                 errors.append({'id': item_id, 'error': str(e)})
             _time_module.sleep(0.2)
 
-        # Guardar config actualizada
-        with open(os.path.join(CONFIG_DIR, 'repricing.json'), 'w', encoding='utf-8') as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        save_json(os.path.join(CONFIG_DIR, 'repricing.json'), cfg)
 
         return jsonify({'ok': True, 'applied': len(applied), 'errors': errors})
     except Exception as e:
@@ -5420,8 +5409,7 @@ def api_alertas():
                         it['ventas_30d']    = ventas
                         it['conversion_pct'] = round(ventas / vis * 100, 2) if vis > 0 else None
                 stock_path = os.path.join(DATA_DIR, f'stock_{s}.json')
-                with open(stock_path, 'w', encoding='utf-8') as f:
-                    json.dump(stock_data, f, ensure_ascii=False)
+                save_json(stock_path, stock_data)
 
         # ── Alertas de stock y margen ──────────────────────────────────────
         trafico_bajo_items = []   # agrupar en una sola alerta al final
@@ -8381,8 +8369,7 @@ CHECKLIST DE VALIDACIÓN INTERNA (verificar antes de entregar):
             })
             existing['optimizaciones'] = opts[:20]
             existing['fecha'] = datetime.now().strftime('%Y-%m-%d %H:%M')
-            with open(opt_path, 'w', encoding='utf-8') as f:
-                json.dump(existing, f, indent=2, ensure_ascii=False)
+            save_json(opt_path, existing)
 
             yield _sse({'type': 'done'})
 
@@ -8524,8 +8511,7 @@ def api_optimizar_pub_v2():
             opts.insert(0, record)
             existing['optimizaciones'] = opts[:20]
             existing['fecha'] = record['fecha']
-            with open(opt_path, 'w', encoding='utf-8') as f:
-                json.dump(existing, f, indent=2, ensure_ascii=False)
+            save_json(opt_path, existing)
 
             yield _sse({'type': 'done'})
 
@@ -8671,8 +8657,7 @@ def api_lanzar_nuevo_v2():
             lanzs.insert(0, record)
             existing['lanzamientos'] = lanzs[:20]
             existing['fecha'] = record['fecha']
-            with open(data_path, 'w', encoding='utf-8') as f:
-                json.dump(existing, f, indent=2, ensure_ascii=False)
+            save_json(data_path, existing)
 
             yield _sse({'type': 'done'})
 
@@ -8704,8 +8689,7 @@ def api_borrar_lanzamiento():
 
     lanzs.pop(idx)
     existing['lanzamientos'] = lanzs
-    with open(data_path, 'w', encoding='utf-8') as f:
-        json.dump(existing, f, indent=2, ensure_ascii=False)
+    save_json(data_path, existing)
 
     return jsonify({'ok': True})
 
@@ -9038,8 +9022,7 @@ VALIDACIÓN INTERNA antes de entregar:
             safe_p = producto[:30].replace(' ', '_').replace('/', '-')
             ts     = datetime.now().strftime('%Y%m%d_%H%M')
             path   = os.path.join(DATA_DIR, f'lanzamiento_{safe_p}_{ts}.json')
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump({
+            save_json(path, {
                     'fecha':                ts,
                     'producto':             producto,
                     'market_data':          market_data,
@@ -9051,7 +9034,7 @@ VALIDACIÓN INTERNA antes de entregar:
                     'ficha_perfecta':       ficha,
                     'descripcion_nueva':    descripcion,
                     'proyeccion':           proyeccion,
-                }, f, indent=2, ensure_ascii=False)
+                })
 
             yield _sse({
                 'type':       'result',
@@ -9666,8 +9649,7 @@ Recomendaciones concretas con números.
 
             # ── 6. Guardar ────────────────────────────────────────────────────
             out_path = os.path.join(DATA_DIR, f'analisis_pub_{item_id}.json')
-            with open(out_path, 'w', encoding='utf-8') as f:
-                json.dump({
+            save_json(out_path, {
                     'item_id': item_id, 'titulo': title, 'alias': alias,
                     'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
                     'market': {'avg_price': avg_price, 'min_price': min_price,
@@ -9675,7 +9657,7 @@ Recomendaciones concretas con números.
                                'free_ship_pct': free_pct},
                     'competidores': comp_rows,
                     'analisis': full_text,
-                }, f, indent=2, ensure_ascii=False)
+                })
 
             yield _sse({'type': 'done', 'item_id': item_id})
 
@@ -9694,7 +9676,7 @@ def _sse(data: dict) -> str:
 
 # ── OAuth re-autorización ─────────────────────────────────────────────────────
 
-ML_REDIRECT_URI = 'https://frizzenderpro.com/oauth'
+ML_REDIRECT_URI = os.environ.get('ML_REDIRECT_URI', 'http://localhost:8080/oauth/exchange')
 
 
 @app.route('/api/cuenta-nueva', methods=['POST'])
@@ -9728,8 +9710,7 @@ def api_cuenta_nueva():
         'nickname':       '',
         'active':         True,
     })
-    with open(accounts_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    save_json(accounts_path, data)
 
     return jsonify(ok=True, alias=alias)
 
@@ -9810,8 +9791,7 @@ def oauth_exchange():
         acc['access_token']     = tok['access_token']
         acc['refresh_token']    = tok['refresh_token']
         acc['token_expires_at'] = expires_at
-        with open(accounts_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        save_json(accounts_path, data)
         return render_template('oauth_success.html', alias=alias, scope=tok.get('scope',''))
     except Exception as e:
         return f'<h2>Error: {e}</h2><a href="/">Volver</a>'
@@ -9827,8 +9807,7 @@ def _load_notif_config():
 
 
 def _save_notif_config(cfg):
-    with open(_NOTIF_CONFIG_PATH, 'w', encoding='utf-8') as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    save_json(_NOTIF_CONFIG_PATH, cfg)
 
 
 def _send_email_alert(subject: str, body_html: str, cfg: dict):
@@ -9947,8 +9926,7 @@ def api_token_costs():
 @app.route('/api/token-costs-clear', methods=['POST'])
 def api_token_costs_clear():
     try:
-        with open(TOKEN_LOG_PATH, 'w', encoding='utf-8') as f:
-            json.dump({'entries': []}, f)
+        save_json(TOKEN_LOG_PATH, {'entries': []})
         return jsonify({'ok': True})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
