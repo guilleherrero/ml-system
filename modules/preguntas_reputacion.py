@@ -10,8 +10,8 @@ Funciones:
   - Alerta si algún indicador está en zona de riesgo
 """
 
-import json
 import os
+import sys
 import time
 from datetime import datetime
 
@@ -23,6 +23,8 @@ from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich import box
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from core.db_storage import db_load, db_save
 from core.ml_client import MLClient
 
 console = Console()
@@ -278,25 +280,17 @@ def _nivel_reputacion(nivel: str) -> str:
 
 
 def _save_reputation_snapshot(alias: str, data: dict):
-    os.makedirs(DATA_DIR, exist_ok=True)
     safe = alias.replace(" ", "_").replace("/", "-")
     path = os.path.join(DATA_DIR, f"reputacion_{safe}.json")
 
-    # Cargar historial previo
-    historial = []
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            try:
-                historial = json.load(f)
-            except Exception:
-                historial = []
+    historial = db_load(path) or []
+    if not isinstance(historial, list):
+        historial = []
 
     historial.append({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), **data})
-    # Guardar solo los últimos 30 registros
     historial = historial[-30:]
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(historial, f, indent=2, ensure_ascii=False)
+    db_save(path, historial)
 
 
 def run_reputacion(client: MLClient, alias: str):

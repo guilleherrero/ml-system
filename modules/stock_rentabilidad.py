@@ -12,8 +12,8 @@ Funciones:
   - Ranking de productos más y menos rentables
 """
 
-import json
 import os
+import sys
 import time
 import requests as _req
 from datetime import datetime, timedelta
@@ -24,6 +24,8 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich import box
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from core.db_storage import db_load, db_save
 from core.ml_client import MLClient
 from core.fees import get_fee_rates, get_rate
 from modules.monitor_posicionamiento import _get_all_active_items
@@ -46,16 +48,12 @@ MARGEN_MINIMO_PCT    = 0.10   # 10%
 # ── Costos ────────────────────────────────────────────────────────────────────
 
 def _load_costos() -> dict:
-    if not os.path.exists(COSTOS_PATH):
-        return {}
-    with open(COSTOS_PATH, encoding="utf-8") as f:
-        return json.load(f)
+    data = db_load(COSTOS_PATH)
+    return data if data is not None else {}
 
 
 def _save_costos(costos: dict):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(COSTOS_PATH, "w", encoding="utf-8") as f:
-        json.dump(costos, f, indent=2, ensure_ascii=False)
+    db_save(COSTOS_PATH, costos)
 
 
 # ── Ventas y fees reales ──────────────────────────────────────────────────────
@@ -725,12 +723,7 @@ def _show_seo_diagnostico(resultados: list[dict]):
 
 
 def _save_snapshot(alias: str, resultados: list[dict]):
-    os.makedirs(DATA_DIR, exist_ok=True)
     safe = alias.replace(" ", "_").replace("/", "-")
     path = os.path.join(DATA_DIR, f"stock_{safe}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(
-            {"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "items": resultados},
-            f, indent=2, ensure_ascii=False,
-        )
+    db_save(path, {"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "items": resultados})
     console.print(f"\n[dim]Guardado en data/stock_{safe}.json[/dim]")

@@ -3,10 +3,12 @@ Módulo 1 — Monitor de posicionamiento
 Detecta cuáles publicaciones bajaron de posición en ML y genera alertas.
 """
 
-import json
 import os
 from datetime import datetime, timedelta
 from typing import Optional
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from core.db_storage import db_load, db_save
 
 import requests
 from rich.console import Console
@@ -31,16 +33,12 @@ def _data_path(account_alias: str) -> str:
 
 def _load_snapshots(alias: str) -> dict:
     path = _data_path(alias)
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    data = db_load(path)
+    return data if data is not None else {}
 
 
 def _save_snapshots(alias: str, data: dict):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(_data_path(alias), "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    db_save(_data_path(alias), data)
 
 
 def _search_position(item_id: str, category_id: str, keywords: str,
