@@ -62,12 +62,12 @@
       <div>
         <div class="fw-semibold mb-1">Autorizá en MercadoLibre y copiá el código de la URL</div>
         <div class="text-muted small mb-3">
-          Hacé click, iniciá sesión y aceptá. ML va a redirigirte a <strong>frizzenderpro.com/oauth</strong>
-          — esa página puede mostrar un error o tu sitio, es normal.<br>
+          Hacé click, iniciá sesión y aceptá. ML va a redirigirte a <strong>{{ redirect_uri }}</strong>
+          — esa página puede mostrar un error, es normal.<br>
           Mirá la barra de direcciones del navegador, va a verse así:
         </div>
         <div class="p-2 rounded mb-3" style="background:#fef9c3;border:1px solid #fde68a;font-family:monospace;font-size:.8rem;word-break:break-all">
-          https://frizzenderpro.com/oauth?<strong style="color:#b45309">code=TG-68abc123def456...</strong>&state={{ alias }}
+          {{ redirect_uri }}?<strong style="color:#b45309">code=TG-68abc123def456...</strong>&state={{ alias }}
         </div>
         <div class="text-muted small mb-3">Copiá todo el valor después de <code>code=</code> hasta el <code>&</code></div>
         <a href="{{ auth_url }}" target="_blank" class="btn btn-primary">

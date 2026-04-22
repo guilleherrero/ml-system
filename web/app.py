@@ -9727,7 +9727,7 @@ def _pkce_pair():
 
 @app.route('/oauth/connect/<alias>')
 def oauth_connect(alias):
-    """Muestra página para autorizar (nueva cuenta) o re-autorizar via OAuth con PKCE."""
+    """Redirige directo a ML para autorizar. Guarda el verifier en sesión."""
     import urllib.parse
     accounts_path = os.path.join(CONFIG_DIR, 'accounts.json')
     data = load_json(accounts_path) or {'accounts': []}
@@ -9736,9 +9736,10 @@ def oauth_connect(alias):
     acc = next((a for a in data['accounts'] if a['alias'] == alias), None)
     if not acc:
         return 'Cuenta no encontrada', 404
-    is_new = not acc.get('access_token')
 
     verifier, challenge = _pkce_pair()
+    from flask import session
+    session[f'pkce_verifier_{alias}'] = verifier
 
     params = {
         'response_type':         'code',
@@ -9750,16 +9751,22 @@ def oauth_connect(alias):
         'scope':                 'offline_access read write',
     }
     auth_url = 'https://auth.mercadolibre.com.ar/authorization?' + urllib.parse.urlencode(params)
-    return render_template('oauth_connect.html', alias=alias, auth_url=auth_url,
-                           redirect_uri=ML_REDIRECT_URI, verifier=verifier, is_new=is_new)
+    return redirect(auth_url)
 
 
-@app.route('/oauth/exchange', methods=['POST'])
+@app.route('/oauth/exchange', methods=['GET', 'POST'])
 def oauth_exchange():
-    """Recibe el código copiado por el usuario y obtiene los tokens con PKCE."""
-    alias    = request.form.get('alias',    '').strip()
-    code     = request.form.get('code',     '').strip()
-    verifier = request.form.get('verifier', '').strip()
+    """Callback OAuth — acepta GET (redirect de ML) y POST (form manual)."""
+    from flask import session
+
+    if request.method == 'GET':
+        code  = request.args.get('code',  '').strip()
+        alias = request.args.get('state', '').strip()
+        verifier = session.pop(f'pkce_verifier_{alias}', '')
+    else:
+        code     = request.form.get('code',     '').strip()
+        alias    = request.form.get('alias',    '').strip()
+        verifier = request.form.get('verifier', '').strip()
 
     if not code:
         return '<h2>Falta el código</h2><a href="/">Volver</a>'
@@ -9769,6 +9776,8 @@ def oauth_exchange():
 
     accounts_path = os.path.join(CONFIG_DIR, 'accounts.json')
     data = load_json(accounts_path) or {'accounts': []}
+    if not isinstance(data, dict):
+        data = {'accounts': data}
     acc  = next((a for a in data['accounts'] if a['alias'] == alias), None)
     if not acc:
         return '<h2>Cuenta no encontrada</h2><a href="/">Volver</a>'
