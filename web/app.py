@@ -10258,34 +10258,30 @@ def api_full_stock_check(alias, item_id):
         body = r.json()
         inventory_id = body.get('inventory_id')
 
-        # Consultar API de inventario con el inventory_id
-        inventory_raw = None
-        inventory_stock_raw = None
+        # Probar distintos endpoints de inventario
+        results = {}
         if inventory_id:
-            try:
-                ri = req_lib.get(
-                    f'https://api.mercadolibre.com/inventories/{inventory_id}',
-                    headers=heads, timeout=8)
-                inventory_raw = {'status': ri.status_code, 'body': ri.json() if ri.ok else ri.text}
-            except Exception as e:
-                inventory_raw = {'error': str(e)}
-
-            try:
-                rs = req_lib.get(
-                    f'https://api.mercadolibre.com/inventories/{inventory_id}/stock/fulfillment',
-                    headers=heads, timeout=8)
-                inventory_stock_raw = {'status': rs.status_code, 'body': rs.json() if rs.ok else rs.text}
-            except Exception as e:
-                inventory_stock_raw = {'error': str(e)}
+            endpoints = {
+                'stock_fulfillment':  f'/inventories/{inventory_id}/stock/fulfillment',
+                'stock_external':     f'/inventories/{inventory_id}/stock/external',
+                'stock_meli':         f'/inventories/{inventory_id}/stock/meli',
+                'stock_base':         f'/inventories/{inventory_id}/stock',
+                'locations':          f'/inventories/{inventory_id}/locations',
+            }
+            for key, path in endpoints.items():
+                try:
+                    rr = req_lib.get(f'https://api.mercadolibre.com{path}', headers=heads, timeout=8)
+                    results[key] = {'status': rr.status_code, 'body': rr.json() if rr.ok else rr.text[:300]}
+                except Exception as e:
+                    results[key] = {'error': str(e)}
 
         return jsonify({
-            'ok':                   True,
-            'inventory_id':         inventory_id,
-            'available_quantity':   body.get('available_quantity'),
-            'sold_quantity':        body.get('sold_quantity'),
-            'initial_quantity':     body.get('initial_quantity'),
-            'inventory_raw':        inventory_raw,
-            'inventory_stock_raw':  inventory_stock_raw,
+            'ok':                 True,
+            'inventory_id':       inventory_id,
+            'available_quantity': body.get('available_quantity'),
+            'sold_quantity':      body.get('sold_quantity'),
+            'initial_quantity':   body.get('initial_quantity'),
+            'inventory_results':  results,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
