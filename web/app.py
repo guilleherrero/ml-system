@@ -1602,6 +1602,40 @@ def salud(alias):
                            resumen=resumen, accounts=get_accounts())
 
 
+@app.route('/api/aplicar-precio/<alias>', methods=['POST'])
+def api_aplicar_precio(alias):
+    """Actualiza el precio de una publicación directamente via ML API."""
+    data    = request.get_json(silent=True) or {}
+    item_id = str(data.get('item_id', '')).strip()
+    precio  = data.get('precio')
+
+    if not item_id or precio is None:
+        return jsonify({'ok': False, 'error': 'item_id y precio requeridos'}), 400
+    try:
+        precio = float(precio)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'precio inválido'}), 400
+    if precio <= 0:
+        return jsonify({'ok': False, 'error': 'precio debe ser mayor a 0'}), 400
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    heads_json = {**heads, 'Content-Type': 'application/json'}
+    r = req_lib.put(
+        f'https://api.mercadolibre.com/items/{item_id}',
+        headers=heads_json,
+        json={'price': precio},
+        timeout=10,
+    )
+    if r.ok:
+        nuevo = r.json().get('price', precio)
+        return jsonify({'ok': True, 'precio_nuevo': nuevo})
+    return jsonify({'ok': False, 'error': r.text[:200]}), r.status_code
+
+
 @app.route('/api/costos-items/<alias>')
 def api_costos_items(alias):
     """Items activos con sus costos actuales para el modal de edición."""

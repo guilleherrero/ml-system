@@ -169,11 +169,19 @@
         <td class="text-center" style="padding:.75rem .75rem;color:#64748b">
           {% if it.competidores > 0 %}{{ it.competidores }}{% else %}—{% endif %}
         </td>
-        <td style="padding:.75rem .75rem">
+        <td style="padding:.75rem .75rem;white-space:nowrap">
           {% if it.permalink %}
-          <a href="{{ it.permalink }}" target="_blank" class="btn btn-xs btn-outline-secondary" style="font-size:.7rem;padding:2px 8px;white-space:nowrap">
+          <a href="{{ it.permalink }}" target="_blank" class="btn btn-xs btn-outline-secondary" style="font-size:.7rem;padding:2px 8px">
             Ver →
           </a>
+          {% endif %}
+          {% if it.we_win == false and it.precio_ideal is not none %}
+          <button
+            class="btn btn-xs btn-primary ms-1"
+            style="font-size:.7rem;padding:2px 8px"
+            onclick="aplicarPrecio(this, '{{ alias }}', '{{ it.id }}', {{ it.precio_ideal }})">
+            Aplicar ${{ '{:,.0f}'.format(it.precio_ideal) }}
+          </button>
           {% endif %}
         </td>
       </tr>
@@ -193,6 +201,38 @@ function filtrar(tipo, btn) {
   btn.classList.add('active');
   document.querySelectorAll('#cat-tbody .cat-row').forEach(row => {
     row.style.display = (tipo === 'todos' || row.dataset.estado === tipo) ? '' : 'none';
+  });
+}
+
+function aplicarPrecio(btn, alias, itemId, precio) {
+  if (!confirm(`¿Cambiar el precio de esta publicación a $${precio.toLocaleString('es-AR')}?`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Aplicando…';
+  fetch(`/api/aplicar-precio/${encodeURIComponent(alias)}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({item_id: itemId, precio: precio}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      btn.textContent = '✓ Aplicado';
+      btn.classList.replace('btn-primary', 'btn-success');
+      // Actualizar el precio mostrado en la fila
+      const row = btn.closest('tr');
+      const precioCell = row.querySelector('td:nth-child(2)');
+      if (precioCell) precioCell.innerHTML = `<strong>$${Math.round(d.precio_nuevo).toLocaleString('es-AR')}</strong>`;
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Error — reintentar';
+      btn.classList.replace('btn-primary', 'btn-danger');
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.textContent = 'Error — reintentar';
+    btn.classList.replace('btn-primary', 'btn-danger');
   });
 }
 </script>
