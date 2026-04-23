@@ -1473,140 +1473,114 @@ def stock(alias):
 
 @app.route('/salud/<alias>')
 def salud(alias):
-    """Panel de salud del catálogo: todos los problemas detectados por publicación, ordenados por urgencia."""
-    from datetime import datetime as _dt, timedelta as _td
-
+    """Publicaciones en catálogo ML: precio propio vs precio del buy box."""
     all_accs = get_accounts()
     account  = next((a for a in all_accs if a.get('alias') == alias), None)
     if not account:
         return render_template('salud.html', alias=alias, items=[], resumen={},
-                               pausadas=[], accounts=get_accounts())
+                               accounts=get_accounts())
 
     try:
         token, user_id, heads = _ml_auth(alias)
     except Exception:
         return render_template('salud.html', alias=alias, items=[], resumen={},
-                               pausadas=[], accounts=get_accounts())
-    ML      = 'https://api.mercadolibre.com'
+                               accounts=get_accounts())
+    ML = 'https://api.mercadolibre.com'
 
-    # 1 — Obtener todas las publicaciones activas del vendedor
+    # 1 — Recolectar todos los IDs (activos + pausados, catálogo puede quedar paused)
     all_ids = []
-    offset  = 0
-    while True:
-        r = req_lib.get(f'{ML}/users/{user_id}/items/search',
-                        headers=heads,
-                        params={'status': 'active', 'limit': 100, 'offset': offset},
-                        timeout=12)
-        if not r.ok:
-            break
-        data   = r.json()
-        ids    = data.get('results', [])
-        all_ids.extend(ids)
-        total  = data.get('paging', {}).get('total', 0)
-        offset += len(ids)
-        if not ids or offset >= total:
-            break
-        _time_module.sleep(0.1)
+    for status in ('active', 'paused'):
+        offset = 0
+        while True:
+            r = req_lib.get(f'{ML}/users/{user_id}/items/search', headers=heads,
+                            params={'status': status, 'limit': 100, 'offset': offset},
+                            timeout=12)
+            if not r.ok:
+                break
+            ids   = r.json().get('results', [])
+            total = r.json().get('paging', {}).get('total', 0)
+            all_ids.extend(ids)
+            offset += len(ids)
+            if not ids or offset >= total or offset >= 400:
+                break
+            _time_module.sleep(0.1)
 
-    # 2 — Publicaciones pausadas
-    pausadas = []
-    try:
-        rp = req_lib.get(f'{ML}/users/{user_id}/items/search',
-                         headers=heads,
-                         params={'status': 'paused', 'limit': 50},
-                         timeout=10)
-        if rp.ok:
-            p_ids = rp.json().get('results', [])
-            if p_ids:
-                ri = req_lib.get(f'{ML}/items', headers=heads,
-                                 params={'ids': ','.join(p_ids[:20]),
-                                         'attributes': 'id,title,status,permalink'},
-                                 timeout=10)
-                if ri.ok:
-                    for e in ri.json():
-                        if e.get('code') == 200:
-                            b = e.get('body', {})
-                            pausadas.append({'id': b.get('id',''), 'titulo': b.get('title',''),
-                                             'permalink': b.get('permalink','')})
-    except Exception:
-        pass
+    # 2 — Fetch en lotes, quedarse solo con los que tienen catalog_product_id
+    seen = set()
+    unique_ids = [i for i in all_ids if not (i in seen or seen.add(i))]
 
-    # 3 — Batch fetch de datos completos por publicación
-    items_health = []
-    cat_attrs_cache = {}
-
-    for b in range(0, len(all_ids), 20):
-        batch = all_ids[b:b+20]
+    catalog_items = []
+    for b in range(0, len(unique_ids), 20):
+        batch = unique_ids[b:b+20]
         try:
             r = req_lib.get(f'{ML}/items', headers=heads,
                             params={'ids': ','.join(batch),
-                                    'attributes': 'id,title,price,category_id,attributes,shipping,pictures,sold_quantity,listing_type_id,permalink'},
-                            timeout=15)
-            if not r.ok:
-                continue
-            for entry in r.json():
-                if entry.get('code') != 200:
-                    continue
-                b2      = entry.get('body', {})
-                iid     = b2.get('id', '')
-                cat_id  = b2.get('category_id', '')
-                price   = float(b2.get('price', 0) or 0)
-                photos  = len(b2.get('pictures') or [])
-                sold    = int(b2.get('sold_quantity') or 0)
-                f_ship  = bool((b2.get('shipping') or {}).get('free_shipping'))
-                attrs   = b2.get('attributes', [])
-                title   = b2.get('title', '')
-                ltype   = b2.get('listing_type_id', '')
+                                    'attributes': 'id,title,price,permalink,status,catalog_product_id'},
+                            timeout=12)
+            if r.ok:
+                for e in r.json():
+                    if e.get('code') != 200:
+                        continue
+                    body = e.get('body', {})
+                    cpid = body.get('catalog_product_id')
+                    if not cpid:
+                        continue
+                    catalog_items.append({
+                        'id':                 body.get('id', ''),
+                        'titulo':             body.get('title', '')[:70],
+                        'precio':             float(body.get('price', 0) or 0),
+                        'permalink':          body.get('permalink', ''),
+                        'status':             body.get('status', ''),
+                        'catalog_product_id': cpid,
+                        'buy_box_price':      None,
+                        'buy_box_winner_id':  None,
+                        'we_win':             None,
+                        'competidores':       0,
+                        'diferencia_pct':     None,
+                    })
+        except Exception:
+            pass
+        _time_module.sleep(0.1)
 
-                # Atributos de categoría con cache
-                if cat_id and cat_id not in cat_attrs_cache:
-                    try:
-                        rc = req_lib.get(f'{ML}/categories/{cat_id}/attributes',
-                                         headers=heads, timeout=8)
-                        cat_attrs_cache[cat_id] = {a['id']: a for a in rc.json()} if rc.ok else {}
-                    except Exception:
-                        cat_attrs_cache[cat_id] = {}
-
-                result = _detect_listing_problems(
-                    title=title, item_attrs=attrs,
-                    cat_attrs_map=cat_attrs_cache.get(cat_id, {}),
-                    free_shipping=f_ship, price=price,
-                    photos=photos, sold_qty=sold)
-
-                items_health.append({
-                    'id':        iid,
-                    'titulo':    title[:70],
-                    'precio':    price,
-                    'fotos':     photos,
-                    'vendidos':  sold,
-                    'envio_gratis': f_ship,
-                    'listing_type': ltype,
-                    'permalink': b2.get('permalink',''),
-                    'problems':  result['problems'],
-                    'urgencia':  result['urgencia'],
-                    'score':     result['score'],
-                })
+    # 3 — Para cada item de catálogo, obtener el buy box actual
+    for it in catalog_items:
+        try:
+            r = req_lib.get(f'{ML}/products/{it["catalog_product_id"]}/items',
+                            headers=heads, params={'limit': 10}, timeout=8)
+            if r.ok:
+                sellers = r.json().get('results', [])
+                it['competidores'] = len(sellers)
+                if sellers:
+                    winner     = sellers[0]
+                    winner_id  = winner.get('id') or winner.get('item_id', '')
+                    bb_price   = float(winner.get('price') or 0)
+                    it['buy_box_price']    = bb_price
+                    it['buy_box_winner_id'] = winner_id
+                    it['we_win']           = (winner_id == it['id'])
+                    if bb_price > 0:
+                        it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
         except Exception:
             pass
         _time_module.sleep(0.15)
 
-    # 4 — Ordenar: críticos primero, luego por score descendente
-    _orden_urg = {'critico': 0, 'mejorar': 1, 'revisar': 2, 'ok': 3}
-    items_health.sort(key=lambda x: (_orden_urg.get(x['urgencia'], 9), -x['score']))
+    # 4 — Ordenar: perdiendo primero (más caro = perdiendo), luego ganando, luego sin datos
+    def _sort_key(x):
+        if x['we_win'] is False:
+            return (0, x['diferencia_pct'] or 0)   # perdiendo: más caro primero
+        if x['we_win'] is True:
+            return (1, -(x['diferencia_pct'] or 0))
+        return (2, 0)
+    catalog_items.sort(key=_sort_key)
 
-    # 5 — Resumen
     resumen = {
-        'total':      len(items_health),
-        'criticos':   sum(1 for i in items_health if i['urgencia'] == 'critico'),
-        'mejorar':    sum(1 for i in items_health if i['urgencia'] == 'mejorar'),
-        'revisar':    sum(1 for i in items_health if i['urgencia'] == 'revisar'),
-        'ok':         sum(1 for i in items_health if i['urgencia'] == 'ok'),
-        'pausadas':   len(pausadas),
+        'total':     len(catalog_items),
+        'ganando':   sum(1 for i in catalog_items if i['we_win'] is True),
+        'perdiendo': sum(1 for i in catalog_items if i['we_win'] is False),
+        'sin_datos': sum(1 for i in catalog_items if i['we_win'] is None),
     }
 
-    return render_template('salud.html', alias=alias, items=items_health,
-                           resumen=resumen, pausadas=pausadas,
-                           accounts=get_accounts())
+    return render_template('salud.html', alias=alias, items=catalog_items,
+                           resumen=resumen, accounts=get_accounts())
 
 
 @app.route('/api/costos-items/<alias>')

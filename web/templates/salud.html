@@ -1,25 +1,8 @@
 {% extends "base.html" %}
-{% block title %} — Salud del Catálogo {{ alias }}{% endblock %}
+{% block title %} — Salud de catálogo {{ alias }}{% endblock %}
 
 {% block content %}
 <style>
-.score-bar { height:6px; border-radius:3px; background:#e5e7eb; overflow:hidden; }
-.score-fill { height:100%; border-radius:3px; transition:width .4s; }
-.tag-critico  { background:#fee2e2; color:#dc2626; }
-.tag-mejorar  { background:#fef3c7; color:#d97706; }
-.tag-revisar  { background:#dbeafe; color:#2563eb; }
-.tag-ok       { background:#dcfce7; color:#16a34a; }
-.tag { font-size:.68rem; font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap; }
-.prob-row { font-size:.8rem; padding:.35rem .5rem; border-radius:6px; margin-bottom:.3rem; display:flex; gap:.6rem; align-items:flex-start; }
-.prob-critico { background:#fff5f5; border-left:3px solid #ef4444; }
-.prob-mejorar { background:#fffbeb; border-left:3px solid #f59e0b; }
-.pub-card { border:1px solid #e2e8f0; border-radius:10px; padding:1rem; margin-bottom:.75rem; }
-.pub-card.critico { border-left:4px solid #ef4444; }
-.pub-card.mejorar { border-left:4px solid #f59e0b; }
-.pub-card.revisar { border-left:4px solid #3b82f6; }
-.pub-card.ok      { border-left:4px solid #10b981; }
-.pub-title { font-weight:600; font-size:.9rem; color:#1e293b; }
-.pub-meta  { font-size:.73rem; color:#64748b; margin:.2rem 0 .5rem; }
 .filter-pill {
   border:1px solid #e5e7eb; border-radius:20px; padding:.3rem .85rem;
   font-size:.78rem; cursor:pointer; color:#374151; background:#fff;
@@ -27,158 +10,152 @@
 }
 .filter-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
 .filter-pill.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
-.paused-card { background:#fff5f5; border:1px solid #fecaca; border-radius:8px; padding:.7rem 1rem; margin-bottom:.5rem; display:flex; align-items:center; gap:.75rem; }
+.cat-row { border-bottom:1px solid #f1f5f9; transition:background .1s; }
+.cat-row:hover { background:#f8fafc; }
+.badge-win  { background:#dcfce7; color:#16a34a; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; }
+.badge-lose { background:#fee2e2; color:#dc2626; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; }
+.badge-nd   { background:#f1f5f9; color:#64748b; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; }
+.pct-up   { color:#dc2626; font-weight:600; }
+.pct-down { color:#16a34a; font-weight:600; }
+.pct-zero { color:#64748b; }
 </style>
 
 <div class="page-header">
   <div>
-    <h1><i class="bi bi-heart-pulse me-2 text-primary"></i>Salud del catálogo</h1>
-    <div class="sub">{{ alias }} — {{ resumen.total }} publicaciones activas analizadas</div>
+    <h1><i class="bi bi-tag-fill me-2 text-primary"></i>Salud de catálogo</h1>
+    <div class="sub">{{ alias }} — publicaciones que compiten en catálogo ML</div>
   </div>
   <a href="/stock/{{ alias }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-box-seam me-1"></i>Stock y rentabilidad
   </a>
 </div>
 
-{% if not items and not pausadas %}
+{% if not items %}
 <div class="alert alert-info">
-  No se encontraron publicaciones. Verificá que la cuenta esté conectada.
+  No se encontraron publicaciones en catálogo para esta cuenta, o no se pudo conectar.
 </div>
 {% else %}
 
-<!-- ══ RESUMEN ═══════════════════════════════════════════════════ -->
+<!-- ══ RESUMEN ═══════════════════════════════════════════════════════ -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #ef4444">
-      <div style="font-size:2rem;font-weight:800;color:#dc2626">{{ resumen.criticos }}</div>
-      <div style="font-size:.75rem;color:#64748b;font-weight:600">CRÍTICOS</div>
-      <div style="font-size:.68rem;color:#94a3b8">acción inmediata</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #f59e0b">
-      <div style="font-size:2rem;font-weight:800;color:#d97706">{{ resumen.mejorar }}</div>
-      <div style="font-size:.75rem;color:#64748b;font-weight:600">A MEJORAR</div>
-      <div style="font-size:.68rem;color:#94a3b8">oportunidad de mejora</div>
+    <div class="card text-center p-3" style="border-top:3px solid #6366f1">
+      <div style="font-size:2rem;font-weight:800;color:#6366f1">{{ resumen.total }}</div>
+      <div style="font-size:.75rem;color:#64748b;font-weight:600">EN CATÁLOGO</div>
+      <div style="font-size:.68rem;color:#94a3b8">publicaciones activas</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card text-center p-3" style="border-top:3px solid #10b981">
-      <div style="font-size:2rem;font-weight:800;color:#059669">{{ resumen.ok }}</div>
-      <div style="font-size:.75rem;color:#64748b;font-weight:600">EN ORDEN</div>
-      <div style="font-size:.68rem;color:#94a3b8">sin problemas detectados</div>
+      <div style="font-size:2rem;font-weight:800;color:#059669">{{ resumen.ganando }}</div>
+      <div style="font-size:.75rem;color:#64748b;font-weight:600">GANANDO</div>
+      <div style="font-size:.68rem;color:#94a3b8">buy box activo</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card text-center p-3" style="border-top:3px solid #ef4444">
-      <div style="font-size:2rem;font-weight:800;color:#dc2626">{{ resumen.pausadas }}</div>
-      <div style="font-size:.75rem;color:#64748b;font-weight:600">PAUSADAS</div>
-      <div style="font-size:.68rem;color:#94a3b8">ML las pausó</div>
+      <div style="font-size:2rem;font-weight:800;color:#dc2626">{{ resumen.perdiendo }}</div>
+      <div style="font-size:.75rem;color:#64748b;font-weight:600">PERDIENDO</div>
+      <div style="font-size:.68rem;color:#94a3b8">otro gana el buy box</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3" style="border-top:3px solid #94a3b8">
+      <div style="font-size:2rem;font-weight:800;color:#64748b">{{ resumen.sin_datos }}</div>
+      <div style="font-size:.75rem;color:#64748b;font-weight:600">SIN DATOS</div>
+      <div style="font-size:.68rem;color:#94a3b8">catálogo sin competidores</div>
     </div>
   </div>
 </div>
 
-<!-- ══ PUBLICACIONES PAUSADAS ════════════════════════════════════ -->
-{% if pausadas %}
-<div class="card mb-4">
-  <div class="card-header fw-semibold" style="background:#fff5f5;border-bottom:1px solid #fecaca">
-    <i class="bi bi-pause-circle-fill me-2 text-danger"></i>Publicaciones pausadas por ML
-    <span class="badge bg-danger ms-2">{{ pausadas|length }}</span>
-  </div>
-  <div class="card-body">
-    <p class="text-muted small mb-3">ML las pausó automáticamente. Causas comunes: sin stock, precio inválido, problema en ficha técnica o incumplimiento de políticas.</p>
-    {% for p in pausadas %}
-    <div class="paused-card">
-      <i class="bi bi-pause-circle text-danger" style="font-size:1.2rem;flex-shrink:0"></i>
-      <div class="flex-grow-1">
-        <div style="font-size:.85rem;font-weight:600">{{ p.titulo[:70] }}</div>
-        <div style="font-size:.7rem;color:#94a3b8">{{ p.id }}</div>
-      </div>
-      {% if p.permalink %}
-      <a href="{{ p.permalink }}" target="_blank" class="btn btn-sm btn-outline-danger" style="white-space:nowrap">
-        Ver en ML →
-      </a>
-      {% endif %}
-    </div>
-    {% endfor %}
-    <a href="https://www.mercadolibre.com.ar/vendedores/publicaciones" target="_blank"
-       class="btn btn-sm btn-outline-secondary mt-1">
-      Ver todas en Mis publicaciones →
-    </a>
-  </div>
-</div>
-{% endif %}
-
-<!-- ══ FILTROS ════════════════════════════════════════════════════ -->
+<!-- ══ FILTROS ════════════════════════════════════════════════════════ -->
 <div class="d-flex gap-2 flex-wrap mb-3" id="filtros">
   <button class="filter-pill active" onclick="filtrar('todos',this)">
     Todos <span class="ms-1 badge bg-secondary">{{ resumen.total }}</span>
   </button>
-  <button class="filter-pill" onclick="filtrar('critico',this)" style="border-color:#fecaca">
-    <i class="bi bi-exclamation-octagon me-1 text-danger"></i>Críticos
-    <span class="ms-1 badge bg-danger">{{ resumen.criticos }}</span>
+  <button class="filter-pill" onclick="filtrar('perdiendo',this)" style="border-color:#fecaca">
+    <i class="bi bi-arrow-down-circle me-1 text-danger"></i>Perdiendo
+    <span class="ms-1 badge bg-danger">{{ resumen.perdiendo }}</span>
   </button>
-  <button class="filter-pill" onclick="filtrar('mejorar',this)" style="border-color:#fde68a">
-    <i class="bi bi-exclamation-triangle me-1 text-warning"></i>A mejorar
-    <span class="ms-1 badge bg-warning text-dark">{{ resumen.mejorar }}</span>
-  </button>
-  <button class="filter-pill" onclick="filtrar('ok',this)" style="border-color:#bbf7d0">
-    <i class="bi bi-check-circle me-1 text-success"></i>En orden
-    <span class="ms-1 badge bg-success">{{ resumen.ok }}</span>
+  <button class="filter-pill" onclick="filtrar('ganando',this)" style="border-color:#bbf7d0">
+    <i class="bi bi-trophy me-1 text-success"></i>Ganando
+    <span class="ms-1 badge bg-success">{{ resumen.ganando }}</span>
   </button>
 </div>
 
-<!-- ══ LISTADO DE PUBLICACIONES ══════════════════════════════════ -->
-<div id="pub-list">
-{% for item in items %}
-<div class="pub-card {{ item.urgencia }}" data-urgencia="{{ item.urgencia }}">
-  <div class="d-flex align-items-start gap-2 flex-wrap">
-    <span class="tag tag-{{ item.urgencia }}">
-      {% if item.urgencia == 'critico' %}<i class="bi bi-exclamation-octagon me-1"></i>Crítico
-      {% elif item.urgencia == 'mejorar' %}<i class="bi bi-exclamation-triangle me-1"></i>A mejorar
-      {% elif item.urgencia == 'revisar' %}<i class="bi bi-info-circle me-1"></i>Revisar
-      {% else %}<i class="bi bi-check-circle me-1"></i>En orden
-      {% endif %}
-    </span>
-    <div class="flex-grow-1">
-      <div class="pub-title">{{ item.titulo }}</div>
-      <div class="pub-meta">
-        ${{ '{:,.0f}'.format(item.precio) }} ·
-        {{ item.fotos }} foto{{ 's' if item.fotos != 1 else '' }} ·
-        {{ item.vendidos }} vendidos ·
-        {% if item.envio_gratis %}<span class="text-success">Envío gratis</span>{% else %}<span class="text-muted">Sin envío gratis</span>{% endif %}
-      </div>
-
-      {% if item.problems %}
-      <div class="mt-1">
-        {% for prob in item.problems %}
-        <div class="prob-row prob-{{ prob.nivel }}">
-          <i class="bi {{ 'bi-exclamation-octagon-fill text-danger' if prob.nivel == 'critico' else 'bi-exclamation-triangle-fill text-warning' }}" style="flex-shrink:0;margin-top:2px"></i>
-          <div>
-            <div style="font-weight:600">{{ prob.problema }}</div>
-            <div style="color:#6b7280;font-size:.75rem">{{ prob.accion }}</div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div style="font-size:.8rem;color:#059669"><i class="bi bi-check-circle me-1"></i>Sin problemas detectados</div>
-      {% endif %}
-    </div>
-
-    <div class="d-flex flex-column gap-1 align-items-end" style="flex-shrink:0">
-      {% if item.permalink %}
-      <a href="{{ item.permalink }}" target="_blank" class="btn btn-xs btn-outline-secondary" style="font-size:.7rem;padding:2px 8px">
-        Ver en ML
-      </a>
-      {% endif %}
-      <a href="/optimizaciones/{{ alias }}" class="btn btn-xs btn-outline-primary" style="font-size:.7rem;padding:2px 8px">
-        Optimizar IA
-      </a>
-    </div>
+<!-- ══ TABLA ══════════════════════════════════════════════════════════ -->
+<div class="card">
+  <div class="table-responsive">
+    <table class="table mb-0" style="font-size:.85rem">
+      <thead style="background:#f8fafc;font-size:.75rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">
+        <tr>
+          <th style="padding:.75rem 1rem">Publicación</th>
+          <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Mi precio</th>
+          <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Buy box</th>
+          <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Diferencia</th>
+          <th class="text-center" style="padding:.75rem .75rem">Estado</th>
+          <th class="text-center" style="padding:.75rem .75rem">Competidores</th>
+          <th style="padding:.75rem .75rem"></th>
+        </tr>
+      </thead>
+      <tbody id="cat-tbody">
+      {% for it in items %}
+      {% set estado = 'ganando' if it.we_win == true else ('perdiendo' if it.we_win == false else 'sin_datos') %}
+      <tr class="cat-row" data-estado="{{ estado }}">
+        <td style="padding:.75rem 1rem;max-width:320px">
+          <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.titulo }}</div>
+          <div style="font-size:.7rem;color:#94a3b8">{{ it.id }}{% if it.status == 'paused' %} · <span class="text-warning">pausada</span>{% endif %}</div>
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap;font-weight:600">
+          ${{ '{:,.0f}'.format(it.precio) }}
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap">
+          {% if it.buy_box_price %}
+            <span style="font-weight:600;color:#1e293b">${{ '{:,.0f}'.format(it.buy_box_price) }}</span>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap">
+          {% if it.diferencia_pct is not none %}
+            {% if it.diferencia_pct > 0 %}
+              <span class="pct-up">+{{ it.diferencia_pct }}%</span>
+              <div style="font-size:.68rem;color:#94a3b8">más caro</div>
+            {% elif it.diferencia_pct < 0 %}
+              <span class="pct-down">{{ it.diferencia_pct }}%</span>
+              <div style="font-size:.68rem;color:#94a3b8">más barato</div>
+            {% else %}
+              <span class="pct-zero">0%</span>
+              <div style="font-size:.68rem;color:#94a3b8">precio igual</div>
+            {% endif %}
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td class="text-center" style="padding:.75rem .75rem">
+          {% if it.we_win == true %}
+            <span class="badge-win"><i class="bi bi-trophy-fill me-1"></i>Ganando</span>
+          {% elif it.we_win == false %}
+            <span class="badge-lose"><i class="bi bi-x-circle me-1"></i>Perdiendo</span>
+          {% else %}
+            <span class="badge-nd">Sin datos</span>
+          {% endif %}
+        </td>
+        <td class="text-center" style="padding:.75rem .75rem;color:#64748b">
+          {% if it.competidores > 0 %}{{ it.competidores }}{% else %}—{% endif %}
+        </td>
+        <td style="padding:.75rem .75rem">
+          {% if it.permalink %}
+          <a href="{{ it.permalink }}" target="_blank" class="btn btn-xs btn-outline-secondary" style="font-size:.7rem;padding:2px 8px;white-space:nowrap">
+            Ver →
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
-</div>
-{% endfor %}
 </div>
 
 {% endif %}
@@ -189,12 +166,8 @@
 function filtrar(tipo, btn) {
   document.querySelectorAll('#filtros .filter-pill').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.querySelectorAll('#pub-list .pub-card').forEach(card => {
-    if (tipo === 'todos' || card.dataset.urgencia === tipo) {
-      card.style.display = '';
-    } else {
-      card.style.display = 'none';
-    }
+  document.querySelectorAll('#cat-tbody .cat-row').forEach(row => {
+    row.style.display = (tipo === 'todos' || row.dataset.estado === tipo) ? '' : 'none';
   });
 }
 </script>
