@@ -10250,38 +10250,38 @@ def api_full_stock_check(alias, item_id):
         r = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id}',
             headers=heads,
-            params={'attributes': 'id,available_quantity,sold_quantity,initial_quantity,inventory_id,shipping'},
+            params={'attributes': 'id,title,available_quantity,sold_quantity,inventory_id,status,shipping'},
             timeout=10)
         if not r.ok:
             return jsonify({'ok': False, 'error': f'ML API: {r.status_code}'}), r.status_code
 
-        body = r.json()
-        inventory_id = body.get('inventory_id')
+        body         = r.json()
+        inv_id       = body.get('inventory_id', '')
+        total_ml     = int(body.get('available_quantity', 0) or 0)
+        stock_en_full = total_ml
+        deposito      = 0
 
-        # Probar distintos endpoints de inventario
-        results = {}
-        if inventory_id:
-            endpoints = {
-                'stock_fulfillment':  f'/inventories/{inventory_id}/stock/fulfillment',
-                'stock_external':     f'/inventories/{inventory_id}/stock/external',
-                'stock_meli':         f'/inventories/{inventory_id}/stock/meli',
-                'stock_base':         f'/inventories/{inventory_id}/stock',
-                'locations':          f'/inventories/{inventory_id}/locations',
-            }
-            for key, path in endpoints.items():
-                try:
-                    rr = req_lib.get(f'https://api.mercadolibre.com{path}', headers=heads, timeout=8)
-                    results[key] = {'status': rr.status_code, 'body': rr.json() if rr.ok else rr.text[:300]}
-                except Exception as e:
-                    results[key] = {'error': str(e)}
+        if inv_id:
+            try:
+                rf = req_lib.get(
+                    f'https://api.mercadolibre.com/inventories/{inv_id}/stock/fulfillment',
+                    headers=heads, timeout=6)
+                if rf.ok:
+                    fdata = rf.json()
+                    stock_en_full = int(fdata.get('total', total_ml) or total_ml)
+                    deposito      = max(0, total_ml - stock_en_full)
+            except Exception:
+                pass
 
         return jsonify({
-            'ok':                 True,
-            'inventory_id':       inventory_id,
-            'available_quantity': body.get('available_quantity'),
-            'sold_quantity':      body.get('sold_quantity'),
-            'initial_quantity':   body.get('initial_quantity'),
-            'inventory_results':  results,
+            'ok':             True,
+            'id':             body.get('id'),
+            'titulo':         body.get('title', '')[:80],
+            'status':         body.get('status'),
+            'stock_en_full':  stock_en_full,
+            'deposito':       deposito,
+            'total_ml':       total_ml,
+            'sold_quantity':  body.get('sold_quantity'),
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -10343,7 +10343,7 @@ def api_full_data(alias):
         try:
             r = req_lib.get(f'{ML}/items', headers=heads,
                             params={'ids': ','.join(batch),
-                                    'attributes': 'id,title,price,available_quantity,shipping,listing_type_id,permalink'},
+                                    'attributes': 'id,title,price,available_quantity,inventory_id,shipping,listing_type_id,permalink'},
                             timeout=12)
             if r.ok:
                 for e in r.json():
@@ -10357,6 +10357,7 @@ def api_full_data(alias):
                         'titulo':       body.get('title', '')[:65],
                         'precio':       float(body.get('price', 0) or 0),
                         'stock':        int(body.get('available_quantity', 0) or 0),
+                        'inventory_id': body.get('inventory_id', ''),
                         'listing_type': body.get('listing_type_id', ''),
                         'permalink':    body.get('permalink', ''),
                         'free_shipping': bool(shipping.get('free_shipping')),
@@ -10417,9 +10418,28 @@ def api_full_data(alias):
         item_rep  = rep_cfg.get('items', {}).get(iid, {})
         lead_days = item_full.get('lead_days',    full_cfg.get('global_lead_days', 18))
         transit   = item_rep.get('transit_days',  rep_cfg.get('transit_days_global', 25))
-        deposito    = item_rep.get('deposito_stock', 0)
         en_transito = en_transito_map.get(iid, 0)
-        stock_total = item['stock'] + deposito + en_transito
+
+        # Stock en depósito propio: diferencia entre available_quantity (ML total) y lo que está en Full
+        stock_total_ml = item['stock']  # available_quantity = Full + depósito propio
+        stock_en_full  = stock_total_ml  # default: todo en Full si no podemos consultar
+        deposito       = 0
+        inv_id = item.get('inventory_id', '')
+        if inv_id:
+            try:
+                rf = req_lib.get(
+                    f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                    headers=heads, timeout=6)
+                if rf.ok:
+                    fdata = rf.json()
+                    stock_en_full = int(fdata.get('total', stock_total_ml) or stock_total_ml)
+                    deposito      = max(0, stock_total_ml - stock_en_full)
+            except Exception:
+                pass
+            _time_module.sleep(0.1)
+        item['stock'] = stock_en_full  # stock = solo lo que está en el depósito de ML
+
+        stock_total = stock_total_ml + en_transito
 
         # Días de stock (incluye en tránsito a Full)
         dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None
