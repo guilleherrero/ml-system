@@ -10231,6 +10231,223 @@ def api_scheduler_run_now():
     return jsonify({'ok': True, 'mensaje': 'Actualización iniciada en background.'})
 
 
+# ── Mercado Envíos Full ───────────────────────────────────────────────────────
+
+@app.route('/full/<alias>')
+def full_page(alias):
+    return render_template('full.html', alias=alias, accounts=get_accounts())
+
+
+@app.route('/api/full-data/<alias>')
+def api_full_data(alias):
+    """Análisis completo de publicaciones Full: stock, velocidad, alertas, reposición."""
+    from datetime import datetime as _dt, timedelta as _td
+    from core.db_storage import db_load
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    ML = 'https://api.mercadolibre.com'
+
+    # Configuración guardada
+    full_cfg = db_load(os.path.join(CONFIG_DIR, 'full_config.json'))  or {'global_lead_days': 18, 'items': {}}
+    rep_cfg  = db_load(os.path.join(CONFIG_DIR, 'reposicion.json'))   or {'transit_days_global': 25, 'items': {}}
+    costos   = db_load(os.path.join(CONFIG_DIR, 'costos.json'))       or {}
+
+    # Stock snapshot guardado (velocidad pre-calculada)
+    stock_snap = db_load(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    stock_map  = {s.get('id', ''): s for s in stock_snap.get('items', [])}
+
+    # 1 — Todos los IDs activos
+    all_ids, offset = [], 0
+    while True:
+        r = req_lib.get(f'{ML}/users/{user_id}/items/search', headers=heads,
+                        params={'status': 'active', 'limit': 100, 'offset': offset}, timeout=12)
+        if not r.ok:
+            break
+        ids   = r.json().get('results', [])
+        total = r.json().get('paging', {}).get('total', 0)
+        all_ids.extend(ids)
+        offset += len(ids)
+        if not ids or offset >= total:
+            break
+        _time_module.sleep(0.1)
+
+    # 2 — Fetch detalles, filtrar los que son Full
+    FULL_LOGISTICS = ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
+    full_items = []
+    for b in range(0, len(all_ids), 20):
+        batch = all_ids[b:b+20]
+        try:
+            r = req_lib.get(f'{ML}/items', headers=heads,
+                            params={'ids': ','.join(batch),
+                                    'attributes': 'id,title,price,available_quantity,shipping,listing_type_id,permalink'},
+                            timeout=12)
+            if r.ok:
+                for e in r.json():
+                    if e.get('code') != 200:
+                        continue
+                    body = e.get('body', {})
+                    logistic = (body.get('shipping') or {}).get('logistic_type', '')
+                    if logistic not in FULL_LOGISTICS:
+                        continue
+                    full_items.append({
+                        'id':           body.get('id', ''),
+                        'titulo':       body.get('title', '')[:65],
+                        'precio':       float(body.get('price', 0) or 0),
+                        'stock':        int(body.get('available_quantity', 0) or 0),
+                        'listing_type': body.get('listing_type_id', ''),
+                        'permalink':    body.get('permalink', ''),
+                    })
+        except Exception:
+            pass
+        _time_module.sleep(0.1)
+
+    # 3 — Analizar cada item Full
+    results = []
+    for item in full_items:
+        iid   = item['id']
+        saved = stock_map.get(iid, {})
+
+        # Velocidad: usar snapshot si existe, sino llamar API
+        vel_30 = float(saved.get('velocidad', 0) or 0)
+        if vel_30 == 0:
+            try:
+                desde = (_dt.utcnow() - _td(hours=3) - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
+                data  = req_lib.get(f'{ML}/orders/search', headers=heads,
+                    params={'seller': user_id, 'item': iid, 'order.status': 'paid',
+                            'order.date_created.from': desde, 'limit': 50}, timeout=8).json()
+                units = sum(
+                    sum(oi.get('quantity', 0) for oi in o.get('order_items', [])
+                        if oi.get('item', {}).get('id') == iid)
+                    for o in data.get('results', [])
+                )
+                vel_30 = round(units / 30, 2)
+            except Exception:
+                vel_30 = 0.0
+            _time_module.sleep(0.15)
+
+        # Última venta (para detectar stock muerto)
+        sin_ventas_dias = None
+        if vel_30 == 0:
+            try:
+                desde90 = (_dt.utcnow() - _td(hours=3) - _td(days=90)).strftime('%Y-%m-%dT00:00:00.000-03:00')
+                data90  = req_lib.get(f'{ML}/orders/search', headers=heads,
+                    params={'seller': user_id, 'item': iid, 'order.status': 'paid',
+                            'order.date_created.from': desde90, 'limit': 1, 'sort': 'date_desc'},
+                    timeout=8).json()
+                orders90 = data90.get('results', [])
+                if orders90:
+                    last = orders90[0].get('date_created', '')[:10]
+                    sin_ventas_dias = (_dt.utcnow().date() - _dt.strptime(last, '%Y-%m-%d').date()).days
+                else:
+                    sin_ventas_dias = 90
+            except Exception:
+                sin_ventas_dias = None
+            _time_module.sleep(0.1)
+
+        # Config por item
+        item_full = full_cfg.get('items', {}).get(iid, {})
+        item_rep  = rep_cfg.get('items', {}).get(iid, {})
+        lead_days = item_full.get('lead_days',    full_cfg.get('global_lead_days', 18))
+        transit   = item_rep.get('transit_days',  rep_cfg.get('transit_days_global', 25))
+        deposito  = item_rep.get('deposito_stock', 0)
+        stock_total = item['stock'] + deposito
+
+        # Días de stock
+        dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None
+
+        # Margen (Full siempre free shipping, commission 16.5% gold_pro / 13% gold_special)
+        comision = 0.13 if item['listing_type'] in ('gold_special', 'silver') else 0.165
+        neto     = round(item['precio'] * (1 - comision), 2)
+        costo_d  = costos.get(iid, {})
+        costo    = costo_d.get('costo') if costo_d else None
+        margen_pct = round((neto - costo) / item['precio'] * 100, 1) if costo else None
+
+        # Unidades a pedir (fórmula: (tránsito + 14d buffer) * vel * 1.3 safety)
+        unidades_pedir = 0
+        if vel_30 > 0:
+            unidades_pedir = max(0, round((transit + 14) * vel_30 * 1.3 - stock_total))
+
+        # Costo almacenamiento acumulado (~$12/u/día)
+        costo_almac = None
+        if sin_ventas_dias and item['stock'] > 0:
+            costo_almac = round(item['stock'] * sin_ventas_dias * 12.0)
+
+        # Clasificación
+        alerta = 'OK'
+        if item['stock'] == 0:
+            alerta = 'SIN_STOCK'
+        elif dias_stock is not None and dias_stock <= lead_days:
+            alerta = 'REPONER_URGENTE'
+        elif sin_ventas_dias is not None and sin_ventas_dias >= 21 and item['stock'] > 0:
+            alerta = 'STOCK_MUERTO'
+        elif vel_30 > 0 and margen_pct is not None and margen_pct >= 15 and (dias_stock is None or dias_stock >= 30):
+            alerta = 'ESCALAR'
+
+        results.append({
+            'id':              iid,
+            'titulo':          item['titulo'],
+            'precio':          item['precio'],
+            'stock':           item['stock'],
+            'deposito':        deposito,
+            'stock_total':     stock_total,
+            'vel_30':          vel_30,
+            'dias_stock':      dias_stock,
+            'lead_days':       lead_days,
+            'transit':         transit,
+            'margen_pct':      margen_pct,
+            'sin_ventas_dias': sin_ventas_dias,
+            'unidades_pedir':  unidades_pedir,
+            'costo_almac':     costo_almac,
+            'alerta':          alerta,
+            'permalink':       item['permalink'],
+        })
+
+    alerta_order = {'SIN_STOCK': 0, 'REPONER_URGENTE': 1, 'STOCK_MUERTO': 2, 'ESCALAR': 3, 'OK': 4}
+    results.sort(key=lambda x: (alerta_order.get(x['alerta'], 9), -(x['vel_30'] or 0)))
+
+    costo_muerto = sum(r.get('costo_almac') or 0 for r in results if r['alerta'] == 'STOCK_MUERTO')
+    resumen = {
+        'total':       len(results),
+        'sin_stock':   sum(1 for r in results if r['alerta'] == 'SIN_STOCK'),
+        'urgente':     sum(1 for r in results if r['alerta'] == 'REPONER_URGENTE'),
+        'muerto':      sum(1 for r in results if r['alerta'] == 'STOCK_MUERTO'),
+        'escalar':     sum(1 for r in results if r['alerta'] == 'ESCALAR'),
+        'ok':          sum(1 for r in results if r['alerta'] == 'OK'),
+        'costo_muerto': costo_muerto,
+    }
+
+    return jsonify({'ok': True, 'items': results, 'resumen': resumen,
+                    'global_lead_days': full_cfg.get('global_lead_days', 18),
+                    'transit_days_global': rep_cfg.get('transit_days_global', 25)})
+
+
+@app.route('/api/full-config/<alias>', methods=['GET', 'POST'])
+def api_full_config(alias):
+    """Lee o guarda la configuración de Full (lead times, tránsito, depósito)."""
+    from core.db_storage import db_load, db_save as db_save_fn
+    full_path = os.path.join(CONFIG_DIR, 'full_config.json')
+    rep_path  = os.path.join(CONFIG_DIR, 'reposicion.json')
+
+    if request.method == 'GET':
+        full_cfg = db_load(full_path) or {'global_lead_days': 18, 'items': {}}
+        rep_cfg  = db_load(rep_path)  or {'transit_days_global': 25, 'items': {}}
+        return jsonify({'ok': True, 'full': full_cfg, 'rep': rep_cfg})
+
+    data = request.get_json(silent=True) or {}
+    try:
+        if 'full' in data:
+            db_save_fn(full_path, data['full'])
+        if 'rep' in data:
+            db_save_fn(rep_path, data['rep'])
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 _app_scheduler = None
 
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
