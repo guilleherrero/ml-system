@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %} — Análisis Experto {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+.analisis-body {
+  font-size:.92rem; line-height:1.75; color:#1e293b;
+  white-space:pre-wrap; font-family:inherit;
+}
+.analisis-body strong { color:#1e293b; }
+.seccion-card {
+  border:1px solid #e2e8f0; border-radius:12px;
+  padding:1.25rem 1.5rem; margin-bottom:1.25rem;
+  background:#fff;
+}
+.seccion-card.urgente  { border-left:5px solid #ef4444; background:#fffbfb; }
+.seccion-card.top      { border-left:5px solid #f59e0b; background:#fffdf5; }
+.seccion-card.opor     { border-left:5px solid #10b981; background:#f9fffe; }
+.seccion-card.china    { border-left:5px solid #6366f1; background:#fafaff; }
+.seccion-card.lastres  { border-left:5px solid #94a3b8; background:#f8fafc; }
+.meta-chip {
+  display:inline-flex; align-items:center; gap:.4rem;
+  background:#f1f5f9; border-radius:20px;
+  padding:.25rem .75rem; font-size:.75rem; color:#475569;
+}
+.run-btn {
+  background: linear-gradient(135deg,#2563eb,#7c3aed);
+  color:#fff; border:none; border-radius:10px;
+  padding:.65rem 1.5rem; font-size:.9rem; font-weight:600;
+  cursor:pointer; transition:opacity .2s;
+  display:flex; align-items:center; gap:.5rem;
+}
+.run-btn:hover  { opacity:.88; }
+.run-btn:disabled { opacity:.5; cursor:not-allowed; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-stars me-2" style="color:#7c3aed"></i>Análisis Experto</h1>
+    <div class="sub">{{ alias }} — consultor IA de tu negocio en ML</div>
+  </div>
+  <button class="run-btn" id="btn-run" onclick="ejecutarAnalisis()">
+    <i class="bi bi-play-fill"></i>Analizar ahora
+  </button>
+</div>
+
+<!-- Estado / metadata -->
+<div id="meta-bar" class="d-flex gap-2 flex-wrap mb-4" style="display:none!important"></div>
+
+<!-- Loading -->
+<div id="loading-panel" style="display:none" class="text-center py-5">
+  <div class="mb-3">
+    <div class="spinner-border" style="color:#7c3aed;width:2.5rem;height:2.5rem" role="status"></div>
+  </div>
+  <div style="font-size:1rem;font-weight:600;color:#475569">Analizando tu cuenta…</div>
+  <div class="text-muted small mt-1">Claude está procesando todos tus datos. 20–40 segundos.</div>
+  <div id="loading-steps" class="mt-3 text-muted small"></div>
+</div>
+
+<!-- Resultado -->
+<div id="resultado-panel" style="display:none">
+  <div id="secciones-container"></div>
+</div>
+
+<!-- Vacío -->
+<div id="empty-panel" class="text-center py-5 text-muted">
+  <i class="bi bi-stars" style="font-size:3rem;color:#c4b5fd"></i>
+  <div class="mt-3" style="font-size:1rem;font-weight:600">Tu consultor experto está listo</div>
+  <div class="small mt-1">Presioná <strong>Analizar ahora</strong> para generar el informe.</div>
+  <div class="small mt-1 text-muted">El análisis se guarda — la próxima visita muestra el último resultado al instante.</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS = {{ alias | tojson }};
+
+// ── Al cargar: mostrar último análisis guardado ───────────────────────────────
+fetch(`/api/analisis-experto/${encodeURIComponent(ALIAS)}`)
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok && d.analisis) {
+      mostrarResultado(d);
+    }
+    // Si no hay nada, el panel vacío ya está visible
+  });
+
+// ── Ejecutar análisis ─────────────────────────────────────────────────────────
+function ejecutarAnalisis() {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Analizando…';
+
+  document.getElementById('empty-panel').style.display    = 'none';
+  document.getElementById('resultado-panel').style.display = 'none';
+  document.getElementById('loading-panel').style.display  = '';
+
+  // Mensajes de progreso
+  const pasos = [
+    'Cargando datos de ventas y stock…',
+    'Identificando tus mejores productos…',
+    'Evaluando alertas críticas…',
+    'Calculando oportunidades…',
+    'Generando recomendaciones con IA…',
+  ];
+  let step = 0;
+  const stepEl = document.getElementById('loading-steps');
+  const stepInterval = setInterval(() => {
+    if (step < pasos.length) stepEl.textContent = pasos[step++];
+  }, 5000);
+
+  fetch(`/api/analisis-experto/${encodeURIComponent(ALIAS)}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      clearInterval(stepInterval);
+      document.getElementById('loading-panel').style.display = 'none';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Actualizar análisis';
+      if (d.ok) {
+        mostrarResultado(d);
+      } else {
+        document.getElementById('empty-panel').style.display = '';
+        alert('Error: ' + (d.error || 'no se pudo generar el análisis'));
+      }
+    })
+    .catch(() => {
+      clearInterval(stepInterval);
+      document.getElementById('loading-panel').style.display = 'none';
+      document.getElementById('empty-panel').style.display  = '';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-play-fill"></i> Analizar ahora';
+      alert('Error de conexión. Intentá de nuevo.');
+    });
+}
+
+// ── Mostrar resultado ─────────────────────────────────────────────────────────
+function mostrarResultado(d) {
+  document.getElementById('empty-panel').style.display    = 'none';
+  document.getElementById('resultado-panel').style.display = '';
+
+  // Meta bar
+  const rev = d.revenue || {};
+  const metaBar = document.getElementById('meta-bar');
+  metaBar.style.display = 'flex';
+  metaBar.innerHTML = `
+    <span class="meta-chip"><i class="bi bi-clock"></i> Análisis del ${d.fecha}</span>
+    ${rev['30d'] != null ? `<span class="meta-chip"><i class="bi bi-graph-up"></i> $${Math.round(rev['30d']).toLocaleString('es-AR')} últimos 30 días</span>` : ''}
+    ${rev['7d']  != null ? `<span class="meta-chip"><i class="bi bi-calendar-week"></i> $${Math.round(rev['7d']).toLocaleString('es-AR')} últimos 7 días</span>` : ''}
+    ${rev['hoy'] != null ? `<span class="meta-chip"><i class="bi bi-sun"></i> $${Math.round(rev['hoy']).toLocaleString('es-AR')} hoy</span>` : ''}
+    ${d.tokens   ? `<span class="meta-chip"><i class="bi bi-cpu"></i> ${d.tokens.toLocaleString()} tokens</span>` : ''}`;
+
+  // Parsear secciones del texto
+  const texto   = d.analisis || '';
+  const config  = [
+    { emoji: '🏆', cls: 'top',     icon: 'bi-trophy-fill',       color: '#f59e0b' },
+    { emoji: '🚨', cls: 'urgente', icon: 'bi-exclamation-circle-fill', color: '#ef4444' },
+    { emoji: '💡', cls: 'opor',    icon: 'bi-lightbulb-fill',    color: '#10b981' },
+    { emoji: '📦', cls: 'china',   icon: 'bi-box-seam-fill',     color: '#6366f1' },
+    { emoji: '⚠️', cls: 'lastres', icon: 'bi-shield-exclamation', color: '#94a3b8' },
+  ];
+
+  // Dividir texto por secciones usando los emojis como separadores
+  const secciones = [];
+  let resto = texto;
+  for (let i = 0; i < config.length; i++) {
+    const cfg = config[i];
+    const nextEmojis = config.slice(i + 1).map(c => c.emoji);
+    const startIdx = resto.indexOf(cfg.emoji);
+    if (startIdx === -1) continue;
+
+    let endIdx = resto.length;
+    for (const ne of nextEmojis) {
+      const idx = resto.indexOf(ne, startIdx + 1);
+      if (idx !== -1 && idx < endIdx) endIdx = idx;
+    }
+    const contenido = resto.slice(startIdx, endIdx).trim();
+    // Extraer título (primera línea) y cuerpo
+    const lines    = contenido.split('\n');
+    const titulo   = lines[0].replace(cfg.emoji, '').trim();
+    const cuerpo   = lines.slice(1).join('\n').trim();
+    secciones.push({ ...cfg, titulo, cuerpo });
+  }
+
+  // Si no se pudieron parsear secciones, mostrar el texto completo
+  if (!secciones.length) {
+    document.getElementById('secciones-container').innerHTML =
+      `<div class="seccion-card"><div class="analisis-body">${escapeHtml(texto)}</div></div>`;
+    return;
+  }
+
+  document.getElementById('secciones-container').innerHTML = secciones.map(s => `
+    <div class="seccion-card ${s.cls}">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <i class="bi ${s.icon}" style="font-size:1.3rem;color:${s.color}"></i>
+        <h5 class="mb-0" style="font-weight:700;color:#1e293b">${escapeHtml(s.titulo)}</h5>
+      </div>
+      <div class="analisis-body">${formatCuerpo(s.cuerpo)}</div>
+    </div>`).join('');
+}
+
+function formatCuerpo(texto) {
+  return escapeHtml(texto)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^(PEDÍ SÍ O SÍ|REPONER PRONTO|NO PIDAS):/gm, '<strong style="color:#1e293b">$1:</strong>')
+    .replace(/^(\d+\.\s)/gm, '<span style="color:#7c3aed;font-weight:700">$1</span>')
+    .replace(/^(- )/gm, '<span style="color:#94a3b8">• </span>');
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

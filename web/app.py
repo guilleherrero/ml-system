@@ -10587,6 +10587,239 @@ def api_full_pedido_delete(alias, pedido_id):
     return jsonify({'ok': True})
 
 
+# ── Análisis Experto ──────────────────────────────────────────────────────────
+
+@app.route('/analisis-experto/<alias>')
+def analisis_experto_page(alias):
+    return render_template('analisis_experto.html', alias=alias, accounts=get_accounts())
+
+
+@app.route('/api/analisis-experto/<alias>', methods=['GET'])
+def api_analisis_experto_get(alias):
+    """Devuelve el último análisis guardado."""
+    from core.db_storage import db_load
+    data = db_load(os.path.join(DATA_DIR, f'analisis_experto_{safe(alias)}.json'))
+    if not data:
+        return jsonify({'ok': False, 'error': 'Sin análisis guardado'})
+    return jsonify({'ok': True, **data})
+
+
+@app.route('/api/analisis-experto/<alias>', methods=['POST'])
+def api_analisis_experto_run(alias):
+    """Recopila todos los datos de la cuenta y genera el análisis con Claude."""
+    from core.db_storage import db_load, db_save as db_save_fn
+    from datetime import datetime as _dt, timedelta as _td
+
+    # ── 1. Recopilar datos de la cuenta ──────────────────────────────────────
+    stock_snap = db_load(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    rep_snap   = db_load(os.path.join(DATA_DIR, f'reputacion_{safe(alias)}.json')) or {}
+    items_raw  = stock_snap.get('items', [])
+
+    if not items_raw:
+        return jsonify({'ok': False, 'error': 'Sin datos de stock. Ejecutá la actualización primero.'}), 400
+
+    # ── 2. Revenue rápido via ML API ─────────────────────────────────────────
+    revenue_hoy = revenue_7d = revenue_30d = None
+    try:
+        token, user_id, heads = _ml_auth(alias)
+        now      = _dt.utcnow() - _td(hours=3)
+        hoy_from = now.strftime('%Y-%m-%dT00:00:00.000-03:00')
+        d7_from  = (now - _td(days=7)).strftime('%Y-%m-%dT00:00:00.000-03:00')
+        d30_from = (now - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
+
+        def _fetch_rev(date_from):
+            r = req_lib.get('https://api.mercadolibre.com/orders/search',
+                headers=heads,
+                params={'seller': user_id, 'order.status': 'paid',
+                        'order.date_created.from': date_from, 'limit': 50},
+                timeout=10)
+            if not r.ok:
+                return None
+            total = 0
+            for page_r in [r]:
+                for o in page_r.json().get('results', []):
+                    total += sum(float(i.get('unit_price', 0)) * int(i.get('quantity', 0))
+                                 for i in o.get('order_items', []))
+            return round(total)
+
+        revenue_hoy  = _fetch_rev(hoy_from)
+        revenue_7d   = _fetch_rev(d7_from)
+        revenue_30d  = _fetch_rev(d30_from)
+    except Exception:
+        pass
+
+    # ── 3. Clasificar items ──────────────────────────────────────────────────
+    items_sorted = sorted(items_raw, key=lambda x: float(x.get('precio', 0)) * float(x.get('ventas_30d') or x.get('velocidad', 0) * 30 or 0), reverse=True)
+
+    top_items, criticos_stock, sin_ventas, baja_conversion = [], [], [], []
+
+    for it in items_sorted:
+        iid       = it.get('id', '')
+        titulo    = it.get('titulo', it.get('title', ''))[:55]
+        precio    = float(it.get('precio', 0) or 0)
+        vel       = float(it.get('velocidad', 0) or 0)
+        vtas_30   = int(it.get('ventas_30d') or round(vel * 30))
+        stock     = int(it.get('stock', 0) or 0)
+        dias_stk  = round(stock / vel, 1) if vel > 0 else None
+        margen    = it.get('margen_pct')
+        visitas   = int(it.get('visitas_30d') or 0)
+        conv      = it.get('conversion_pct')
+        ingreso_30 = round(precio * vtas_30)
+
+        entry = {
+            'id': iid, 'titulo': titulo, 'precio': precio,
+            'vel': vel, 'vtas_30': vtas_30, 'ingreso_30': ingreso_30,
+            'stock': stock, 'dias_stock': dias_stk,
+            'margen_pct': round(float(margen) * 100, 1) if margen else None,
+        }
+
+        if ingreso_30 > 0 and len(top_items) < 10:
+            top_items.append(entry)
+
+        if vel > 0 and dias_stk is not None and dias_stk <= 14:
+            criticos_stock.append(entry)
+
+        if vel == 0 and stock > 0:
+            sin_ventas.append({**entry, 'titulo': titulo})
+
+        if visitas >= 200 and conv is not None and float(conv) < 1.5:
+            baja_conversion.append({**entry, 'visitas': visitas, 'conv': round(float(conv), 2)})
+
+    # Reputación
+    rep_latest = {}
+    if isinstance(rep_snap, list) and rep_snap:
+        rep_latest = rep_snap[-1]
+    elif isinstance(rep_snap, dict):
+        hist = rep_snap.get('historial', rep_snap.get('snapshots', []))
+        if hist:
+            rep_latest = hist[-1]
+
+    reclamos   = rep_latest.get('reclamos_pct', rep_latest.get('claims_rate', None))
+    demoras    = rep_latest.get('demoras_pct',  rep_latest.get('delayed_rate', None))
+    nivel      = rep_latest.get('nivel', rep_latest.get('level_id', ''))
+
+    # ── 4. Construir el prompt ────────────────────────────────────────────────
+    def fmt_money(v):
+        return f'${v:,.0f}' if v is not None else '—'
+
+    top_txt = '\n'.join(
+        f"  {i+1}. {it['titulo']} | {fmt_money(it['ingreso_30'])}/mes | "
+        f"{it['vel']:.1f}u/día | Stock: {it['stock']}u "
+        f"({'⚠️ ' + str(it['dias_stock']) + ' días' if it['dias_stock'] and it['dias_stock'] <= 20 else str(it['dias_stock']) + ' días' if it['dias_stock'] else 'sin vel'})"
+        f" | Margen: {str(it['margen_pct']) + '%' if it['margen_pct'] else 'sin costo cargado'}"
+        for i, it in enumerate(top_items)
+    ) or '  Sin datos suficientes'
+
+    crit_txt = '\n'.join(
+        f"  - {it['titulo']}: {it['stock']}u, {it['dias_stock']}d de stock, {it['vel']:.1f}u/día"
+        for it in criticos_stock[:6]
+    ) or '  Ninguno'
+
+    sin_vta_txt = '\n'.join(
+        f"  - {it['titulo']}: {it['stock']}u en stock, 0 ventas"
+        for it in sin_ventas[:8]
+    ) or '  Ninguno'
+
+    conv_txt = '\n'.join(
+        f"  - {it['titulo']}: {it['visitas']} visitas/mes pero solo {it['conv']}% conversión"
+        for it in baja_conversion[:5]
+    ) or '  Ninguno'
+
+    total_items  = len(items_raw)
+    items_venden = sum(1 for it in items_raw if float(it.get('velocidad', 0) or 0) > 0)
+
+    prompt = f"""Sos un consultor experto en ventas de MercadoLibre Argentina con más de 10 años de experiencia. \
+Conocés en profundidad el algoritmo de ML, la gestión de catálogos, Full, posicionamiento y estrategia de precios.
+
+Analizá los datos de esta cuenta y generá un informe práctico, directo y accionable. \
+Hablale al vendedor de forma directa (tuteo). Sé específico: mencioná los productos por nombre, \
+los números reales, y las acciones concretas. No seas genérico.
+
+═══════════════════════════════════════════════
+DATOS DE LA CUENTA — {alias}
+Fecha del análisis: {(_dt.utcnow() - _td(hours=3)).strftime('%d/%m/%Y %H:%M')} ART
+═══════════════════════════════════════════════
+
+INGRESOS:
+- Hoy: {fmt_money(revenue_hoy)}
+- Últimos 7 días: {fmt_money(revenue_7d)}
+- Últimos 30 días: {fmt_money(revenue_30d)}
+
+CATÁLOGO:
+- Total publicaciones activas: {total_items}
+- Publicaciones que venden: {items_venden} ({round(items_venden/max(total_items,1)*100)}%)
+- Publicaciones sin ventas con stock: {len(sin_ventas)}
+
+TOP PRODUCTOS POR INGRESOS (30 días):
+{top_txt}
+
+ALERTAS DE STOCK (productos que venden con stock crítico ≤14 días):
+{crit_txt}
+
+PROBLEMAS DE CONVERSIÓN (muchas visitas pero pocas ventas):
+{conv_txt}
+
+STOCK MUERTO (productos sin ventas pero con stock):
+{sin_vta_txt}
+
+REPUTACIÓN:
+- Nivel: {nivel or 'desconocido'}
+- Reclamos: {str(round(float(reclamos)*100 if reclamos and float(reclamos) < 1 else float(reclamos) if reclamos else 0, 1)) + '%' if reclamos is not None else 'sin dato'} (límite ML: 2%)
+- Demoras: {str(round(float(demoras)*100 if demoras and float(demoras) < 1 else float(demoras) if demoras else 0, 1)) + '%' if demoras is not None else 'sin dato'}
+═══════════════════════════════════════════════
+
+Generá el informe con EXACTAMENTE estas 5 secciones. Usá emojis como se indica. \
+Sé concreto, específico y accionable. Priorizá por impacto económico real.
+
+🏆 MIS PRODUCTOS MÁS IMPORTANTES
+[Identificá los 3-5 productos que son el corazón del negocio. Indicá cuáles hay que proteger, \
+cuáles tienen riesgo de stock y cuáles están en buena posición. \
+Explicá por qué son importantes y qué NO hay que hacer con ellos.]
+
+🚨 URGENTE — HACER HOY
+[Máximo 4 acciones. Solo lo que si no se hace HOY tiene consecuencia directa en ventas o reputación. \
+Para cada una: producto específico, problema, acción exacta, impacto estimado en pesos si podés.]
+
+💡 OPORTUNIDADES ESTA SEMANA
+[Máximo 4 acciones. Cosas que con poco esfuerzo dan buen resultado. \
+Ejemplos: subir precio donde hay margen, mejorar conversión, activar Full en candidatos.]
+
+📦 PRÓXIMO PEDIDO A CHINA
+[Lista priorizada en 3 categorías:
+PEDÍ SÍ O SÍ: productos top sellers con stock bajo
+REPONER PRONTO: productos que venden bien pero tienen margen de tiempo
+NO PIDAS: productos sin movimiento o con stock excesivo]
+
+⚠️ LASTRES Y RIESGOS
+[Qué está pesando sin dar retorno. Stock muerto, concentración de riesgo, tendencias preocupantes. \
+Sé directo — si algo hay que cortar, decilo.]"""
+
+    # ── 5. Llamar a Claude ────────────────────────────────────────────────────
+    try:
+        ai = anthropic.Anthropic()
+        msg = ai.messages.create(
+            model='claude-sonnet-4-6',
+            max_tokens=2000,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        _log_token_usage('Análisis Experto', 'claude-sonnet-4-6',
+                         msg.usage.input_tokens, msg.usage.output_tokens)
+        texto = msg.content[0].text.strip()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error Claude API: {e}'}), 500
+
+    # ── 6. Guardar y devolver ─────────────────────────────────────────────────
+    resultado = {
+        'alias':     alias,
+        'fecha':     (_dt.utcnow() - _td(hours=3)).strftime('%d/%m/%Y %H:%M'),
+        'analisis':  texto,
+        'revenue':   {'hoy': revenue_hoy, '7d': revenue_7d, '30d': revenue_30d},
+        'tokens':    msg.usage.input_tokens + msg.usage.output_tokens,
+    }
+    db_save_fn(os.path.join(DATA_DIR, f'analisis_experto_{safe(alias)}.json'), resultado)
+    return jsonify({'ok': True, **resultado})
+
+
 _app_scheduler = None
 
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
