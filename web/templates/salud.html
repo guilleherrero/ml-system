@@ -145,19 +145,27 @@
         </td>
         <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap">
           {% if it.we_win == true %}
-            <span style="color:#94a3b8;font-size:.75rem">sos vos</span>
+            {% if it.segundo_precio %}
+              <span style="font-weight:600;color:#1e293b">${{ '{:,.0f}'.format(it.segundo_precio) }}</span>
+              <div style="font-size:.68rem;color:#94a3b8">2do competidor</div>
+            {% else %}
+              <span style="color:#16a34a;font-size:.75rem">sin competidores</span>
+            {% endif %}
           {% elif it.winner_stock is not none %}
             <span style="font-weight:600;color:#1e293b">{{ it.winner_stock }}</span>
-            <div style="font-size:.68rem;color:#94a3b8">unidades</div>
+            <div style="font-size:.68rem;color:#94a3b8">stock ganador</div>
           {% else %}
             <span class="text-muted">—</span>
           {% endif %}
         </td>
         <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap">
           {% if it.precio_ideal is not none %}
-            {% if it.we_win == true %}
+            {% if it.we_win == true and it.segundo_precio %}
+              <span style="color:#f59e0b;font-weight:600">${{ '{:,.0f}'.format(it.precio_ideal) }}</span>
+              <div style="font-size:.68rem;color:#94a3b8">podés subir</div>
+            {% elif it.we_win == true %}
               <span style="color:#16a34a;font-weight:600">${{ '{:,.0f}'.format(it.precio_ideal) }}</span>
-              <div style="font-size:.68rem;color:#94a3b8">precio actual</div>
+              <div style="font-size:.68rem;color:#94a3b8">precio actual OK</div>
             {% else %}
               <span style="color:#2563eb;font-weight:600">${{ '{:,.0f}'.format(it.precio_ideal) }}</span>
               <div style="font-size:.68rem;color:#94a3b8">para ganar</div>
@@ -175,13 +183,22 @@
             Ver →
           </a>
           {% endif %}
-          {% if it.we_win == false and it.precio_ideal is not none %}
-          <button
-            class="btn btn-xs btn-primary ms-1"
-            style="font-size:.7rem;padding:2px 8px"
-            onclick="aplicarPrecio(this, '{{ alias }}', '{{ it.id }}', {{ it.precio_ideal }})">
-            Aplicar ${{ '{:,.0f}'.format(it.precio_ideal) }}
-          </button>
+          {% if it.precio_ideal is not none and it.precio_ideal != it.precio %}
+            {% if it.we_win == false %}
+            <button
+              class="btn btn-xs btn-primary ms-1"
+              style="font-size:.7rem;padding:2px 8px"
+              onclick="aplicarPrecio(this, '{{ alias }}', '{{ it.id }}', {{ it.precio_ideal }})">
+              Bajar ${{ '{:,.0f}'.format(it.precio_ideal) }}
+            </button>
+            {% elif it.we_win == true and it.segundo_precio %}
+            <button
+              class="btn btn-xs btn-warning ms-1"
+              style="font-size:.7rem;padding:2px 8px;color:#fff"
+              onclick="aplicarPrecio(this, '{{ alias }}', '{{ it.id }}', {{ it.precio_ideal }})">
+              Subir ${{ '{:,.0f}'.format(it.precio_ideal) }}
+            </button>
+            {% endif %}
           {% endif %}
         </td>
       </tr>

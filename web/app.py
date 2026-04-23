@@ -1539,6 +1539,7 @@ def salud(alias):
                         'diferencia_pct':     None,
                         'precio_ideal':       None,
                         'winner_stock':       None,
+                        'segundo_precio':     None,   # precio del 2do competidor
                     })
         except Exception:
             pass
@@ -1561,9 +1562,28 @@ def salud(alias):
                     it['we_win']            = (winner_id == it['id'])
                     if bb_price > 0:
                         it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
-                        # Precio ideal: $1 menos que el buy box (si no ganamos), o precio actual (si ganamos)
-                        it['precio_ideal'] = (it['precio'] if it['we_win']
-                                              else max(1.0, bb_price - 1))
+
+                    # 2do competidor: si ganamos es sellers[1], si perdemos también hay uno detrás
+                    if it['we_win'] and len(sellers) >= 2:
+                        it['segundo_precio'] = float(sellers[1].get('price') or 0)
+                    elif not it['we_win'] and len(sellers) >= 2:
+                        # Puede que seamos nosotros el 2do, o un tercero
+                        for s in sellers[1:]:
+                            sid = s.get('id') or s.get('item_id', '')
+                            if sid != winner_id:
+                                it['segundo_precio'] = float(s.get('price') or 0)
+                                break
+
+                    # Precio ideal:
+                    # - Perdiendo → buy_box_price - 1
+                    # - Ganando con 2do competidor → segundo_precio - 1 (podemos subir)
+                    # - Ganando sin 2do → precio actual está bien
+                    if not it['we_win'] and bb_price > 0:
+                        it['precio_ideal'] = max(1.0, bb_price - 1)
+                    elif it['we_win'] and it['segundo_precio']:
+                        it['precio_ideal'] = max(1.0, it['segundo_precio'] - 1)
+                    else:
+                        it['precio_ideal'] = it['precio']
         except Exception:
             pass
         _time_module.sleep(0.1)
