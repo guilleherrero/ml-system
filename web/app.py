@@ -77,6 +77,20 @@ def safe(alias):
     return alias.replace(' ', '_').replace('/', '-')
 
 
+def _ml_auth(alias: str):
+    """Devuelve (token, user_id, heads) con token refrescado automáticamente."""
+    from core.account_manager import AccountManager as _AM
+    mgr = _AM()
+    client = mgr.get_client(alias)
+    client._ensure_token()
+    token   = client.account.access_token
+    user_id = str(client.account.user_id or '')
+    if not user_id:
+        user_id = str(client.get_me().get('id', ''))
+    heads = {'Authorization': f'Bearer {token}'}
+    return token, user_id, heads
+
+
 def _build_opt_history_block(alias: str) -> str:
     """Lee el historial de optimizaciones con resultados reales y construye un bloque
     de contexto para el prompt del optimizador. Incluye tanto seguimiento manual
@@ -1468,9 +1482,11 @@ def salud(alias):
         return render_template('salud.html', alias=alias, items=[], resumen={},
                                pausadas=[], accounts=get_accounts())
 
-    token   = account.get('access_token', '')
-    user_id = str(account.get('user_id', ''))
-    heads   = {'Authorization': f'Bearer {token}'}
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception:
+        return render_template('salud.html', alias=alias, items=[], resumen={},
+                               pausadas=[], accounts=get_accounts())
     ML      = 'https://api.mercadolibre.com'
 
     # 1 — Obtener todas las publicaciones activas del vendedor
@@ -2367,9 +2383,10 @@ def reputacion(alias):
     shipping_metrics = {}
 
     if account:
-        token   = account.get('access_token', '')
-        user_id = str(account.get('user_id', ''))
-        heads   = {'Authorization': f'Bearer {token}'}
+        try:
+            token, user_id, heads = _ml_auth(alias)
+        except Exception:
+            token, user_id, heads = '', '', {}
 
         # 1 — Reputación en vivo
         if user_id:
@@ -2509,8 +2526,10 @@ def reputacion(alias):
         # Buscar family_id en la API para todos los items del snapshot
         _item_ids  = [i['id'] for i in stock_items_raw if i.get('id')]
         _fid_map   = {}  # item_id → family_id
-        _token     = account.get('access_token', '')
-        _heads     = {'Authorization': f'Bearer {_token}'}
+        try:
+            _, __, _heads = _ml_auth(alias)
+        except Exception:
+            _heads = {}
         for _b in range(0, len(_item_ids), 20):
             _batch = _item_ids[_b:_b + 20]
             try:
@@ -2607,9 +2626,10 @@ def preguntas(alias):
     fetch_error = None
 
     if account:
-        token   = account.get('access_token', '')
-        user_id = str(account.get('user_id', ''))
-        heads   = {'Authorization': f'Bearer {token}'}
+        try:
+            token, user_id, heads = _ml_auth(alias)
+        except Exception:
+            token, user_id, heads = '', '', {}
 
         try:
             # Preguntas sin responder
@@ -2738,8 +2758,11 @@ def api_responder_pregunta():
     if not account:
         return jsonify({'ok': False, 'error': 'Cuenta no encontrada'}), 404
 
-    token = account.get('access_token', '')
-    heads = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    try:
+        token, _, heads_base = _ml_auth(alias)
+        heads = {**heads_base, 'Content-Type': 'application/json'}
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
 
     try:
         r = req_lib.post('https://api.mercadolibre.com/answers',
@@ -2759,9 +2782,10 @@ def api_preguntas_count(alias):
     account  = next((a for a in all_accs if a.get('alias') == alias), None)
     if not account:
         return jsonify({'count': 0})
-    token   = account.get('access_token', '')
-    user_id = str(account.get('user_id', ''))
-    heads   = {'Authorization': f'Bearer {token}'}
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception:
+        return jsonify({'count': 0})
     try:
         r = req_lib.get('https://api.mercadolibre.com/questions/search',
             params={'seller_id': user_id, 'status': 'UNANSWERED', 'limit': 1},
@@ -2790,8 +2814,10 @@ def api_mis_preguntas_analisis(alias):
     if not account:
         return jsonify({'ok': False, 'error': 'cuenta no encontrada'}), 404
 
-    token = account.get('access_token', '')
-    uid   = account.get('user_id', '')
+    try:
+        token, uid, _ = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
     if not uid:
         return jsonify({'ok': False, 'error': 'user_id no encontrado'}), 400
 
@@ -2911,9 +2937,10 @@ def api_funnel(alias):
     if not account:
         return jsonify({'ok': False, 'error': 'cuenta no encontrada'}), 404
 
-    token   = account.get('access_token', '')
-    user_id = str(account.get('user_id', ''))
-    heads   = {'Authorization': f'Bearer {token}'}
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
     now     = _dt.now()
     ML      = 'https://api.mercadolibre.com'
 
@@ -3206,9 +3233,10 @@ def api_urgente(alias):
     if not account:
         return jsonify({'ok': False}), 404
 
-    token   = account.get('access_token', '')
-    user_id = str(account.get('user_id', ''))
-    heads   = {'Authorization': f'Bearer {token}'}
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception:
+        return jsonify({'ok': False}), 401
     date_60d = (_dt.now() - _td(days=60)).strftime('%Y-%m-%dT00:00:00.000-03:00')
 
     mediaciones_pendientes = []
@@ -3270,13 +3298,18 @@ def api_revenue_quick(alias):
     if alias in _revenue_cache and now_ts - _revenue_cache[alias]['ts'] < _REVENUE_TTL:
         return jsonify(_revenue_cache[alias]['data'])
 
-    all_accs = get_accounts()
-    account  = next((a for a in all_accs if a.get('alias') == alias), None)
-    if not account:
+    from core.account_manager import AccountManager as _AM
+    try:
+        _mgr    = _AM()
+        _client = _mgr.get_client(alias)
+        _client._ensure_token()
+        token   = _client.account.access_token
+        user_id = str(_client.account.user_id or '')
+        if not user_id:
+            user_id = str(_client.get_me().get('id', ''))
+    except Exception:
         return jsonify({'ok': False})
 
-    token   = account.get('access_token', '')
-    user_id = str(account.get('user_id', ''))
     heads   = {'Authorization': f'Bearer {token}'}
     now     = _dt.now()
 
@@ -3422,9 +3455,10 @@ def api_rep_items(alias):
     if not account:
         return jsonify({'error': 'cuenta no encontrada'}), 404
 
-    token   = account.get('access_token', '')
-    user_id = str(account.get('user_id', ''))
-    heads   = {'Authorization': f'Bearer {token}'}
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 401
     date_from = (_dt.now() - _td(days=60)).strftime('%Y-%m-%dT00:00:00.000-03:00')
 
     # Lógica basada en la estructura real de la API de ML:
@@ -3582,8 +3616,10 @@ def api_opt_seguimiento(alias, item_id):
         return jsonify({'ok': False, 'error': 'No hay baseline para este item'})
 
     baseline = opt_item['baseline']
-    token    = account.get('access_token', '')
-    heads    = {'Authorization': f'Bearer {token}'}
+    try:
+        token, _, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
     ML       = 'https://api.mercadolibre.com'
 
     ahora = {}
