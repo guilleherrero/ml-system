@@ -10366,11 +10366,12 @@ def _sync_full_inventory(alias):
 
 @app.route('/api/full-inventory-sync/<alias>', methods=['POST'])
 def api_full_inventory_sync(alias):
-    """Dispara sincronización de stock Full/depósito en background."""
-    import threading
-    t = threading.Thread(target=_sync_full_inventory, args=(alias,), daemon=True)
-    t.start()
-    return jsonify({'ok': True, 'msg': 'Sincronización iniciada en background'})
+    """Sincroniza stock Full/depósito y devuelve resultado."""
+    _sync_full_inventory(alias)
+    cache = db_load(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
+    return jsonify({'ok': True,
+                    'count': len(cache.get('items', {})),
+                    'last_updated': cache.get('last_updated')})
 
 
 @app.route('/api/full-inventory-cache/<alias>')

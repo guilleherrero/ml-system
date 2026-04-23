@@ -681,23 +681,24 @@ function crearPedido() {
 // ── Sincronizar inventario Full/depósito ──────────────────────────────────────
 function sincronizarInventario() {
   const btn = document.getElementById('btn-sync-inv');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sincronizando…';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sincronizando… (30–60 seg)'; }
+  document.getElementById('inv-cache-bar').style.display = '';
+  document.getElementById('inv-cache-msg').textContent = 'Sincronizando stock con ML… esperá unos segundos.';
 
   fetch(`/api/full-inventory-sync/${encodeURIComponent(ALIAS)}`, { method: 'POST' })
     .then(r => r.json())
-    .then(() => {
-      btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Sincronizando en background…';
-      // Esperar 60s y recargar la sección
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito';
-        location.reload();
-      }, 60000);
+    .then(d => {
+      if (d.ok) {
+        document.getElementById('inv-cache-msg').textContent = `✓ Sincronizado: ${d.count} ítems — ${d.last_updated}. Recargando…`;
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        document.getElementById('inv-cache-msg').textContent = 'Error al sincronizar. Intentá de nuevo.';
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito'; }
+      }
     })
     .catch(() => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito';
+      document.getElementById('inv-cache-msg').textContent = 'Error de conexión. Intentá de nuevo.';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito'; }
     });
 }
 
