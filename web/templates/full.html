@@ -325,8 +325,6 @@ fetch(`/api/full-data/${encodeURIComponent(ALIAS)}`)
 
 // ── Cards resumen ─────────────────────────────────────────────────────────────
 function renderCards(r) {
-  const costoStr = r.costo_muerto > 0
-    ? `<div style="font-size:.68rem;color:#94a3b8">~$${Math.round(r.costo_muerto).toLocaleString('es-AR')} almac.</div>` : '';
   const fmt = v => v != null ? '$' + Math.round(v).toLocaleString('es-AR') : '—';
   const costoStr = r.costo_muerto > 0
     ? `<div style="font-size:.65rem;color:#94a3b8">~${fmt(r.costo_muerto)} almac.</div>` : '';
