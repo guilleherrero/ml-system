@@ -3311,7 +3311,8 @@ def api_revenue_quick(alias):
         return jsonify({'ok': False})
 
     heads   = {'Authorization': f'Bearer {token}'}
-    now     = _dt.now()
+    # Usar hora de Argentina (UTC-3) para calcular fechas correctamente
+    now     = _dt.utcnow() - _td(hours=3)
 
     def fetch_period(date_from):
         orders = []
