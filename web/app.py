@@ -10080,6 +10080,31 @@ def _start_scheduler():
 
 
 # Ruta para ver estado y forzar actualización manual
+@app.route('/api/debug-data/<alias>')
+def api_debug_data(alias):
+    """Diagnóstico: muestra qué datos hay en PostgreSQL para una cuenta."""
+    s = safe(alias)
+    stock_path = os.path.join(DATA_DIR, f'stock_{s}.json')
+    rep_path   = os.path.join(DATA_DIR, f'reputacion_{s}.json')
+    pos_path   = os.path.join(DATA_DIR, f'posiciones_{s}.json')
+    from core.db_storage import _key
+    stock = load_json(stock_path)
+    rep   = load_json(rep_path)
+    pos   = load_json(pos_path)
+    return jsonify({
+        'stock_key':   _key(stock_path),
+        'rep_key':     _key(rep_path),
+        'pos_key':     _key(pos_path),
+        'stock_found': stock is not None,
+        'stock_fecha': (stock or {}).get('fecha'),
+        'stock_items': len((stock or {}).get('items', [])),
+        'rep_found':   rep is not None,
+        'rep_entries': len(rep) if isinstance(rep, list) else 0,
+        'pos_found':   pos is not None,
+        'pos_items':   len(pos) if isinstance(pos, dict) else 0,
+    })
+
+
 @app.route('/api/scheduler-status')
 def api_scheduler_status():
     return jsonify({
