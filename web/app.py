@@ -10378,7 +10378,7 @@ def api_full_data(alias):
         try:
             rf = req_lib.get(
                 f'{ML}/inventories/{inv_id}/stock/fulfillment',
-                headers=heads, timeout=4)
+                headers=heads, timeout=(2, 3))  # 2s connect, 3s read
             if rf.ok:
                 fdata = rf.json()
                 en_full  = int(fdata.get('total', item['stock']) or item['stock'])
@@ -10390,11 +10390,17 @@ def api_full_data(alias):
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
     fulfillment_map = {}  # item_id → (stock_en_full, deposito)
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(_fetch_fulfillment_stock, it): it['id'] for it in full_items}
-        for fut in as_completed(futs):
-            iid, stk, dep = fut.result()
-            fulfillment_map[iid] = (stk, dep)
+    try:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(_fetch_fulfillment_stock, it): it['id'] for it in full_items}
+            for fut in as_completed(futs, timeout=15):  # 15s máximo para todas
+                try:
+                    iid, stk, dep = fut.result()
+                    fulfillment_map[iid] = (stk, dep)
+                except Exception:
+                    pass
+    except Exception:
+        pass  # si falla, continuar con stock = available_quantity
 
     # 3 — Analizar cada item Full
     results = []
