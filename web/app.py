@@ -1602,13 +1602,16 @@ def salud(alias):
                 pass
             _time_module.sleep(0.1)
 
-    # 4 — Ordenar: perdiendo primero (más caro = perdiendo), luego ganando, luego sin datos
+    # 4 — Ordenar: ganando primero, luego perdiendo, luego pausadas/sin datos
     def _sort_key(x):
-        if x['we_win'] is False:
-            return (0, x['diferencia_pct'] or 0)   # perdiendo: más caro primero
-        if x['we_win'] is True:
-            return (1, -(x['diferencia_pct'] or 0))
-        return (2, 0)
+        paused = x.get('status') == 'paused'
+        if x['we_win'] is True and not paused:
+            return (0, -(x['diferencia_pct'] or 0))   # ganando: mayor margen primero
+        if x['we_win'] is False and not paused:
+            return (1, x['diferencia_pct'] or 0)       # perdiendo: más caro primero
+        if paused:
+            return (3, 0)
+        return (2, 0)                                   # sin datos
     catalog_items.sort(key=_sort_key)
 
     resumen = {
