@@ -10370,6 +10370,32 @@ def api_full_data(alias):
             pass
         _time_module.sleep(0.1)
 
+    # 3a — Consultar stock en Full (depósito ML) en paralelo para todos los ítems
+    def _fetch_fulfillment_stock(item):
+        inv_id = item.get('inventory_id', '')
+        if not inv_id:
+            return item['id'], item['stock'], 0
+        try:
+            rf = req_lib.get(
+                f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                headers=heads, timeout=4)
+            if rf.ok:
+                fdata = rf.json()
+                en_full  = int(fdata.get('total', item['stock']) or item['stock'])
+                deposito = max(0, item['stock'] - en_full)
+                return item['id'], en_full, deposito
+        except Exception:
+            pass
+        return item['id'], item['stock'], 0
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    fulfillment_map = {}  # item_id → (stock_en_full, deposito)
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(_fetch_fulfillment_stock, it): it['id'] for it in full_items}
+        for fut in as_completed(futs):
+            iid, stk, dep = fut.result()
+            fulfillment_map[iid] = (stk, dep)
+
     # 3 — Analizar cada item Full
     results = []
     for item in full_items:
@@ -10420,26 +10446,10 @@ def api_full_data(alias):
         transit   = item_rep.get('transit_days',  rep_cfg.get('transit_days_global', 25))
         en_transito = en_transito_map.get(iid, 0)
 
-        # Stock en depósito propio: diferencia entre available_quantity (ML total) y lo que está en Full
-        stock_total_ml = item['stock']  # available_quantity = Full + depósito propio
-        stock_en_full  = stock_total_ml  # default: todo en Full si no podemos consultar
-        deposito       = 0
-        inv_id = item.get('inventory_id', '')
-        if inv_id:
-            try:
-                rf = req_lib.get(
-                    f'{ML}/inventories/{inv_id}/stock/fulfillment',
-                    headers=heads, timeout=6)
-                if rf.ok:
-                    fdata = rf.json()
-                    stock_en_full = int(fdata.get('total', stock_total_ml) or stock_total_ml)
-                    deposito      = max(0, stock_total_ml - stock_en_full)
-            except Exception:
-                pass
-            _time_module.sleep(0.1)
-        item['stock'] = stock_en_full  # stock = solo lo que está en el depósito de ML
-
-        stock_total = stock_total_ml + en_transito
+        # Stock separado: Full (depósito ML) vs depósito propio (ya calculado en paralelo)
+        stock_en_full, deposito = fulfillment_map.get(iid, (item['stock'], 0))
+        item['stock'] = stock_en_full
+        stock_total   = stock_en_full + deposito + en_transito
 
         # Días de stock (incluye en tránsito a Full)
         dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None
