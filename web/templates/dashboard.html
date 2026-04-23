@@ -200,26 +200,39 @@
           </div>
         </div>
       </div>
-      <div class="col-4">
-        <div class="rev-card semana">
-          <div class="rev-label"><i class="bi bi-calendar-week me-1"></i>7 días</div>
-          <div class="rev-amount" id="rev-sem-{{ rk }}">
-            <span class="skel" style="width:80px;height:28px">&nbsp;</span>
-          </div>
-          <div class="rev-units" id="rev-sem-u-{{ rk }}">
-            <span class="skel" style="width:50px;height:12px">&nbsp;</span>
+      <div class="col-8" style="position:relative">
+        <button class="btn btn-sm" onclick="toggleRevExtra('{{ rk }}')" id="rev-eye-{{ rk }}"
+          style="position:absolute;top:4px;right:6px;z-index:2;background:transparent;border:none;color:#9ca3af;padding:2px 4px;font-size:.8rem">
+          <i class="bi bi-eye-slash" id="rev-eye-icon-{{ rk }}"></i>
+        </button>
+        <div id="rev-extra-{{ rk }}" style="display:none">
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="rev-card semana">
+                <div class="rev-label"><i class="bi bi-calendar-week me-1"></i>7 días</div>
+                <div class="rev-amount" id="rev-sem-{{ rk }}">
+                  <span class="skel" style="width:80px;height:28px">&nbsp;</span>
+                </div>
+                <div class="rev-units" id="rev-sem-u-{{ rk }}">
+                  <span class="skel" style="width:50px;height:12px">&nbsp;</span>
+                </div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="rev-card mes">
+                <div class="rev-label"><i class="bi bi-calendar-month me-1"></i>30 días</div>
+                <div class="rev-amount" id="rev-mes-{{ rk }}">
+                  <span class="skel" style="width:80px;height:28px">&nbsp;</span>
+                </div>
+                <div class="rev-units" id="rev-mes-u-{{ rk }}">
+                  <span class="skel" style="width:50px;height:12px">&nbsp;</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="col-4">
-        <div class="rev-card mes">
-          <div class="rev-label"><i class="bi bi-calendar-month me-1"></i>30 días</div>
-          <div class="rev-amount" id="rev-mes-{{ rk }}">
-            <span class="skel" style="width:80px;height:28px">&nbsp;</span>
-          </div>
-          <div class="rev-units" id="rev-mes-u-{{ rk }}">
-            <span class="skel" style="width:50px;height:12px">&nbsp;</span>
-          </div>
+        <div id="rev-extra-placeholder-{{ rk }}" style="height:100%;display:flex;align-items:center;justify-content:center;color:#d1d5db;font-size:.8rem;padding:8px 0">
+          <i class="bi bi-eye-slash me-1"></i>oculto
         </div>
       </div>
     </div>
@@ -408,6 +421,17 @@ const now = new Date();
 document.getElementById('dashDate').textContent =
   now.toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long', year:'numeric'}) +
   ' — ' + now.toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+
+// ── Toggle semana/mes ─────────────────────────────────────────
+function toggleRevExtra(rk) {
+  const extra = document.getElementById('rev-extra-' + rk);
+  const placeholder = document.getElementById('rev-extra-placeholder-' + rk);
+  const icon = document.getElementById('rev-eye-icon-' + rk);
+  const visible = extra.style.display !== 'none';
+  extra.style.display = visible ? 'none' : 'block';
+  placeholder.style.display = visible ? 'flex' : 'none';
+  icon.className = visible ? 'bi bi-eye-slash' : 'bi bi-eye';
+}
 
 // ── Formato de moneda ─────────────────────────────────────────
 function fmt(n) {
