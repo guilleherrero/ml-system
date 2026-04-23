@@ -1537,12 +1537,14 @@ def salud(alias):
                         'we_win':             None,
                         'competidores':       0,
                         'diferencia_pct':     None,
+                        'precio_ideal':       None,
+                        'winner_stock':       None,
                     })
         except Exception:
             pass
         _time_module.sleep(0.1)
 
-    # 3 — Para cada item de catálogo, obtener el buy box actual
+    # 3 — Para cada item de catálogo, obtener el buy box actual + stock del ganador
     for it in catalog_items:
         try:
             r = req_lib.get(f'{ML}/products/{it["catalog_product_id"]}/items',
@@ -1551,17 +1553,34 @@ def salud(alias):
                 sellers = r.json().get('results', [])
                 it['competidores'] = len(sellers)
                 if sellers:
-                    winner     = sellers[0]
-                    winner_id  = winner.get('id') or winner.get('item_id', '')
-                    bb_price   = float(winner.get('price') or 0)
-                    it['buy_box_price']    = bb_price
+                    winner    = sellers[0]
+                    winner_id = winner.get('id') or winner.get('item_id', '')
+                    bb_price  = float(winner.get('price') or 0)
+                    it['buy_box_price']     = bb_price
                     it['buy_box_winner_id'] = winner_id
-                    it['we_win']           = (winner_id == it['id'])
+                    it['we_win']            = (winner_id == it['id'])
                     if bb_price > 0:
                         it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
+                        # Precio ideal: $1 menos que el buy box (si no ganamos), o precio actual (si ganamos)
+                        it['precio_ideal'] = (it['precio'] if it['we_win']
+                                              else max(1.0, bb_price - 1))
         except Exception:
             pass
-        _time_module.sleep(0.15)
+        _time_module.sleep(0.1)
+
+        # Stock del ganador (solo si no somos nosotros)
+        winner_id = it.get('buy_box_winner_id')
+        if winner_id and not it.get('we_win'):
+            try:
+                rw = req_lib.get(f'{ML}/items/{winner_id}',
+                                 headers=heads,
+                                 params={'attributes': 'available_quantity'},
+                                 timeout=6)
+                if rw.ok:
+                    it['winner_stock'] = rw.json().get('available_quantity')
+            except Exception:
+                pass
+            _time_module.sleep(0.1)
 
     # 4 — Ordenar: perdiendo primero (más caro = perdiendo), luego ganando, luego sin datos
     def _sort_key(x):

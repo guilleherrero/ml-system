@@ -93,8 +93,10 @@
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Mi precio</th>
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Buy box</th>
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Diferencia</th>
-          <th class="text-center" style="padding:.75rem .75rem">Estado</th>
-          <th class="text-center" style="padding:.75rem .75rem">Competidores</th>
+            <th class="text-center" style="padding:.75rem .75rem">Estado</th>
+          <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Stock ganador</th>
+          <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Precio ideal</th>
+          <th class="text-center" style="padding:.75rem .75rem">Compets.</th>
           <th style="padding:.75rem .75rem"></th>
         </tr>
       </thead>
@@ -139,6 +141,29 @@
             <span class="badge-lose"><i class="bi bi-x-circle me-1"></i>Perdiendo</span>
           {% else %}
             <span class="badge-nd">Sin datos</span>
+          {% endif %}
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap">
+          {% if it.we_win == true %}
+            <span style="color:#94a3b8;font-size:.75rem">sos vos</span>
+          {% elif it.winner_stock is not none %}
+            <span style="font-weight:600;color:#1e293b">{{ it.winner_stock }}</span>
+            <div style="font-size:.68rem;color:#94a3b8">unidades</div>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap">
+          {% if it.precio_ideal is not none %}
+            {% if it.we_win == true %}
+              <span style="color:#16a34a;font-weight:600">${{ '{:,.0f}'.format(it.precio_ideal) }}</span>
+              <div style="font-size:.68rem;color:#94a3b8">precio actual</div>
+            {% else %}
+              <span style="color:#2563eb;font-weight:600">${{ '{:,.0f}'.format(it.precio_ideal) }}</span>
+              <div style="font-size:.68rem;color:#94a3b8">para ganar</div>
+            {% endif %}
+          {% else %}
+            <span class="text-muted">—</span>
           {% endif %}
         </td>
         <td class="text-center" style="padding:.75rem .75rem;color:#64748b">
