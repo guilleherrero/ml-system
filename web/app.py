@@ -3254,18 +3254,39 @@ def api_urgente(alias):
                     continue
                 if order.get('status') == 'cancelled':
                     continue   # ya resuelta
-                med_id  = meds[0].get('id', '')
-                items   = order.get('order_items', [])
-                title   = items[0].get('item', {}).get('title', '—') if items else '—'
-                item_id = items[0].get('item', {}).get('id', '')     if items else ''
-                fecha   = (order.get('date_created') or '')[:10]
+                order_id = order.get('id', '')
+                items    = order.get('order_items', [])
+                title    = items[0].get('item', {}).get('title', '—') if items else '—'
+                item_id  = items[0].get('item', {}).get('id', '')     if items else ''
+                fecha    = (order.get('date_created') or '')[:10]
+
+                # Buscar el claim_id real via la API de claims de ML
+                claim_id = ''
+                med_url  = ''
+                try:
+                    rc = req_lib.get('https://api.mercadolibre.com/v1/claims',
+                        headers=heads,
+                        params={'resource_id': order_id, 'role': 'respondent'},
+                        timeout=8)
+                    if rc.ok:
+                        claims = rc.json().get('data', [])
+                        if claims:
+                            claim_id = str(claims[0].get('id', ''))
+                except Exception:
+                    pass
+
+                if claim_id:
+                    med_url = f'https://www.mercadolibre.com.ar/reclamospanel/detalle/{claim_id}'
+                elif order_id:
+                    med_url = f'https://www.mercadolibre.com.ar/reclamospanel/detalle/{order_id}'
+
                 mediaciones_pendientes.append({
-                    'order_id':  order.get('id', ''),
-                    'med_id':    med_id,
+                    'order_id':   order_id,
+                    'claim_id':   claim_id,
                     'item_title': title,
-                    'item_id':   item_id,
-                    'fecha':     fecha,
-                    'med_url':   f'https://www.mercadolibre.com.ar/reclamospanel/mediacion/detalle/{med_id}' if med_id else '',
+                    'item_id':    item_id,
+                    'fecha':      fecha,
+                    'med_url':    med_url,
                 })
     except Exception:
         pass
