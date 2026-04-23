@@ -10370,8 +10370,24 @@ def api_full_data(alias):
             pass
         _time_module.sleep(0.1)
 
-    # 3a — mapa vacío (sin consulta a inventario — available_quantity es el stock total)
+    # 3a — Stock en Full real por ítem via /inventories/{id}/stock/fulfillment
+    import requests as _req_fresh
     fulfillment_map = {}
+    for it in full_items:
+        inv_id = it.get('inventory_id', '')
+        if not inv_id:
+            continue
+        try:
+            rf = _req_fresh.get(
+                f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                headers=heads, timeout=(1, 2))
+            if rf.ok:
+                fdata = rf.json()
+                en_full  = int(fdata.get('total', it['stock']) or it['stock'])
+                deposito = max(0, it['stock'] - en_full)
+                fulfillment_map[it['id']] = (en_full, deposito)
+        except Exception:
+            pass
 
     # 3 — Analizar cada item Full
     results = []
