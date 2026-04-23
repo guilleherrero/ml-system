@@ -10247,45 +10247,19 @@ def api_full_stock_check(alias, item_id):
         return jsonify({'ok': False, 'error': str(e)}), 401
 
     try:
+        # Sin filtro de atributos — devolver todo para ver qué campos tiene
         r = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id}',
             headers=heads,
-            params={'attributes': 'id,title,status,available_quantity,sold_quantity,'
-                                  'shipping,health,sub_status,warnings'},
             timeout=10)
         if not r.ok:
             return jsonify({'ok': False, 'error': f'ML API: {r.status_code}'}), r.status_code
 
-        body     = r.json()
-        shipping = body.get('shipping') or {}
-        health   = body.get('health') or {}
-        sub_status = body.get('sub_status') or []
-        warnings   = body.get('warnings')   or []
-
-        # Intentar obtener detalle de stock Full si está disponible
-        full_stock_detail = None
-        try:
-            rf = req_lib.get(
-                f'https://api.mercadolibre.com/items/{item_id}/fulfillment_stocks',
-                headers=heads, timeout=8)
-            if rf.ok:
-                full_stock_detail = rf.json()
-        except Exception:
-            pass
+        body = r.json()
 
         return jsonify({
-            'ok':               True,
-            'id':               body.get('id'),
-            'titulo':           body.get('title', '')[:80],
-            'status':           body.get('status'),
-            'sub_status':       sub_status,
-            'available_quantity': body.get('available_quantity'),
-            'sold_quantity':    body.get('sold_quantity'),
-            'logistic_type':    shipping.get('logistic_type'),
-            'free_shipping':    shipping.get('free_shipping'),
-            'health':           health,
-            'warnings':         warnings,
-            'full_stock_detail': full_stock_detail,
+            'ok':       True,
+            'raw_item': body,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
