@@ -40,6 +40,9 @@
     <button class="btn btn-sm btn-primary" id="btn-nuevo-pedido" onclick="abrirNuevoPedido()" disabled>
       <i class="bi bi-plus-circle me-1"></i>Nuevo pedido de reposición
     </button>
+    <button class="btn btn-sm btn-outline-success" id="btn-sync-inv" onclick="sincronizarInventario()">
+      <i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito
+    </button>
     <button class="btn btn-sm btn-outline-secondary" onclick="abrirConfig()">
       <i class="bi bi-gear me-1"></i>Configurar
     </button>
@@ -57,6 +60,13 @@
     </h6>
   </div>
   <div id="pedidos-container"></div>
+</div>
+
+<!-- ══ AVISO CACHE INVENTARIO ════════════════════════════════════════ -->
+<div id="inv-cache-bar" style="display:none" class="alert alert-warning py-2 px-3 mb-3" style="font-size:.82rem">
+  <i class="bi bi-info-circle me-1"></i>
+  <span id="inv-cache-msg"></span>
+  <button class="btn btn-sm btn-warning ms-2 py-0" onclick="sincronizarInventario()">Sincronizar ahora</button>
 </div>
 
 <!-- ══ SKELETON / LOADING ═══════════════════════════════════════════ -->
@@ -667,6 +677,46 @@ function crearPedido() {
     }
   });
 }
+
+// ── Sincronizar inventario Full/depósito ──────────────────────────────────────
+function sincronizarInventario() {
+  const btn = document.getElementById('btn-sync-inv');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sincronizando…';
+
+  fetch(`/api/full-inventory-sync/${encodeURIComponent(ALIAS)}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(() => {
+      btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Sincronizando en background…';
+      // Esperar 60s y recargar la sección
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito';
+        location.reload();
+      }, 60000);
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito';
+    });
+}
+
+// Mostrar estado del cache al cargar
+fetch(`/api/full-inventory-cache/${encodeURIComponent(ALIAS)}`)
+  .then(r => r.json())
+  .then(d => {
+    const bar = document.getElementById('inv-cache-bar');
+    const msg = document.getElementById('inv-cache-msg');
+    if (!d.last_updated) {
+      bar.style.display = '';
+      msg.textContent = 'Depósito sin sincronizar — el stock en Full y depósito muestran el total combinado. Sincronizá para separar los datos.';
+    } else {
+      msg.textContent = `Datos de depósito: última sync ${d.last_updated} (${d.count} ítems).`;
+      // Solo mostrar el bar si tiene más de 24 horas
+      const diff = (Date.now() - new Date(d.last_updated).getTime()) / 3600000;
+      if (diff > 24) bar.style.display = '';
+    }
+  });
 
 // ── Configuración modal ───────────────────────────────────────────────────────
 function abrirConfig() {

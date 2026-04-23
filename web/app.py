@@ -10135,6 +10135,12 @@ def _scheduler_run_all():
         except Exception as e:
             print(f'[scheduler] {alias} — posiciones ERROR: {e}')
 
+        try:
+            _sync_full_inventory(alias)
+            print(f'[scheduler] {alias} — inventario Full OK')
+        except Exception as e:
+            print(f'[scheduler] {alias} — inventario Full ERROR: {e}')
+
     print(f'[scheduler] Actualización diaria completada — {datetime.now().strftime("%H:%M")}')
 
     # ── Enviar resumen por email si está configurado ────────────────────────
@@ -10287,6 +10293,96 @@ def api_full_stock_check(alias, item_id):
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+def _sync_full_inventory(alias):
+    """Consulta /inventories/{id}/stock/fulfillment para cada ítem Full y guarda en cache."""
+    from core.db_storage import db_load, db_save as db_save_fn
+    from datetime import datetime as _dt
+    import requests as _rq
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception:
+        return
+
+    ML = 'https://api.mercadolibre.com'
+
+    # Obtener todos los ítems Full activos
+    all_ids, offset = [], 0
+    while True:
+        r = _rq.get(f'{ML}/users/{user_id}/items/search', headers=heads,
+                    params={'status': 'active', 'limit': 100, 'offset': offset}, timeout=12)
+        if not r.ok:
+            break
+        ids   = r.json().get('results', [])
+        total = r.json().get('paging', {}).get('total', 0)
+        all_ids.extend(ids)
+        offset += len(ids)
+        if not ids or offset >= total:
+            break
+        _time_module.sleep(0.1)
+
+    FULL_LOGISTICS = ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
+    result = {}
+    for b in range(0, len(all_ids), 20):
+        batch = all_ids[b:b+20]
+        try:
+            r = _rq.get(f'{ML}/items', headers=heads,
+                        params={'ids': ','.join(batch),
+                                'attributes': 'id,available_quantity,inventory_id,shipping'},
+                        timeout=12)
+            if r.ok:
+                for e in r.json():
+                    if e.get('code') != 200:
+                        continue
+                    body    = e.get('body', {})
+                    logtype = (body.get('shipping') or {}).get('logistic_type', '')
+                    if logtype not in FULL_LOGISTICS:
+                        continue
+                    iid    = body.get('id', '')
+                    inv_id = body.get('inventory_id', '')
+                    total_ml = int(body.get('available_quantity', 0) or 0)
+                    stock_en_full = total_ml
+                    deposito      = 0
+                    if inv_id:
+                        try:
+                            rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                                         headers=heads, timeout=(3, 5))
+                            if rf.ok:
+                                fdata = rf.json()
+                                stock_en_full = int(fdata.get('total', total_ml) or total_ml)
+                                deposito      = max(0, total_ml - stock_en_full)
+                        except Exception:
+                            pass
+                        _time_module.sleep(0.15)
+                    result[iid] = {'stock_en_full': stock_en_full, 'deposito': deposito}
+        except Exception:
+            pass
+        _time_module.sleep(0.1)
+
+    cache = {'last_updated': _dt.now().strftime('%Y-%m-%d %H:%M'), 'items': result}
+    db_save_fn(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json'), cache)
+    print(f'[full_inventory] {alias} — {len(result)} ítems sincronizados')
+
+
+@app.route('/api/full-inventory-sync/<alias>', methods=['POST'])
+def api_full_inventory_sync(alias):
+    """Dispara sincronización de stock Full/depósito en background."""
+    import threading
+    t = threading.Thread(target=_sync_full_inventory, args=(alias,), daemon=True)
+    t.start()
+    return jsonify({'ok': True, 'msg': 'Sincronización iniciada en background'})
+
+
+@app.route('/api/full-inventory-cache/<alias>')
+def api_full_inventory_cache(alias):
+    """Devuelve metadata del último cache de inventario Full."""
+    from core.db_storage import db_load
+    cache = db_load(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
+    return jsonify({'ok': True,
+                    'last_updated': cache.get('last_updated'),
+                    'count': len(cache.get('items', {}))})
+
+
 @app.route('/api/full-data/<alias>')
 def api_full_data(alias):
     """Análisis completo de publicaciones Full: stock, velocidad, alertas, reposición."""
@@ -10370,24 +10466,13 @@ def api_full_data(alias):
             pass
         _time_module.sleep(0.1)
 
-    # 3a — Stock en Full real por ítem via /inventories/{id}/stock/fulfillment
-    import requests as _req_fresh
-    fulfillment_map = {}
-    for it in full_items:
-        inv_id = it.get('inventory_id', '')
-        if not inv_id:
-            continue
-        try:
-            rf = _req_fresh.get(
-                f'{ML}/inventories/{inv_id}/stock/fulfillment',
-                headers=heads, timeout=(1, 2))
-            if rf.ok:
-                fdata = rf.json()
-                en_full  = int(fdata.get('total', it['stock']) or it['stock'])
-                deposito = max(0, it['stock'] - en_full)
-                fulfillment_map[it['id']] = (en_full, deposito)
-        except Exception:
-            pass
+    # 3a — Leer cache de inventario Full (generado por scheduler o sync manual)
+    inv_cache = db_load(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
+    inv_items  = inv_cache.get('items', {})
+    fulfillment_map = {
+        iid: (v.get('stock_en_full', 0), v.get('deposito', 0))
+        for iid, v in inv_items.items()
+    }
 
     # 3 — Analizar cada item Full
     results = []
