@@ -10275,9 +10275,10 @@ def api_full_data(alias):
             break
         _time_module.sleep(0.1)
 
-    # 2 — Fetch detalles, filtrar los que son Full
+    # 2 — Fetch detalles: separar Full vs no-Full
     FULL_LOGISTICS = ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
-    full_items = []
+    full_items  = []
+    nofull_items = []
     for b in range(0, len(all_ids), 20):
         batch = all_ids[b:b+20]
         try:
@@ -10289,18 +10290,22 @@ def api_full_data(alias):
                 for e in r.json():
                     if e.get('code') != 200:
                         continue
-                    body = e.get('body', {})
-                    logistic = (body.get('shipping') or {}).get('logistic_type', '')
-                    if logistic not in FULL_LOGISTICS:
-                        continue
-                    full_items.append({
+                    body     = e.get('body', {})
+                    shipping = body.get('shipping') or {}
+                    logistic = shipping.get('logistic_type', '')
+                    item_data = {
                         'id':           body.get('id', ''),
                         'titulo':       body.get('title', '')[:65],
                         'precio':       float(body.get('price', 0) or 0),
                         'stock':        int(body.get('available_quantity', 0) or 0),
                         'listing_type': body.get('listing_type_id', ''),
                         'permalink':    body.get('permalink', ''),
-                    })
+                        'free_shipping': bool(shipping.get('free_shipping')),
+                    }
+                    if logistic in FULL_LOGISTICS:
+                        full_items.append(item_data)
+                    else:
+                        nofull_items.append(item_data)
         except Exception:
             pass
         _time_module.sleep(0.1)
@@ -10420,7 +10425,63 @@ def api_full_data(alias):
         'costo_muerto': costo_muerto,
     }
 
+    # 4 — Sugeridos para Full: items NO en Full con buena velocidad de ventas
+    full_ids_set = {r['id'] for r in results}
+    sugeridos = []
+    for item in nofull_items:
+        iid   = item['id']
+        if iid in full_ids_set:
+            continue
+        saved  = stock_map.get(iid, {})
+        vel_30 = float(saved.get('velocidad', 0) or 0)
+        if vel_30 < 0.2:   # mínimo ~6 unidades/mes para considerar
+            continue
+        if item['stock'] == 0:
+            continue
+
+        comision  = 0.13 if item['listing_type'] in ('gold_special', 'silver') else 0.165
+        neto_full = round(item['precio'] * (1 - comision), 2)  # Full siempre free shipping
+        costo_d   = costos.get(iid, {})
+        costo     = costo_d.get('costo') if costo_d else None
+        margen_full = round((neto_full - costo) / item['precio'] * 100, 1) if costo else None
+
+        # Razones por las que conviene Full
+        razones = []
+        if vel_30 >= 1.0:
+            razones.append(f'{vel_30:.1f} ventas/día — alta rotación')
+        elif vel_30 >= 0.5:
+            razones.append(f'{vel_30:.1f} ventas/día — buena rotación')
+        else:
+            razones.append(f'{vel_30:.1f} ventas/día — rotación moderada')
+        if not item['free_shipping']:
+            razones.append('sin envío gratis — Full lo activaría automáticamente')
+        if margen_full is not None and margen_full >= 15:
+            razones.append(f'margen {margen_full}% absorbería costo Full')
+
+        # Score para ordenar: velocidad × bonus margen × bonus sin free shipping
+        score = vel_30
+        if margen_full is not None and margen_full >= 15:
+            score *= 1.3
+        if not item['free_shipping']:
+            score *= 1.2
+
+        sugeridos.append({
+            'id':          iid,
+            'titulo':      item['titulo'],
+            'precio':      item['precio'],
+            'stock':       item['stock'],
+            'vel_30':      vel_30,
+            'margen_full': margen_full,
+            'free_ship':   item['free_shipping'],
+            'permalink':   item['permalink'],
+            'razones':     razones,
+            'score':       round(score, 3),
+        })
+
+    sugeridos.sort(key=lambda x: -x['score'])
+
     return jsonify({'ok': True, 'items': results, 'resumen': resumen,
+                    'sugeridos': sugeridos[:20],   # top 20
                     'global_lead_days': full_cfg.get('global_lead_days', 18),
                     'transit_days_global': rep_cfg.get('transit_days_global', 25)})
 

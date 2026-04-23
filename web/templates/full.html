@@ -144,6 +144,36 @@
   </div>
 </div>
 
+<!-- ══ SUGERIDOS PARA FULL ════════════════════════════════════════════ -->
+<div id="sugeridos-section" style="display:none" class="mb-4">
+  <div class="card">
+    <div class="section-title">
+      <i class="bi bi-stars me-1 text-primary"></i>
+      Candidatos para ingresar a Full — productos sin Full con potencial de escalar
+    </div>
+    <div class="card-body pb-2 pt-2">
+      <p class="text-muted small mb-3">Productos activos que no están en Full pero tienen buena velocidad de ventas. Activar Full mejora visibilidad, posicionamiento y conversión.</p>
+    </div>
+    <div class="table-responsive">
+      <table class="table mb-0" style="font-size:.84rem">
+        <thead style="background:#f0f9ff;font-size:.73rem;color:#0369a1;font-weight:700;text-transform:uppercase;letter-spacing:.04em">
+          <tr>
+            <th style="padding:.65rem 1rem">Publicación</th>
+            <th class="text-end" style="padding:.65rem .7rem;white-space:nowrap">Precio</th>
+            <th class="text-end" style="padding:.65rem .7rem;white-space:nowrap">Stock</th>
+            <th class="text-end" style="padding:.65rem .7rem;white-space:nowrap">Vel/día</th>
+            <th class="text-end" style="padding:.65rem .7rem;white-space:nowrap">Margen c/Full</th>
+            <th class="text-end" style="padding:.65rem .7rem;white-space:nowrap">Envío gratis</th>
+            <th style="padding:.65rem .7rem">Por qué conviene Full</th>
+            <th style="padding:.65rem .7rem"></th>
+          </tr>
+        </thead>
+        <tbody id="sugeridos-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 </div><!-- #full-content -->
 
 <!-- ══ MODAL NUEVO PEDIDO ═════════════════════════════════════════════ -->
@@ -282,6 +312,7 @@ fetch(`/api/full-data/${encodeURIComponent(ALIAS)}`)
     renderTabla(_fullItems);
     renderRetirar(_fullItems.filter(i => i.alerta === 'STOCK_MUERTO'));
     renderEscalar(_fullItems.filter(i => i.alerta === 'ESCALAR'));
+    renderSugeridos(d.sugeridos || []);
     cargarPedidos();
   })
   .catch(() => {
@@ -423,6 +454,39 @@ function renderEscalar(items) {
       <td class="text-end" style="padding:.65rem .7rem" class="dias-ok">${it.dias_stock !== null ? Math.round(it.dias_stock) + 'd' : '—'}</td>
       <td class="text-end" style="padding:.65rem .7rem;color:#16a34a;font-weight:600">${it.margen_pct !== null ? it.margen_pct + '%' : '—'}</td>
       <td style="padding:.65rem .7rem;font-size:.8rem;color:#374151">Aumentá stock, activá ads, revisá precio.</td>
+    </tr>`).join('');
+}
+
+// ── Sugeridos para Full ───────────────────────────────────────────────────────
+function renderSugeridos(items) {
+  const sec = document.getElementById('sugeridos-section');
+  if (!items.length) return;
+  sec.style.display = '';
+  document.getElementById('sugeridos-tbody').innerHTML = items.map(it => `
+    <tr>
+      <td style="padding:.65rem 1rem;max-width:260px">
+        <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
+        <div style="font-size:.68rem;color:#94a3b8">${it.id}</div>
+      </td>
+      <td class="text-end" style="padding:.65rem .7rem;white-space:nowrap">$${Math.round(it.precio).toLocaleString('es-AR')}</td>
+      <td class="text-end" style="padding:.65rem .7rem;font-weight:600">${it.stock}</td>
+      <td class="text-end" style="padding:.65rem .7rem;font-weight:700;color:#2563eb">${it.vel_30.toFixed(1)}/día</td>
+      <td class="text-end" style="padding:.65rem .7rem">
+        ${it.margen_full !== null
+          ? `<span style="font-weight:600;color:${it.margen_full >= 15 ? '#16a34a' : it.margen_full >= 0 ? '#d97706' : '#dc2626'}">${it.margen_full}%</span>`
+          : '<span class="text-muted">—</span>'}
+      </td>
+      <td class="text-center" style="padding:.65rem .7rem">
+        ${it.free_ship
+          ? '<span style="color:#16a34a;font-size:.8rem"><i class="bi bi-check-circle-fill"></i></span>'
+          : '<span style="color:#dc2626;font-size:.8rem"><i class="bi bi-x-circle-fill"></i></span>'}
+      </td>
+      <td style="padding:.65rem .7rem;font-size:.78rem;color:#475569">
+        ${it.razones.map(r => `<div><i class="bi bi-arrow-right me-1 text-primary" style="font-size:.7rem"></i>${r}</div>`).join('')}
+      </td>
+      <td style="padding:.65rem .7rem">
+        ${it.permalink ? `<a href="${it.permalink}" target="_blank" class="btn btn-xs btn-outline-primary" style="font-size:.7rem;padding:2px 8px;white-space:nowrap">Ver pub. →</a>` : ''}
+      </td>
     </tr>`).join('');
 }
 
