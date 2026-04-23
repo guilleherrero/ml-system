@@ -419,7 +419,10 @@ function renderTabla(items) {
       <td class="text-end" style="padding:.7rem .7rem">${it.unidades_pedir > 0 ? `<span style="font-weight:600;color:#2563eb">${it.unidades_pedir} u.</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-center" style="padding:.7rem .7rem">${BADGE[it.alerta] || it.alerta}</td>
       <td style="padding:.7rem .7rem">
-        ${it.permalink ? `<a href="${it.permalink}" target="_blank" class="btn btn-xs btn-outline-secondary" style="font-size:.7rem;padding:2px 8px">Ver →</a>` : ''}
+        <div class="d-flex gap-1 flex-wrap">
+          ${it.permalink ? `<a href="${it.permalink}" target="_blank" class="btn btn-xs btn-outline-secondary" style="font-size:.7rem;padding:2px 8px">Ver pub.</a>` : ''}
+          <a href="https://www.mercadolibre.com.ar/vendedores/publicaciones?search=${it.id}" target="_blank" class="btn btn-xs btn-outline-primary" style="font-size:.7rem;padding:2px 8px;white-space:nowrap">Gestionar ML</a>
+        </div>
       </td>
     </tr>`).join('');
 }
