@@ -10448,6 +10448,84 @@ def api_full_config(alias):
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+# ── Pedidos de reposición Full ────────────────────────────────────────────────
+
+def _pedidos_path(alias: str) -> str:
+    return os.path.join(DATA_DIR, f'full_pedidos_{safe(alias)}.json')
+
+
+@app.route('/api/full-pedidos/<alias>', methods=['GET'])
+def api_full_pedidos_get(alias):
+    """Lista todos los pedidos de reposición guardados."""
+    from core.db_storage import db_load
+    data = db_load(_pedidos_path(alias)) or {'pedidos': []}
+    return jsonify({'ok': True, 'pedidos': data.get('pedidos', [])})
+
+
+@app.route('/api/full-pedidos/<alias>', methods=['POST'])
+def api_full_pedidos_create(alias):
+    """Crea un nuevo pedido de reposición."""
+    from core.db_storage import db_load, db_save as db_save_fn
+    import uuid
+    from datetime import datetime as _dt
+
+    body = request.get_json(silent=True) or {}
+    items = body.get('items', [])
+    if not items:
+        return jsonify({'ok': False, 'error': 'Sin items'}), 400
+
+    path = _pedidos_path(alias)
+    data = db_load(path) or {'pedidos': []}
+
+    pedido = {
+        'id':             str(uuid.uuid4())[:8],
+        'fecha_creacion': (_dt.utcnow() - __import__('datetime').timedelta(hours=3)).strftime('%Y-%m-%d'),
+        'estado':         'pendiente',
+        'notas':          body.get('notas', ''),
+        'items':          items,   # [{item_id, titulo, unidades, notas}]
+    }
+    data['pedidos'].insert(0, pedido)
+    db_save_fn(path, data)
+    return jsonify({'ok': True, 'pedido': pedido})
+
+
+@app.route('/api/full-pedido/<alias>/<pedido_id>', methods=['PUT'])
+def api_full_pedido_update(alias, pedido_id):
+    """Actualiza estado o notas de un pedido."""
+    from core.db_storage import db_load, db_save as db_save_fn
+
+    body  = request.get_json(silent=True) or {}
+    path  = _pedidos_path(alias)
+    data  = db_load(path) or {'pedidos': []}
+    found = False
+    for p in data['pedidos']:
+        if p['id'] == pedido_id:
+            if 'estado' in body:
+                p['estado'] = body['estado']
+            if 'notas' in body:
+                p['notas'] = body['notas']
+            if 'items' in body:
+                p['items'] = body['items']
+            found = True
+            break
+    if not found:
+        return jsonify({'ok': False, 'error': 'Pedido no encontrado'}), 404
+    db_save_fn(path, data)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/full-pedido/<alias>/<pedido_id>', methods=['DELETE'])
+def api_full_pedido_delete(alias, pedido_id):
+    """Elimina un pedido."""
+    from core.db_storage import db_load, db_save as db_save_fn
+
+    path = _pedidos_path(alias)
+    data = db_load(path) or {'pedidos': []}
+    data['pedidos'] = [p for p in data['pedidos'] if p['id'] != pedido_id]
+    db_save_fn(path, data)
+    return jsonify({'ok': True})
+
+
 _app_scheduler = None
 
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs

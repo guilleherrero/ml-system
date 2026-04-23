@@ -17,6 +17,18 @@
 .dias-warn { color:#d97706; font-weight:600; }
 .dias-red  { color:#dc2626; font-weight:600; }
 .section-title { font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; padding:.5rem 1rem; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
+.pedido-card { border:1px solid #e2e8f0; border-radius:10px; padding:1rem; margin-bottom:.75rem; }
+.pedido-card.pendiente   { border-left:4px solid #94a3b8; }
+.pedido-card.en_transito { border-left:4px solid #f59e0b; }
+.pedido-card.en_deposito { border-left:4px solid #6366f1; }
+.pedido-card.enviado_full{ border-left:4px solid #3b82f6; }
+.pedido-card.ingresado   { border-left:4px solid #10b981; }
+.estado-pill { font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; }
+.ep-pendiente   { background:#f1f5f9; color:#64748b; }
+.ep-en_transito { background:#fef3c7; color:#d97706; }
+.ep-en_deposito { background:#ede9fe; color:#7c3aed; }
+.ep-enviado_full{ background:#dbeafe; color:#1d4ed8; }
+.ep-ingresado   { background:#dcfce7; color:#16a34a; }
 </style>
 
 <div class="page-header">
@@ -24,7 +36,10 @@
     <h1><i class="bi bi-box-seam-fill me-2 text-primary"></i>Mercado Envíos Full</h1>
     <div class="sub" id="full-sub">{{ alias }} — cargando datos…</div>
   </div>
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-sm btn-primary" id="btn-nuevo-pedido" onclick="abrirNuevoPedido()" disabled>
+      <i class="bi bi-plus-circle me-1"></i>Nuevo pedido de reposición
+    </button>
     <button class="btn btn-sm btn-outline-secondary" onclick="abrirConfig()">
       <i class="bi bi-gear me-1"></i>Configurar
     </button>
@@ -32,6 +47,16 @@
       <i class="bi bi-graph-up me-1"></i>Stock general
     </a>
   </div>
+</div>
+
+<!-- ══ PEDIDOS EN CURSO ══════════════════════════════════════════════ -->
+<div id="pedidos-section" class="mb-4" style="display:none">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h6 class="mb-0" style="font-weight:700;color:#1e293b">
+      <i class="bi bi-truck me-2 text-primary"></i>Pedidos de reposición en curso
+    </h6>
+  </div>
+  <div id="pedidos-container"></div>
 </div>
 
 <!-- ══ SKELETON / LOADING ═══════════════════════════════════════════ -->
@@ -121,6 +146,67 @@
 
 </div><!-- #full-content -->
 
+<!-- ══ MODAL NUEVO PEDIDO ═════════════════════════════════════════════ -->
+<div class="modal fade" id="modalNuevoPedido" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2 text-primary"></i>Nuevo pedido de reposición</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">Seleccioná los productos a reponer y ajustá las cantidades. Las cantidades sugeridas se calculan para cubrir el tránsito + 14 días de buffer.</p>
+        <div class="table-responsive">
+          <table class="table table-sm" style="font-size:.84rem">
+            <thead style="background:#f8fafc;font-size:.73rem;font-weight:700;text-transform:uppercase;color:#64748b">
+              <tr>
+                <th style="width:36px"><input type="checkbox" id="check-all" onchange="toggleCheckAll(this)"></th>
+                <th>Producto</th>
+                <th class="text-center" style="width:80px">Stock Full</th>
+                <th class="text-center" style="width:80px">Días stock</th>
+                <th class="text-center" style="width:90px">Vel/día</th>
+                <th class="text-center" style="width:110px">Cant. sugerida</th>
+                <th class="text-center" style="width:130px">Cant. a pedir</th>
+                <th style="width:180px">Notas</th>
+              </tr>
+            </thead>
+            <tbody id="pedido-items-tbody"></tbody>
+          </table>
+        </div>
+        <div class="mt-3">
+          <label class="form-label fw-semibold" style="font-size:.84rem">Notas del pedido (opcional)</label>
+          <input type="text" class="form-control form-control-sm" id="pedido-notas-global" placeholder="Ej: Proveedor X, lote 23">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="crearPedido()">
+          <i class="bi bi-check2 me-1"></i>Crear pedido
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL DETALLE PEDIDO ═══════════════════════════════════════════ -->
+<div class="modal fade" id="modalDetallePedido" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="detalle-titulo">Pedido</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detalle-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-danger btn-sm me-auto" onclick="eliminarPedidoActual()">
+          <i class="bi bi-trash me-1"></i>Eliminar
+        </button>
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL CONFIGURACIÓN ════════════════════════════════════════════ -->
 <div class="modal fade" id="modalConfig" tabindex="-1">
   <div class="modal-dialog modal-lg">
@@ -163,9 +249,18 @@
 {% block scripts %}
 <script>
 const ALIAS = {{ alias | tojson }};
-let _fullItems = [];
-let _fullCfg   = {};
-let _repCfg    = {};
+let _fullItems  = [];
+let _fullCfg    = {};
+let _repCfg     = {};
+let _pedidoActualId = null;
+
+const ESTADOS = {
+  pendiente:    { label: 'Pendiente',       cls: 'ep-pendiente',   icon: 'bi-clock',          next: 'en_transito' },
+  en_transito:  { label: 'En tránsito',     cls: 'ep-en_transito', icon: 'bi-truck',           next: 'en_deposito' },
+  en_deposito:  { label: 'En depósito',     cls: 'ep-en_deposito', icon: 'bi-building',        next: 'enviado_full' },
+  enviado_full: { label: 'Enviado a Full',  cls: 'ep-enviado_full',icon: 'bi-box-arrow-in-right', next: 'ingresado' },
+  ingresado:    { label: 'Ingresado ✓',     cls: 'ep-ingresado',   icon: 'bi-check-circle',    next: null },
+};
 
 // ── Carga principal ───────────────────────────────────────────────────────────
 fetch(`/api/full-data/${encodeURIComponent(ALIAS)}`)
@@ -181,11 +276,13 @@ fetch(`/api/full-data/${encodeURIComponent(ALIAS)}`)
     document.getElementById('full-sub').textContent =
       `${ALIAS} — ${_fullItems.length} publicaciones Full`;
     document.getElementById('full-content').style.display = '';
+    document.getElementById('btn-nuevo-pedido').disabled = false;
     renderCards(d.resumen);
     renderFiltros(d.resumen);
     renderTabla(_fullItems);
     renderRetirar(_fullItems.filter(i => i.alerta === 'STOCK_MUERTO'));
     renderEscalar(_fullItems.filter(i => i.alerta === 'ESCALAR'));
+    cargarPedidos();
   })
   .catch(() => {
     document.getElementById('full-loading').textContent = 'Error al cargar datos.';
@@ -327,6 +424,167 @@ function renderEscalar(items) {
       <td class="text-end" style="padding:.65rem .7rem;color:#16a34a;font-weight:600">${it.margen_pct !== null ? it.margen_pct + '%' : '—'}</td>
       <td style="padding:.65rem .7rem;font-size:.8rem;color:#374151">Aumentá stock, activá ads, revisá precio.</td>
     </tr>`).join('');
+}
+
+// ── Pedidos ───────────────────────────────────────────────────────────────────
+function cargarPedidos() {
+  fetch(`/api/full-pedidos/${encodeURIComponent(ALIAS)}`)
+    .then(r => r.json())
+    .then(d => {
+      const pedidos = (d.pedidos || []).filter(p => p.estado !== 'ingresado'
+        || (new Date() - new Date(p.fecha_creacion)) < 7 * 86400000); // mostrar ingresados 7 días
+      const sec = document.getElementById('pedidos-section');
+      if (!pedidos.length) { sec.style.display = 'none'; return; }
+      sec.style.display = '';
+      document.getElementById('pedidos-container').innerHTML = pedidos.map(p => renderPedidoCard(p)).join('');
+    });
+}
+
+function renderPedidoCard(p) {
+  const e  = ESTADOS[p.estado] || ESTADOS.pendiente;
+  const total = (p.items || []).reduce((s, i) => s + (i.unidades || 0), 0);
+  const nextLabel = e.next ? `Avanzar a "${ESTADOS[e.next]?.label}"` : null;
+  return `
+    <div class="pedido-card ${p.estado}" id="pedido-${p.id}">
+      <div class="d-flex align-items-start gap-3 flex-wrap">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="estado-pill ${e.cls}"><i class="bi ${e.icon} me-1"></i>${e.label}</span>
+            <span style="font-size:.75rem;color:#94a3b8">Pedido #${p.id} · ${p.fecha_creacion}</span>
+          </div>
+          <div style="font-size:.84rem;color:#1e293b;font-weight:600">${p.items.length} producto${p.items.length !== 1 ? 's' : ''} · ${total} unidades totales</div>
+          ${p.notas ? `<div style="font-size:.78rem;color:#64748b;margin-top:.2rem"><i class="bi bi-chat-text me-1"></i>${p.notas}</div>` : ''}
+          <div style="font-size:.76rem;color:#94a3b8;margin-top:.4rem">
+            ${p.items.slice(0, 3).map(i => `${i.titulo.substring(0,40)}… (${i.unidades}u)`).join(' · ')}
+            ${p.items.length > 3 ? ` + ${p.items.length - 3} más` : ''}
+          </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          ${nextLabel ? `<button class="btn btn-sm btn-primary" style="font-size:.75rem" onclick="avanzarEstado('${p.id}','${e.next}')"><i class="bi bi-arrow-right me-1"></i>${nextLabel}</button>` : ''}
+          <button class="btn btn-sm btn-outline-secondary" style="font-size:.75rem" onclick="verDetalle('${p.id}')"><i class="bi bi-list-ul me-1"></i>Ver detalle</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function avanzarEstado(pedidoId, nuevoEstado) {
+  fetch(`/api/full-pedido/${encodeURIComponent(ALIAS)}/${pedidoId}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ estado: nuevoEstado }),
+  }).then(() => cargarPedidos());
+}
+
+function verDetalle(pedidoId) {
+  fetch(`/api/full-pedidos/${encodeURIComponent(ALIAS)}`)
+    .then(r => r.json())
+    .then(d => {
+      const p = (d.pedidos || []).find(x => x.id === pedidoId);
+      if (!p) return;
+      _pedidoActualId = pedidoId;
+      const e = ESTADOS[p.estado] || ESTADOS.pendiente;
+      document.getElementById('detalle-titulo').innerHTML =
+        `<i class="bi bi-truck me-2"></i>Pedido #${p.id} — <span class="estado-pill ${e.cls}">${e.label}</span>`;
+      document.getElementById('detalle-body').innerHTML = `
+        <div class="mb-3 text-muted small">Creado: ${p.fecha_creacion}${p.notas ? ' · ' + p.notas : ''}</div>
+        <table class="table table-sm" style="font-size:.84rem">
+          <thead style="background:#f8fafc;font-size:.73rem;font-weight:700;text-transform:uppercase;color:#64748b">
+            <tr><th>Producto</th><th class="text-center">Unidades</th><th>Notas</th></tr>
+          </thead>
+          <tbody>
+            ${p.items.map(i => `
+              <tr>
+                <td style="font-weight:600">${i.titulo}</td>
+                <td class="text-center" style="font-weight:700;color:#2563eb">${i.unidades}</td>
+                <td style="color:#64748b;font-size:.78rem">${i.notas || '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="mt-3 d-flex gap-2 flex-wrap">
+          ${Object.entries(ESTADOS).map(([k, v]) =>
+            `<button class="btn btn-sm ${p.estado === k ? 'btn-primary' : 'btn-outline-secondary'}" style="font-size:.75rem" onclick="cambiarEstado('${p.id}','${k}')">
+              <i class="bi ${v.icon} me-1"></i>${v.label}
+            </button>`
+          ).join('')}
+        </div>`;
+      new bootstrap.Modal(document.getElementById('modalDetallePedido')).show();
+    });
+}
+
+function cambiarEstado(pedidoId, estado) {
+  fetch(`/api/full-pedido/${encodeURIComponent(ALIAS)}/${pedidoId}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ estado }),
+  }).then(() => {
+    bootstrap.Modal.getInstance(document.getElementById('modalDetallePedido')).hide();
+    cargarPedidos();
+  });
+}
+
+function eliminarPedidoActual() {
+  if (!_pedidoActualId || !confirm('¿Eliminar este pedido?')) return;
+  fetch(`/api/full-pedido/${encodeURIComponent(ALIAS)}/${_pedidoActualId}`, { method: 'DELETE' })
+    .then(() => {
+      bootstrap.Modal.getInstance(document.getElementById('modalDetallePedido')).hide();
+      cargarPedidos();
+    });
+}
+
+function abrirNuevoPedido() {
+  const sugeridos = _fullItems.filter(i => ['SIN_STOCK', 'REPONER_URGENTE', 'OK', 'ESCALAR'].includes(i.alerta) && i.unidades_pedir > 0);
+  const todos     = _fullItems.filter(i => !sugeridos.find(s => s.id === i.id));
+  const ordenados = [...sugeridos, ...todos];
+
+  document.getElementById('pedido-notas-global').value = '';
+  document.getElementById('pedido-items-tbody').innerHTML = ordenados.map(it => `
+    <tr>
+      <td><input type="checkbox" class="pedido-check" data-id="${it.id}" ${sugeridos.find(s => s.id === it.id) ? 'checked' : ''}></td>
+      <td style="font-size:.82rem;font-weight:600">${it.titulo}<div style="font-size:.68rem;color:#94a3b8">${it.id}</div></td>
+      <td class="text-center">${it.stock}</td>
+      <td class="text-center" style="${it.dias_stock !== null && it.dias_stock <= it.lead_days ? 'color:#dc2626;font-weight:600' : ''}">${it.dias_stock !== null ? Math.round(it.dias_stock) + 'd' : '—'}</td>
+      <td class="text-center">${it.vel_30 > 0 ? it.vel_30.toFixed(1) : '—'}</td>
+      <td class="text-center" style="color:#94a3b8;font-size:.8rem">${it.unidades_pedir > 0 ? it.unidades_pedir : '—'}</td>
+      <td class="text-center"><input type="number" class="form-control form-control-sm text-center pedido-cant" data-id="${it.id}" value="${it.unidades_pedir > 0 ? it.unidades_pedir : ''}" min="1" style="width:80px;margin:auto"></td>
+      <td><input type="text" class="form-control form-control-sm pedido-nota" data-id="${it.id}" placeholder="opcional" style="font-size:.78rem"></td>
+    </tr>`).join('');
+
+  new bootstrap.Modal(document.getElementById('modalNuevoPedido')).show();
+}
+
+function toggleCheckAll(el) {
+  document.querySelectorAll('.pedido-check').forEach(c => c.checked = el.checked);
+}
+
+function crearPedido() {
+  const items = [];
+  document.querySelectorAll('.pedido-check:checked').forEach(chk => {
+    const id  = chk.dataset.id;
+    const row = chk.closest('tr');
+    const cant = parseInt(row.querySelector('.pedido-cant').value);
+    const nota = row.querySelector('.pedido-nota').value.trim();
+    const it   = _fullItems.find(x => x.id === id);
+    if (!it || !cant || cant <= 0) return;
+    items.push({ item_id: id, titulo: it.titulo, unidades: cant, notas: nota });
+  });
+
+  if (!items.length) { alert('Seleccioná al menos un producto con cantidad.'); return; }
+
+  const notas = document.getElementById('pedido-notas-global').value.trim();
+  fetch(`/api/full-pedidos/${encodeURIComponent(ALIAS)}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ items, notas }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('modalNuevoPedido')).hide();
+      cargarPedidos();
+    } else {
+      alert('Error: ' + (d.error || ''));
+    }
+  });
 }
 
 // ── Configuración modal ───────────────────────────────────────────────────────
