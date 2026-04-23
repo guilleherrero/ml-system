@@ -79,11 +79,14 @@
       <thead style="background:#f8fafc;font-size:.73rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">
         <tr>
           <th style="padding:.7rem 1rem">Publicación</th>
+          <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Precio</th>
           <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Stock Full</th>
           <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Depósito</th>
+          <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">En tránsito</th>
           <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Vel/día</th>
+          <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Revenue 30d</th>
           <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Días stock</th>
-          <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Lead</th>
+          <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Sin ventas</th>
           <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Margen</th>
           <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">A pedir</th>
           <th class="text-center" style="padding:.7rem .7rem">Estado</th>
@@ -175,6 +178,7 @@
 </div>
 
 </div><!-- #full-content -->
+
 
 <!-- ══ MODAL NUEVO PEDIDO ═════════════════════════════════════════════ -->
 <div class="modal fade" id="modalNuevoPedido" tabindex="-1">
@@ -323,6 +327,9 @@ fetch(`/api/full-data/${encodeURIComponent(ALIAS)}`)
 function renderCards(r) {
   const costoStr = r.costo_muerto > 0
     ? `<div style="font-size:.68rem;color:#94a3b8">~$${Math.round(r.costo_muerto).toLocaleString('es-AR')} almac.</div>` : '';
+  const fmt = v => v != null ? '$' + Math.round(v).toLocaleString('es-AR') : '—';
+  const costoStr = r.costo_muerto > 0
+    ? `<div style="font-size:.65rem;color:#94a3b8">~${fmt(r.costo_muerto)} almac.</div>` : '';
   document.getElementById('cards-resumen').innerHTML = `
     <div class="col-6 col-md-2">
       <div class="card text-center p-3" style="border-top:3px solid #6366f1">
@@ -350,15 +357,17 @@ function renderCards(r) {
       </div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card text-center p-3" style="border-top:3px solid #10b981">
-        <div style="font-size:2rem;font-weight:800;color:#059669">${r.escalar}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600">ESCALAR</div>
+      <div class="card text-center p-3" style="border-top:3px solid #2563eb">
+        <div style="font-size:1.1rem;font-weight:800;color:#1d4ed8;line-height:1.2">${fmt(r.valor_venta_total)}</div>
+        <div style="font-size:.72rem;color:#64748b;font-weight:600;margin-top:.15rem">VALOR STOCK</div>
+        <div style="font-size:.65rem;color:#94a3b8">${r.valor_costo_total > 0 ? 'costo: ' + fmt(r.valor_costo_total) : 'precio de venta'}</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card text-center p-3" style="border-top:3px solid #94a3b8">
-        <div style="font-size:2rem;font-weight:800;color:#64748b">${r.ok}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600">OK</div>
+      <div class="card text-center p-3" style="border-top:3px solid #10b981">
+        <div style="font-size:1.1rem;font-weight:800;color:#059669;line-height:1.2">${fmt(r.revenue_30d_total)}</div>
+        <div style="font-size:.72rem;color:#64748b;font-weight:600;margin-top:.15rem">REVENUE 30D</div>
+        <div style="font-size:.65rem;color:#94a3b8">facturación estimada</div>
       </div>
     </div>`;
 }
@@ -401,20 +410,27 @@ function diasClass(dias, lead) {
 function renderTabla(items) {
   const tbody = document.getElementById('full-tbody');
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No se encontraron publicaciones con Full activo.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted py-4">No se encontraron publicaciones con Full activo.</td></tr>';
     return;
   }
+  const fmtPeso = v => v != null ? '$' + Math.round(v).toLocaleString('es-AR') : '—';
   tbody.innerHTML = items.map(it => `
     <tr class="full-row" data-alerta="${it.alerta}">
-      <td style="padding:.7rem 1rem;max-width:280px">
+      <td style="padding:.7rem 1rem;max-width:260px">
         <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
         <div style="font-size:.68rem;color:#94a3b8">${it.id}</div>
       </td>
-      <td class="text-end" style="padding:.7rem .7rem;font-weight:600">${it.stock}</td>
+      <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">
+        <span style="font-weight:600">${fmtPeso(it.precio)}</span>
+        ${it.valor_venta ? `<div style="font-size:.65rem;color:#94a3b8">stock: ${fmtPeso(it.valor_venta)}</div>` : ''}
+      </td>
+      <td class="text-end" style="padding:.7rem .7rem;font-weight:700;color:#6366f1">${it.stock}</td>
       <td class="text-end" style="padding:.7rem .7rem;color:#64748b">${it.deposito > 0 ? it.deposito : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem">${it.en_transito > 0 ? `<span style="color:#f59e0b;font-weight:600">${it.en_transito}</span><div style="font-size:.65rem;color:#94a3b8">en camino</div>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.vel_30 > 0 ? it.vel_30.toFixed(1) : '<span class="text-muted">0</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">${it.revenue_30d > 0 ? `<span style="font-weight:600;color:#059669">${fmtPeso(it.revenue_30d)}</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${diasClass(it.dias_stock, it.lead_days)}</td>
-      <td class="text-end" style="padding:.7rem .7rem;color:#64748b;font-size:.8rem">${it.lead_days}d</td>
+      <td class="text-end" style="padding:.7rem .7rem;font-size:.82rem">${it.sin_ventas_dias != null ? `<span style="color:${it.sin_ventas_dias>=21?'#dc2626':it.sin_ventas_dias>=10?'#d97706':'#64748b'}">${it.sin_ventas_dias}d</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.margen_pct !== null ? `<span style="color:${it.margen_pct>=15?'#16a34a':it.margen_pct>=0?'#d97706':'#dc2626'};font-weight:600">${it.margen_pct}%</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.unidades_pedir > 0 ? `<span style="font-weight:600;color:#2563eb">${it.unidades_pedir} u.</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-center" style="padding:.7rem .7rem">${BADGE[it.alerta] || it.alerta}</td>

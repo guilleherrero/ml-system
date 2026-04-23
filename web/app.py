@@ -10238,6 +10238,59 @@ def full_page(alias):
     return render_template('full.html', alias=alias, accounts=get_accounts())
 
 
+@app.route('/api/full-stock-check/<alias>/<item_id>')
+def api_full_stock_check(alias, item_id):
+    """Consulta directa al API de ML para verificar el stock real de una publicación Full."""
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    try:
+        r = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id}',
+            headers=heads,
+            params={'attributes': 'id,title,status,available_quantity,sold_quantity,'
+                                  'shipping,health,sub_status,warnings'},
+            timeout=10)
+        if not r.ok:
+            return jsonify({'ok': False, 'error': f'ML API: {r.status_code}'}), r.status_code
+
+        body     = r.json()
+        shipping = body.get('shipping') or {}
+        health   = body.get('health') or {}
+        sub_status = body.get('sub_status') or []
+        warnings   = body.get('warnings')   or []
+
+        # Intentar obtener detalle de stock Full si está disponible
+        full_stock_detail = None
+        try:
+            rf = req_lib.get(
+                f'https://api.mercadolibre.com/items/{item_id}/fulfillment_stocks',
+                headers=heads, timeout=8)
+            if rf.ok:
+                full_stock_detail = rf.json()
+        except Exception:
+            pass
+
+        return jsonify({
+            'ok':               True,
+            'id':               body.get('id'),
+            'titulo':           body.get('title', '')[:80],
+            'status':           body.get('status'),
+            'sub_status':       sub_status,
+            'available_quantity': body.get('available_quantity'),
+            'sold_quantity':    body.get('sold_quantity'),
+            'logistic_type':    shipping.get('logistic_type'),
+            'free_shipping':    shipping.get('free_shipping'),
+            'health':           health,
+            'warnings':         warnings,
+            'full_stock_detail': full_stock_detail,
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @app.route('/api/full-data/<alias>')
 def api_full_data(alias):
     """Análisis completo de publicaciones Full: stock, velocidad, alertas, reposición."""
@@ -10259,6 +10312,16 @@ def api_full_data(alias):
     # Stock snapshot guardado (velocidad pre-calculada)
     stock_snap = db_load(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_map  = {s.get('id', ''): s for s in stock_snap.get('items', [])}
+
+    # Unidades en tránsito a Full (pedidos con estado = enviado_full)
+    pedidos_data = db_load(_pedidos_path(alias)) or {'pedidos': []}
+    en_transito_map = {}
+    for p in pedidos_data.get('pedidos', []):
+        if p.get('estado') == 'enviado_full':
+            for it in p.get('items', []):
+                iid = it.get('item_id', '')
+                if iid:
+                    en_transito_map[iid] = en_transito_map.get(iid, 0) + int(it.get('unidades', 0))
 
     # 1 — Todos los IDs activos
     all_ids, offset = [], 0
@@ -10358,10 +10421,11 @@ def api_full_data(alias):
         item_rep  = rep_cfg.get('items', {}).get(iid, {})
         lead_days = item_full.get('lead_days',    full_cfg.get('global_lead_days', 18))
         transit   = item_rep.get('transit_days',  rep_cfg.get('transit_days_global', 25))
-        deposito  = item_rep.get('deposito_stock', 0)
-        stock_total = item['stock'] + deposito
+        deposito    = item_rep.get('deposito_stock', 0)
+        en_transito = en_transito_map.get(iid, 0)
+        stock_total = item['stock'] + deposito + en_transito
 
-        # Días de stock
+        # Días de stock (incluye en tránsito a Full)
         dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None
 
         # Margen (Full siempre free shipping, commission 16.5% gold_pro / 13% gold_special)
@@ -10371,19 +10435,26 @@ def api_full_data(alias):
         costo    = costo_d.get('costo') if costo_d else None
         margen_pct = round((neto - costo) / item['precio'] * 100, 1) if costo else None
 
-        # Unidades a pedir (fórmula: (tránsito + 14d buffer) * vel * 1.3 safety)
+        # Unidades a pedir (descuenta en tránsito — ya están en camino)
         unidades_pedir = 0
         if vel_30 > 0:
             unidades_pedir = max(0, round((transit + 14) * vel_30 * 1.3 - stock_total))
+
+        # Revenue 30 días estimado
+        revenue_30d = round(vel_30 * item['precio'] * 30) if vel_30 > 0 else 0
+
+        # Valor de inventario
+        valor_venta = round(item['precio'] * item['stock'])
+        valor_costo = round(costo * item['stock']) if costo else None
 
         # Costo almacenamiento acumulado (~$12/u/día)
         costo_almac = None
         if sin_ventas_dias and item['stock'] > 0:
             costo_almac = round(item['stock'] * sin_ventas_dias * 12.0)
 
-        # Clasificación
+        # Clasificación (en tránsito cuenta para evitar falsas alertas)
         alerta = 'OK'
-        if item['stock'] == 0:
+        if item['stock'] == 0 and en_transito == 0:
             alerta = 'SIN_STOCK'
         elif dias_stock is not None and dias_stock <= lead_days:
             alerta = 'REPONER_URGENTE'
@@ -10398,6 +10469,7 @@ def api_full_data(alias):
             'precio':          item['precio'],
             'stock':           item['stock'],
             'deposito':        deposito,
+            'en_transito':     en_transito,
             'stock_total':     stock_total,
             'vel_30':          vel_30,
             'dias_stock':      dias_stock,
@@ -10406,6 +10478,9 @@ def api_full_data(alias):
             'margen_pct':      margen_pct,
             'sin_ventas_dias': sin_ventas_dias,
             'unidades_pedir':  unidades_pedir,
+            'revenue_30d':     revenue_30d,
+            'valor_venta':     valor_venta,
+            'valor_costo':     valor_costo,
             'costo_almac':     costo_almac,
             'alerta':          alerta,
             'permalink':       item['permalink'],
@@ -10416,13 +10491,16 @@ def api_full_data(alias):
 
     costo_muerto = sum(r.get('costo_almac') or 0 for r in results if r['alerta'] == 'STOCK_MUERTO')
     resumen = {
-        'total':       len(results),
-        'sin_stock':   sum(1 for r in results if r['alerta'] == 'SIN_STOCK'),
-        'urgente':     sum(1 for r in results if r['alerta'] == 'REPONER_URGENTE'),
-        'muerto':      sum(1 for r in results if r['alerta'] == 'STOCK_MUERTO'),
-        'escalar':     sum(1 for r in results if r['alerta'] == 'ESCALAR'),
-        'ok':          sum(1 for r in results if r['alerta'] == 'OK'),
-        'costo_muerto': costo_muerto,
+        'total':            len(results),
+        'sin_stock':        sum(1 for r in results if r['alerta'] == 'SIN_STOCK'),
+        'urgente':          sum(1 for r in results if r['alerta'] == 'REPONER_URGENTE'),
+        'muerto':           sum(1 for r in results if r['alerta'] == 'STOCK_MUERTO'),
+        'escalar':          sum(1 for r in results if r['alerta'] == 'ESCALAR'),
+        'ok':               sum(1 for r in results if r['alerta'] == 'OK'),
+        'costo_muerto':     costo_muerto,
+        'valor_venta_total': sum(r.get('valor_venta') or 0 for r in results),
+        'valor_costo_total': sum(r.get('valor_costo') or 0 for r in results if r.get('valor_costo') is not None),
+        'revenue_30d_total': sum(r.get('revenue_30d') or 0 for r in results),
     }
 
     # 4 — Sugeridos para Full: items NO en Full con buena velocidad de ventas
@@ -10559,19 +10637,37 @@ def api_full_pedido_update(alias, pedido_id):
     path  = _pedidos_path(alias)
     data  = db_load(path) or {'pedidos': []}
     found = False
+    pedido_items = []
     for p in data['pedidos']:
         if p['id'] == pedido_id:
-            if 'estado' in body:
-                p['estado'] = body['estado']
+            nuevo_estado = body.get('estado')
+            if nuevo_estado:
+                p['estado'] = nuevo_estado
             if 'notas' in body:
                 p['notas'] = body['notas']
             if 'items' in body:
                 p['items'] = body['items']
+            pedido_items = p.get('items', [])
             found = True
             break
     if not found:
         return jsonify({'ok': False, 'error': 'Pedido no encontrado'}), 404
     db_save_fn(path, data)
+
+    # Al marcar como "Enviado a Full" descontar del depósito propio
+    if body.get('estado') == 'enviado_full' and pedido_items:
+        rep_path = os.path.join(CONFIG_DIR, 'reposicion.json')
+        rep_cfg  = db_load(rep_path) or {}
+        rep_cfg.setdefault('items', {})
+        for it in pedido_items:
+            iid   = it.get('item_id', '')
+            units = int(it.get('unidades', 0))
+            if iid and units > 0:
+                actual = int((rep_cfg['items'].get(iid) or {}).get('deposito_stock', 0))
+                nuevo  = max(0, actual - units)
+                rep_cfg['items'].setdefault(iid, {})['deposito_stock'] = nuevo
+        db_save_fn(rep_path, rep_cfg)
+
     return jsonify({'ok': True})
 
 
@@ -10826,6 +10922,7 @@ _app_scheduler = None
 _app_scheduler = _start_scheduler()
 
 if __name__ == '__main__':
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
     print('\n  Sistema ML — Interfaz web')
     print('  Abrí en tu navegador: http://localhost:8080\n')
     app.run(debug=False, host='0.0.0.0', port=8080)
