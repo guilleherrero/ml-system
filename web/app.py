@@ -3017,6 +3017,8 @@ def api_funnel(alias):
     stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_map  = {s.get('id',''): s for s in stock_data.get('items', [])}
 
+    # sold_quantity_map: para la vista "Total histórico" (gratis, viene del batch)
+    sold_quantity_map = {}
     for b in range(0, min(len(all_ids), 100), 20):
         batch = all_ids[b:b+20]
         try:
@@ -3030,11 +3032,14 @@ def api_funnel(alias):
                         bd = e.get('body', {})
                         iid = bd.get('id', '')
                         st  = stock_map.get(iid, {})
+                        precio_actual = float(bd.get('price', 0) or 0)
+                        sq = int(bd.get('sold_quantity', 0) or 0)
+                        sold_quantity_map[iid] = {'sold_quantity': sq, 'precio_actual': precio_actual}
                         items_map[iid] = {
                             'item_id':   iid,
                             'titulo':    bd.get('title', '')[:70],
-                            'precio':    float(bd.get('price', 0) or 0),
-                            'vendidos_total': int(bd.get('sold_quantity', 0) or 0),
+                            'precio':    precio_actual,
+                            'vendidos_total': sq,
                             'ventas_30d': int(st.get('ventas_30d') or round((st.get('velocidad') or 0) * 30)),
                             'visitas_30d': st.get('visitas_30d'),
                             'preguntas_30d': None,
@@ -3269,14 +3274,18 @@ def api_ventas_producto(alias):
             else:
                 margen_pct = None
 
-            item['precio_promedio'] = round(precio, 2)
-            item['fee_rate']        = fee_rate
-            item['neto_unitario']   = round(neto, 2)
-            item['costo']           = costo
-            item['margen_pct']      = round(margen_pct, 1) if margen_pct is not None else None
-            item['ingresos_7d']     = round(map_7.get(iid, {}).get('ingresos', 0), 2)
-            item['unidades_7d']     = map_7.get(iid, {}).get('unidades', 0)
-            item['pct_del_total']   = 0  # se calcula abajo
+            sq_data = sold_quantity_map.get(iid, {})
+            item['precio_promedio']  = round(precio, 2)
+            item['precio_actual']    = sq_data.get('precio_actual', round(precio, 2))
+            item['fee_rate']         = fee_rate
+            item['neto_unitario']    = round(neto, 2)
+            item['costo']            = costo
+            item['margen_pct']       = round(margen_pct, 1) if margen_pct is not None else None
+            item['ingresos_7d']      = round(map_7.get(iid, {}).get('ingresos', 0), 2)
+            item['unidades_7d']      = map_7.get(iid, {}).get('unidades', 0)
+            item['sold_quantity']    = sq_data.get('sold_quantity', 0)
+            item['ingresos_total']   = round(sq_data.get('sold_quantity', 0) * sq_data.get('precio_actual', precio), 2)
+            item['pct_del_total']    = 0  # se calcula abajo
 
         # Ordenar por ingresos 30d desc
         items_30.sort(key=lambda x: x['ingresos'], reverse=True)

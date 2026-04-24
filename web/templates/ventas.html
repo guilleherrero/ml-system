@@ -24,6 +24,10 @@
 .prod-nums { display:flex; flex-direction:column; align-items:flex-end; gap:.2rem; flex-shrink:0; text-align:right; }
 .ing-val { font-size:1.05rem; font-weight:800; color:#1d4ed8; }
 .ing-lbl { font-size:.65rem; color:#94a3b8; }
+.period-pill { border:1px solid #e5e7eb; border-radius:20px; padding:.28rem .85rem; font-size:.78rem; cursor:pointer; color:#374151; background:#fff; transition:all .15s; font-weight:500; }
+.period-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
+.period-pill.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:700; }
+.badge-total { background:#fef3c7; color:#92400e; font-size:.65rem; font-weight:700; padding:1px 6px; border-radius:10px; }
 .skel { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:shimmer 1.3s infinite; border-radius:6px; }
 @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 </style>
@@ -31,11 +35,21 @@
 <div class="page-header">
   <div>
     <h1><i class="bi bi-bar-chart-line me-2 text-primary"></i>Ventas por producto</h1>
-    <div class="sub">{{ alias }} — últimos 30 días</div>
+    <div class="sub" id="page-sub">{{ alias }}</div>
   </div>
-  <a href="/stock/{{ alias }}" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-box-seam me-1"></i>Stock y rentabilidad
-  </a>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <!-- Selector de período -->
+    <div class="d-flex gap-1" id="period-selector">
+      <button class="period-pill" onclick="setPeriod('7d',this)">7 días</button>
+      <button class="period-pill active" onclick="setPeriod('30d',this)">30 días</button>
+      <button class="period-pill" onclick="setPeriod('total',this)">
+        Total <i class="bi bi-infinity ms-1" style="font-size:.7rem"></i>
+      </button>
+    </div>
+    <a href="/stock/{{ alias }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-box-seam me-1"></i>Stock y rentabilidad
+    </a>
+  </div>
 </div>
 
 <!-- ══ RESUMEN ══════════════════════════════════════════════════ -->
@@ -45,7 +59,7 @@
       <div class="summary-val text-primary" id="sum-ingresos">
         <span class="skel d-inline-block" style="width:90px;height:30px">&nbsp;</span>
       </div>
-      <div class="summary-lbl">Ingresos 30d</div>
+      <div class="summary-lbl" id="lbl-ingresos">Ingresos 30d</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
@@ -53,7 +67,7 @@
       <div class="summary-val" style="color:#7c3aed" id="sum-unidades">
         <span class="skel d-inline-block" style="width:60px;height:30px">&nbsp;</span>
       </div>
-      <div class="summary-lbl">Unidades vendidas</div>
+      <div class="summary-lbl" id="lbl-unidades">Unidades vendidas</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
@@ -61,7 +75,7 @@
       <div class="summary-val" style="color:#16a34a" id="sum-ordenes">
         <span class="skel d-inline-block" style="width:50px;height:30px">&nbsp;</span>
       </div>
-      <div class="summary-lbl">Órdenes</div>
+      <div class="summary-lbl" id="lbl-ordenes">Órdenes</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
@@ -95,6 +109,8 @@
 {% block scripts %}
 <script>
 const alias = {{ alias | tojson }};
+let _data = null;
+let _period = '30d';
 
 function fmt(n) {
   if (n >= 1000000) return '$' + (n/1000000).toFixed(1).replace('.',',') + 'M';
@@ -108,6 +124,146 @@ function margenHtml(pct) {
   return `<span class="${cls}" style="font-size:.78rem">${pct.toFixed(1)}% margen</span>`;
 }
 
+function setPeriod(period, btn) {
+  _period = period;
+  document.querySelectorAll('#period-selector .period-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (_data) renderData(_data);
+}
+
+function renderData(d) {
+  const items = d.items;
+
+  if (_period === '7d') {
+    // Filtrar solo los que vendieron en 7d, ordenar por ingresos_7d
+    const items7 = items
+      .filter(i => i.unidades_7d > 0)
+      .sort((a,b) => b.ingresos_7d - a.ingresos_7d);
+
+    const totalIng7 = items7.reduce((s,i) => s + i.ingresos_7d, 0);
+    const totalU7   = items7.reduce((s,i) => s + i.unidades_7d, 0);
+
+    document.getElementById('sum-ingresos').textContent = fmt(totalIng7);
+    document.getElementById('sum-unidades').textContent = totalU7.toLocaleString('es-AR');
+    document.getElementById('sum-ordenes').textContent  = '—';
+    document.getElementById('sum-productos').textContent = items7.length;
+    document.getElementById('lbl-ingresos').textContent = 'Ingresos 7d';
+    document.getElementById('lbl-unidades').textContent = 'Unidades 7d';
+    document.getElementById('lbl-ordenes').textContent  = 'Órdenes';
+    document.getElementById('page-sub').textContent = alias + ' — últimos 7 días';
+
+    if (!items7.length) {
+      document.getElementById('prod-list').innerHTML =
+        '<div class="alert alert-info">No hay ventas en los últimos 7 días.</div>';
+      return;
+    }
+    const maxIng = items7[0].ingresos_7d;
+    document.getElementById('prod-list').innerHTML = items7.map((item, idx) => buildRow(item, idx+1, maxIng, '7d')).join('');
+
+  } else if (_period === '30d') {
+    document.getElementById('sum-ingresos').textContent  = fmt(d.total_ingresos);
+    document.getElementById('sum-unidades').textContent  = d.total_unidades.toLocaleString('es-AR');
+    document.getElementById('sum-ordenes').textContent   = d.total_ordenes.toLocaleString('es-AR');
+    document.getElementById('sum-productos').textContent = items.length;
+    document.getElementById('lbl-ingresos').textContent  = 'Ingresos 30d';
+    document.getElementById('lbl-unidades').textContent  = 'Unidades vendidas';
+    document.getElementById('lbl-ordenes').textContent   = 'Órdenes';
+    document.getElementById('page-sub').textContent = alias + ' — últimos 30 días';
+
+    if (!items.length) {
+      document.getElementById('prod-list').innerHTML =
+        '<div class="alert alert-info">No hay ventas registradas en los últimos 30 días.</div>';
+      return;
+    }
+    const maxIng = items[0].ingresos;
+    document.getElementById('prod-list').innerHTML = items.map((item, idx) => buildRow(item, idx+1, maxIng, '30d')).join('');
+
+  } else {
+    // Total histórico — ordenar por sold_quantity × precio_actual
+    const itemsT = [...items]
+      .filter(i => i.sold_quantity > 0)
+      .sort((a,b) => b.ingresos_total - a.ingresos_total);
+
+    const totalIngT = itemsT.reduce((s,i) => s + i.ingresos_total, 0);
+    const totalUT   = itemsT.reduce((s,i) => s + i.sold_quantity, 0);
+
+    document.getElementById('sum-ingresos').textContent  = fmt(totalIngT);
+    document.getElementById('sum-unidades').textContent  = totalUT.toLocaleString('es-AR');
+    document.getElementById('sum-ordenes').textContent   = '—';
+    document.getElementById('sum-productos').textContent = itemsT.length;
+    document.getElementById('lbl-ingresos').textContent  = 'Ingresos estimados';
+    document.getElementById('lbl-unidades').textContent  = 'Unidades vendidas';
+    document.getElementById('lbl-ordenes').textContent   = 'Histórico';
+    document.getElementById('page-sub').textContent = alias + ' — total histórico (precio actual × unidades vendidas)';
+
+    if (!itemsT.length) {
+      document.getElementById('prod-list').innerHTML =
+        '<div class="alert alert-info">No hay datos históricos disponibles.</div>';
+      return;
+    }
+    const maxIng = itemsT[0].ingresos_total;
+    document.getElementById('prod-list').innerHTML = itemsT.map((item, idx) => buildRow(item, idx+1, maxIng, 'total')).join('');
+  }
+}
+
+function buildRow(item, rank, maxIng, period) {
+  const rankCls = rank <= 3 ? `rank-${rank}` : '';
+  const mlUrl   = `https://articulo.mercadolibre.com.ar/-${item.item_id.replace('MLA','')}-_JM`;
+
+  let ing, unid, barW, metaExtra = '';
+
+  if (period === '7d') {
+    ing   = item.ingresos_7d;
+    unid  = item.unidades_7d;
+    barW  = maxIng > 0 ? Math.round(ing / maxIng * 100) : 0;
+    metaExtra = `<span class="pill-7d ms-1">esta semana</span>`;
+  } else if (period === '30d') {
+    ing   = item.ingresos;
+    unid  = item.unidades;
+    barW  = maxIng > 0 ? Math.round(ing / maxIng * 100) : 0;
+    metaExtra = item.unidades_7d > 0
+      ? `<span class="pill-7d ms-1">${item.unidades_7d}u esta semana</span>`
+      : '';
+  } else {
+    ing   = item.ingresos_total;
+    unid  = item.sold_quantity;
+    barW  = maxIng > 0 ? Math.round(ing / maxIng * 100) : 0;
+    metaExtra = `<span class="badge-total ms-1">precio actual: ${fmt(item.precio_actual)}</span>`;
+  }
+
+  const pctLabel = period !== 'total'
+    ? `${item.pct_del_total}% del total`
+    : `${unid.toLocaleString('es-AR')} unid totales`;
+
+  return `
+  <div class="prod-row">
+    <div class="rank-num ${rankCls}">${rank}</div>
+    <div class="prod-info">
+      <div class="prod-title" title="${item.titulo}">${item.titulo}</div>
+      <div class="prod-meta">
+        ${unid.toLocaleString('es-AR')} unid${period==='30d'?' · '+item.ordenes+' venta'+(item.ordenes!=1?'s':''):''}
+        · precio prom. ${fmt(item.precio_promedio)}
+        ${metaExtra}
+      </div>
+      <div class="ing-bar"><div class="ing-fill" style="width:${barW}%"></div></div>
+    </div>
+    <div class="prod-nums">
+      <div>
+        <div class="ing-val">${fmt(ing)}</div>
+        <div class="ing-lbl">${pctLabel}</div>
+      </div>
+      <div>${margenHtml(item.margen_pct)}</div>
+      <div>
+        <a href="${mlUrl}" target="_blank"
+           style="font-size:.68rem;color:#64748b;text-decoration:none"
+           onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#64748b'">
+          Ver pub →
+        </a>
+      </div>
+    </div>
+  </div>`;
+}
+
 fetch(`/api/ventas-producto/${encodeURIComponent(alias)}`)
   .then(r => r.json())
   .then(d => {
@@ -116,58 +272,8 @@ fetch(`/api/ventas-producto/${encodeURIComponent(alias)}`)
         `<div class="alert alert-warning">Error: ${d.error}</div>`;
       return;
     }
-
-    // Resumen
-    document.getElementById('sum-ingresos').textContent  = fmt(d.total_ingresos);
-    document.getElementById('sum-unidades').textContent  = d.total_unidades.toLocaleString('es-AR');
-    document.getElementById('sum-ordenes').textContent   = d.total_ordenes.toLocaleString('es-AR');
-    document.getElementById('sum-productos').textContent = d.items.length;
-
-    if (!d.items.length) {
-      document.getElementById('prod-list').innerHTML =
-        '<div class="alert alert-info">No hay ventas registradas en los últimos 30 días.</div>';
-      return;
-    }
-
-    const maxIng = d.items[0].ingresos;
-    let html = '';
-
-    d.items.forEach((item, idx) => {
-      const rank = idx + 1;
-      const rankCls = rank <= 3 ? `rank-${rank}` : '';
-      const barW = maxIng > 0 ? Math.round(item.ingresos / maxIng * 100) : 0;
-      const mlUrl = `https://articulo.mercadolibre.com.ar/-${item.item_id.replace('MLA','')}-_JM`;
-
-      html += `
-      <div class="prod-row">
-        <div class="rank-num ${rankCls}">${rank}</div>
-        <div class="prod-info">
-          <div class="prod-title" title="${item.titulo}">${item.titulo}</div>
-          <div class="prod-meta">
-            ${item.unidades} unid · ${item.ordenes} venta${item.ordenes!=1?'s':''} ·
-            precio prom. ${fmt(item.precio_promedio)}
-            ${item.unidades_7d > 0 ? `<span class="pill-7d ms-1">${item.unidades_7d}u esta semana</span>` : ''}
-          </div>
-          <div class="ing-bar"><div class="ing-fill" style="width:${barW}%"></div></div>
-        </div>
-        <div class="prod-nums">
-          <div>
-            <div class="ing-val">${fmt(item.ingresos)}</div>
-            <div class="ing-lbl">${item.pct_del_total}% del total</div>
-          </div>
-          <div>${margenHtml(item.margen_pct)}</div>
-          <div>
-            <a href="${mlUrl}" target="_blank"
-               style="font-size:.68rem;color:#64748b;text-decoration:none"
-               onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#64748b'">
-              Ver pub →
-            </a>
-          </div>
-        </div>
-      </div>`;
-    });
-
-    document.getElementById('prod-list').innerHTML = html;
+    _data = d;
+    renderData(d);
   })
   .catch(e => {
     document.getElementById('prod-list').innerHTML =
