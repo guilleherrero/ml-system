@@ -18,6 +18,11 @@ import requests as req_lib
 import anthropic
 from flask import Flask, render_template, redirect, url_for, jsonify, request, Response, stream_with_context, make_response
 
+# Limpiar el API key de caracteres invisibles (newline, espacios) que rompen httpcore
+_raw_key = os.environ.get('ANTHROPIC_API_KEY', '')
+if _raw_key != _raw_key.strip():
+    os.environ['ANTHROPIC_API_KEY'] = _raw_key.strip()
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from core.fees import get_fee_rates, get_rate

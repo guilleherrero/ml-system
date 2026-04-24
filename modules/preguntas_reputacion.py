@@ -18,6 +18,11 @@ from datetime import datetime
 import anthropic
 import requests
 from rich.console import Console
+
+# Limpiar el API key de caracteres invisibles (newline, espacios) que rompen httpcore
+_raw_key = os.environ.get('ANTHROPIC_API_KEY', '')
+if _raw_key != _raw_key.strip():
+    os.environ['ANTHROPIC_API_KEY'] = _raw_key.strip()
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
 from rich.table import Table

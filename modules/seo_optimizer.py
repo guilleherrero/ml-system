@@ -22,10 +22,16 @@ REGLAS:
 import re
 import time
 import unicodedata
+import os
 import requests
 import anthropic
 
 from core.ml_client import MLClient
+
+# Limpiar el API key de caracteres invisibles (newline, espacios) que rompen httpcore
+_raw_key = os.environ.get('ANTHROPIC_API_KEY', '')
+if _raw_key != _raw_key.strip():
+    os.environ['ANTHROPIC_API_KEY'] = _raw_key.strip()
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
