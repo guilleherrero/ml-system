@@ -9112,6 +9112,7 @@ def api_optimizar_pub_v2():
                 'score_oficial_ml':          (result.get('_ml_quality_oficial') or {}).get('score', 0),
                 'score_oficial_nivel':       (result.get('_ml_quality_oficial') or {}).get('level', ''),
                 'score_oficial_razones':     (result.get('_ml_quality_oficial') or {}).get('reasons', []),
+                'title_violations':          result.get('_title_violations', []),
                 'qa_insights':          result.get('_qa_insights', ''),
                 'resumen_mercado':      _sec(analysis, 'ANÁLISIS DE COMPETIDORES'),
                 'puntaje_calidad':      _sec(analysis, 'PUNTAJE DE CALIDAD ACTUAL'),

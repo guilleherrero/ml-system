@@ -1183,6 +1183,114 @@ def calculate_ml_score(item_data: dict, category_attrs: dict, top_keywords: list
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# AUDITOR DE TÍTULO — detecta violaciones actuales antes de optimizar
+# ══════════════════════════════════════════════════════════════════════════════
+
+_TITLE_PROHIBITED_WORDS = {
+    "envío gratis", "cuotas", "nuevo", "usado", "oferta", "promo", "oficial",
+    "garantía", "envio gratis", "descuento", "rebaja", "liquidación", "liquidacion",
+}
+_TITLE_INFRINGEMENT_TERMS = {"símil", "simil", "tipo", "igual a", "estilo"}
+_TITLE_SYMBOLS = set('@#*-!_+/|;:.,()[]{}=<>%$&"\'\\^~`')
+_TITLE_STOPWORDS_START = {"de", "para", "con", "el", "la", "los", "las", "un", "una",
+                           "y", "o", "a", "en", "por", "al", "del"}
+
+
+def audit_title(title: str) -> list:
+    """Audita el título actual contra las reglas de ML.
+    Devuelve lista de dicts con {nivel, regla, detalle, sugerencia}.
+    nivel: 'critico' | 'advertencia'
+    """
+    violations = []
+    t = title.strip()
+    t_lower = t.lower()
+    words = t_lower.split()
+
+    # 1. Longitud
+    if len(t) > 60:
+        violations.append({
+            "nivel":      "critico",
+            "regla":      "Título demasiado largo",
+            "detalle":    f"{len(t)} caracteres — ML trunca y penaliza todo lo que supere 60",
+            "sugerencia": f"Reducir {len(t) - 60} caracteres",
+        })
+
+    # 2. Símbolos prohibidos
+    found_symbols = sorted({c for c in t if c in _TITLE_SYMBOLS})
+    if found_symbols:
+        violations.append({
+            "nivel":      "critico",
+            "regla":      "Símbolos prohibidos por ML",
+            "detalle":    f"Se encontraron: {' '.join(found_symbols)}",
+            "sugerencia": "Eliminar todos los símbolos — ML los penaliza directamente",
+        })
+
+    # 3. Palabras en MAYÚSCULAS SOSTENIDAS (≥3 letras, todo caps)
+    caps_words = [w for w in t.split() if len(w) >= 3 and w.isupper() and w.isalpha()]
+    if caps_words:
+        violations.append({
+            "nivel":      "critico",
+            "regla":      "Palabras en MAYÚSCULAS sostenidas",
+            "detalle":    f"{', '.join(caps_words)}",
+            "sugerencia": "Usar solo la primera letra en mayúscula (Título Case o sentence case)",
+        })
+
+    # 4. Palabras prohibidas por ML
+    found_prohibited = [p for p in _TITLE_PROHIBITED_WORDS if p in t_lower]
+    if found_prohibited:
+        violations.append({
+            "nivel":      "critico",
+            "regla":      "Palabras prohibidas por ML",
+            "detalle":    f"{', '.join(f'\"{p}\"' for p in found_prohibited)}",
+            "sugerencia": "ML filtra estas palabras y pueden causar baja o eliminación de la publicación",
+        })
+
+    # 5. Términos de infracción de marca
+    found_infr = [p for p in _TITLE_INFRINGEMENT_TERMS if re.search(r'\b' + re.escape(p) + r'\b', t_lower)]
+    if found_infr:
+        violations.append({
+            "nivel":      "critico",
+            "regla":      "Términos de infracción de marca",
+            "detalle":    f"{', '.join(f'\"{p}\"' for p in found_infr)}",
+            "sugerencia": "Pueden causar baja o suspensión — eliminar inmediatamente",
+        })
+
+    # 6. Palabras repetidas
+    word_counts = {}
+    for w in words:
+        if len(w) > 3:  # ignorar palabras cortas/artículos
+            word_counts[w] = word_counts.get(w, 0) + 1
+    repeated = [w for w, n in word_counts.items() if n > 1]
+    if repeated:
+        violations.append({
+            "nivel":      "advertencia",
+            "regla":      "Palabras repetidas",
+            "detalle":    f"{', '.join(repeated)}",
+            "sugerencia": "ML penaliza el keyword stuffing — usar cada palabra una sola vez",
+        })
+
+    # 7. Empieza con palabra vacía
+    if words and words[0] in _TITLE_STOPWORDS_START:
+        violations.append({
+            "nivel":      "advertencia",
+            "regla":      "Empieza con palabra vacía",
+            "detalle":    f"El título empieza con \"{words[0]}\" — desperdicia el token más importante",
+            "sugerencia": "El primer token debe ser la keyword principal (sustantivo del producto)",
+        })
+
+    # 8. Espacios múltiples o caracteres raros invisibles
+    if "  " in t or "\t" in t or "\n" in t:
+        violations.append({
+            "nivel":      "advertencia",
+            "regla":      "Espacios o caracteres invisibles",
+            "detalle":    "Espacios dobles o tabulaciones detectados",
+            "sugerencia": "Limpiar el título — pueden afectar el parsing del algoritmo",
+        })
+
+    return violations
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Helpers de datos ML
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1301,6 +1409,7 @@ def _build_analysis_prompt(
     category_attrs: dict,
     category_name: str,
     ml_quality_oficial: dict = None,
+    title_violations: list = None,
 ) -> str:
     title        = item_data.get("title", "")
     price        = float(item_data.get("price", 0))
@@ -1403,7 +1512,7 @@ Competidores = fuente secundaria (patrones observables, no autoridad). Nunca inv
 Título ({len(title)} chars): {title}
 Categoría: {category_name} | Precio: ${price:,.0f} | Tipo: {tipo_pub}
 Shipping: {'Full' if full_ship else 'Envío gratis' if free_ship else 'Envío pago'} | Fotos: {photos} | Ventas: {my_sold:,}
-Score interno (estimado): {ml_score['total']}/100{(chr(10) + 'Score OFICIAL ML: ' + str((ml_quality_oficial or {}).get('score', '')) + '/100' + (' — ' + (ml_quality_oficial or {}).get('level', '') if (ml_quality_oficial or {}).get('level') else '') + (chr(10) + 'Razones ML: ' + ' | '.join((ml_quality_oficial or {}).get('reasons', [])[:5]) if (ml_quality_oficial or {}).get('reasons') else '')) if (ml_quality_oficial or {}).get('score') else ''}
+Score interno (estimado): {ml_score['total']}/100{(chr(10) + 'VIOLACIONES DETECTADAS EN TÍTULO ACTUAL:' + chr(10) + chr(10).join('  [' + v['nivel'].upper() + '] ' + v['regla'] + ': ' + v['detalle'] + ' → ' + v['sugerencia'] for v in (title_violations or []))) if title_violations else (chr(10) + '✓ Título actual sin violaciones de reglas ML')}{(chr(10) + 'Score OFICIAL ML: ' + str((ml_quality_oficial or {}).get('score', '')) + '/100' + (' — ' + (ml_quality_oficial or {}).get('level', '') if (ml_quality_oficial or {}).get('level') else '') + (chr(10) + 'Razones ML: ' + ' | '.join((ml_quality_oficial or {}).get('reasons', [])[:5]) if (ml_quality_oficial or {}).get('reasons') else '')) if (ml_quality_oficial or {}).get('score') else ''}
 Descripción ({len(description)} chars): {description[:400] or '(sin descripción)'}
 
 ═══ M1: KEYWORD ANALYSIS — FUENTE PRINCIPAL ═══
@@ -2023,6 +2132,17 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     category_id = item_data.get("category_id", "")
     _c.print("[green]✓[/green]")
 
+    # ── Auditoría del título actual ───────────────────────────────────────────
+    title_violations = audit_title(title)
+    if title_violations:
+        criticos = [v for v in title_violations if v["nivel"] == "critico"]
+        _c.print(f"  [red]⚠ Título actual: {len(criticos)} violación(es) crítica(s) detectada(s)[/red]")
+        for v in title_violations:
+            color = "red" if v["nivel"] == "critico" else "yellow"
+            _c.print(f"    [{color}]• {v['regla']}: {v['detalle']}[/{color}]")
+    else:
+        _c.print("  [green]✓ Título actual sin violaciones de reglas ML[/green]")
+
     # ── M1: Keyword Discovery ─────────────────────────────────────────────────
     _c.print("  [dim]M1 — Keyword discovery (autosuggest real)...[/dim]", end=" ")
     autosuggest_raw, as_position_map = get_autosuggest_keywords(title)
@@ -2143,6 +2263,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         comps_trimmed, comp_patterns, root_causes, difficulty,
         ml_score, category_attrs, category_name,
         ml_quality_oficial=ml_quality_oficial,
+        title_violations=title_violations,
     )
     analysis_text = _call_claude(prompt_analysis, max_tokens=2000, console=_c, fast=True)
 
@@ -2219,6 +2340,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         "_catalog_available":    catalog_available,
         "_qa_insights":          qa_insights,
         "_ml_quality_oficial":   ml_quality_oficial,
+        "_title_violations":     title_violations,
     }
 
 

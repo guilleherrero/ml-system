@@ -562,6 +562,30 @@
 
 <div class="opt-card">
 
+  <!-- ─ Alertas de violaciones en título actual ───────────────────── -->
+  {% set violations = item.get('title_violations', []) %}
+  {% if violations %}
+  {% set criticos = violations | selectattr('nivel', 'equalto', 'critico') | list %}
+  {% set advertencias = violations | selectattr('nivel', 'equalto', 'advertencia') | list %}
+  <div style="background:#fef2f2;border-left:4px solid #dc2626;border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:2px">
+    <div style="font-weight:700;font-size:.8rem;color:#dc2626;margin-bottom:6px">
+      <i class="bi bi-exclamation-triangle-fill me-1"></i>
+      TÍTULO ACTUAL CON VIOLACIONES — ML puede estar penalizando esta publicación ahora mismo
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      {% for v in violations %}
+      {% set vc = '#dc2626' if v.nivel == 'critico' else '#b45309' %}
+      {% set vb = '#fee2e2' if v.nivel == 'critico' else '#fef9c3' %}
+      <div style="background:{{ vb }};border:1px solid {{ vc }}33;border-radius:6px;padding:5px 10px;font-size:.76rem;max-width:100%">
+        <span style="font-weight:700;color:{{ vc }}">{{ '🚨' if v.nivel == 'critico' else '⚠️' }} {{ v.regla }}</span>
+        <span style="color:#374151;margin-left:4px">{{ v.detalle }}</span>
+        <span style="color:#6b7280;margin-left:4px;font-style:italic">→ {{ v.sugerencia }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ─ Header ──────────────────────────────────────────────────────── -->
   <div class="opt-card-hdr">
     <span class="opt-card-title" title="{{ item.get('titulo_actual', '') }}">{{ item.get('titulo_actual', '')[:65] }}</span>
