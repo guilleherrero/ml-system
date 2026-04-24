@@ -101,6 +101,10 @@
 .item-suggest  { font-size:.67rem; color:#64748b; margin-top:.3rem; line-height:1.4; }
 .item-suggest.has-issue { color:#92400e; }
 
+/* Recommendation badge */
+.rec-badge { display:inline-flex; align-items:center; gap:.3rem; padding:.2rem .55rem; border-radius:20px; font-size:.67rem; font-weight:700; margin-top:.35rem; }
+.rec-text  { font-size:.72rem; line-height:1.45; margin-top:.3rem; padding:.4rem .6rem; border-radius:6px; }
+
 /* Move dropdown */
 .move-dropdown { position:relative; display:inline-block; }
 .move-menu     { position:absolute; right:0; top:100%; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12); z-index:100; min-width:200px; display:none; }
@@ -639,6 +643,27 @@ function renderItem(item, otherCampIds, otherCampNames) {
       </div>`;
   }
 
+  // Recomendación IA
+  const rec = item.rec || {};
+  const recIcons = { subir:'⬆', bajar:'⬇', quitar:'✕', revisar:'⚠', ok:'✓' };
+  const recLabels = { subir:'Subir campaña', bajar:'Bajar campaña', quitar:'Quitar ads', revisar:'Revisar ficha', ok:'Sin acción' };
+  const recBadge = rec.tipo ? `
+    <div class="rec-badge" style="background:${rec.bg};color:${rec.color}">
+      ${recIcons[rec.tipo] || '•'} ${recLabels[rec.tipo] || rec.tipo}
+    </div>
+    <div class="rec-text" style="background:${rec.bg};color:${rec.color}">${rec.texto || ''}</div>
+  ` : '';
+
+  // Si la rec sugiere mover a una campaña específica, ese botón reemplaza al "Mover a..."
+  let recMoveBtn = '';
+  if (rec.accion && rec.camp_id && rec.tipo !== 'quitar') {
+    recMoveBtn = `
+      <button class="btn-mini" style="background:${rec.bg};border-color:${rec.color};color:${rec.color};font-weight:700"
+              onclick="moveItem('${item.id}', ${rec.camp_id}, '${(rec.camp_name||'').replace(/'/g,"\\'")}', this)">
+        ${recIcons[rec.tipo]} ${rec.accion}
+      </button>`;
+  }
+
   return `
     <div class="item-row" id="item-row-${item.id}">
       ${thumb}
@@ -647,6 +672,7 @@ function renderItem(item, otherCampIds, otherCampNames) {
           <code style="font-size:.66rem;font-weight:700;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:.1rem .3rem;cursor:pointer;user-select:all;flex-shrink:0"
                 title="Hacé click para copiar el ID"
                 onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='#dcfce7';setTimeout(()=>this.style.background='#eff6ff',1200)})">${item.id}</code>
+          <span style="font-size:.67rem;color:#64748b">${(item.sold_quantity||0).toLocaleString('es-AR')} vendidos</span>
         </div>
         <div class="item-title" title="${item.title}">${item.title}</div>
         <div class="item-meta">
@@ -655,13 +681,13 @@ function renderItem(item, otherCampIds, otherCampNames) {
           ${buyBox}
           ${item.listing_type ? `<span style="font-size:.63rem;color:#64748b">${item.listing_type}</span>` : ''}
         </div>
-        <div class="item-suggest ${suggestCls}">${item.suggestion}</div>
+        ${recBadge}
       </div>
       <div class="item-actions">
         <a href="${item.permalink}" target="_blank" class="btn-mini btn-mini-move" style="text-decoration:none">
           <i class="bi bi-box-arrow-up-right"></i> Ver en ML
         </a>
-        ${moveMenu}
+        ${recMoveBtn || moveMenu}
         <button class="btn-mini btn-mini-del" onclick="removeItem('${item.id}', '${item.title.substring(0,30).replace(/'/g,"\\'")}...')">
           <i class="bi bi-x-circle"></i> Quitar de campaña
         </button>

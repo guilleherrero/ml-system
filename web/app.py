@@ -4809,7 +4809,7 @@ def api_meli_ads_update_status():
 
 @app.route('/api/meli-ads/campaign/<int:camp_id>/items')
 def api_meli_ads_campaign_items(camp_id: int):
-    """Devuelve señales de calidad de todos los ítems de una campaña (lazy load)."""
+    """Devuelve señales de calidad + recomendación de movimiento para cada ítem."""
     from modules.meli_ads_engine import get_campaign_items_detail, _get_user_id, _discover_campaign_ids
     try:
         from core.account_manager import AccountManager
@@ -4821,6 +4821,8 @@ def api_meli_ads_campaign_items(camp_id: int):
         _client  = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
         _client._ensure_token()
         token    = _client.account.access_token
+        heads    = {'Authorization': f'Bearer {token}'}
+        ML       = 'https://api.mercadolibre.com'
 
         user_id, _, _ = _get_user_id(token)
         if not user_id:
@@ -4832,7 +4834,133 @@ def api_meli_ads_campaign_items(camp_id: int):
             return jsonify({'ok': True, 'items': [], 'total': 0})
 
         items = get_campaign_items_detail(token, item_ids)
-        return jsonify({'ok': True, 'items': items, 'total': len(items)})
+
+        # ── Enriquecer con sold_quantity (batch, barato) ──────────────────────
+        sold_map: dict[str, int] = {}
+        for b in range(0, len(item_ids), 20):
+            batch = item_ids[b:b+20]
+            try:
+                r = req_lib.get(f'{ML}/items', headers=heads,
+                                params={'ids': ','.join(batch),
+                                        'attributes': 'id,sold_quantity'},
+                                timeout=10)
+                if r.ok:
+                    for e in r.json():
+                        if e.get('code') == 200:
+                            bd = e.get('body', {})
+                            sold_map[bd['id']] = int(bd.get('sold_quantity', 0) or 0)
+            except Exception:
+                pass
+            _time_module.sleep(0.08)
+
+        # ── Jerarquía de campañas por nombre ────────────────────────────────
+        def _camp_tier(name: str) -> int:
+            n = name.lower()
+            if 'top 1' in n or 'top1' in n:   return 1
+            if 'top' in n:                      return 2
+            if 'impulso' in n or 'boost' in n:  return 3
+            return 4
+
+        # Obtener nombres de todas las campañas (ya disponibles en app.py via request)
+        # Pasamos los datos vía query param opcional; sino usamos IDs del campaign_map
+        all_camp_ids = list(campaign_map.keys())
+        # Recuperar nombres de cada campaña para ordenar jerarquía
+        from modules.meli_ads_engine import _get_campaign_detail
+        camp_meta: dict[int, dict] = {}
+        for cid in all_camp_ids:
+            try:
+                camp_meta[cid] = _get_campaign_detail(token, cid)
+                _time_module.sleep(0.05)
+            except Exception:
+                camp_meta[cid] = {'name': str(cid)}
+
+        camps_ranked = sorted(all_camp_ids,
+                              key=lambda c: _camp_tier(camp_meta.get(c, {}).get('name', '')))
+        current_rank = camps_ranked.index(camp_id) if camp_id in camps_ranked else 0
+        camp_above   = camps_ranked[current_rank - 1] if current_rank > 0 else None
+        camp_below   = camps_ranked[current_rank + 1] if current_rank < len(camps_ranked) - 1 else None
+        camp_above_name = camp_meta.get(camp_above, {}).get('name', '') if camp_above else ''
+        camp_below_name = camp_meta.get(camp_below, {}).get('name', '') if camp_below else ''
+
+        # ── Average sold_quantity de esta campaña ───────────────────────────
+        camp_sold_vals = [sold_map.get(iid, 0) for iid in item_ids]
+        camp_avg = (sum(camp_sold_vals) / len(camp_sold_vals)) if camp_sold_vals else 0
+
+        # ── Generar recomendación por ítem ──────────────────────────────────
+        def _recommend(item: dict) -> dict:
+            iid   = item.get('id', '')
+            sold  = sold_map.get(iid, 0)
+            level = item.get('level', '')
+            bb    = item.get('buy_box', False)
+
+            # Problemas críticos de calidad
+            if level == 'red' and not bb:
+                return {
+                    'tipo': 'quitar',
+                    'color': '#dc2626',
+                    'bg': '#fee2e2',
+                    'texto': f'Salud ROJA y sin Buy Box — esta publicación está perdiendo dinero en ads. '
+                             f'Pausarla hasta resolver los problemas de ficha.',
+                    'accion': 'Quitar de campaña',
+                }
+            if level == 'red':
+                return {
+                    'tipo': 'revisar',
+                    'color': '#d97706',
+                    'bg': '#fef3c7',
+                    'texto': 'Salud ROJA — la visibilidad del anuncio está muy limitada. Mejorar fotos, título y descripción antes de seguir invirtiendo.',
+                    'accion': None,
+                }
+            if not bb and sold < max(camp_avg * 0.5, 3):
+                return {
+                    'tipo': 'revisar',
+                    'color': '#d97706',
+                    'bg': '#fef3c7',
+                    'texto': f'Sin Buy Box y {sold} ventas totales — hay un competidor mejor posicionado. Ajustar precio o mejorar reputación para recuperar el Buy Box antes de invertir más.',
+                    'accion': None,
+                }
+
+            # Rendimiento alto → subir de campaña
+            if camp_above and sold >= camp_avg * 2 and level in ('green', 'yellow') and bb:
+                return {
+                    'tipo': 'subir',
+                    'color': '#15803d',
+                    'bg': '#dcfce7',
+                    'texto': f'{sold} ventas totales ({round(sold / camp_avg, 1)}x el promedio de esta campaña). '
+                             f'Buen candidato para subir a {camp_above_name} y darle más presupuesto.',
+                    'accion': f'Mover a {camp_above_name}',
+                    'camp_id': camp_above,
+                    'camp_name': camp_above_name,
+                }
+
+            # Rendimiento bajo → bajar de campaña
+            if camp_below and camp_avg > 0 and sold < camp_avg * 0.3 and level != 'green':
+                return {
+                    'tipo': 'bajar',
+                    'color': '#2563eb',
+                    'bg': '#eff6ff',
+                    'texto': f'{sold} ventas totales (por debajo del promedio de esta campaña). '
+                             f'Moverlo a {camp_below_name} para reducir gasto en este producto.',
+                    'accion': f'Mover a {camp_below_name}',
+                    'camp_id': camp_below,
+                    'camp_name': camp_below_name,
+                }
+
+            # Todo bien
+            return {
+                'tipo': 'ok',
+                'color': '#64748b',
+                'bg': '#f8fafc',
+                'texto': f'Sin acciones urgentes. {sold} ventas totales, nivel {level.upper()}{", Buy Box ✓" if bb else ""}.',
+                'accion': None,
+            }
+
+        for item in items:
+            item['sold_quantity'] = sold_map.get(item.get('id', ''), 0)
+            item['rec'] = _recommend(item)
+
+        return jsonify({'ok': True, 'items': items, 'total': len(items),
+                        'camp_avg_sold': round(camp_avg, 1)})
     except Exception as e:
         return jsonify({'ok': False, 'mensaje': str(e)})
 
