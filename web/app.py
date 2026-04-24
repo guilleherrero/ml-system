@@ -3056,6 +3056,34 @@ def api_funnel(alias):
             items_map[iid]['visitas_30d'] = 0
         _time_module.sleep(0.08)
 
+    # ── 3b. Ventas en vivo para ítems con visitas pero ventas=0 en snapshot ─────
+    # El snapshot puede estar desactualizado (ej: ítem sin stock cuando se calculó)
+    date_from_v = (now - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
+    sin_ventas_con_visitas = [
+        iid for iid, d in items_map.items()
+        if d['ventas_30d'] == 0 and (d['visitas_30d'] or 0) > 0
+    ]
+    for iid in sin_ventas_con_visitas[:40]:
+        try:
+            r = req_lib.get(f'{ML}/orders/search', headers=heads,
+                            params={'seller': user_id, 'item': iid,
+                                    'order.status': 'paid',
+                                    'order.date_created.from': date_from_v,
+                                    'limit': 50},
+                            timeout=8)
+            if r.ok:
+                orders = r.json().get('results', [])
+                units = sum(
+                    sum(oi.get('quantity', 0) for oi in o.get('order_items', [])
+                        if oi.get('item', {}).get('id') == iid)
+                    for o in orders
+                )
+                if units > 0:
+                    items_map[iid]['ventas_30d'] = units
+        except Exception:
+            pass
+        _time_module.sleep(0.1)
+
     # ── 4. Preguntas recibidas en los últimos 30 días por item ─────────────────
     try:
         date_from = (now - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
