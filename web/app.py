@@ -10421,9 +10421,67 @@ def api_full_inventory_cache(alias):
     """Devuelve metadata del último cache de inventario Full."""
     from core.db_storage import db_load
     cache = db_load(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
+    items = cache.get('items', {})
+    sample = [{'id': k, **v} for k, v in list(items.items())[:5]]
     return jsonify({'ok': True,
                     'last_updated': cache.get('last_updated'),
-                    'count': len(cache.get('items', {}))})
+                    'count': len(items),
+                    'sample': sample})
+
+
+@app.route('/api/full-debug/<alias>')
+def api_full_debug(alias):
+    """Diagnóstico: muestra logistic_type e inventory_id reales de los primeros ítems."""
+    import requests as _rq
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+    ML = 'https://api.mercadolibre.com'
+
+    # Primeros 20 IDs activos
+    r = _rq.get(f'{ML}/users/{user_id}/items/search', headers=heads,
+                params={'status': 'active', 'limit': 20}, timeout=12)
+    if not r.ok:
+        return jsonify({'ok': False, 'error': f'items/search {r.status_code}'})
+    ids = r.json().get('results', [])[:20]
+
+    # Batch con shipping
+    rb = _rq.get(f'{ML}/items', headers=heads,
+                 params={'ids': ','.join(ids), 'attributes': 'id,shipping,available_quantity'},
+                 timeout=12)
+    batch_items = []
+    if rb.ok:
+        for e in rb.json():
+            if e.get('code') == 200:
+                b = e['body']
+                batch_items.append({
+                    'id': b.get('id'),
+                    'logistic_type': (b.get('shipping') or {}).get('logistic_type', '—'),
+                    'available_quantity': b.get('available_quantity'),
+                })
+
+    # Individual fetch para el primer ítem: obtener inventory_id
+    ind_result = None
+    if ids:
+        ri = _rq.get(f'{ML}/items/{ids[0]}',
+                     params={'attributes': 'id,available_quantity,inventory_id'},
+                     headers=heads, timeout=8)
+        if ri.ok:
+            body = ri.json()
+            inv_id = body.get('inventory_id', '')
+            ind_result = {'id': body.get('id'), 'inventory_id': inv_id,
+                          'available_quantity': body.get('available_quantity')}
+            # Probar fulfillment si hay inventory_id
+            if inv_id:
+                rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                             headers=heads, timeout=6)
+                ind_result['fulfillment_ok'] = rf.ok
+                if rf.ok:
+                    ind_result['fulfillment'] = rf.json()
+
+    return jsonify({'ok': True, 'batch_items': batch_items, 'individual_sample': ind_result})
 
 
 @app.route('/api/full-data/<alias>')
