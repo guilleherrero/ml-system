@@ -270,7 +270,9 @@ def _extract_competitor_phrases_seo(competitor_titles: list, seed_title: str) ->
         if phrase not in seed_norm
     ]
     candidates.sort(key=lambda x: (-x[1], -len(x[0].split())))
-    return [p for p, _ in candidates[:10]]
+    # 20 candidatos: antes con solo títulos alcanzaba con 10,
+    # ahora que incluye descripciones hay más vocabulario valioso para explorar
+    return [p for p, _ in candidates[:20]]
 
 
 def _competitor_seeded_autosuggest_seo(competitor_titles: list, seed_title: str) -> list:
