@@ -4610,10 +4610,14 @@ def optimizaciones(alias):
     if comp:
         for cat in comp.get('categorias', {}).values():
             for p in cat.get('mis_publicaciones', []):
-                pubs_disponibles.append({'id': p.get('id',''), 'titulo': p.get('titulo','')})
+                pid = p.get('id','') or p.get('item_id','')
+                if pid:
+                    pubs_disponibles.append({'id': pid, 'titulo': p.get('titulo','')})
     elif stock:
         for p in stock.get('items', []):
-            pubs_disponibles.append({'id': p.get('item_id',''), 'titulo': p.get('titulo','')})
+            pid = p.get('id','') or p.get('item_id','')
+            if pid:
+                pubs_disponibles.append({'id': pid, 'titulo': p.get('titulo','')})
 
     return render_template('optimizaciones.html', alias=alias, items=items,
                            pubs_disponibles=pubs_disponibles,
