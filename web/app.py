@@ -4236,6 +4236,36 @@ def api_monitor_refresh():
     return jsonify({'ok': True, 'snapshot': snap})
 
 
+@app.route('/api/monitor-alertas-count/<alias>')
+def api_monitor_alertas_count(alias):
+    """Devuelve cantidad de alertas no leídas para el badge del nav."""
+    _mon  = load_json(os.path.join(DATA_DIR, 'monitor_evolucion.json')) or {'items': []}
+    count = sum(
+        1 for it in _mon.get('items', [])
+        if it.get('alias') == alias
+        for a in (it.get('alertas') or [])
+        if not a.get('leida') and a.get('nivel') in ('warning', 'bueno')
+    )
+    return jsonify({'count': count})
+
+
+@app.route('/api/monitor-marcar-leidas', methods=['POST'])
+def api_monitor_marcar_leidas():
+    """Marca todas las alertas del alias como leídas."""
+    body  = request.get_json() or {}
+    alias = body.get('alias', '').strip()
+    if not alias:
+        return jsonify({'ok': False, 'error': 'Falta alias'}), 400
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    for it in _mon.get('items', []):
+        if it.get('alias') == alias:
+            for a in (it.get('alertas') or []):
+                a['leida'] = True
+    save_json(_mon_path, _mon)
+    return jsonify({'ok': True})
+
+
 @app.route('/api/monitor-delete', methods=['POST'])
 def api_monitor_delete():
     """Elimina un item del monitor de evolución."""
@@ -10849,6 +10879,13 @@ def _scheduler_run_all():
         except Exception as e:
             print(f'[scheduler] {alias} — inventario Full ERROR: {e}')
 
+    # ── Monitor de Evolución: evaluar alertas post-optimización ───────────────
+    try:
+        _scheduler_check_monitor()
+        print('[scheduler] Monitor de evolución — OK')
+    except Exception as e:
+        print(f'[scheduler] Monitor de evolución ERROR: {e}')
+
     global _scheduler_last_run
     _scheduler_last_run = datetime.now()
     print(f'[scheduler] Actualización diaria completada — {_scheduler_last_run.strftime("%Y-%m-%d %H:%M")}')
@@ -10879,6 +10916,146 @@ def _scheduler_run_all():
                 print('[scheduler] Sin alertas críticas — no se envió email')
         except Exception as e:
             print(f'[scheduler] Error al enviar email: {e}')
+
+
+def _scheduler_check_monitor():
+    """
+    Evalúa items del Monitor de Evolución con 7+ días desde la optimización.
+    Refresca métricas, genera alertas y las guarda en el JSON del monitor.
+    """
+    from core.account_manager import AccountManager as _AM
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    if not _mon.get('items'):
+        return
+
+    _now = datetime.now()
+    changed = False
+
+    for it in _mon['items']:
+        # Solo evaluar items con 7+ días y sin alerta de 7 días ya generada
+        try:
+            _fd   = it.get('fecha_opt', '')[:10]
+            dias  = (_now - datetime.strptime(_fd, '%Y-%m-%d')).days
+        except Exception:
+            continue
+        if dias < 7:
+            continue
+        # No volver a evaluar si ya hay alerta del hito de 7 días
+        alertas_existentes = it.get('alertas', [])
+        if any(a.get('hito') == '7d' for a in alertas_existentes):
+            continue
+
+        # Refrescar métricas actuales
+        alias   = it.get('alias', '')
+        item_id = it.get('item_id', '')
+        snap    = {'fecha': _now.strftime('%Y-%m-%d %H:%M')}
+        try:
+            mgr = _AM()
+            client = mgr.get_client(alias)
+            client._ensure_token()
+            _h = {'Authorization': f'Bearer {client.account.access_token}'}
+            _vr = req_lib.get(
+                f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+                headers=_h, params={'last': 30, 'unit': 'day'}, timeout=6)
+            if _vr.ok:
+                snap['visitas_30d'] = _vr.ok and _vr.json().get('total_visits', 0)
+        except Exception:
+            pass
+
+        _pos_data   = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+        _stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+        if item_id in _pos_data:
+            _ph = _pos_data[item_id].get('history', {})
+            if _ph:
+                _pv = _ph[max(_ph.keys())]
+                if _pv != 999:
+                    snap['posicion'] = _pv
+        for _si in (_stock_data.get('items') or []):
+            if _si.get('id') == item_id:
+                snap['ventas_30d'] = _si.get('ventas_30d') or 0
+                snap['conv_pct']   = _si.get('conversion_pct') or 0.0
+                break
+
+        it.setdefault('snapshots', []).append(snap)
+        it['snapshots']       = it['snapshots'][-30:]
+        it['ultimo_snapshot'] = snap
+
+        # ── Generar alerta comparando baseline vs snapshot ────────────────
+        baseline = it.get('baseline') or {}
+        alertas  = []
+
+        def _delta(key):
+            b = baseline.get(key)
+            u = snap.get(key)
+            if b is None or u is None:
+                return None
+            return round(u - b, 2)
+
+        d_pos     = _delta('posicion')
+        d_vis     = _delta('visitas_30d')
+        d_ventas  = _delta('ventas_30d')
+        b_vis     = baseline.get('visitas_30d') or 0
+        b_pos     = baseline.get('posicion')
+
+        # Posición
+        if d_pos is not None and b_pos is not None:
+            if d_pos <= -3:
+                alertas.append({
+                    'hito':    '7d',
+                    'nivel':   'bueno',
+                    'tipo':    'posicion_sube',
+                    'mensaje': f'Subiste {abs(int(d_pos))} posiciones ({b_pos}° → {snap.get("posicion")}°) en {dias} días.',
+                    'fecha':   _now.strftime('%Y-%m-%d'),
+                    'leida':   False,
+                })
+            elif d_pos >= 3:
+                alertas.append({
+                    'hito':    '7d',
+                    'nivel':   'warning',
+                    'tipo':    'posicion_baja',
+                    'mensaje': f'⚠ Posición bajó {int(d_pos)} lugares ({b_pos}° → {snap.get("posicion")}°) en {dias} días. Considerá revertir el título.',
+                    'fecha':   _now.strftime('%Y-%m-%d'),
+                    'leida':   False,
+                })
+            else:
+                alertas.append({
+                    'hito':    '7d',
+                    'nivel':   'neutro',
+                    'tipo':    'posicion_estable',
+                    'mensaje': f'Posición sin cambio significativo ({b_pos}° → {snap.get("posicion", b_pos)}°) en {dias} días.',
+                    'fecha':   _now.strftime('%Y-%m-%d'),
+                    'leida':   False,
+                })
+
+        # Visitas (solo si hay baseline significativo)
+        if d_vis is not None and b_vis >= 10:
+            pct = round(d_vis / b_vis * 100, 1)
+            if pct >= 20:
+                alertas.append({
+                    'hito':    '7d',
+                    'nivel':   'bueno',
+                    'tipo':    'visitas_suben',
+                    'mensaje': f'Visitas subieron {pct}% ({int(b_vis)} → {int(snap.get("visitas_30d", b_vis))}) en {dias} días.',
+                    'fecha':   _now.strftime('%Y-%m-%d'),
+                    'leida':   False,
+                })
+            elif pct <= -20:
+                alertas.append({
+                    'hito':    '7d',
+                    'nivel':   'warning',
+                    'tipo':    'visitas_bajan',
+                    'mensaje': f'⚠ Visitas bajaron {abs(pct)}% ({int(b_vis)} → {int(snap.get("visitas_30d", b_vis))}) en {dias} días.',
+                    'fecha':   _now.strftime('%Y-%m-%d'),
+                    'leida':   False,
+                })
+
+        it['alertas'] = alertas_existentes + alertas
+        changed = True
+        print(f'[monitor] {alias}/{item_id} — {len(alertas)} alerta(s) generadas (día {dias})')
+
+    if changed:
+        save_json(_mon_path, _mon)
 
 
 def _start_scheduler():

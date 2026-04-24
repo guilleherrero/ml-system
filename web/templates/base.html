@@ -191,8 +191,12 @@
     <a href="/posiciones/{{ acc.alias }}" class="{{ 'active' if request.path == '/posiciones/'~acc.alias else '' }}">
       <i class="bi bi-graph-up-arrow"></i> Posiciones
     </a>
-    <a href="/monitor/{{ acc.alias }}" class="{{ 'active' if request.path == '/monitor/'~acc.alias else '' }}">
+    <a href="/monitor/{{ acc.alias }}" class="{{ 'active' if request.path == '/monitor/'~acc.alias else '' }}"
+       id="nav-monitor-{{ acc.alias | replace(' ','_') }}">
       <i class="bi bi-activity"></i> Monitor de Evolución
+      <span class="nav-monitor-badge" id="monitor-badge-{{ acc.alias | replace(' ','_') }}"
+            style="display:none;background:#dc2626;color:#fff;border-radius:12px;
+                   padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
     </a>
 
     <!-- Inteligencia -->
@@ -326,6 +330,15 @@ function runComando(comando, alias) {
         if (badge && data.count > 0) {
           badge.textContent = data.count;
           badge.style.display = 'inline-block';
+        }
+      }).catch(() => {});
+    fetch(`/api/monitor-alertas-count/${encodeURIComponent(alias)}`)
+      .then(r => r.json())
+      .then(data => {
+        const mb = document.getElementById(`monitor-badge-${key}`);
+        if (mb && data.count > 0) {
+          mb.textContent = data.count;
+          mb.style.display = 'inline-block';
         }
       }).catch(() => {});
   });

@@ -115,6 +115,17 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .snapshot-info { font-size: .72rem; color: #94a3b8; margin-top: .5rem; text-align: right; }
+
+.alerta-banner {
+  display: flex; align-items: flex-start; gap: .6rem;
+  padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
+  font-size: .82rem; line-height: 1.45;
+}
+.alerta-banner.warning { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+.alerta-banner.bueno   { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+.alerta-banner.neutro  { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; }
+.alerta-banner .alerta-icon { font-size: 1rem; flex-shrink: 0; margin-top: .05rem; }
+.alerta-fecha { font-size: .68rem; color: #94a3b8; margin-top: .2rem; }
 </style>
 
 <div class="monitor-header">
@@ -165,11 +176,29 @@ function metricBox(label, baseline, latest, delta, deltaPct, lowerIsBetter, unit
   </div>`;
 }
 
+const ALERTA_ICONS = {warning: '⚠', bueno: '✓', neutro: '—'};
+
+function renderAlertas(alertas) {
+  if (!alertas || !alertas.length) return '';
+  return alertas.map(a => `
+    <div class="alerta-banner ${a.nivel}">
+      <span class="alerta-icon">${ALERTA_ICONS[a.nivel] || '•'}</span>
+      <div>
+        <div>${a.mensaje}</div>
+        <div class="alerta-fecha">${a.fecha || ''}</div>
+      </div>
+    </div>`).join('');
+}
+
 function renderItem(it) {
   const b  = it.baseline       || {};
   const u  = it.ultimo_snapshot || {};
   const d  = it.deltas         || {};
   const hasSnapshot = it.snapshots_n > 0;
+  const alertas = (it.alertas || []).filter(a => a.nivel !== 'neutro' || true);
+
+  // Alertas
+  const alertasBlock = renderAlertas(alertas);
 
   // Título compare — solo si se cambió el título
   let tituloBlock = '';
@@ -226,6 +255,7 @@ function renderItem(it) {
       </div>
     </div>
     <div class="item-card-body">
+      ${alertasBlock}
       ${tituloBlock}
       ${metricsBlock}
     </div>
@@ -299,6 +329,16 @@ async function deleteItem(itemId, nombre) {
   }
 }
 
-loadMonitor();
+loadMonitor().then(() => {
+  fetch('/api/monitor-marcar-leidas', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS})
+  }).then(() => {
+    const key = ALIAS.replace(/\s+/g,'_');
+    const mb = document.getElementById(`monitor-badge-${key}`);
+    if (mb) mb.style.display = 'none';
+  }).catch(() => {});
+});
 </script>
 {% endblock %}
