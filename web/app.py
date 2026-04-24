@@ -3886,6 +3886,44 @@ def api_aplicar_optimizacion():
     errors  = []
     applied = []
 
+    # ── Capturar estado ANTES de aplicar cambios (para monitor de evolución) ──
+    titulo_antes   = ''
+    visitas_antes  = 0
+    ventas_antes   = 0
+    conv_antes     = 0.0
+    posicion_antes = None
+    posicion_kw    = ''
+    try:
+        client._ensure_token()
+        _h_pre = {'Authorization': f'Bearer {client.account.access_token}'}
+        _ir = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}', headers=_h_pre, timeout=8)
+        if _ir.ok:
+            titulo_antes = _ir.json().get('title', '')
+        _vr = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+            headers=_h_pre, params={'last': 30, 'unit': 'day'}, timeout=6)
+        if _vr.ok:
+            visitas_antes = _vr.json().get('total_visits', 0)
+        # Posición y conversión desde datos locales
+        _pos_data  = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+        _stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+        if item_id in _pos_data:
+            _ph = _pos_data[item_id].get('history', {})
+            if _ph:
+                _last_date = max(_ph.keys())
+                _pv = _ph[_last_date]
+                if _pv != 999:
+                    posicion_antes = _pv
+        _kws = _pos_data.get(item_id, {}).get('keywords', [])
+        posicion_kw = _kws[0] if _kws else ''
+        for _si in (_stock_data.get('items') or []):
+            if _si.get('id') == item_id:
+                ventas_antes = _si.get('ventas_30d') or 0
+                conv_antes   = _si.get('conversion_pct') or 0.0
+                break
+    except Exception:
+        pass
+
     # ── Título ────────────────────────────────────────────────────────────────
     if titulo:
         try:
@@ -3981,49 +4019,70 @@ def api_aplicar_optimizacion():
         except Exception as e:
             errors.append(f'atributos: {e}')
 
-    # ── Persistir estado + capturar baseline para seguimiento ────────────────
+    # ── Persistir en optimizaciones_Alias.json ───────────────────────────────
     json_updated = False
     if applied:
         opt_path = os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')
         data = load_json(opt_path) or {'optimizaciones': []}
-
-        # Capturar baseline de métricas actuales antes de que cambien
-        baseline = {'fecha_aplicacion': datetime.now().strftime('%Y-%m-%d %H:%M')}
-        try:
-            client._ensure_token()
-            _h = {'Authorization': f'Bearer {client.account.access_token}'}
-            # Visitas de los últimos 30 días
-            r_vis = req_lib.get(
-                f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
-                headers=_h, params={'last': 30, 'unit': 'day'}, timeout=6)
-            if r_vis.ok:
-                baseline['visitas_antes'] = r_vis.json().get('total_visits', 0)
-        except Exception:
-            pass
-
-        # Posición actual desde el JSON de posiciones
-        pos_data = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
-        if item_id in pos_data:
-            hist = pos_data[item_id].get('history', {})
-            if hist:
-                last_date = max(hist.keys())
-                pos_val   = hist[last_date]
-                if pos_val != 999:
-                    baseline['posicion_antes'] = pos_val
-                    baseline['posicion_fecha'] = last_date
-
         for o in data.get('optimizaciones', []):
             if o.get('item_id') == item_id:
                 if 'descripcion' in applied:   o['descripcion_aplicada'] = True
-                if 'titulo'      in applied:   o['titulo_aplicado']     = True
-                if attrs_applied:              o['ficha_aplicada']      = True
-                o['aplicado']  = True
-                o['baseline']  = baseline
-                o['seguimiento'] = None   # se llenará cuando se consulte
-                json_updated   = True
+                if 'titulo'      in applied:   o['titulo_aplicado']      = True
+                if attrs_applied:              o['ficha_aplicada']       = True
+                o['aplicado'] = True
+                json_updated  = True
                 break
         if json_updated:
             save_json(opt_path, data)
+
+    # ── Guardar en Monitor de Evolución ──────────────────────────────────────
+    if applied:
+        _now       = datetime.now().strftime('%Y-%m-%d %H:%M')
+        _mon_path  = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+        _mon       = load_json(_mon_path) or {'items': []}
+        if not isinstance(_mon, dict):
+            _mon = {'items': []}
+
+        # Buscar entrada existente para este item (actualizar si ya está)
+        _existing = next((x for x in _mon['items'] if x.get('item_id') == item_id and x.get('alias') == alias), None)
+        _baseline = {
+            'fecha':       _now,
+            'visitas_30d': visitas_antes,
+            'ventas_30d':  ventas_antes,
+            'conv_pct':    conv_antes,
+            'posicion':    posicion_antes,
+            'posicion_kw': posicion_kw,
+        }
+        # Título del producto (nombre amigable)
+        _opt_data  = load_json(os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')) or {}
+        _opt_match = next((o for o in _opt_data.get('optimizaciones', []) if o.get('item_id') == item_id), {})
+        _titulo_producto = _opt_match.get('titulo_actual') or titulo_antes or item_id
+
+        if _existing:
+            # Re-optimización: actualizar baseline y resetear snapshots
+            _existing.update({
+                'fecha_opt':      _now,
+                'titulo_antes':   titulo_antes   if 'titulo' in applied else _existing.get('titulo_antes', ''),
+                'titulo_despues': titulo         if 'titulo' in applied else _existing.get('titulo_despues', ''),
+                'baseline':       _baseline,
+                'snapshots':      [],
+                'ultimo_snapshot': None,
+                'applied':        applied,
+            })
+        else:
+            _mon['items'].append({
+                'item_id':         item_id,
+                'alias':           alias,
+                'titulo_producto': _titulo_producto,
+                'fecha_opt':       _now,
+                'titulo_antes':    titulo_antes,
+                'titulo_despues':  titulo if 'titulo' in applied else '',
+                'baseline':        _baseline,
+                'snapshots':       [],
+                'ultimo_snapshot': None,
+                'applied':         applied,
+            })
+        save_json(_mon_path, _mon)
 
     result = {'ok': True, 'applied': applied, 'json_updated': json_updated}
     if attrs_errors:
@@ -4051,6 +4110,148 @@ def api_test_claude():
     except Exception as e:
         import traceback
         return jsonify({'ok': False, 'error_type': type(e).__name__, 'error': str(e), 'traceback': traceback.format_exc()})
+
+
+@app.route('/monitor/<alias>')
+def monitor_evolucion(alias):
+    return render_template('monitor_evolucion.html', alias=alias, accounts=AccountManager().accounts)
+
+
+@app.route('/api/monitor-evolucion/<alias>')
+def api_monitor_evolucion(alias):
+    """Devuelve todos los items monitoreados del alias con deltas calculados."""
+    from core.account_manager import AccountManager as _AM
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    items     = [x for x in _mon.get('items', []) if x.get('alias') == alias]
+
+    result = []
+    for it in items:
+        baseline = it.get('baseline') or {}
+        ultimo   = it.get('ultimo_snapshot') or {}
+        snapshots = it.get('snapshots') or []
+
+        # Calcular deltas baseline → último snapshot
+        def _delta(key):
+            b = baseline.get(key)
+            u = ultimo.get(key)
+            if b is None or u is None:
+                return None
+            return round(u - b, 2)
+
+        def _delta_pct(key):
+            b = baseline.get(key) or 0
+            u = ultimo.get(key)
+            if u is None or b == 0:
+                return None
+            return round((u - b) / b * 100, 1)
+
+        # Días transcurridos desde la optimización
+        try:
+            from datetime import datetime as _dtt
+            _fd  = it.get('fecha_opt', '')[:10]
+            dias = (_dtt.now() - _dtt.strptime(_fd, '%Y-%m-%d')).days
+        except Exception:
+            dias = 0
+
+        result.append({
+            'item_id':          it.get('item_id'),
+            'alias':            it.get('alias'),
+            'titulo_producto':  it.get('titulo_producto', it.get('item_id', '')),
+            'fecha_opt':        it.get('fecha_opt', ''),
+            'dias_elapsed':     dias,
+            'titulo_antes':     it.get('titulo_antes', ''),
+            'titulo_despues':   it.get('titulo_despues', ''),
+            'applied':          it.get('applied', []),
+            'baseline':         baseline,
+            'ultimo_snapshot':  ultimo,
+            'snapshots_n':      len(snapshots),
+            'deltas': {
+                'visitas_30d':  _delta('visitas_30d'),
+                'visitas_pct':  _delta_pct('visitas_30d'),
+                'ventas_30d':   _delta('ventas_30d'),
+                'ventas_pct':   _delta_pct('ventas_30d'),
+                'conv_pct':     _delta('conv_pct'),
+                'posicion':     _delta('posicion'),
+            },
+        })
+
+    return jsonify({'ok': True, 'items': result})
+
+
+@app.route('/api/monitor-refresh', methods=['POST'])
+def api_monitor_refresh():
+    """Actualiza las métricas actuales de un item monitoreado."""
+    from core.account_manager import AccountManager as _AM
+    body    = request.get_json() or {}
+    alias   = body.get('alias', '').strip()
+    item_id = body.get('item_id', '').strip().upper()
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Falta alias o item_id'}), 400
+
+    try:
+        client = _AM().get_client(alias)
+        client._ensure_token()
+        _h = {'Authorization': f'Bearer {client.account.access_token}'}
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    snap = {'fecha': datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+    # Visitas 30d
+    try:
+        _vr = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+            headers=_h, params={'last': 30, 'unit': 'day'}, timeout=6)
+        if _vr.ok:
+            snap['visitas_30d'] = _vr.json().get('total_visits', 0)
+    except Exception:
+        pass
+
+    # Posición + conversión desde datos locales
+    _pos_data   = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+    _stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    if item_id in _pos_data:
+        _ph = _pos_data[item_id].get('history', {})
+        if _ph:
+            _pv = _ph[max(_ph.keys())]
+            if _pv != 999:
+                snap['posicion'] = _pv
+    for _si in (_stock_data.get('items') or []):
+        if _si.get('id') == item_id:
+            snap['ventas_30d'] = _si.get('ventas_30d') or 0
+            snap['conv_pct']   = _si.get('conversion_pct') or 0.0
+            break
+
+    # Guardar snapshot
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    for it in _mon.get('items', []):
+        if it.get('item_id') == item_id and it.get('alias') == alias:
+            it.setdefault('snapshots', []).append(snap)
+            it['snapshots']      = it['snapshots'][-30:]   # máx 30 snapshots
+            it['ultimo_snapshot'] = snap
+            break
+    save_json(_mon_path, _mon)
+    return jsonify({'ok': True, 'snapshot': snap})
+
+
+@app.route('/api/monitor-delete', methods=['POST'])
+def api_monitor_delete():
+    """Elimina un item del monitor de evolución."""
+    body    = request.get_json() or {}
+    alias   = body.get('alias', '').strip()
+    item_id = body.get('item_id', '').strip().upper()
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Falta alias o item_id'}), 400
+
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    before    = len(_mon.get('items', []))
+    _mon['items'] = [x for x in _mon.get('items', [])
+                     if not (x.get('item_id') == item_id and x.get('alias') == alias)]
+    save_json(_mon_path, _mon)
+    return jsonify({'ok': True, 'removed': before - len(_mon['items'])})
 
 
 @app.route('/api/generar-faq', methods=['POST'])

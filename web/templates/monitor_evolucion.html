@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %} — Monitor de Evolución {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+:root {
+  --up-bg: #f0fdf4; --up-border: #86efac; --up-text: #15803d;
+  --dn-bg: #fef2f2; --dn-border: #fca5a5; --dn-text: #b91c1c;
+  --flat-bg: #f8fafc; --flat-border: #e2e8f0; --flat-text: #475569;
+}
+
+.monitor-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+.monitor-header h2 { margin: 0; font-size: 1.35rem; font-weight: 700; }
+.monitor-subtitle { color: #64748b; font-size: .85rem; margin-top: .2rem; }
+
+.item-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  margin-bottom: 1.25rem; overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.item-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1.2rem; background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+.item-card-header .item-name {
+  font-weight: 600; font-size: .95rem; color: #1e293b;
+}
+.item-card-header .item-meta {
+  font-size: .75rem; color: #64748b; margin-top: .15rem;
+}
+.item-card-body { padding: 1.2rem; }
+
+.titulo-compare {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .75rem;
+  margin-bottom: 1.25rem;
+}
+.titulo-box {
+  padding: .7rem .9rem; border-radius: 8px; font-size: .82rem;
+  line-height: 1.45;
+}
+.titulo-box.antes { background: #fef2f2; border: 1px solid #fca5a5; }
+.titulo-box.despues { background: #f0fdf4; border: 1px solid #86efac; }
+.titulo-box .titulo-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; margin-bottom: .35rem; color: #64748b;
+}
+.titulo-box.antes .titulo-label { color: #b91c1c; }
+.titulo-box.despues .titulo-label { color: #15803d; }
+
+.metrics-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem;
+  margin-bottom: 1.1rem;
+}
+@media (max-width: 900px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.metric-box {
+  padding: .75rem; border-radius: 8px; text-align: center;
+  border: 1px solid #e2e8f0; background: #f8fafc;
+}
+.metric-box.up    { background: var(--up-bg);   border-color: var(--up-border); }
+.metric-box.down  { background: var(--dn-bg);   border-color: var(--dn-border); }
+.metric-box.flat  { background: var(--flat-bg); border-color: var(--flat-border); }
+.metric-label { font-size: .68rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .3rem; }
+.metric-before { font-size: .78rem; color: #94a3b8; margin-bottom: .1rem; }
+.metric-after  { font-size: 1.2rem; font-weight: 700; color: #1e293b; }
+.metric-box.up .metric-after   { color: var(--up-text); }
+.metric-box.down .metric-after { color: var(--dn-text); }
+.metric-delta {
+  font-size: .72rem; font-weight: 600; margin-top: .2rem; padding: .1rem .4rem;
+  border-radius: 10px; display: inline-block;
+}
+.metric-box.up .metric-delta   { background: #dcfce7; color: var(--up-text); }
+.metric-box.down .metric-delta { background: #fee2e2; color: var(--dn-text); }
+.metric-box.flat .metric-delta { background: #e2e8f0; color: var(--flat-text); }
+
+.no-data-msg { color: #94a3b8; font-size: .82rem; font-style: italic; }
+
+.card-actions { display: flex; gap: .6rem; justify-content: flex-end; }
+.btn-refresh {
+  font-size: .78rem; padding: .35rem .85rem; border-radius: 6px;
+  border: 1px solid #3b82f6; color: #3b82f6; background: transparent;
+  cursor: pointer; transition: all .15s;
+}
+.btn-refresh:hover { background: #3b82f6; color: #fff; }
+.btn-refresh:disabled { opacity: .5; cursor: not-allowed; }
+.btn-delete {
+  font-size: .78rem; padding: .35rem .85rem; border-radius: 6px;
+  border: 1px solid #ef4444; color: #ef4444; background: transparent;
+  cursor: pointer; transition: all .15s;
+}
+.btn-delete:hover { background: #ef4444; color: #fff; }
+
+.badge-applied {
+  font-size: .65rem; padding: .15rem .5rem; border-radius: 10px;
+  background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+  margin-left: .3rem; font-weight: 600;
+}
+.days-badge {
+  font-size: .7rem; padding: .15rem .55rem; border-radius: 10px;
+  background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+}
+.empty-state {
+  text-align: center; padding: 4rem 2rem; color: #94a3b8;
+}
+.empty-state i { font-size: 3rem; margin-bottom: 1rem; display: block; }
+.empty-state p { font-size: .95rem; }
+
+.spinner { display: inline-block; width: 14px; height: 14px;
+  border: 2px solid #ddd; border-top-color: #3b82f6;
+  border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.snapshot-info { font-size: .72rem; color: #94a3b8; margin-top: .5rem; text-align: right; }
+</style>
+
+<div class="monitor-header">
+  <div>
+    <h2><i class="bi bi-activity" style="color:#3b82f6"></i> Monitor de Evolución</h2>
+    <div class="monitor-subtitle">Seguimiento del impacto real de cada optimización aplicada</div>
+  </div>
+</div>
+
+<div id="monitor-container">
+  <div class="empty-state">
+    <span class="spinner"></span>
+    <p style="margin-top:1rem;color:#94a3b8">Cargando...</p>
+  </div>
+</div>
+
+<script>
+const ALIAS = {{ alias | tojson }};
+
+function deltaClass(val, lowerIsBetter) {
+  if (val === null || val === undefined) return 'flat';
+  if (lowerIsBetter) return val < 0 ? 'up' : val > 0 ? 'down' : 'flat';
+  return val > 0 ? 'up' : val < 0 ? 'down' : 'flat';
+}
+
+function fmtDelta(val, suffix, lowerIsBetter) {
+  if (val === null || val === undefined) return '—';
+  const sign = val > 0 ? '+' : '';
+  const arrow = lowerIsBetter
+    ? (val < 0 ? '↑ ' : val > 0 ? '↓ ' : '')
+    : (val > 0 ? '↑ ' : val < 0 ? '↓ ' : '');
+  return arrow + sign + val + (suffix || '');
+}
+
+function metricBox(label, baseline, latest, delta, deltaPct, lowerIsBetter, unit) {
+  const cls      = deltaClass(delta, lowerIsBetter);
+  const bVal     = baseline !== null && baseline !== undefined ? baseline + (unit||'') : '—';
+  const aVal     = latest   !== null && latest   !== undefined ? latest   + (unit||'') : '—';
+  const dLabel   = deltaPct !== null && deltaPct !== undefined
+    ? fmtDelta(deltaPct, '%', lowerIsBetter)
+    : fmtDelta(delta, unit||'', lowerIsBetter);
+
+  return `<div class="metric-box ${cls}">
+    <div class="metric-label">${label}</div>
+    <div class="metric-before">Antes: ${bVal}</div>
+    <div class="metric-after">${latest !== null && latest !== undefined ? aVal : '<span class="no-data-msg">sin datos</span>'}</div>
+    ${delta !== null ? `<div class="metric-delta">${dLabel}</div>` : ''}
+  </div>`;
+}
+
+function renderItem(it) {
+  const b  = it.baseline       || {};
+  const u  = it.ultimo_snapshot || {};
+  const d  = it.deltas         || {};
+  const hasSnapshot = it.snapshots_n > 0;
+
+  // Título compare — solo si se cambió el título
+  let tituloBlock = '';
+  if (it.titulo_antes || it.titulo_despues) {
+    tituloBlock = `<div class="titulo-compare">
+      <div class="titulo-box antes">
+        <div class="titulo-label">✗ Título anterior</div>
+        ${it.titulo_antes || '<em>no registrado</em>'}
+      </div>
+      <div class="titulo-box despues">
+        <div class="titulo-label">✓ Título aplicado</div>
+        ${it.titulo_despues || '<em>sin cambio de título</em>'}
+      </div>
+    </div>`;
+  }
+
+  // Métricas
+  const metricsBlock = hasSnapshot ? `
+    <div class="metrics-grid">
+      ${metricBox('Visitas 30d', b.visitas_30d, u.visitas_30d, d.visitas_30d, d.visitas_pct, false, '')}
+      ${metricBox('Ventas 30d', b.ventas_30d,  u.ventas_30d,  d.ventas_30d,  d.ventas_pct,  false, '')}
+      ${metricBox('Conversión', b.conv_pct,    u.conv_pct,    d.conv_pct,    null,           false, '%')}
+      ${metricBox('Posición',   b.posicion,    u.posicion,    d.posicion,    null,           true,  '°')}
+    </div>
+    <div class="snapshot-info">Última actualización: ${u.fecha || '—'} · ${it.snapshots_n} snapshot${it.snapshots_n !== 1 ? 's' : ''}</div>
+  ` : `<div class="no-data-msg" style="margin-bottom:.75rem">
+    Sin datos de seguimiento aún — actualizá las métricas para ver la evolución.
+  </div>`;
+
+  // Badges de qué se aplicó
+  const appliedBadges = (it.applied || []).map(a =>
+    `<span class="badge-applied">${a}</span>`).join('');
+
+  return `<div class="item-card" id="card-${it.item_id}">
+    <div class="item-card-header">
+      <div>
+        <div class="item-name">${it.titulo_producto}</div>
+        <div class="item-meta">
+          ${it.item_id}
+          ${appliedBadges}
+          <span class="days-badge" style="margin-left:.5rem">
+            Optimizado hace ${it.dias_elapsed} día${it.dias_elapsed !== 1 ? 's' : ''}
+          </span>
+          <span style="color:#94a3b8;font-size:.72rem;margin-left:.5rem">${it.fecha_opt}</span>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn-refresh" onclick="refreshItem('${it.item_id}', this)">
+          <i class="bi bi-arrow-clockwise"></i> Actualizar
+        </button>
+        <button class="btn-delete" onclick="deleteItem('${it.item_id}', '${it.titulo_producto.replace(/'/g, "\\'")}')">
+          <i class="bi bi-trash3"></i> Eliminar
+        </button>
+      </div>
+    </div>
+    <div class="item-card-body">
+      ${tituloBlock}
+      ${metricsBlock}
+    </div>
+  </div>`;
+}
+
+async function loadMonitor() {
+  try {
+    const r = await fetch(`/api/monitor-evolucion/${encodeURIComponent(ALIAS)}`);
+    const data = await r.json();
+    const container = document.getElementById('monitor-container');
+    if (!data.ok || !data.items.length) {
+      container.innerHTML = `<div class="empty-state">
+        <i class="bi bi-activity"></i>
+        <p>No hay publicaciones en el monitor todavía.</p>
+        <p style="font-size:.82rem;margin-top:.5rem">
+          Cuando apliques una optimización desde <strong>Optimizar IA</strong>,
+          la publicación aparecerá aquí automáticamente.
+        </p>
+      </div>`;
+      return;
+    }
+    container.innerHTML = data.items.map(renderItem).join('');
+  } catch(e) {
+    document.getElementById('monitor-container').innerHTML =
+      `<div class="empty-state"><i class="bi bi-exclamation-triangle"></i><p>Error al cargar: ${e.message}</p></div>`;
+  }
+}
+
+async function refreshItem(itemId, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Actualizando...';
+  try {
+    const r = await fetch('/api/monitor-refresh', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias: ALIAS, item_id: itemId})
+    });
+    const data = await r.json();
+    if (data.ok) {
+      await loadMonitor();
+    } else {
+      alert('Error: ' + (data.error || 'desconocido'));
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Actualizar';
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Actualizar';
+  }
+}
+
+async function deleteItem(itemId, nombre) {
+  if (!confirm(`¿Eliminar "${nombre}" del monitor?\n\nEsto no afecta la publicación en ML.`)) return;
+  try {
+    const r = await fetch('/api/monitor-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias: ALIAS, item_id: itemId})
+    });
+    const data = await r.json();
+    if (data.ok) {
+      const card = document.getElementById(`card-${itemId}`);
+      if (card) card.remove();
+      const remaining = document.querySelectorAll('.item-card');
+      if (!remaining.length) loadMonitor();
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+loadMonitor();
+</script>
+{% endblock %}
