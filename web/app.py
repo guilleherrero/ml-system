@@ -10525,8 +10525,16 @@ def api_full_data(alias):
         transit   = item_rep.get('transit_days',  rep_cfg.get('transit_days_global', 25))
         en_transito = en_transito_map.get(iid, 0)
 
-        # Stock separado: Full (depósito ML) vs depósito propio (ya calculado en paralelo)
-        stock_en_full, deposito = fulfillment_map.get(iid, (item['stock'], 0))
+        # Stock separado: Full (depósito ML) vs depósito propio
+        # deposito_stock se decrementa al marcar pedido como "enviado_full" (antes del próximo sync)
+        manual_dep = item_rep.get('deposito_stock')
+        if iid in fulfillment_map:
+            stock_en_full, cache_dep = fulfillment_map[iid]
+            # Si hay seguimiento manual, usar el menor: cubre el período entre envío y llegada a ML
+            deposito = min(int(cache_dep), int(manual_dep)) if manual_dep is not None else cache_dep
+        else:
+            stock_en_full = item['stock']
+            deposito = int(manual_dep) if manual_dep is not None else 0
         item['stock'] = stock_en_full
         stock_total   = stock_en_full + deposito + en_transito
 
@@ -10829,19 +10837,26 @@ def api_analisis_experto_run(alias):
         d30_from = (now - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
 
         def _fetch_rev(date_from):
-            r = req_lib.get('https://api.mercadolibre.com/orders/search',
-                headers=heads,
-                params={'seller': user_id, 'order.status': 'paid',
-                        'order.date_created.from': date_from, 'limit': 50},
-                timeout=10)
-            if not r.ok:
-                return None
-            total = 0
-            for page_r in [r]:
-                for o in page_r.json().get('results', []):
+            total, offset = 0, 0
+            while True:
+                r = req_lib.get('https://api.mercadolibre.com/orders/search',
+                    headers=heads,
+                    params={'seller': user_id, 'order.status': 'paid',
+                            'order.date_created.from': date_from,
+                            'limit': 50, 'offset': offset},
+                    timeout=10)
+                if not r.ok:
+                    break
+                data    = r.json()
+                results = data.get('results', [])
+                for o in results:
                     total += sum(float(i.get('unit_price', 0)) * int(i.get('quantity', 0))
                                  for i in o.get('order_items', []))
-            return round(total)
+                paging_total = data.get('paging', {}).get('total', 0)
+                offset += len(results)
+                if not results or offset >= paging_total or offset >= 1000:
+                    break
+            return round(total) if total else None
 
         revenue_hoy  = _fetch_rev(hoy_from)
         revenue_7d   = _fetch_rev(d7_from)
