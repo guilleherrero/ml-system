@@ -1935,9 +1935,9 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     autosuggest_raw, as_position_map = get_autosuggest_keywords(title)
     _c.print(f"[green]{len(autosuggest_raw)} keywords reales[/green]")
 
-    # ── M2: Position Tracker ──────────────────────────────────────────────────
+    # ── M2: Position Tracker — máx 3 keywords para no demorar la optimización ──
     _c.print("  [dim]M2 — Position tracking...[/dim]", end=" ")
-    position_data = track_positions(item_id, autosuggest_raw, token)
+    position_data = track_positions(item_id, autosuggest_raw[:3], token)
     ranking_n = sum(1 for p in position_data if p["aparece"])
     _c.print(f"[green]aparecés en {ranking_n}/{len(position_data)} keywords[/green]")
 
