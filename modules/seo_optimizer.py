@@ -1428,6 +1428,54 @@ Opcionales importantes faltantes ({len(miss_opt)}): {', '.join(miss_opt[:6]) or 
 [Longitud, estructura, keywords ausentes, argumento de conversión más urgente]"""
 
 
+def _build_faq_addendum(own_questions: list, qa_insights: str) -> str:
+    """Construye el bloque de instrucción FAQ que se agrega al final del prompt de síntesis."""
+    lines = []
+
+    if own_questions:
+        lines.append("\nPREGUNTAS REALES DE COMPRADORES DE ESTE ITEM:")
+        for q in own_questions[:20]:
+            lines.append(f"  - {q}")
+
+    has_comp_qa = bool(qa_insights and "PREGUNTAS FRECUENTES" in qa_insights.upper()
+                       or qa_insights and "DUDA" in qa_insights.upper())
+
+    if not lines and not has_comp_qa:
+        return ""
+
+    addendum = "\n\n═══ BLOQUE 10 OBLIGATORIO — FAQ AL FINAL DE LA DESCRIPCIÓN ═══\n"
+    addendum += "Después de los 9 bloques de descripción, agregá una sección de preguntas frecuentes.\n"
+    addendum += "Fuentes a usar (en orden de prioridad):\n"
+    if lines:
+        addendum += "\n".join(lines) + "\n"
+    if has_comp_qa:
+        addendum += "  + Las dudas y preguntas frecuentes detectadas en los Q&A de competidores (ya presentes en el análisis anterior).\n"
+    addendum += """
+REGLAS DEL BLOQUE FAQ:
+- Elegí las 5 preguntas más frecuentes o que más impactan en la decisión de compra
+- Respondé cada una de forma directa y convincente (1–2 oraciones, español rioplatense)
+- Las respuestas deben eliminar dudas reales, no repetir lo ya dicho en la descripción
+- Sin markdown, sin bullets, solo texto plano con este formato exacto:
+
+PREGUNTAS FRECUENTES
+
+P: [pregunta 1]
+R: [respuesta 1]
+
+P: [pregunta 2]
+R: [respuesta 2]
+
+P: [pregunta 3]
+R: [respuesta 3]
+
+P: [pregunta 4]
+R: [respuesta 4]
+
+P: [pregunta 5]
+R: [respuesta 5]"""
+    return addendum
+
+
 def _build_synthesis_prompt(
     item_data: dict,
     description: str,
@@ -1443,6 +1491,7 @@ def _build_synthesis_prompt(
     my_photos: int = 0,
     my_price: float = 0.0,
     qa_insights: str = "",
+    own_questions: list = None,
 ) -> str:
     title        = item_data.get("title", "")
     my_sold      = item_data.get("sold_quantity", 0)
@@ -1645,7 +1694,7 @@ JERARQUÍA OBLIGATORIA DE KEYWORDS EN TÍTULOS:
 - Completar TODOS los obligatorios + todos los opcionales aplicables
 - Valores semánticamente correctos y limpios — sin keywords SEO dentro del valor
   EJEMPLO PROHIBIDO: COLOR = "Negro para cabello dañado" → correcto: COLOR = "Negro"
-- Si el valor no se puede inferir con certeza → [FALTANTE — obtener antes de publicar, impacta filtros]
+- Si el valor no se puede inferir con certeza → [SUGERIR: descripción de qué dato va aquí]
 - Gap keywords y long-tail van SOLO en título y descripción, NUNCA en valores de atributos
 
 ──── DESCRIPCIÓN ────
@@ -1749,7 +1798,7 @@ OPCIÓN: [1 / 2 / 3] | Motivo: [una línea — por qué esta opción maximiza ra
 [atributo]: [valor]
 
 ## DESCRIPCIÓN SUPERADORA
-[texto final — 9 bloques, párrafos separados por línea en blanco, sin títulos internos, sin markdown]"""
+[texto final — 9 bloques + bloque FAQ al final, párrafos separados por línea en blanco, sin títulos internos, sin markdown]{_build_faq_addendum(own_questions or [], qa_insights)}"""
 
 
 def _call_claude(prompt: str, max_tokens: int = 3500, console=None, fast: bool = False) -> str:
@@ -1987,6 +2036,27 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         _c.print("[dim]sin datos disponibles[/dim]")
         qa_insights = ""
 
+    # ── M3.6: Preguntas reales del propio item ────────────────────────────────
+    _c.print("  [dim]M3.6 — Preguntas de compradores del propio item...[/dim]", end=" ")
+    own_questions = []
+    try:
+        for _status in ("ANSWERED", "UNANSWERED"):
+            _qr = requests.get(
+                f"{ML_API}/questions/search",
+                params={"item": item_id, "status": _status, "limit": 30},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=8,
+            )
+            if _qr.ok:
+                for _q in _qr.json().get("questions", []):
+                    _txt = (_q.get("text") or "").strip()
+                    if _txt and _txt not in own_questions:
+                        own_questions.append(_txt)
+        time.sleep(0.1)
+    except Exception:
+        pass
+    _c.print(f"[green]{len(own_questions)} preguntas[/green]" if own_questions else "[dim]sin preguntas aún[/dim]")
+
     # ── Categoría y atributos ─────────────────────────────────────────────────
     _c.print("  [dim]Obteniendo categoría y atributos...[/dim]", end=" ")
     category_name  = _get_category_name(category_id)
@@ -2041,8 +2111,9 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         my_photos=my_photos,
         my_price=my_price,
         qa_insights=qa_insights,
+        own_questions=own_questions,
     )
-    synthesis_text = _call_claude(prompt_synthesis, max_tokens=3200, console=_c, fast=False)
+    synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)
 
     # ── M7: Confidence Layer ──────────────────────────────────────────────────

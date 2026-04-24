@@ -947,11 +947,6 @@
         <div class="desc-wrap-foot">
           <span id="desc-chars-{{ outer_idx }}" style="font-size:.7rem;color:#64748b">{{ item.get('descripcion_nueva','')|length }} caracteres</span>
           <div class="d-flex gap-2">
-            <button class="btn btn-sm fw-semibold" id="btn-faq-{{ outer_idx }}"
-                    onclick="generarFaq('{{ item.get('item_id','') }}', 'desc-{{ outer_idx }}', 'btn-faq-{{ outer_idx }}')"
-                    style="background:#7c3aed;color:#fff;border:none;font-size:.73rem;padding:3px 10px">
-              <i class="bi bi-chat-left-quote me-1"></i>Generar FAQ
-            </button>
             <button class="btn btn-sm btn-success fw-semibold" onclick="copyById('desc-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
               <i class="bi bi-clipboard me-1"></i>Copiar
             </button>
