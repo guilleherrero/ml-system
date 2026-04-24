@@ -10294,71 +10294,113 @@ def api_full_stock_check(alias, item_id):
 
 
 def _sync_full_inventory(alias):
-    """Consulta /inventories/{id}/stock/fulfillment para cada ítem Full y guarda en cache."""
+    """Consulta /inventories/{id}/stock/fulfillment para cada ítem Full y guarda en cache.
+
+    El endpoint batch /items?ids=... no devuelve inventory_id, por eso:
+      1. Batch con 'shipping' → identificar ítems Full por logistic_type
+      2. Fetch individual por cada ítem Full → obtener inventory_id real
+      3. /inventories/{id}/stock/fulfillment → separar stock ML vs depósito
+    """
     from core.db_storage import db_load, db_save as db_save_fn
     from datetime import datetime as _dt
     import requests as _rq
 
     try:
         token, user_id, heads = _ml_auth(alias)
-    except Exception:
+    except Exception as e:
+        print(f'[full_inventory] {alias} — auth error: {e}')
         return
 
     ML = 'https://api.mercadolibre.com'
+    FULL_LOGISTICS = ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
 
-    # Obtener todos los ítems Full activos
+    # ── 1. Obtener todos los IDs activos ──────────────────────────────────────
     all_ids, offset = [], 0
     while True:
         r = _rq.get(f'{ML}/users/{user_id}/items/search', headers=heads,
                     params={'status': 'active', 'limit': 100, 'offset': offset}, timeout=12)
         if not r.ok:
             break
-        ids   = r.json().get('results', [])
-        total = r.json().get('paging', {}).get('total', 0)
+        data  = r.json()
+        ids   = data.get('results', [])
+        total = data.get('paging', {}).get('total', 0)
         all_ids.extend(ids)
         offset += len(ids)
         if not ids or offset >= total:
             break
         _time_module.sleep(0.1)
 
-    result = {}
+    print(f'[full_inventory] {alias} — {len(all_ids)} ítems activos encontrados')
+
+    # ── 2. Identificar ítems Full por logistic_type (batch sí devuelve shipping) ─
+    full_ids = []
     for b in range(0, len(all_ids), 20):
         batch = all_ids[b:b+20]
         try:
             r = _rq.get(f'{ML}/items', headers=heads,
                         params={'ids': ','.join(batch),
-                                'attributes': 'id,available_quantity,inventory_id'},
+                                'attributes': 'id,shipping'},
                         timeout=12)
             if r.ok:
                 for e in r.json():
                     if e.get('code') != 200:
                         continue
-                    body   = e.get('body', {})
-                    iid    = body.get('id', '')
-                    inv_id = body.get('inventory_id', '')
-                    if not iid or not inv_id:
-                        continue  # solo ítems Full tienen inventory_id
-                    total_ml      = int(body.get('available_quantity', 0) or 0)
-                    stock_en_full = total_ml
-                    deposito      = 0
-                    try:
-                        rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
-                                     headers=heads, timeout=(3, 5))
-                        if rf.ok:
-                            fdata = rf.json()
-                            stock_en_full = int(fdata.get('total', total_ml) or total_ml)
-                            deposito      = max(0, total_ml - stock_en_full)
-                    except Exception:
-                        pass
-                    _time_module.sleep(0.15)
-                    result[iid] = {'stock_en_full': stock_en_full, 'deposito': deposito}
+                    body    = e.get('body', {})
+                    iid     = body.get('id', '')
+                    logtype = (body.get('shipping') or {}).get('logistic_type', '')
+                    if iid and logtype in FULL_LOGISTICS:
+                        full_ids.append(iid)
         except Exception:
             pass
         _time_module.sleep(0.1)
 
+    print(f'[full_inventory] {alias} — {len(full_ids)} ítems Full identificados')
+
+    if not full_ids:
+        # Guardar cache vacío para que el endpoint no muestre "sin sincronizar"
+        cache = {'last_updated': _dt.now().strftime('%Y-%m-%d %H:%M'), 'items': {}}
+        db_save_fn(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json'), cache)
+        return
+
+    # ── 3. Fetch individual por cada Full → obtener inventory_id ─────────────
+    # El batch endpoint NO devuelve inventory_id; solo funciona en fetch individual
+    result = {}
+    for iid in full_ids:
+        try:
+            r = _rq.get(f'{ML}/items/{iid}',
+                        headers=heads,
+                        params={'attributes': 'id,available_quantity,inventory_id'},
+                        timeout=8)
+            if not r.ok:
+                _time_module.sleep(0.2)
+                continue
+            body     = r.json()
+            inv_id   = body.get('inventory_id', '')
+            total_ml = int(body.get('available_quantity', 0) or 0)
+            stock_en_full = total_ml
+            deposito      = 0
+
+            if inv_id:
+                try:
+                    rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                                 headers=heads, timeout=(3, 6))
+                    if rf.ok:
+                        fdata = rf.json()
+                        stock_en_full = int(fdata.get('total', total_ml) or total_ml)
+                        deposito      = max(0, total_ml - stock_en_full)
+                except Exception:
+                    pass
+
+            result[iid] = {'stock_en_full': stock_en_full, 'deposito': deposito,
+                           'inv_id': inv_id}
+        except Exception:
+            pass
+        _time_module.sleep(0.2)
+
     cache = {'last_updated': _dt.now().strftime('%Y-%m-%d %H:%M'), 'items': result}
     db_save_fn(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json'), cache)
-    print(f'[full_inventory] {alias} — {len(result)} ítems sincronizados')
+    con_dep = sum(1 for v in result.values() if v.get('deposito', 0) > 0)
+    print(f'[full_inventory] {alias} — {len(result)} ítems sincronizados, {con_dep} con stock en depósito')
 
 
 @app.route('/api/full-inventory-sync/<alias>', methods=['POST'])
