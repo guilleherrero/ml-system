@@ -1186,6 +1186,43 @@ def calculate_ml_score(item_data: dict, category_attrs: dict, top_keywords: list
 # Helpers de datos ML
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _get_ml_quality_score(item_id: str, token: str) -> dict:
+    """Score oficial de calidad de ML para la publicación del vendedor.
+    Devuelve dict con 'score' (0-100), 'level' y 'reasons'. Vacío si no disponible."""
+    import sys
+    try:
+        r = requests.get(
+            f"{ML_API}/items/{item_id}/quality_score",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=8,
+        )
+        if r.ok:
+            data = r.json()
+            # Normalizar distintos formatos que puede devolver la API
+            score = (data.get("score") or data.get("quality_score") or
+                     data.get("overall_score") or 0)
+            level = data.get("level") or data.get("score_level") or ""
+            reasons_raw = data.get("reasons") or data.get("issues") or []
+            reasons = []
+            for rr in reasons_raw:
+                if isinstance(rr, dict):
+                    txt = (rr.get("description") or rr.get("message") or
+                           rr.get("reason_id") or str(rr))
+                    reasons.append(txt)
+                elif isinstance(rr, str):
+                    reasons.append(rr)
+            if score:
+                return {"score": int(score), "level": level, "reasons": reasons, "_raw": data}
+            # Score 0 puede ser un item recién publicado — igualmente devolvemos el raw
+            if data:
+                print(f"[quality_score] {item_id} → respuesta sin score reconocible: {data}", file=sys.stderr)
+        else:
+            print(f"[quality_score] {item_id} → HTTP {r.status_code}", file=sys.stderr)
+    except Exception as e:
+        print(f"[quality_score] {item_id} → {e}", file=sys.stderr)
+    return {}
+
+
 def _get_item(item_id: str, token: str) -> dict:
     try:
         r = requests.get(f"{ML_API}/items/{item_id}",
@@ -1263,6 +1300,7 @@ def _build_analysis_prompt(
     ml_score: dict,
     category_attrs: dict,
     category_name: str,
+    ml_quality_oficial: dict = None,
 ) -> str:
     title        = item_data.get("title", "")
     price        = float(item_data.get("price", 0))
@@ -1365,7 +1403,7 @@ Competidores = fuente secundaria (patrones observables, no autoridad). Nunca inv
 Título ({len(title)} chars): {title}
 Categoría: {category_name} | Precio: ${price:,.0f} | Tipo: {tipo_pub}
 Shipping: {'Full' if full_ship else 'Envío gratis' if free_ship else 'Envío pago'} | Fotos: {photos} | Ventas: {my_sold:,}
-Score optimización (índice interno): {ml_score['total']}/100
+Score interno (estimado): {ml_score['total']}/100{(chr(10) + 'Score OFICIAL ML: ' + str((ml_quality_oficial or {}).get('score', '')) + '/100' + (' — ' + (ml_quality_oficial or {}).get('level', '') if (ml_quality_oficial or {}).get('level') else '') + (chr(10) + 'Razones ML: ' + ' | '.join((ml_quality_oficial or {}).get('reasons', [])[:5]) if (ml_quality_oficial or {}).get('reasons') else '')) if (ml_quality_oficial or {}).get('score') else ''}
 Descripción ({len(description)} chars): {description[:400] or '(sin descripción)'}
 
 ═══ M1: KEYWORD ANALYSIS — FUENTE PRINCIPAL ═══
@@ -2066,9 +2104,18 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     # ── M1 scoring completo ───────────────────────────────────────────────────
     keyword_analysis = score_and_classify_keywords(autosuggest_raw, title, position_data, competitors, as_position_map)
 
-    # ── Score ML ──────────────────────────────────────────────────────────────
+    # ── Score ML interno ──────────────────────────────────────────────────────
     ml_score = calculate_ml_score(item_data, category_attrs, keyword_analysis)
     _c.print(f"  [dim]Score ML (índice interno): [/dim][{'green' if ml_score['total']>=70 else 'yellow' if ml_score['total']>=45 else 'red'}]{ml_score['total']}/100[/]")
+
+    # ── Score oficial de ML ───────────────────────────────────────────────────
+    _c.print("  [dim]Consultando score oficial ML...[/dim]", end=" ")
+    ml_quality_oficial = _get_ml_quality_score(item_id, token)
+    if ml_quality_oficial.get("score"):
+        _lv = ml_quality_oficial["level"] or ""
+        _c.print(f"[green]{ml_quality_oficial['score']}/100{' — ' + _lv if _lv else ''} (oficial ML)[/green]")
+    else:
+        _c.print("[dim]no disponible[/dim]")
 
     # ── M4: Root Cause Engine ─────────────────────────────────────────────────
     _c.print("  [dim]M4 — Root cause analysis...[/dim]", end=" ")
@@ -2095,6 +2142,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         item_data, description, keyword_analysis, position_data,
         comps_trimmed, comp_patterns, root_causes, difficulty,
         ml_score, category_attrs, category_name,
+        ml_quality_oficial=ml_quality_oficial,
     )
     analysis_text = _call_claude(prompt_analysis, max_tokens=2000, console=_c, fast=True)
 
@@ -2167,9 +2215,10 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         "_analysis_text":     analysis_text,
         "_seo_result":        seo_result,
         "_autosuggest_raw":   autosuggest_raw,
-        "_catalog_linked":    catalog_linked,
-        "_catalog_available": catalog_available,
-        "_qa_insights":       qa_insights,
+        "_catalog_linked":       catalog_linked,
+        "_catalog_available":    catalog_available,
+        "_qa_insights":          qa_insights,
+        "_ml_quality_oficial":   ml_quality_oficial,
     }
 
 

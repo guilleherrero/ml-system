@@ -567,9 +567,20 @@
     <span class="opt-card-title" title="{{ item.get('titulo_actual', '') }}">{{ item.get('titulo_actual', '')[:65] }}</span>
     {% if item.get('score_actual') %}
     <div class="score-strip">
+      {% if item.get('score_oficial_ml') %}
+      {% set sof = item.get('score_oficial_ml', 0) %}
+      {% set sof_color = '#15803d' if sof >= 70 else '#b45309' if sof >= 45 else '#dc2626' %}
+      {% set sof_bg    = '#dcfce7' if sof >= 70 else '#fef9c3' if sof >= 45 else '#fee2e2' %}
+      <div title="Score oficial de calidad que ML asigna a esta publicación{{ ' — ' + item.get('score_oficial_nivel','') if item.get('score_oficial_nivel') else '' }}"
+           style="display:flex;flex-direction:column;align-items:center;background:{{ sof_bg }};border:1.5px solid {{ sof_color }};border-radius:8px;padding:4px 10px;min-width:52px">
+        <span style="font-size:1.05rem;font-weight:800;color:{{ sof_color }};line-height:1">{{ sof }}</span>
+        <span style="font-size:.6rem;font-weight:700;color:{{ sof_color }};text-transform:uppercase;letter-spacing:.04em">ML oficial</span>
+      </div>
+      <i class="bi bi-dot" style="color:#94a3b8;font-size:.85rem"></i>
+      {% endif %}
       <div class="score-pill bad">
         <span class="sp-num">{{ item.get('score_actual',0) }}</span>
-        <span class="sp-lbl">Actual</span>
+        <span class="sp-lbl">Estimado</span>
       </div>
       <i class="bi bi-arrow-right" style="color:#94a3b8;font-size:.85rem"></i>
       <div class="score-pill good">
@@ -830,7 +841,7 @@
   {% endif %}
 
   <!-- ─ Análisis de calidad ─────────────────────────────────────────── -->
-  {% if item.get('puntaje_calidad') or item.get('resumen_mercado') or item.get('keywords_faltantes') or item.get('analisis_ficha') or item.get('analisis_desc') %}
+  {% if item.get('puntaje_calidad') or item.get('resumen_mercado') or item.get('keywords_faltantes') or item.get('analisis_ficha') or item.get('analisis_desc') or item.get('score_oficial_ml') %}
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.achev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
       <i class="bi bi-bar-chart-fill" style="color:#7c3aed;font-size:.88rem"></i>
@@ -838,9 +849,39 @@
       <i class="bi bi-chevron-down achev ms-auto" style="font-size:.75rem;color:#94a3b8"></i>
     </div>
     <div style="display:none;padding:14px 20px;background:#fafafe">
+
+      {% if item.get('score_oficial_ml') %}
+      {% set sof = item.get('score_oficial_ml', 0) %}
+      {% set sof_color = '#15803d' if sof >= 70 else '#b45309' if sof >= 45 else '#dc2626' %}
+      {% set sof_bg    = '#f0fdf4' if sof >= 70 else '#fefce8' if sof >= 45 else '#fef2f2' %}
+      {% set sof_label = 'Buena' if sof >= 70 else 'Regular' if sof >= 45 else 'Baja' %}
+      <div style="background:{{ sof_bg }};border:1.5px solid {{ sof_color }};border-radius:10px;padding:12px 16px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:{% if item.get('score_oficial_razones') %}8px{% else %}0{% endif %}">
+          <div style="text-align:center;min-width:52px">
+            <div style="font-size:1.6rem;font-weight:900;color:{{ sof_color }};line-height:1">{{ sof }}</div>
+            <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:{{ sof_color }}">/ 100</div>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:.85rem;color:{{ sof_color }}">Score oficial ML — Calidad {{ sof_label }}</div>
+            <div style="font-size:.75rem;color:#64748b">Este es el score que MercadoLibre asigna internamente a tu publicación{% if item.get('score_oficial_nivel') %} (nivel: {{ item.score_oficial_nivel }}){% endif %}</div>
+          </div>
+        </div>
+        {% if item.get('score_oficial_razones') %}
+        <div style="font-size:.78rem;color:#374151;border-top:1px solid {{ sof_color }}33;padding-top:8px">
+          <strong style="color:{{ sof_color }}">Qué dice ML que falta:</strong>
+          <ul style="margin:4px 0 0 0;padding-left:18px">
+            {% for razon in item.get('score_oficial_razones', []) %}
+            <li>{{ razon }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
       {% if item.get('puntaje_calidad') %}
       <details class="anl-item">
-        <summary><i class="bi bi-speedometer2 me-2" style="color:#7c3aed"></i>Puntaje de calidad actual<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <summary><i class="bi bi-speedometer2 me-2" style="color:#7c3aed"></i>Puntaje de calidad (análisis Claude)<i class="bi bi-chevron-down anl-chev"></i></summary>
         <div class="anl-item-body" style="background:#fdf4ff;font-family:monospace">{{ item.get('puntaje_calidad') }}</div>
       </details>
       {% endif %}
