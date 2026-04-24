@@ -2303,7 +2303,7 @@ function _buildBookmarkletLink() {
     } else {
       alert('Error: '+(d.error||'desconocido'));
     }
-  }).catch(function(e){alert('No se pudo conectar con la herramienta. ¿Está abierta en localhost:8080?');});
+  }).catch(function(e){alert('No se pudo conectar con la herramienta. Verificá que el sistema esté funcionando en: ${serverUrl}');});
 })();`;
 
   const href = 'javascript:' + encodeURIComponent(code);
