@@ -1750,31 +1750,24 @@ def _call_claude(prompt: str, max_tokens: int = 3500, console=None, fast: bool =
     """Llama a Claude con streaming.
     fast=True → usa Haiku (análisis/validación estructurada, mucho más barato).
     fast=False → usa Opus (síntesis creativa, títulos y descripciones finales).
-    Reintenta una vez ante APIConnectionError (transiente en Render).
     """
-    ai    = anthropic.Anthropic(timeout=anthropic.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0))
+    ai    = anthropic.Anthropic()
     model = "claude-haiku-4-5-20251001" if fast else "claude-opus-4-6"
+    full_txt = ""
 
-    for attempt in range(2):
-        full_txt = ""
-        try:
-            with ai.messages.stream(
-                model=model,
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-            ) as stream:
-                for text in stream.text_stream:
-                    full_txt += text
-                    if console:
-                        console.print(text, end="", markup=False)
+    with ai.messages.stream(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        for text in stream.text_stream:
+            full_txt += text
             if console:
-                console.print()
-            return full_txt
-        except anthropic.APIConnectionError:
-            if attempt == 0:
-                time.sleep(3)   # esperar 3s y reintentar
-                continue
-            raise               # segundo fallo → propagar
+                console.print(text, end="", markup=False)
+
+    if console:
+        console.print()
+    return full_txt
 
 
 # ══════════════════════════════════════════════════════════════════════════════

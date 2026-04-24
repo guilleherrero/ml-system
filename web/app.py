@@ -8914,12 +8914,8 @@ def api_optimizar_pub_v2():
             except Exception as opt_err:
                 import traceback, sys as _sys
                 tb = traceback.format_exc()
-                print(f'[ERROR run_full_optimization] item={item_id}: {opt_err}\n{tb}', file=_sys.stderr, flush=True)
-                err_str = str(opt_err)
-                # Mensaje más claro para errores de conexión transientes
-                if 'connection' in err_str.lower() or 'timeout' in err_str.lower():
-                    err_str = 'Error de conexión con la IA. Esperá unos segundos y volvé a intentarlo.'
-                yield _sse({'type': 'error', 'msg': err_str})
+                print(f'[ERROR run_full_optimization] item={item_id}: {type(opt_err).__name__}: {opt_err}\n{tb}', file=_sys.stderr, flush=True)
+                yield _sse({'type': 'error', 'msg': f'[{type(opt_err).__name__}] {opt_err}'})
                 return
 
             if not result:
