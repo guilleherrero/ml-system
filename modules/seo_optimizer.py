@@ -634,7 +634,7 @@ def track_positions(item_id: str, keywords: list, token: str) -> list:
 # M3 — COMPETITOR INTELLIGENCE
 # ══════════════════════════════════════════════════════════════════════════════
 
-def fetch_competitors_full(keyword: str, token: str, exclude_id: str = "", limit: int = 5) -> list:
+def fetch_competitors_full(keyword: str, token: str, exclude_id: str = "", limit: int = 8) -> list:
     """
     Obtiene los top N competidores con datos completos:
     título, precio, tipo, shipping, atributos, descripción, ventas, fotos.
@@ -703,13 +703,13 @@ def fetch_competitors_full(keyword: str, token: str, exclude_id: str = "", limit
 def fetch_competitor_qa(competitor_ids: list, token: str, max_q: int = 15, max_r: int = 10) -> list:
     """
     M3.5: Para cada competidor obtiene preguntas respondidas + reseñas.
-    Solo top 3 competidores para no sobrecargar la API.
+    Top 5 competidores para mayor cobertura de Q&A y reseñas.
     Retorna lista de dicts: {id, title, questions: [...], reviews: [...]}
     """
     headers = {"Authorization": f"Bearer {token}"}
     results = []
 
-    for item_id in competitor_ids[:3]:
+    for item_id in competitor_ids[:5]:
         data = {"id": item_id, "questions": [], "reviews": []}
 
         # Preguntas respondidas
@@ -2168,7 +2168,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         main_kw = autosuggest_raw[0] if autosuggest_raw else title
         _c.print(f"  [dim]M3 — Competitor intel para \"{main_kw[:35]}\"...[/dim]", end=" ")
         client._ensure_token()
-        competitors = fetch_competitors_full(main_kw, token, exclude_id=item_id, limit=5)
+        competitors = fetch_competitors_full(main_kw, token, exclude_id=item_id, limit=8)
     comp_patterns = analyze_competitor_patterns(competitors, title)
     _c.print(f"[green]{len(competitors)} competidores analizados[/green]")
 
@@ -2407,7 +2407,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     else:
         main_kw = autosuggest_raw[0] if autosuggest_raw else product_idea
         _c.print(f"  [dim]M3 — Competitor intel para \"{main_kw[:35]}\"...[/dim]", end=" ")
-        competitors = fetch_competitors_full(main_kw, token, limit=5)
+        competitors = fetch_competitors_full(main_kw, token, limit=8)
     comp_patterns = analyze_competitor_patterns(competitors, product_idea)
     _c.print(f"[green]{len(competitors)} competidores analizados[/green]")
 
