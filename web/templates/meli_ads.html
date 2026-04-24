@@ -672,7 +672,7 @@ function renderItem(item, otherCampIds, otherCampNames) {
           <code style="font-size:.66rem;font-weight:700;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:.1rem .3rem;cursor:pointer;user-select:all;flex-shrink:0"
                 title="Hacé click para copiar el ID"
                 onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='#dcfce7';setTimeout(()=>this.style.background='#eff6ff',1200)})">${item.id}</code>
-          <span style="font-size:.67rem;color:#64748b">${(item.sold_quantity||0).toLocaleString('es-AR')} vendidos</span>
+          <span style="font-size:.67rem;color:#64748b">${item.ventas_30d > 0 ? `<strong>${item.ventas_30d}</strong> ventas 30d` : 'sin ventas 30d'}</span>
         </div>
         <div class="item-title" title="${item.title}">${item.title}</div>
         <div class="item-meta">

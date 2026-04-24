@@ -4835,23 +4835,20 @@ def api_meli_ads_campaign_items(camp_id: int):
 
         items = get_campaign_items_detail(token, item_ids)
 
-        # ── Enriquecer con sold_quantity (batch, barato) ──────────────────────
-        sold_map: dict[str, int] = {}
-        for b in range(0, len(item_ids), 20):
-            batch = item_ids[b:b+20]
-            try:
-                r = req_lib.get(f'{ML}/items', headers=heads,
-                                params={'ids': ','.join(batch),
-                                        'attributes': 'id,sold_quantity'},
-                                timeout=10)
-                if r.ok:
-                    for e in r.json():
-                        if e.get('code') == 200:
-                            bd = e.get('body', {})
-                            sold_map[bd['id']] = int(bd.get('sold_quantity', 0) or 0)
-            except Exception:
-                pass
-            _time_module.sleep(0.08)
+        # ── Ventas 30d desde snapshot (más preciso que sold_quantity histórico) ─
+        alias      = _accounts[0].alias
+        stock_snap = db_load(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+        stock_map  = {s.get('id', ''): s for s in stock_snap.get('items', [])}
+
+        def _ventas30(iid: str) -> float:
+            s = stock_map.get(iid, {})
+            v = s.get('ventas_30d')
+            if v is not None:
+                return float(v)
+            vel = s.get('velocidad')
+            if vel is not None:
+                return round(float(vel) * 30, 1)
+            return 0.0
 
         # ── Jerarquía de campañas por nombre ────────────────────────────────
         def _camp_tier(name: str) -> int:
@@ -4861,10 +4858,7 @@ def api_meli_ads_campaign_items(camp_id: int):
             if 'impulso' in n or 'boost' in n:  return 3
             return 4
 
-        # Obtener nombres de todas las campañas (ya disponibles en app.py via request)
-        # Pasamos los datos vía query param opcional; sino usamos IDs del campaign_map
         all_camp_ids = list(campaign_map.keys())
-        # Recuperar nombres de cada campaña para ordenar jerarquía
         from modules.meli_ads_engine import _get_campaign_detail
         camp_meta: dict[int, dict] = {}
         for cid in all_camp_ids:
@@ -4874,73 +4868,75 @@ def api_meli_ads_campaign_items(camp_id: int):
             except Exception:
                 camp_meta[cid] = {'name': str(cid)}
 
-        camps_ranked = sorted(all_camp_ids,
-                              key=lambda c: _camp_tier(camp_meta.get(c, {}).get('name', '')))
-        current_rank = camps_ranked.index(camp_id) if camp_id in camps_ranked else 0
-        camp_above   = camps_ranked[current_rank - 1] if current_rank > 0 else None
-        camp_below   = camps_ranked[current_rank + 1] if current_rank < len(camps_ranked) - 1 else None
+        camps_ranked    = sorted(all_camp_ids,
+                                 key=lambda c: _camp_tier(camp_meta.get(c, {}).get('name', '')))
+        current_rank    = camps_ranked.index(camp_id) if camp_id in camps_ranked else 0
+        camp_above      = camps_ranked[current_rank - 1] if current_rank > 0 else None
+        camp_below      = camps_ranked[current_rank + 1] if current_rank < len(camps_ranked) - 1 else None
         camp_above_name = camp_meta.get(camp_above, {}).get('name', '') if camp_above else ''
         camp_below_name = camp_meta.get(camp_below, {}).get('name', '') if camp_below else ''
 
-        # ── Average sold_quantity de esta campaña ───────────────────────────
-        camp_sold_vals = [sold_map.get(iid, 0) for iid in item_ids]
-        camp_avg = (sum(camp_sold_vals) / len(camp_sold_vals)) if camp_sold_vals else 0
+        # ── Promedio ventas 30d de esta campaña ─────────────────────────────
+        camp_v30_vals = [_ventas30(iid) for iid in item_ids]
+        camp_avg      = (sum(camp_v30_vals) / len(camp_v30_vals)) if camp_v30_vals else 0
 
         # ── Generar recomendación por ítem ──────────────────────────────────
         def _recommend(item: dict) -> dict:
             iid   = item.get('id', '')
-            sold  = sold_map.get(iid, 0)
+            v30   = _ventas30(iid)
             level = item.get('level', '')
             bb    = item.get('buy_box', False)
+            no_snap = iid not in stock_map  # sin datos de snapshot
 
-            # Problemas críticos de calidad
+            # Problemas críticos de calidad (independiente de ventas)
             if level == 'red' and not bb:
                 return {
                     'tipo': 'quitar',
-                    'color': '#dc2626',
-                    'bg': '#fee2e2',
-                    'texto': f'Salud ROJA y sin Buy Box — esta publicación está perdiendo dinero en ads. '
-                             f'Pausarla hasta resolver los problemas de ficha.',
+                    'color': '#dc2626', 'bg': '#fee2e2',
+                    'texto': 'Salud ROJA y sin Buy Box — esta publicación está perdiendo dinero en ads. Pausarla hasta resolver los problemas de ficha.',
                     'accion': 'Quitar de campaña',
                 }
             if level == 'red':
                 return {
                     'tipo': 'revisar',
-                    'color': '#d97706',
-                    'bg': '#fef3c7',
-                    'texto': 'Salud ROJA — la visibilidad del anuncio está muy limitada. Mejorar fotos, título y descripción antes de seguir invirtiendo.',
+                    'color': '#d97706', 'bg': '#fef3c7',
+                    'texto': 'Salud ROJA — visibilidad del anuncio muy limitada. Mejorar fotos, título y descripción antes de seguir invirtiendo.',
                     'accion': None,
                 }
-            if not bb and sold < max(camp_avg * 0.5, 3):
+            if not bb and (no_snap or v30 < max(camp_avg * 0.5, 2)):
                 return {
                     'tipo': 'revisar',
-                    'color': '#d97706',
-                    'bg': '#fef3c7',
-                    'texto': f'Sin Buy Box y {sold} ventas totales — hay un competidor mejor posicionado. Ajustar precio o mejorar reputación para recuperar el Buy Box antes de invertir más.',
+                    'color': '#d97706', 'bg': '#fef3c7',
+                    'texto': f'Sin Buy Box{"" if no_snap else f" y {v30:.0f} ventas en 30 días"} — hay un competidor mejor posicionado. Ajustar precio o mejorar reputación para recuperar el Buy Box antes de invertir más.',
+                    'accion': None,
+                }
+
+            # Sin datos de snapshot — no podemos evaluar ventas recientes
+            if no_snap:
+                return {
+                    'tipo': 'ok',
+                    'color': '#64748b', 'bg': '#f8fafc',
+                    'texto': f'Nivel {level.upper()}{", Buy Box ✓" if bb else ""}. Sin datos de ventas recientes — el sistema actualizará mañana a las 7 AM.',
                     'accion': None,
                 }
 
             # Rendimiento alto → subir de campaña
-            if camp_above and sold >= camp_avg * 2 and level in ('green', 'yellow') and bb:
+            if camp_above and camp_avg > 0 and v30 >= camp_avg * 2 and level in ('green', 'yellow') and bb:
                 return {
                     'tipo': 'subir',
-                    'color': '#15803d',
-                    'bg': '#dcfce7',
-                    'texto': f'{sold} ventas totales ({round(sold / camp_avg, 1)}x el promedio de esta campaña). '
-                             f'Buen candidato para subir a {camp_above_name} y darle más presupuesto.',
+                    'color': '#15803d', 'bg': '#dcfce7',
+                    'texto': f'{v30:.0f} ventas en 30 días ({round(v30 / camp_avg, 1)}× el promedio de esta campaña). Buen candidato para subir a {camp_above_name} y darle más presupuesto.',
                     'accion': f'Mover a {camp_above_name}',
                     'camp_id': camp_above,
                     'camp_name': camp_above_name,
                 }
 
             # Rendimiento bajo → bajar de campaña
-            if camp_below and camp_avg > 0 and sold < camp_avg * 0.3 and level != 'green':
+            if camp_below and camp_avg > 0 and v30 < camp_avg * 0.3 and level != 'green':
                 return {
                     'tipo': 'bajar',
-                    'color': '#2563eb',
-                    'bg': '#eff6ff',
-                    'texto': f'{sold} ventas totales (por debajo del promedio de esta campaña). '
-                             f'Moverlo a {camp_below_name} para reducir gasto en este producto.',
+                    'color': '#2563eb', 'bg': '#eff6ff',
+                    'texto': f'{v30:.0f} ventas en 30 días (por debajo del promedio de la campaña: {camp_avg:.0f}). Moverlo a {camp_below_name} para reducir gasto en este producto.',
                     'accion': f'Mover a {camp_below_name}',
                     'camp_id': camp_below,
                     'camp_name': camp_below_name,
@@ -4949,15 +4945,16 @@ def api_meli_ads_campaign_items(camp_id: int):
             # Todo bien
             return {
                 'tipo': 'ok',
-                'color': '#64748b',
-                'bg': '#f8fafc',
-                'texto': f'Sin acciones urgentes. {sold} ventas totales, nivel {level.upper()}{", Buy Box ✓" if bb else ""}.',
+                'color': '#64748b', 'bg': '#f8fafc',
+                'texto': f'{v30:.0f} ventas en 30 días (promedio campaña: {camp_avg:.0f}), nivel {level.upper()}{", Buy Box ✓" if bb else ""}. Sin acciones urgentes.',
                 'accion': None,
             }
 
         for item in items:
-            item['sold_quantity'] = sold_map.get(item.get('id', ''), 0)
-            item['rec'] = _recommend(item)
+            iid = item.get('id', '')
+            item['ventas_30d']    = _ventas30(iid)
+            item['sold_quantity'] = stock_map.get(iid, {}).get('sold_quantity', None)
+            item['rec']           = _recommend(item)
 
         return jsonify({'ok': True, 'items': items, 'total': len(items),
                         'camp_avg_sold': round(camp_avg, 1)})
