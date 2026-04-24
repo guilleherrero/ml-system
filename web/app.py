@@ -4025,6 +4025,26 @@ def api_aplicar_optimizacion():
     return jsonify(result)
 
 
+@app.route('/api/test-claude')
+def api_test_claude():
+    """Endpoint de diagnóstico: testea la conexión con la API de Anthropic."""
+    import os
+    key = os.environ.get('ANTHROPIC_API_KEY', '')
+    if not key:
+        return jsonify({'ok': False, 'error': 'ANTHROPIC_API_KEY no configurada'})
+    try:
+        ai = anthropic.Anthropic()
+        msg = ai.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=10,
+            messages=[{'role': 'user', 'content': 'di ok'}]
+        )
+        return jsonify({'ok': True, 'response': msg.content[0].text, 'key_prefix': key[:20] + '...'})
+    except Exception as e:
+        import traceback
+        return jsonify({'ok': False, 'error_type': type(e).__name__, 'error': str(e), 'traceback': traceback.format_exc()})
+
+
 @app.route('/api/opt-marcar-aplicado', methods=['POST'])
 def api_opt_marcar_aplicado():
     """Marca una optimización como aplicada y captura el baseline actual para seguimiento.
