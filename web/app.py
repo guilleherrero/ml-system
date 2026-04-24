@@ -10141,7 +10141,9 @@ def _scheduler_run_all():
         except Exception as e:
             print(f'[scheduler] {alias} — inventario Full ERROR: {e}')
 
-    print(f'[scheduler] Actualización diaria completada — {datetime.now().strftime("%H:%M")}')
+    global _scheduler_last_run
+    _scheduler_last_run = datetime.now()
+    print(f'[scheduler] Actualización diaria completada — {_scheduler_last_run.strftime("%Y-%m-%d %H:%M")}')
 
     # ── Enviar resumen por email si está configurado ────────────────────────
     notif_cfg = _load_notif_config()
@@ -10180,7 +10182,7 @@ def _start_scheduler():
         scheduler = BackgroundScheduler(timezone='America/Argentina/Buenos_Aires')
         scheduler.add_job(
             _scheduler_run_all,
-            trigger=CronTrigger(hour=7, minute=0),
+            trigger=CronTrigger(hour=7, minute=0, timezone='America/Argentina/Buenos_Aires'),
             id='daily_update',
             name='Actualización diaria ML',
             replace_existing=True,
@@ -10221,10 +10223,22 @@ def api_debug_data(alias):
 
 @app.route('/api/scheduler-status')
 def api_scheduler_status():
+    next_run = None
+    if _app_scheduler and _app_scheduler.get_jobs():
+        nr = _app_scheduler.get_jobs()[0].next_run_time
+        # Convertir a hora Argentina para mostrar
+        try:
+            import pytz
+            art = pytz.timezone('America/Argentina/Buenos_Aires')
+            nr_art = nr.astimezone(art)
+            next_run = nr_art.strftime('%Y-%m-%d %H:%M (ART)')
+        except Exception:
+            next_run = str(nr)
     return jsonify({
         'ok': True,
         'scheduler_active': _app_scheduler is not None and _app_scheduler.running,
-        'next_run': str(_app_scheduler.get_jobs()[0].next_run_time) if _app_scheduler and _app_scheduler.get_jobs() else None,
+        'next_run': next_run,
+        'last_run': _scheduler_last_run.strftime('%Y-%m-%d %H:%M (ART)') if _scheduler_last_run else 'Nunca (desde el último reinicio del servidor)',
     })
 
 
@@ -11149,6 +11163,7 @@ Sé directo — si algo hay que cortar, decilo.]"""
 
 
 _app_scheduler = None
+_scheduler_last_run = None  # datetime del último run completado
 
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
