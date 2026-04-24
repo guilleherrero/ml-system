@@ -2148,12 +2148,6 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     autosuggest_raw, as_position_map = get_autosuggest_keywords(title)
     _c.print(f"[green]{len(autosuggest_raw)} keywords reales[/green]")
 
-    # ── M2: Position Tracker — 6 keywords para diagnóstico completo ──────────
-    _c.print("  [dim]M2 — Position tracking...[/dim]", end=" ")
-    position_data = track_positions(item_id, autosuggest_raw[:6], token)
-    ranking_n = sum(1 for p in position_data if p["aparece"])
-    _c.print(f"[green]aparecés en {ranking_n}/{len(position_data)} keywords[/green]")
-
     # ── M3: Competitor Intelligence ───────────────────────────────────────────
     if competitor_products:
         _c.print(f"  [dim]M3 — Usando {len(competitor_products)} competidores pre-seleccionados...[/dim]", end=" ")
@@ -2171,15 +2165,25 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     _comp_titles_raw = [c.get("title", "") for c in competitors if c.get("title")]
     _extra_kws = _competitor_seeded_autosuggest_seo(_comp_titles_raw, title)
     _seen_raw  = set(autosuggest_raw)
-    _added     = 0
+    _gap_kws   = []  # keywords nuevas del vocabulario competidor — las más valiosas para trackear
     for _kw in _extra_kws:
         if _kw not in _seen_raw:
             _seen_raw.add(_kw)
             autosuggest_raw.append(_kw)
-            # Asignar posición 5 (neutro) — keyword validada pero sin señal de volumen propio
             as_position_map[_kw] = {'best_pos': 5, 'query_count': 0}
-            _added += 1
-    _c.print(f"[green]+{_added} keywords nuevas ({len(autosuggest_raw)} total)[/green]")
+            _gap_kws.append(_kw)
+    _c.print(f"[green]+{len(_gap_kws)} keywords nuevas ({len(autosuggest_raw)} total)[/green]")
+
+    # ── M2: Position Tracker — DESPUÉS de M1.5 para cubrir vocabulario real ──
+    # Trackea las 6 keywords propias (autosuggest del título) + las 3 mejores
+    # gap keywords de competidores — así el diagnóstico refleja el mercado completo
+    _c.print("  [dim]M2 — Position tracking (propio + vocabulario competidores)...[/dim]", end=" ")
+    _kws_to_track = list(dict.fromkeys(autosuggest_raw[:6] + _gap_kws[:3]))
+    position_data = track_positions(item_id, _kws_to_track, token)
+    ranking_n = sum(1 for p in position_data if p["aparece"])
+    _gap_ranking = sum(1 for p in position_data if p["aparece"] and p["keyword"] in _gap_kws)
+    _c.print(f"[green]aparecés en {ranking_n}/{len(position_data)} keywords "
+             f"({_gap_ranking} del vocabulario competidor)[/green]")
 
     # ── M3.5: Q&A y reseñas de competidores ──────────────────────────────────
     _c.print("  [dim]M3.5 — Minería de Q&A y reseñas de competidores...[/dim]", end=" ")
