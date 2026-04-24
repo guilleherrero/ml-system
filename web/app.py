@@ -3897,7 +3897,10 @@ def api_aplicar_optimizacion():
     # ── Descripción ───────────────────────────────────────────────────────────
     if descripcion:
         try:
-            client._put(f'/items/{item_id}/description', {'plain_text': descripcion})
+            # Strip internal validation checklist — no debe publicarse en ML
+            cl_idx = descripcion.find('### CHECKLIST DE VALIDACIÓN INTERNA')
+            desc_clean = descripcion[:cl_idx].strip() if cl_idx > 0 else descripcion
+            client._put(f'/items/{item_id}/description', {'plain_text': desc_clean})
             applied.append('descripcion')
         except Exception as e:
             errors.append(f'descripción: {e}')
@@ -4048,6 +4051,108 @@ def api_test_claude():
     except Exception as e:
         import traceback
         return jsonify({'ok': False, 'error_type': type(e).__name__, 'error': str(e), 'traceback': traceback.format_exc()})
+
+
+@app.route('/api/generar-faq', methods=['POST'])
+def api_generar_faq():
+    """Genera 5 preguntas frecuentes usando preguntas reales de compradores del item + Claude."""
+    from core.account_manager import AccountManager
+    body    = request.get_json() or {}
+    alias   = body.get('alias', '').strip()
+    item_id = body.get('item_id', '').strip().upper()
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias o item_id'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    client._ensure_token()
+    ml_headers = {'Authorization': f'Bearer {client.account.access_token}'}
+
+    # 1. Buscar preguntas reales del item (respondidas y sin responder)
+    preguntas_reales = []
+    for status in ('ANSWERED', 'UNANSWERED'):
+        try:
+            r = req_lib.get(
+                'https://api.mercadolibre.com/questions/search',
+                params={'item': item_id, 'status': status, 'limit': 30},
+                headers=ml_headers, timeout=8
+            )
+            if r.ok:
+                for q in r.json().get('questions', []):
+                    texto = q.get('text', '').strip()
+                    respuesta = (q.get('answer') or {}).get('text', '').strip()
+                    if texto:
+                        preguntas_reales.append({'pregunta': texto, 'respuesta': respuesta})
+        except Exception:
+            pass
+
+    # 2. Obtener título del item para contexto
+    titulo_item = item_id
+    try:
+        ir = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}',
+                         headers=ml_headers, timeout=6)
+        if ir.ok:
+            titulo_item = ir.json().get('title', item_id)
+    except Exception:
+        pass
+
+    if not preguntas_reales:
+        return jsonify({'ok': False, 'error': 'No se encontraron preguntas de compradores para este item. Publicá primero y volvé cuando haya preguntas.'}), 404
+
+    # 3. Llamar a Claude para generar FAQ
+    preguntas_txt = '\n'.join(
+        f'- {p["pregunta"]}' + (f'\n  Respuesta del vendedor: {p["respuesta"]}' if p['respuesta'] else '')
+        for p in preguntas_reales[:40]
+    )
+
+    prompt = f"""Sos experto en ecommerce de MercadoLibre Argentina. Analizás las preguntas reales de compradores de esta publicación y generás un bloque FAQ para la descripción del producto.
+
+PRODUCTO: {titulo_item}
+
+PREGUNTAS REALES DE COMPRADORES:
+{preguntas_txt}
+
+TAREA: Generá exactamente 5 preguntas frecuentes y sus respuestas en base a los patrones reales que ves arriba.
+
+REGLAS:
+- Español rioplatense (vos, tus)
+- Respuestas directas, máximo 2 oraciones
+- Sin markdown, sin bullets, solo texto plano
+- No mencionar precios ni garantías ML (ML los muestra por separado)
+- Elegí las 5 preguntas más frecuentes o importantes
+
+FORMATO EXACTO (respetá los separadores):
+PREGUNTAS FRECUENTES
+
+P: [pregunta 1]
+R: [respuesta 1]
+
+P: [pregunta 2]
+R: [respuesta 2]
+
+P: [pregunta 3]
+R: [respuesta 3]
+
+P: [pregunta 4]
+R: [respuesta 4]
+
+P: [pregunta 5]
+R: [respuesta 5]"""
+
+    try:
+        ai = anthropic.Anthropic()
+        msg = ai.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=800,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        faq_text = msg.content[0].text.strip()
+        return jsonify({'ok': True, 'faq': faq_text, 'total_preguntas': len(preguntas_reales)})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error Claude: {e}'}), 500
 
 
 @app.route('/api/opt-marcar-aplicado', methods=['POST'])
@@ -8696,7 +8801,7 @@ INSTRUCCIÓN: Usá EXACTAMENTE los nombres de campo de "ATRIBUTOS OFICIALES DE L
 REGLA CRÍTICA: Los valores de atributo deben ser semánticamente correctos y limpios. PROHIBIDO meter frases SEO o keywords dentro de valores de atributo.
   ✅ Correcto — Color: Negro
   ❌ Incorrecto — Color: Negro profesional para puntas abiertas
-Si hay valores aceptados, usá uno de esos exactos. Si no podés inferir el valor con certeza → [FALTANTE].
+Si hay valores aceptados, usá uno de esos exactos. Si no podés inferir el valor con certeza → escribí [SUGERIR: descripción de qué dato va aquí] para que el vendedor lo complete.
 Las gap keywords van SOLO en el título y en la descripción, nunca en los valores de la ficha.
 Formato: un campo por línea sin viñetas:
 [Nombre exacto del campo]: [valor exacto]
@@ -9443,7 +9548,7 @@ Reglas:
   - nombres EXACTOS de atributos oficiales de la categoría listados arriba
   - completar todos los obligatorios
   - opcionales relevantes según competidores
-  - no inventar valores — marcá [FALTANTE] si no podés inferirlo
+  - si no podés inferir el valor → escribí [SUGERIR: descripción de qué dato va aquí]
 
 ═══ PASO 4 — DESCRIPCIÓN ═══
   - 500–700 palabras reales útiles

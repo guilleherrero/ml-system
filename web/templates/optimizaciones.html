@@ -713,8 +713,11 @@
         <div class="t-opt {{ 'rec' if is_rec else 'nor' }}">
           <div class="t-opt-head">
             <span class="t-opt-num">{{ loop.index }}{% if is_rec %} <span class="badge ms-1" style="background:#16a34a;font-size:.58rem">★ RECOMENDADA</span>{% endif %}</span>
-            <span id="titulo-{{ outer_idx }}-{{ loop.index }}" class="t-opt-text">{{ t.titulo }}</span>
-            <span class="t-opt-chars{% if t.titulo|length > 60 %} text-danger fw-bold{% endif %}">
+            <span id="titulo-{{ outer_idx }}-{{ loop.index }}" class="t-opt-text"
+                  contenteditable="true" spellcheck="false"
+                  style="outline:none;border-bottom:1.5px dashed #94a3b8;cursor:text;min-width:80px"
+                  oninput="var c=document.getElementById('tchars-{{ outer_idx }}-{{ loop.index }}');var n=this.innerText.trim().length;c.textContent=n+'/60';c.className='t-opt-chars'+(n>60?' text-danger fw-bold':'')">{{ t.titulo }}</span>
+            <span id="tchars-{{ outer_idx }}-{{ loop.index }}" class="t-opt-chars{% if t.titulo|length > 60 %} text-danger fw-bold{% endif %}">
               {{ t.titulo|length }}/60{% if t.titulo|length > 60 %} ⚠️ excede límite{% endif %}
             </span>
             <button class="btn btn-sm btn-success fw-semibold flex-shrink-0"
@@ -740,7 +743,9 @@
       {% else %}
       <div class="t-opt nor">
         <div class="t-opt-head">
-          <span id="titulo-{{ outer_idx }}-1" class="t-opt-text">{{ item.get('titulo_nuevo') }}</span>
+          <span id="titulo-{{ outer_idx }}-1" class="t-opt-text"
+                contenteditable="true" spellcheck="false"
+                style="outline:none;border-bottom:1.5px dashed #94a3b8;cursor:text;min-width:80px">{{ item.get('titulo_nuevo') }}</span>
           <button class="btn btn-sm btn-success fw-semibold flex-shrink-0"
                   onclick="copyById('titulo-{{ outer_idx }}-1', this)"
                   style="font-size:.74rem;padding:4px 10px">
@@ -817,7 +822,9 @@
     </div>
     <div style="display:none">
       <div id="ficha-{{ outer_idx }}"
-           style="padding:14px 20px;white-space:pre-wrap;font-size:.84rem;line-height:1.9;font-family:monospace;background:#fffbf0;max-height:320px;overflow-y:auto">{{ item.get('ficha_perfecta') }}</div>
+           contenteditable="true" spellcheck="false"
+           style="padding:14px 20px;white-space:pre-wrap;font-size:.84rem;line-height:1.9;font-family:monospace;background:#fffbf0;max-height:320px;overflow-y:auto;outline:none;cursor:text"
+           title="Editá directamente los campos antes de aplicar">{{ item.get('ficha_perfecta') }}</div>
     </div>
   </div>
   {% endif %}
@@ -933,12 +940,22 @@
     </div>
     <div class="opt-sec-body">
       <div class="desc-wrap">
-        <div id="desc-{{ outer_idx }}" class="desc-wrap-body">{{ item.get('descripcion_nueva', '') }}</div>
+        <div id="desc-{{ outer_idx }}" class="desc-wrap-body"
+             contenteditable="true" spellcheck="false"
+             style="outline:none;cursor:text"
+             oninput="var c=document.getElementById('desc-chars-{{ outer_idx }}');c.textContent=this.innerText.replace(/\s*###\s*CHECKLIST[\s\S]*/,'').trim().length+' caracteres'">{{ item.get('descripcion_nueva', '') }}</div>
         <div class="desc-wrap-foot">
-          <span style="font-size:.7rem;color:#64748b">{{ item.get('descripcion_nueva','')|length }} caracteres</span>
-          <button class="btn btn-sm btn-success fw-semibold" onclick="copyById('desc-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
-            <i class="bi bi-clipboard me-1"></i>Copiar
-          </button>
+          <span id="desc-chars-{{ outer_idx }}" style="font-size:.7rem;color:#64748b">{{ item.get('descripcion_nueva','')|length }} caracteres</span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm fw-semibold" id="btn-faq-{{ outer_idx }}"
+                    onclick="generarFaq('{{ item.get('item_id','') }}', 'desc-{{ outer_idx }}', 'btn-faq-{{ outer_idx }}')"
+                    style="background:#7c3aed;color:#fff;border:none;font-size:.73rem;padding:3px 10px">
+              <i class="bi bi-chat-left-quote me-1"></i>Generar FAQ
+            </button>
+            <button class="btn btn-sm btn-success fw-semibold" onclick="copyById('desc-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
+              <i class="bi bi-clipboard me-1"></i>Copiar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2127,7 +2144,7 @@ function aplicarFicha(itemId, fichaElId, btnId) {
     if (colon < 1) continue;
     const name  = line.slice(0, colon).trim();
     const value = line.slice(colon + 1).trim();
-    if (name && value && !value.includes('[FALTANTE]')) {
+    if (name && value && !value.includes('[FALTANTE]') && !value.includes('[SUGERIR:')) {
       attributes.push({ name, value });
     }
   }
@@ -2165,13 +2182,17 @@ function aplicarDescripcion(itemId, btnId) {
   const btn = document.getElementById(btnId);
   const desc = document.getElementById(btnId.replace('btn-apply-desc-', 'desc-'));
   if (!desc || !desc.innerText.trim()) { alert('Sin descripción para aplicar.'); return; }
+  // Strip checklist interno — no debe publicarse en ML
+  let textoDesc = desc.innerText.trim();
+  const clIdx = textoDesc.indexOf('### CHECKLIST DE VALIDACIÓN INTERNA');
+  if (clIdx > 0) textoDesc = textoDesc.slice(0, clIdx).trim();
   if (!confirm('¿Aplicar esta descripción directamente en MercadoLibre?')) return;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
   fetch('/api/aplicar-optimizacion', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, descripcion: desc.innerText.trim() })
+    body: JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, descripcion: textoDesc })
   })
   .then(r => r.json())
   .then(d => {
@@ -2187,6 +2208,46 @@ function aplicarDescripcion(itemId, btnId) {
   .catch(() => {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+    alert('Error de conexión.');
+  });
+}
+
+function generarFaq(itemId, descElId, btnId) {
+  const btn    = document.getElementById(btnId);
+  const descEl = document.getElementById(descElId);
+  if (!itemId) { alert('No hay publicación seleccionada.'); return; }
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Buscando preguntas...';
+  fetch('/api/generar-faq', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId })
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-chat-left-quote me-1"></i>Generar FAQ';
+    if (d.ok) {
+      // Agregar FAQ al final de la descripción (antes del checklist si existe)
+      let texto = descEl.innerText.trim();
+      const clIdx = texto.indexOf('### CHECKLIST DE VALIDACIÓN INTERNA');
+      const base  = clIdx > 0 ? texto.slice(0, clIdx).trim() : texto;
+      const checklist = clIdx > 0 ? '\n\n' + texto.slice(clIdx) : '';
+      descEl.innerText = base + '\n\n' + d.faq + checklist;
+      // Actualizar contador
+      const charsEl = document.getElementById(descElId.replace('desc-', 'desc-chars-'));
+      if (charsEl) {
+        const limpio = descEl.innerText.replace(/\s*###\s*CHECKLIST[\s\S]*/, '').trim();
+        charsEl.textContent = limpio.length + ' caracteres';
+      }
+      showToast(`FAQ generado con ${d.total_preguntas} preguntas reales de compradores`, 'success');
+    } else {
+      alert('No se pudo generar el FAQ: ' + (d.error || 'error desconocido'));
+    }
+  })
+  .catch(() => {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-chat-left-quote me-1"></i>Generar FAQ';
     alert('Error de conexión.');
   });
 }
