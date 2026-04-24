@@ -347,21 +347,31 @@ def _ml_autosuggest(query: str, limit: int = 10) -> list:
 
 def get_autosuggest_keywords(title: str) -> tuple:
     """
-    Ejecuta 3 queries en orden de importancia para maximizar cobertura.
+    Ejecuta hasta 4 queries cortas derivadas del título para maximizar cobertura.
     Retorna (keywords_list, position_map) donde position_map = {kw: {'best_pos': int, 'query_count': int}}.
     best_pos = mejor posición que tuvo la keyword en cualquier query (1 = más buscada).
     query_count = en cuántas queries distintas apareció (validación cruzada de volumen).
+
+    Estrategia de queries:
+      q1 = primeras 3 palabras sig. → identidad principal del producto
+      q2 = primeras 2 palabras sig. → búsqueda más genérica/popular
+      q3 = palabras del medio (pos 1-3) → términos diferenciadores del título
+      q4 = últimas 3 palabras sig.  → calificadores específicos (profesional, seco, etc.)
+
+    Usar el título completo como query produce sugerencias de esa frase larga específica
+    en vez de las búsquedas reales del nicho — los compradores buscan con 2-3 palabras.
     Fallback: extrae palabras clave del título si el autosuggest falla.
     """
     words = [w for w in title.lower().split() if len(w) > 3 and w not in _STOPWORDS]
 
-    q1 = title.lower()
-    q2 = " ".join(words[:3]) if len(words) >= 3 else " ".join(words)
-    q3 = " ".join(words[:2]) if len(words) >= 2 else ""
+    q1 = " ".join(words[:3]) if len(words) >= 3 else " ".join(words)
+    q2 = " ".join(words[:2]) if len(words) >= 2 else ""
+    q3 = " ".join(words[1:4]) if len(words) >= 4 else ""   # medio del título
+    q4 = " ".join(words[-3:]) if len(words) >= 5 else ""   # calificadores del final
 
     seen_q: set = set()
     queries = []
-    for q in [q1, q2, q3]:
+    for q in [q1, q2, q3, q4]:
         if q and q not in seen_q:
             seen_q.add(q)
             queries.append(q)
