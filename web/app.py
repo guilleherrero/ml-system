@@ -10321,39 +10321,36 @@ def _sync_full_inventory(alias):
             break
         _time_module.sleep(0.1)
 
-    FULL_LOGISTICS = ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
     result = {}
     for b in range(0, len(all_ids), 20):
         batch = all_ids[b:b+20]
         try:
             r = _rq.get(f'{ML}/items', headers=heads,
                         params={'ids': ','.join(batch),
-                                'attributes': 'id,available_quantity,inventory_id,shipping'},
+                                'attributes': 'id,available_quantity,inventory_id'},
                         timeout=12)
             if r.ok:
                 for e in r.json():
                     if e.get('code') != 200:
                         continue
-                    body    = e.get('body', {})
-                    logtype = (body.get('shipping') or {}).get('logistic_type', '')
-                    if logtype not in FULL_LOGISTICS:
-                        continue
+                    body   = e.get('body', {})
                     iid    = body.get('id', '')
                     inv_id = body.get('inventory_id', '')
-                    total_ml = int(body.get('available_quantity', 0) or 0)
+                    if not iid or not inv_id:
+                        continue  # solo ítems Full tienen inventory_id
+                    total_ml      = int(body.get('available_quantity', 0) or 0)
                     stock_en_full = total_ml
                     deposito      = 0
-                    if inv_id:
-                        try:
-                            rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
-                                         headers=heads, timeout=(3, 5))
-                            if rf.ok:
-                                fdata = rf.json()
-                                stock_en_full = int(fdata.get('total', total_ml) or total_ml)
-                                deposito      = max(0, total_ml - stock_en_full)
-                        except Exception:
-                            pass
-                        _time_module.sleep(0.15)
+                    try:
+                        rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                                     headers=heads, timeout=(3, 5))
+                        if rf.ok:
+                            fdata = rf.json()
+                            stock_en_full = int(fdata.get('total', total_ml) or total_ml)
+                            deposito      = max(0, total_ml - stock_en_full)
+                    except Exception:
+                        pass
+                    _time_module.sleep(0.15)
                     result[iid] = {'stock_en_full': stock_en_full, 'deposito': deposito}
         except Exception:
             pass
@@ -10369,8 +10366,11 @@ def api_full_inventory_sync(alias):
     """Sincroniza stock Full/depósito y devuelve resultado."""
     _sync_full_inventory(alias)
     cache = db_load(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
+    items = cache.get('items', {})
+    con_deposito = sum(1 for v in items.values() if v.get('deposito', 0) > 0)
     return jsonify({'ok': True,
-                    'count': len(cache.get('items', {})),
+                    'count': len(items),
+                    'con_deposito': con_deposito,
                     'last_updated': cache.get('last_updated')})
 
 
@@ -10525,18 +10525,20 @@ def api_full_data(alias):
         transit   = item_rep.get('transit_days',  rep_cfg.get('transit_days_global', 25))
         en_transito = en_transito_map.get(iid, 0)
 
-        # Stock separado: Full (depósito ML) vs depósito propio
-        # deposito_stock se decrementa al marcar pedido como "enviado_full" (antes del próximo sync)
+        # Stock separado: Full (en almacén ML) vs depósito propio (en bodega del vendedor)
+        # deposito_stock se decrementa al marcar pedido como "enviado_full"
         manual_dep = item_rep.get('deposito_stock')
         if iid in fulfillment_map:
             stock_en_full, cache_dep = fulfillment_map[iid]
-            # Si hay seguimiento manual, usar el menor: cubre el período entre envío y llegada a ML
+            # Si hay seguimiento manual, usar el menor: cubre ítems en tránsito aún no en ML
             deposito = min(int(cache_dep), int(manual_dep)) if manual_dep is not None else cache_dep
         else:
+            # Sin sync: si hay deposito_stock manual lo usamos; si no, es desconocido (None)
             stock_en_full = item['stock']
-            deposito = int(manual_dep) if manual_dep is not None else 0
+            deposito = int(manual_dep) if manual_dep is not None else None
         item['stock'] = stock_en_full
-        stock_total   = stock_en_full + deposito + en_transito
+        dep_real    = deposito if deposito is not None else 0
+        stock_total = stock_en_full + dep_real + en_transito
 
         # Días de stock (incluye en tránsito a Full)
         dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None

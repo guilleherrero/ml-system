@@ -433,7 +433,7 @@ function renderTabla(items) {
         ${it.valor_venta ? `<div style="font-size:.65rem;color:#94a3b8">stock: ${fmtPeso(it.valor_venta)}</div>` : ''}
       </td>
       <td class="text-end" style="padding:.7rem .7rem;font-weight:700;color:#6366f1">${it.stock}</td>
-      <td class="text-end" style="padding:.7rem .7rem;color:#64748b">${it.deposito > 0 ? it.deposito : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem;color:#64748b">${it.deposito === null || it.deposito === undefined ? '<span class="text-muted" title="Sincronizá o ingresá el stock en la configuración">—</span>' : it.deposito > 0 ? `<span style="font-weight:600">${it.deposito}</span>` : '0'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.en_transito > 0 ? `<span style="color:#f59e0b;font-weight:600">${it.en_transito}</span><div style="font-size:.65rem;color:#94a3b8">en camino</div>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.vel_30 > 0 ? it.vel_30.toFixed(1) : '<span class="text-muted">0</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">${it.revenue_30d > 0 ? `<span style="font-weight:600;color:#059669">${fmtPeso(it.revenue_30d)}</span>` : '<span class="text-muted">—</span>'}</td>
@@ -689,8 +689,11 @@ function sincronizarInventario() {
     .then(r => r.json())
     .then(d => {
       if (d.ok) {
-        document.getElementById('inv-cache-msg').textContent = `✓ Sincronizado: ${d.count} ítems — ${d.last_updated}. Recargando…`;
-        setTimeout(() => location.reload(), 1500);
+        const detalle = d.count === 0
+          ? '⚠️ 0 ítems Full encontrados — verificá que los ítems tengan habilitado Mercado Envíos Full.'
+          : `✓ ${d.count} ítems sincronizados${d.con_deposito > 0 ? ` (${d.con_deposito} con stock en depósito)` : ' (todo el stock en almacén ML)'}. Recargando…`;
+        document.getElementById('inv-cache-msg').textContent = detalle;
+        setTimeout(() => location.reload(), 2000);
       } else {
         document.getElementById('inv-cache-msg').textContent = 'Error al sincronizar. Intentá de nuevo.';
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Sincronizar depósito'; }
