@@ -175,23 +175,27 @@ fetch(`/api/funnel/${encodeURIComponent(alias)}`)
         <div class="funnel-steps">
           <div class="f-step">
             <div class="f-val">${(item.visitas_30d||0).toLocaleString('es-AR')}</div>
-            <div class="f-lbl">Visitas</div>
+            <div class="f-lbl">Visitas 30d</div>
           </div>
           <div class="f-arrow">→</div>
-          <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_preg) : ''}"
-                title="% visitas que preguntaron">
-            ${item.vis_to_preg}%
-          </span>
+          <div class="f-step">
+            <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_preg) : ''}">
+              ${item.vis_to_preg}%
+            </span>
+            <div class="f-lbl" style="font-size:.62rem;color:#94a3b8">preguntaron</div>
+          </div>
           <div class="f-arrow">→</div>
           <div class="f-step">
             <div class="f-val">${(item.preguntas_30d||0)}</div>
             <div class="f-lbl">Preguntas</div>
           </div>
           <div class="f-arrow">→</div>
-          <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_vta) : ''}"
-                title="% visitas que compraron">
-            ${item.vis_to_vta}%
-          </span>
+          <div class="f-step">
+            <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_vta) : ''}">
+              ${item.vis_to_vta}%
+            </span>
+            <div class="f-lbl" style="font-size:.62rem;color:#94a3b8">compraron</div>
+          </div>
           <div class="f-arrow">→</div>
           <div class="f-step">
             <div class="f-val" style="color:#2563eb">${(item.ventas_30d||0)}</div>
