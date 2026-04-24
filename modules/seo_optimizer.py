@@ -211,6 +211,53 @@ def _jaccard(a: str, b: str) -> float:
     return len(sa & sb) / len(sa | sb)
 
 
+def _cluster_keywords(keywords: list, position_map: dict) -> list:
+    """
+    Agrupa keywords semánticamente similares usando Jaccard sobre tokens.
+    Dentro de cada cluster elige el representante = menor best_pos (más buscado).
+    Si dos keywords tienen el mismo best_pos, gana el de mayor query_count.
+
+    Retorna lista de clusters ordenada por best_pos del representante ASC:
+      [{'representative': str, 'best_pos': int, 'query_count': int, 'variants': [str, ...]}, ...]
+
+    Umbral de similitud: 0.40 — comparten al menos 40% de tokens significativos.
+    """
+    THRESHOLD = 0.40
+    assigned = [False] * len(keywords)
+    clusters = []
+
+    def _pm(kw):
+        pm = position_map.get(kw, {})
+        return pm.get('best_pos', 99), pm.get('query_count', 0)
+
+    for i, kw_i in enumerate(keywords):
+        if assigned[i]:
+            continue
+        group = [kw_i]
+        assigned[i] = True
+        for j, kw_j in enumerate(keywords):
+            if assigned[j] or i == j:
+                continue
+            if _jaccard(kw_i, kw_j) >= THRESHOLD:
+                group.append(kw_j)
+                assigned[j] = True
+
+        # Elegir representante: menor best_pos; si empate, mayor query_count
+        group.sort(key=lambda k: (_pm(k)[0], -_pm(k)[1]))
+        rep = group[0]
+        rep_pos, rep_qc = _pm(rep)
+        clusters.append({
+            'representative': rep,
+            'best_pos':       rep_pos,
+            'query_count':    rep_qc,
+            'variants':       group[1:],
+        })
+
+    # Ordenar clusters de mayor a menor poder (menor best_pos = más buscado)
+    clusters.sort(key=lambda c: (c['best_pos'], -c['query_count']))
+    return clusters
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # M0 — COMPETITOR PHRASE EXTRACTION (alimenta M1 con vocabulario real)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1651,6 +1698,7 @@ def _build_synthesis_prompt(
     my_price: float = 0.0,
     qa_insights: str = "",
     own_questions: list = None,
+    keyword_clusters: list = None,
 ) -> str:
     title        = item_data.get("title", "")
     my_sold      = item_data.get("sold_quantity", 0)
@@ -1698,6 +1746,22 @@ def _build_synthesis_prompt(
         _kw_lines.append("INFORMACIONALES — solo descripción, NUNCA en título:")
         _kw_lines.extend(_inf)
     kw_block = "\n".join(_kw_lines) or "  (no disponible)"
+
+    # Clusters de keywords — indica variantes intercambiables y su poder real
+    cluster_block = ""
+    if keyword_clusters:
+        cl_lines = ["CLUSTERS DE KEYWORDS (agrupadas por significado similar):"]
+        cl_lines.append("  Regla: usá el REPRESENTANTE en el título; las VARIANTES en descripción y atributos.")
+        for cl in keyword_clusters[:10]:
+            rep   = cl['representative']
+            pos   = cl['best_pos']
+            qc    = cl['query_count']
+            power = f"pos {pos}" + (f" ×{qc}q" if qc >= 2 else "")
+            if cl['variants']:
+                cl_lines.append(f"  • [{power}] \"{rep}\" ← variantes: {', '.join(repr(v) for v in cl['variants'][:3])}")
+            else:
+                cl_lines.append(f"  • [{power}] \"{rep}\" (sin variantes)")
+        cluster_block = "\n".join(cl_lines)
 
     # Root causes de alto impacto
     high_causes = [c for c in root_causes if c["impacto"] == "alto"]
@@ -1791,7 +1855,7 @@ CAUSAS DE ALTO IMPACTO: {rc_summary}{price_block}{photos_block}{catalog_block}
 
 KEYWORDS REALES DEL AUTOSUGGEST ML (fuente primaria — prioridad absoluta sobre todo):
 {kw_block}
-{gap_block}
+{("" + cluster_block + chr(10)) if cluster_block else ""}{gap_block}
 
 ATRIBUTOS OFICIALES DE LA CATEGORÍA "{category_name}":
 {attrs_block}
@@ -2244,6 +2308,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
 
     # ── M1 scoring completo ───────────────────────────────────────────────────
     keyword_analysis = score_and_classify_keywords(autosuggest_raw, title, position_data, competitors, as_position_map)
+    keyword_clusters = _cluster_keywords(autosuggest_raw, as_position_map)
 
     # ── Score ML interno ──────────────────────────────────────────────────────
     ml_score = calculate_ml_score(item_data, category_attrs, keyword_analysis)
@@ -2302,6 +2367,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         my_price=my_price,
         qa_insights=qa_insights,
         own_questions=own_questions,
+        keyword_clusters=keyword_clusters,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)
@@ -2454,6 +2520,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     # M2: no hay item_id para trackear posición
     position_data    = []
     keyword_analysis = score_and_classify_keywords(autosuggest_raw, product_idea, [], competitors, as_position_map)
+    keyword_clusters = _cluster_keywords(autosuggest_raw, as_position_map)
     ml_score         = {"total": 0, "kw_in_title": [], "kw_missing": autosuggest_raw[:8],
                         "missing_required": [a["name"] for a in category_attrs.get("required", [])],
                         "missing_optional": [], "attrs_required_pct": 0, "attrs_optional_pct": 0,
@@ -2484,6 +2551,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
         my_photos=0,
         my_price=avg_price,
         qa_insights=qa_insights,
+        keyword_clusters=keyword_clusters,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=3200, console=_c, fast=False)
     seo_result     = _parse_synthesis(synthesis_text)
