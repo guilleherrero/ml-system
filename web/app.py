@@ -4702,9 +4702,7 @@ def meli_ads():
             api_status['ads_count']       = _meta.get('ads_count', 0)
             api_status['warnings']        = _meta.get('warnings', [])
 
-            # Análisis Claude por campaña
-            for camp in campaigns:
-                camp['claude_analysis'] = _analyze_campaign_with_claude(camp)
+            # Análisis Claude se carga lazily por cada campaña desde el frontend
 
             account_alias = _accounts[0].alias
         else:
@@ -4716,6 +4714,33 @@ def meli_ads():
 
     return render_template('meli_ads.html', campaigns=campaigns, api_status=api_status,
                            account_alias=account_alias)
+
+
+@app.route('/api/meli-ads/campaign/<int:camp_id>/analysis')
+def api_meli_ads_campaign_analysis(camp_id: int):
+    """Genera análisis Claude para una campaña (llamada lazy desde el frontend)."""
+    from modules.meli_ads_engine import build_campaigns_from_api
+    from datetime import date, timedelta
+    try:
+        from core.account_manager import AccountManager
+        from core.ml_client import MLClient
+        _mgr      = AccountManager()
+        _accounts = _mgr.list_accounts()
+        if not _accounts:
+            return jsonify({'ok': False, 'analysis': 'Sin cuentas conectadas.'})
+        _client = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
+        _client._ensure_token()
+        _token     = _client.account.access_token
+        _date_to   = date.today().strftime('%Y-%m-%d')
+        _date_from = (date.today() - timedelta(days=30)).strftime('%Y-%m-%d')
+        campaigns, _ = build_campaigns_from_api(_token, _date_from, _date_to)
+        camp = next((c for c in campaigns if c['id'] == camp_id), None)
+        if not camp:
+            return jsonify({'ok': False, 'analysis': 'Campaña no encontrada.'})
+        analysis = _analyze_campaign_with_claude(camp)
+        return jsonify({'ok': True, 'analysis': analysis})
+    except Exception as e:
+        return jsonify({'ok': False, 'analysis': f'Error: {e}'})
 
 
 @app.route('/api/meli-ads/campaign/update-budget', methods=['POST'])

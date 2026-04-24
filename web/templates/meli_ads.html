@@ -403,13 +403,16 @@
     </div>
     {% endif %}
 
-    {# Claude analysis #}
-    {% if camp.claude_analysis %}
-    <div class="claude-box">
+    {# Claude analysis — carga lazy vía JS #}
+    <div class="claude-box" id="claude-box-{{ camp.id }}">
       <h4><i class="bi bi-robot"></i> Análisis Claude AI</h4>
-      <div class="claude-text">{{ camp.claude_analysis }}</div>
+      <div class="claude-text" id="claude-text-{{ camp.id }}">
+        <span style="color:#64748b;font-size:.78rem">
+          <span class="spinner-border spinner-border-sm me-1" style="width:.75rem;height:.75rem;border-width:.1em"></span>
+          Analizando campaña...
+        </span>
+      </div>
     </div>
-    {% endif %}
 
     {# Action panel #}
     <div class="action-panel">
@@ -497,6 +500,26 @@ const CAMP_DATA = {
   },
   {% endfor %}
 };
+
+// ── Lazy load Claude analysis por campaña ─────────────────────────────────────
+(function loadClaudeAnalyses() {
+  const campIds = [{% for camp in campaigns %}{{ camp.id }}{% if not loop.last %},{% endif %}{% endfor %}];
+  campIds.forEach((campId, idx) => {
+    // Escalonar las llamadas 2s entre sí para no saturar la API
+    setTimeout(() => {
+      fetch(`/api/meli-ads/campaign/${campId}/analysis`)
+        .then(r => r.json())
+        .then(d => {
+          const el = document.getElementById('claude-text-' + campId);
+          if (el) el.textContent = d.analysis || 'Sin análisis disponible.';
+        })
+        .catch(() => {
+          const el = document.getElementById('claude-text-' + campId);
+          if (el) el.textContent = 'No se pudo cargar el análisis.';
+        });
+    }, idx * 2000);
+  });
+})();
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function showToast(msg, type) {
