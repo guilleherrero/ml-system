@@ -3017,8 +3017,6 @@ def api_funnel(alias):
     stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_map  = {s.get('id',''): s for s in stock_data.get('items', [])}
 
-    # sold_quantity_map: para la vista "Total histórico" (gratis, viene del batch)
-    sold_quantity_map = {}
     for b in range(0, min(len(all_ids), 100), 20):
         batch = all_ids[b:b+20]
         try:
@@ -3034,7 +3032,6 @@ def api_funnel(alias):
                         st  = stock_map.get(iid, {})
                         precio_actual = float(bd.get('price', 0) or 0)
                         sq = int(bd.get('sold_quantity', 0) or 0)
-                        sold_quantity_map[iid] = {'sold_quantity': sq, 'precio_actual': precio_actual}
                         items_map[iid] = {
                             'item_id':   iid,
                             'titulo':    bd.get('title', '')[:70],
@@ -3255,6 +3252,30 @@ def api_ventas_producto(alias):
 
         # Mapa rápido 7d para merge
         map_7 = {i['item_id']: i for i in items_7}
+
+        # Batch-fetch precio actual y sold_quantity histórico
+        sold_quantity_map: dict = {}
+        all_item_ids = [i['item_id'] for i in items_30]
+        for b in range(0, len(all_item_ids), 20):
+            batch = all_item_ids[b:b+20]
+            try:
+                r = req_lib.get(f'https://api.mercadolibre.com/items',
+                                headers=heads,
+                                params={'ids': ','.join(batch),
+                                        'attributes': 'id,price,sold_quantity'},
+                                timeout=10)
+                if r.ok:
+                    for e in r.json():
+                        if e.get('code') == 200:
+                            bd = e.get('body', {})
+                            iid2 = bd.get('id', '')
+                            sold_quantity_map[iid2] = {
+                                'precio_actual':  float(bd.get('price', 0) or 0),
+                                'sold_quantity':  int(bd.get('sold_quantity', 0) or 0),
+                            }
+            except Exception:
+                pass
+            _t.sleep(0.1)
 
         # Enriquecer con fee, costo y margen
         for item in items_30:
@@ -4004,6 +4025,55 @@ def api_aplicar_optimizacion():
     return jsonify(result)
 
 
+@app.route('/api/opt-marcar-aplicado', methods=['POST'])
+def api_opt_marcar_aplicado():
+    """Marca una optimización como aplicada y captura el baseline actual para seguimiento.
+    Útil cuando el usuario aplicó los cambios manualmente en ML sin usar 'Aplicar en ML'."""
+    body    = request.get_json() or {}
+    alias   = body.get('alias', '').strip()
+    item_id = body.get('item_id', '').strip()
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias o item_id'}), 400
+
+    opt_path = os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')
+    data     = load_json(opt_path) or {'optimizaciones': []}
+    opt_item = next((o for o in data.get('optimizaciones', []) if o.get('item_id') == item_id), None)
+    if not opt_item:
+        return jsonify({'ok': False, 'error': 'No hay optimización guardada para este item'}), 404
+
+    try:
+        token, _, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    baseline = {'fecha_aplicacion': datetime.now().strftime('%Y-%m-%d %H:%M')}
+    try:
+        r_vis = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+            headers=heads, params={'last': 30, 'unit': 'day'}, timeout=6)
+        if r_vis.ok:
+            baseline['visitas_antes'] = r_vis.json().get('total_visits', 0)
+    except Exception:
+        pass
+
+    pos_data = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+    if item_id in pos_data:
+        hist = pos_data[item_id].get('history', {})
+        if hist:
+            last_date = max(hist.keys())
+            pos_val   = hist[last_date]
+            if pos_val != 999:
+                baseline['posicion_antes'] = pos_val
+                baseline['posicion_fecha'] = last_date
+
+    opt_item['aplicado']   = True
+    opt_item['baseline']   = baseline
+    opt_item['seguimiento'] = None
+    save_json(opt_path, data)
+
+    return jsonify({'ok': True, 'baseline': baseline})
+
+
 _STOP_WORDS = {
     'de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
     'con', 'para', 'por', 'en', 'y', 'o', 'a', 'al', 'sin', 'mas', 'más',
@@ -4429,10 +4499,13 @@ def api_keywords_research():
     """
     1. Llama al autosuggest REAL de ML para obtener sugerencias ordenadas por popularidad.
     2. Llama a Claude para clasificarlas y agregar análisis de uso en título/descripción.
-    Devuelve JSON con: titulo[], descripcion[], long_tail[], ml_suggestions[], consejo.
+    3. Si se provee item_id + alias, llama a track_positions() para saber dónde rankea el item.
+    Devuelve JSON con: titulo[], descripcion[], long_tail[], ml_suggestions[], consejo, positions{}.
     """
     body     = request.get_json() or {}
     producto = body.get('producto', '').strip()
+    alias    = body.get('alias', '').strip()
+    item_id  = body.get('item_id', '').strip()
     if not producto:
         return jsonify({'ok': False, 'error': 'Falta nombre de producto'}), 400
 
@@ -4454,6 +4527,17 @@ def api_keywords_research():
                 seen.add(s)
                 ml_suggestions.append(s)
         _t.sleep(0.1)
+
+    # ── 1b. Posicionamiento real del item en esas búsquedas ──────────────────
+    positions: dict = {}
+    if item_id and alias:
+        try:
+            from modules.seo_optimizer import track_positions as _track_pos
+            _tok, _, __ = _ml_auth(alias)
+            pos_results = _track_pos(item_id, ml_suggestions[:8], _tok)
+            positions   = {r['keyword']: r for r in pos_results}
+        except Exception:
+            pass  # posiciones no disponibles — no bloquea el resto
 
     # ── 2. Claude clasifica y analiza las sugerencias reales ──────────────────
     ml_block = '\n'.join(f'  {i+1}. "{s}"' for i, s in enumerate(ml_suggestions)) or '  (no disponible)'
@@ -4497,6 +4581,7 @@ Reglas estrictas:
         parsed = json.loads(raw)
         parsed['ok'] = True
         parsed['ml_suggestions'] = ml_suggestions
+        parsed['positions'] = positions
         return jsonify(parsed)
     except json.JSONDecodeError as e:
         # Si Claude falla, al menos devolvemos las sugerencias crudas de ML
@@ -4507,6 +4592,7 @@ Reglas estrictas:
             'long_tail': [s for s in ml_suggestions if len(s.split()) >= 3][:3],
             'ml_suggestions': ml_suggestions,
             'consejo': 'Sugerencias obtenidas directamente del motor de búsqueda de ML.',
+            'positions': positions,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -4821,8 +4907,6 @@ def api_meli_ads_campaign_items(camp_id: int):
         _client  = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
         _client._ensure_token()
         token    = _client.account.access_token
-        heads    = {'Authorization': f'Bearer {token}'}
-        ML       = 'https://api.mercadolibre.com'
 
         user_id, _, _ = _get_user_id(token)
         if not user_id:
@@ -4876,88 +4960,181 @@ def api_meli_ads_campaign_items(camp_id: int):
         camp_above_name = camp_meta.get(camp_above, {}).get('name', '') if camp_above else ''
         camp_below_name = camp_meta.get(camp_below, {}).get('name', '') if camp_below else ''
 
-        # ── Promedio ventas 30d de esta campaña ─────────────────────────────
-        camp_v30_vals = [_ventas30(iid) for iid in item_ids]
-        camp_avg      = (sum(camp_v30_vals) / len(camp_v30_vals)) if camp_v30_vals else 0
+        # ── Eficiencia publicitaria: conversion_pct × precio ────────────────
+        # Proxy de ingreso estimado por click. Es la métrica más honesta que
+        # podemos calcular sin acceso a datos por ítem de la API de ads.
+        price_map = {it.get('id', ''): float(it.get('price', 0) or 0) for it in items}
+
+        def _eff_weight(iid: str) -> float:
+            s     = stock_map.get(iid, {})
+            conv  = s.get('conversion_pct')          # almacenado como %, ej: 5.2
+            price = float(s.get('precio') or 0) or price_map.get(iid, 0)
+            if not conv or not price:
+                return 0.0
+            return round((float(conv) / 100.0) * price, 2)
+
+        camp_weights     = [_eff_weight(iid) for iid in item_ids]
+        camp_avg_weight  = (sum(camp_weights) / len(camp_weights)) if camp_weights else 0
+        total_weight     = sum(camp_weights) or 1.0  # evitar /0
+
+        def _fmt_w(w: float) -> str:
+            return f'${int(w):,}'.replace(',', '.') if w > 0 else '?'
 
         # ── Generar recomendación por ítem ──────────────────────────────────
+        # Fusión de dos señales:
+        #   1. Color ML (verde/amarillo/rojo) — dato real de ads, indica visibilidad
+        #   2. Conversión × precio           — nuestra estimación de valor por click
         def _recommend(item: dict) -> dict:
-            iid   = item.get('id', '')
-            v30   = _ventas30(iid)
-            level = item.get('level', '')
-            bb    = item.get('buy_box', False)
-            no_snap = iid not in stock_map  # sin datos de snapshot
+            iid     = item.get('id', '')
+            level   = item.get('level', '')
+            bb      = item.get('buy_box', False)
+            no_snap = iid not in stock_map
+            s       = stock_map.get(iid, {})
+            conv    = s.get('conversion_pct')
+            w       = _eff_weight(iid)
 
-            # Problemas críticos de calidad (independiente de ventas)
+            # ── Señal 1: color ML (rojo = ML frena el anuncio) ───────────────
             if level == 'red' and not bb:
                 return {
-                    'tipo': 'quitar',
-                    'color': '#dc2626', 'bg': '#fee2e2',
-                    'texto': 'Salud ROJA y sin Buy Box — esta publicación está perdiendo dinero en ads. Pausarla hasta resolver los problemas de ficha.',
+                    'tipo': 'quitar', 'color': '#dc2626', 'bg': '#fee2e2',
+                    'texto': 'ML califica ROJO y sin Buy Box — el anuncio no se está mostrando y hay un competidor adelante. Pausar hasta resolver ficha y precio.',
                     'accion': 'Quitar de campaña',
                 }
             if level == 'red':
                 return {
-                    'tipo': 'revisar',
-                    'color': '#d97706', 'bg': '#fef3c7',
-                    'texto': 'Salud ROJA — visibilidad del anuncio muy limitada. Mejorar fotos, título y descripción antes de seguir invirtiendo.',
-                    'accion': None,
-                }
-            if not bb and (no_snap or v30 < max(camp_avg * 0.5, 2)):
-                return {
-                    'tipo': 'revisar',
-                    'color': '#d97706', 'bg': '#fef3c7',
-                    'texto': f'Sin Buy Box{"" if no_snap else f" y {v30:.0f} ventas en 30 días"} — hay un competidor mejor posicionado. Ajustar precio o mejorar reputación para recuperar el Buy Box antes de invertir más.',
+                    'tipo': 'revisar', 'color': '#dc2626', 'bg': '#fee2e2',
+                    'texto': 'ML califica ROJO — el algoritmo de ads está limitando la visibilidad de este anuncio. Mejorar fotos, título y descripción antes de seguir invirtiendo.',
                     'accion': None,
                 }
 
-            # Sin datos de snapshot — no podemos evaluar ventas recientes
-            if no_snap:
+            # ── Señal 1: sin Buy Box (competidor adelante) ───────────────────
+            if not bb:
                 return {
-                    'tipo': 'ok',
-                    'color': '#64748b', 'bg': '#f8fafc',
-                    'texto': f'Nivel {level.upper()}{", Buy Box ✓" if bb else ""}. Sin datos de ventas recientes — el sistema actualizará mañana a las 7 AM.',
+                    'tipo': 'revisar', 'color': '#d97706', 'bg': '#fef3c7',
+                    'texto': 'Sin Buy Box — hay un competidor con mejor precio o reputación. Cada click del anuncio termina viendo al competidor primero. Recuperar Buy Box antes de invertir más.',
                     'accion': None,
                 }
 
-            # Rendimiento alto → subir de campaña
-            if camp_above and camp_avg > 0 and v30 >= camp_avg * 2 and level in ('green', 'yellow') and bb:
+            # ── Sin datos de conversión — no se puede aplicar señal 2 ────────
+            if no_snap or conv is None:
+                nivel_str = 'VERDE' if level == 'green' else 'AMARILLO' if level == 'yellow' else level.upper()
                 return {
-                    'tipo': 'subir',
-                    'color': '#15803d', 'bg': '#dcfce7',
-                    'texto': f'{v30:.0f} ventas en 30 días ({round(v30 / camp_avg, 1)}× el promedio de esta campaña). Buen candidato para subir a {camp_above_name} y darle más presupuesto.',
+                    'tipo': 'ok', 'color': '#64748b', 'bg': '#f8fafc',
+                    'texto': f'ML califica {nivel_str}, Buy Box ✓. Sin datos de conversión para estimar eficiencia — el sistema actualizará mañana a las 7 AM.',
+                    'accion': None,
+                }
+
+            conv_f  = float(conv)
+            w_str   = _fmt_w(w)
+            avg_str = _fmt_w(camp_avg_weight)
+
+            # ── Señal 1 AMARILLO + señal 2 baja → doble problema ─────────────
+            if level == 'yellow' and camp_avg_weight > 0 and w < camp_avg_weight * 0.4:
+                texto = (f'ML califica AMARILLO (visibilidad limitada) y la conversión {conv_f:.1f}% '
+                         f'→ {w_str}/click está por debajo del promedio de la campaña ({avg_str}/click). '
+                         f'Doble señal negativa: ML lo penaliza y convierte poco.')
+                if camp_below:
+                    return {
+                        'tipo': 'bajar', 'color': '#2563eb', 'bg': '#eff6ff',
+                        'texto': texto + f' Mover a {camp_below_name} para reducir la inversión mientras se corrige la ficha.',
+                        'accion': f'Mover a {camp_below_name}',
+                        'camp_id': camp_below, 'camp_name': camp_below_name,
+                    }
+                return {'tipo': 'revisar', 'color': '#d97706', 'bg': '#fef3c7',
+                        'texto': texto, 'accion': None}
+
+            # ── Señal 1 AMARILLO + señal 2 ok → mejorar ficha primero ────────
+            if level == 'yellow':
+                return {
+                    'tipo': 'revisar', 'color': '#d97706', 'bg': '#fef3c7',
+                    'texto': f'ML califica AMARILLO — el algoritmo de ads está limitando la visibilidad. Conversión {conv_f:.1f}% ({w_str}/click) es razonable, pero no se aprovecha porque ML no muestra el anuncio con frecuencia. Mejorar ficha para pasar a VERDE.',
+                    'accion': None,
+                }
+
+            # ── A partir de acá: VERDE + Buy Box (señal 1 OK) ────────────────
+            # La decisión la toma únicamente la señal 2: conversión × precio
+
+            # Verde + eficiencia alta → subir campaña
+            if camp_above and camp_avg_weight > 0 and w >= camp_avg_weight * 2:
+                return {
+                    'tipo': 'subir', 'color': '#15803d', 'bg': '#dcfce7',
+                    'texto': (f'ML califica VERDE ✓ y conversión {conv_f:.1f}% → {w_str}/click '
+                              f'({round(w / camp_avg_weight, 1)}× el promedio de la campaña). '
+                              f'Ambas señales positivas: candidato para subir a {camp_above_name} y darle más presupuesto.'),
                     'accion': f'Mover a {camp_above_name}',
-                    'camp_id': camp_above,
-                    'camp_name': camp_above_name,
+                    'camp_id': camp_above, 'camp_name': camp_above_name,
                 }
 
-            # Rendimiento bajo → bajar de campaña
-            if camp_below and camp_avg > 0 and v30 < camp_avg * 0.3 and level != 'green':
+            # Verde + eficiencia baja → bajar campaña
+            if camp_below and camp_avg_weight > 0 and w < camp_avg_weight * 0.35:
                 return {
-                    'tipo': 'bajar',
-                    'color': '#2563eb', 'bg': '#eff6ff',
-                    'texto': f'{v30:.0f} ventas en 30 días (por debajo del promedio de la campaña: {camp_avg:.0f}). Moverlo a {camp_below_name} para reducir gasto en este producto.',
+                    'tipo': 'bajar', 'color': '#2563eb', 'bg': '#eff6ff',
+                    'texto': (f'ML califica VERDE pero la conversión {conv_f:.1f}% → {w_str}/click '
+                              f'está muy por debajo del promedio ({avg_str}/click). '
+                              f'El listing está bien pero cada click genera poco ingreso. Mover a {camp_below_name} para reducir inversión.'),
                     'accion': f'Mover a {camp_below_name}',
-                    'camp_id': camp_below,
-                    'camp_name': camp_below_name,
+                    'camp_id': camp_below, 'camp_name': camp_below_name,
                 }
 
-            # Todo bien
+            # Verde + eficiencia normal → sin acción
             return {
-                'tipo': 'ok',
-                'color': '#64748b', 'bg': '#f8fafc',
-                'texto': f'{v30:.0f} ventas en 30 días (promedio campaña: {camp_avg:.0f}), nivel {level.upper()}{", Buy Box ✓" if bb else ""}. Sin acciones urgentes.',
+                'tipo': 'ok', 'color': '#64748b', 'bg': '#f8fafc',
+                'texto': (f'ML califica VERDE ✓, Buy Box ✓, conversión {conv_f:.1f}% → {w_str}/click '
+                          f'(promedio campaña: {avg_str}/click). Sin acciones urgentes.'),
                 'accion': None,
             }
 
+        # ── Métricas de campaña recibidas del frontend ──────────────────────
+        camp_spend   = float(request.args.get('spend',       0) or 0)
+        camp_revenue = float(request.args.get('revenue',     0) or 0)
+        camp_convs   = float(request.args.get('conversions', 0) or 0)
+        acos_target  = float(request.args.get('acos_target', 10) or 10) / 100
+
         for item in items:
-            iid = item.get('id', '')
-            item['ventas_30d']    = _ventas30(iid)
-            item['sold_quantity'] = stock_map.get(iid, {}).get('sold_quantity', None)
+            iid   = item.get('id', '')
+            v30   = _ventas30(iid)
+            w     = _eff_weight(iid)
+            s     = stock_map.get(iid, {})
+            conv  = s.get('conversion_pct')
+
+            item['ventas_30d']    = v30
+            item['sold_quantity'] = s.get('sold_quantity', None)
             item['rec']           = _recommend(item)
 
+            # Proporción basada en eficiencia (conv × precio), no en unidades
+            pct         = w / total_weight if total_weight > 0 else 0
+            est_spend   = round(camp_spend   * pct, 0)
+            est_revenue = round(camp_revenue * pct, 0)
+            est_convs   = round(camp_convs   * pct, 1)
+            est_roas    = round(est_revenue / est_spend, 2) if est_spend > 0 else None
+            est_acos    = round(est_spend / est_revenue, 3) if est_revenue > 0 else None
+
+            # Motor / Freno / Neutro — fusión de ambas señales
+            level = item.get('level', '')
+            bb    = item.get('buy_box', False)
+            if level == 'green' and bb and w >= camp_avg_weight * 1.5:
+                rol = 'motor'   # Verde ML + alta eficiencia por click
+            elif level == 'red' or not bb or w == 0 or (camp_avg_weight > 0 and w <= camp_avg_weight * 0.4):
+                rol = 'freno'   # Rojo ML, sin BB, sin conversión o muy baja eficiencia
+            else:
+                rol = 'neutro'
+
+            item['contrib'] = {
+                'pct':             round(pct * 100, 1),
+                'est_spend':       est_spend,
+                'est_revenue':     est_revenue,
+                'est_convs':       est_convs,
+                'est_roas':        est_roas,
+                'est_acos_pct':    round(est_acos * 100, 1) if est_acos else None,
+                'acos_ok':         (est_acos <= acos_target) if est_acos else None,
+                'rol':             rol,
+                'conv_pct':        round(float(conv), 1) if conv is not None else None,
+                'eff_weight':      round(w, 0),
+                'camp_avg_weight': round(camp_avg_weight, 0),
+            }
+
         return jsonify({'ok': True, 'items': items, 'total': len(items),
-                        'camp_avg_sold': round(camp_avg, 1)})
+                        'camp_avg_weight': round(camp_avg_weight, 0)})
     except Exception as e:
         return jsonify({'ok': False, 'mensaje': str(e)})
 
@@ -8726,15 +8903,19 @@ def api_optimizar_pub_v2():
                 result = run_full_optimization(item_id, client,
                                                competitor_products=comp_prods or None,
                                                gap_keywords=gap_keywords or None)
+            except ValueError as ve:
+                # Error esperado: item no encontrado o ID incorrecto
+                yield _sse({'type': 'error', 'msg': str(ve)})
+                return
             except Exception as opt_err:
-                import traceback
+                import traceback, sys as _sys
                 tb = traceback.format_exc()
-                print(f'[ERROR run_full_optimization] item={item_id}: {opt_err}\n{tb}', file=sys.stderr, flush=True)
+                print(f'[ERROR run_full_optimization] item={item_id}: {opt_err}\n{tb}', file=_sys.stderr, flush=True)
                 yield _sse({'type': 'error', 'msg': f'Error en optimización: {opt_err}'})
                 return
 
             if not result:
-                yield _sse({'type': 'error', 'msg': 'No se pudo obtener el item o falló el análisis.'})
+                yield _sse({'type': 'error', 'msg': f'No se pudo obtener la publicación {item_id}. Verificá que el ID sea correcto y pertenezca a la cuenta seleccionada.'})
                 return
 
             # ── Mapear resultado al formato que espera la UI ──────────────────

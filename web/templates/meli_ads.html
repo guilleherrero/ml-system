@@ -499,8 +499,14 @@ const CAMP_DATA = {
   {% for camp in campaigns %}
   {% set other_camps = campaigns | selectattr('id', 'ne', camp.id) | list %}
   {{ camp.id }}: {
-    otherIds:   {{ other_camps | map(attribute='id')   | list | tojson }},
-    otherNames: {{ other_camps | map(attribute='name') | list | tojson }},
+    otherIds:    {{ other_camps | map(attribute='id')   | list | tojson }},
+    otherNames:  {{ other_camps | map(attribute='name') | list | tojson }},
+    spend:       {{ (camp.metrics or {}).get('spend', 0) }},
+    revenue:     {{ (camp.metrics or {}).get('revenue_ads', 0) }},
+    conversions: {{ (camp.metrics or {}).get('conversions', 0) }},
+    clicks:      {{ (camp.metrics or {}).get('clicks', 0) }},
+    acos_target: {{ camp.acos_target or 10 }},
+    items_count: {{ camp.items_count or 0 }},
   },
   {% endfor %}
 };
@@ -580,7 +586,15 @@ function loadItems(campId, btn) {
 
   const { otherIds = [], otherNames = [] } = CAMP_DATA[campId] || {};
 
-  fetch('/api/meli-ads/campaign/' + campId + '/items')
+  const cm = CAMP_DATA[campId] || {};
+  const metricsQS = new URLSearchParams({
+    spend:       cm.spend       || 0,
+    revenue:     cm.revenue     || 0,
+    conversions: cm.conversions || 0,
+    acos_target: cm.acos_target || 10,
+  }).toString();
+
+  fetch(`/api/meli-ads/campaign/${campId}/items?${metricsQS}`)
     .then(r => r.json())
     .then(d => {
       _loadedCamps.add(campId);
@@ -589,7 +603,47 @@ function loadItems(campId, btn) {
         btn.innerHTML  = '<i class="bi bi-chevron-up"></i> Sin productos';
         return;
       }
-      list.innerHTML = d.items.map(item => renderItem(item, otherIds, otherNames)).join('');
+      // Alerta si campaña tiene 1 solo producto → métricas exactas
+      const exactNote = cm.items_count === 1
+        ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.5rem .85rem;margin-bottom:.6rem;font-size:.73rem;color:#15803d"><i class="bi bi-check-circle me-1"></i><strong>Campaña de 1 producto</strong> — las métricas de gasto y revenue son exactas para este producto.</div>`
+        : `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.5rem .85rem;margin-bottom:.6rem;font-size:.72rem;color:#64748b"><i class="bi bi-info-circle me-1"></i>Métricas estimadas proporcionalmente según ventas 30d de cada producto. <strong>Para métricas exactas: 1 producto por campaña.</strong></div>`;
+      const legend = `
+        <details style="margin-bottom:.6rem" id="legend-${campId}">
+          <summary style="font-size:.72rem;font-weight:700;color:#2563eb;cursor:pointer;padding:.4rem .7rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;list-style:none;display:flex;align-items:center;gap:.4rem">
+            <i class="bi bi-info-circle"></i> ¿Cómo se interpreta cada producto?
+          </summary>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;border-top:none;padding:.75rem 1rem;font-size:.72rem;color:#374151;line-height:1.7">
+
+            <div style="font-weight:700;color:#1e293b;margin-bottom:.4rem">Roles (fusión de señal ML + eficiencia por click)</div>
+            <div style="display:flex;flex-direction:column;gap:.3rem;margin-bottom:.75rem">
+              <div><span style="background:#dcfce7;color:#15803d;font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">🚀 Motor</span>
+                &nbsp;ML califica <strong>Verde</strong>, tiene Buy Box, y su conversión × precio es <strong>mayor al promedio</strong> de la campaña (más del doble). Candidato a subir de campaña.</div>
+              <div><span style="background:#fee2e2;color:#dc2626;font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">🔻 Freno</span>
+                &nbsp;ML califica <strong>Rojo</strong>, o no tiene Buy Box, o su conversión × precio es <strong>menor al 40% del promedio</strong>. Cada peso invertido en ads genera poco retorno.</div>
+              <div><span style="background:#f1f5f9;color:#64748b;font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Neutro</span>
+                &nbsp;Rendimiento <strong>dentro del promedio</strong> de la campaña. Sin acciones urgentes.</div>
+            </div>
+
+            <div style="font-weight:700;color:#1e293b;margin-bottom:.4rem">Calificación de ML (dato real de ads)</div>
+            <div style="display:flex;flex-direction:column;gap:.25rem;margin-bottom:.75rem">
+              <div><span style="background:#dcfce7;color:#15803d;font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Verde</span>
+                &nbsp;ML aprueba el listing para publicidad. Fotos, título, precio y reputación en buen estado.</div>
+              <div><span style="background:#fef9c3;color:#92400e;font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Amarillo</span>
+                &nbsp;ML está limitando la visibilidad del anuncio. Hay aspectos del listing que frenan el alcance.</div>
+              <div><span style="background:#fee2e2;color:#dc2626;font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Rojo</span>
+                &nbsp;ML está frenando activamente el anuncio. Poca o ninguna impresión publicitaria.</div>
+            </div>
+
+            <div style="font-weight:700;color:#1e293b;margin-bottom:.4rem">Conversión × precio (estimación nuestra)</div>
+            <div style="color:#64748b">
+              Ingreso estimado que genera cada click publicitario en ese producto: <strong>tasa de conversión × precio de venta</strong>.
+              Es nuestra mejor aproximación al ROAS por producto, ya que ML no expone esa métrica de forma individual.
+              Usamos datos de los <strong>últimos 30 días</strong> del total de la cuenta (orgánico + ads combinados).
+            </div>
+
+          </div>
+        </details>`;
+      list.innerHTML = exactNote + legend + d.items.map(item => renderItem(item, otherIds, otherNames)).join('');
       btn.innerHTML  = '<i class="bi bi-chevron-up"></i> Ocultar ' + d.total + ' productos';
     })
     .catch(e => {
@@ -643,6 +697,41 @@ function renderItem(item, otherCampIds, otherCampNames) {
       </div>`;
   }
 
+  // Contribución estimada (Motor / Freno / Neutro) — basado en conversión × precio
+  const contrib = item.contrib || {};
+  let contribHtml = '';
+  if (contrib.rol) {
+    const rolMeta = {
+      motor:  { bg:'#dcfce7', color:'#15803d', icon:'🚀', label:'Motor' },
+      freno:  { bg:'#fee2e2', color:'#dc2626', icon:'🔻', label:'Freno' },
+      neutro: { bg:'#f1f5f9', color:'#64748b', icon:'●',  label:'Neutro' },
+    };
+    const rm = rolMeta[contrib.rol] || rolMeta.neutro;
+
+    // Tasa de conversión y eficiencia por click
+    const convPart = contrib.conv_pct !== null && contrib.conv_pct !== undefined
+      ? `<span style="font-size:.64rem;font-weight:700;color:#7c3aed">Conv. ${contrib.conv_pct}%</span>`
+      : `<span style="font-size:.64rem;color:#94a3b8">Sin datos conv.</span>`;
+
+    let metricsLine = '';
+    if (contrib.est_spend > 0) {
+      const acosOk    = contrib.acos_ok;
+      const acosColor = acosOk === true ? '#16a34a' : acosOk === false ? '#dc2626' : '#64748b';
+      const roasPart  = contrib.est_roas !== null ? ` · ROAS <strong style="color:#1d4ed8">${contrib.est_roas}×</strong>` : '';
+      const acosPart  = contrib.est_acos_pct !== null ? ` · ACoS <strong style="color:${acosColor}">${contrib.est_acos_pct}%</strong>` : '';
+      const spendPart = ` · gasto est. <strong>$${(contrib.est_spend||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</strong>`;
+      metricsLine = `<span style="font-size:.64rem;color:#64748b">~${contrib.pct}% del presupuesto${roasPart}${acosPart}${spendPart}</span>`;
+    } else if (contrib.pct > 0) {
+      metricsLine = `<span style="font-size:.64rem;color:#94a3b8">~${contrib.pct}% del presupuesto estimado</span>`;
+    }
+
+    contribHtml = `<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:.3rem">
+      <span style="background:${rm.bg};color:${rm.color};font-size:.65rem;font-weight:700;padding:.15rem .5rem;border-radius:20px;display:inline-flex;align-items:center;gap:.2rem">${rm.icon} ${rm.label}</span>
+      ${convPart}
+      ${metricsLine}
+    </div>`;
+  }
+
   // Recomendación IA
   const rec = item.rec || {};
   const recIcons = { subir:'⬆', bajar:'⬇', quitar:'✕', revisar:'⚠', ok:'✓' };
@@ -681,6 +770,7 @@ function renderItem(item, otherCampIds, otherCampNames) {
           ${buyBox}
           ${item.listing_type ? `<span style="font-size:.63rem;color:#64748b">${item.listing_type}</span>` : ''}
         </div>
+        ${contribHtml}
         ${recBadge}
       </div>
       <div class="item-actions">

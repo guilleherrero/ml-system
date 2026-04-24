@@ -634,50 +634,59 @@
     </div>
   </div>
 
-  {% if item.get('aplicado') %}
   <!-- ─ Seguimiento post-optimización ──────────────────────────────────── -->
   <div id="seg-{{ item.get('item_id','') }}"
-       style="background:#f0f9ff;border-bottom:1px solid #bae6fd;padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <i class="bi bi-graph-up-arrow" style="color:#0369a1;flex-shrink:0"></i>
-    <span style="font-size:.75rem;font-weight:700;color:#0369a1;flex-shrink:0">Seguimiento</span>
-    {% set seg = item.get('seguimiento') %}
-    {% set bl  = item.get('baseline', {}) %}
-    {% if seg and seg.get('veredicto') %}
-      {% set v = seg.veredicto %}
-      <span style="font-size:.73rem;padding:2px 8px;border-radius:20px;font-weight:700;
-                   background:{{ '#dcfce7' if v == 'mejoro' else ('#fee2e2' if v == 'empeoro' else '#fef3c7') }};
-                   color:{{ '#15803d' if v == 'mejoro' else ('#dc2626' if v == 'empeoro' else '#92400e') }}">
-        {{ '✓ Mejoró' if v == 'mejoro' else ('✗ Empeoró' if v == 'empeoro' else ('↔ Sin cambio' if v == 'sin_cambio' else 'Muy reciente')) }}
-      </span>
-      <span style="font-size:.73rem;color:#334155;flex:1">{{ seg.veredicto_txt }}</span>
-      {% if seg.delta_pos is not none %}
-      <span style="font-size:.73rem;font-weight:700;color:{{ '#15803d' if seg.delta_pos < 0 else '#dc2626' }}">
-        Posición: {{ seg.baseline.posicion_antes if seg.baseline else '?' }} →
-        {{ seg.ahora.posicion if seg.ahora else '?' }}
-        ({{ '+' if seg.delta_pos > 0 else '' }}{{ seg.delta_pos }})
-      </span>
+       style="background:{% if item.get('aplicado') %}#f0f9ff{% else %}#fafafa{% endif %};border-bottom:1px solid {% if item.get('aplicado') %}#bae6fd{% else %}#e2e8f0{% endif %};padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <i class="bi bi-graph-up-arrow" style="color:{% if item.get('aplicado') %}#0369a1{% else %}#94a3b8{% endif %};flex-shrink:0"></i>
+    <span style="font-size:.75rem;font-weight:700;color:{% if item.get('aplicado') %}#0369a1{% else %}#64748b{% endif %};flex-shrink:0">Seguimiento</span>
+    {% if item.get('aplicado') %}
+      {% set seg = item.get('seguimiento') %}
+      {% set bl  = item.get('baseline', {}) %}
+      {% if seg and seg.get('veredicto') %}
+        {% set v = seg.veredicto %}
+        <span style="font-size:.73rem;padding:2px 8px;border-radius:20px;font-weight:700;
+                     background:{{ '#dcfce7' if v == 'mejoro' else ('#fee2e2' if v == 'empeoro' else '#fef3c7') }};
+                     color:{{ '#15803d' if v == 'mejoro' else ('#dc2626' if v == 'empeoro' else '#92400e') }}">
+          {{ '✓ Mejoró' if v == 'mejoro' else ('✗ Empeoró' if v == 'empeoro' else ('↔ Sin cambio' if v == 'sin_cambio' else 'Muy reciente')) }}
+        </span>
+        <span style="font-size:.73rem;color:#334155;flex:1">{{ seg.veredicto_txt }}</span>
+        {% if seg.delta_pos is not none %}
+        <span style="font-size:.73rem;font-weight:700;color:{{ '#15803d' if seg.delta_pos < 0 else '#dc2626' }}">
+          Posición: {{ seg.baseline.posicion_antes if seg.baseline else '?' }} →
+          {{ seg.ahora.posicion if seg.ahora else '?' }}
+          ({{ '+' if seg.delta_pos > 0 else '' }}{{ seg.delta_pos }})
+        </span>
+        {% endif %}
+        {% if seg.delta_vis is not none %}
+        <span style="font-size:.73rem;color:#64748b">
+          Visitas: {{ seg.baseline.visitas_antes if seg.baseline else '?' }} →
+          {{ seg.ahora.visitas if seg.ahora else '?' }}
+          ({{ '+' if seg.delta_vis > 0 else '' }}{{ seg.delta_vis }})
+        </span>
+        {% endif %}
+      {% elif bl %}
+        <span style="font-size:.73rem;color:#64748b;flex:1">
+          Baseline capturado {{ bl.get('fecha_aplicacion','')[:10] }} ·
+          {% if bl.get('posicion_antes') %}Posición antes: #{{ bl.posicion_antes }}{% endif %}
+          {% if bl.get('visitas_antes') %}· Visitas antes: {{ bl.visitas_antes }}{% endif %}
+          · Listo para medir
+        </span>
+      {% else %}
+        <span style="font-size:.73rem;color:#64748b;flex:1">Aplicado — baseline no disponible</span>
       {% endif %}
-      {% if seg.delta_vis is not none %}
-      <span style="font-size:.73rem;color:#64748b">
-        Visitas: {{ seg.baseline.visitas_antes if seg.baseline else '?' }} →
-        {{ seg.ahora.visitas if seg.ahora else '?' }}
-        ({{ '+' if seg.delta_vis > 0 else '' }}{{ seg.delta_vis }})
-      </span>
-      {% endif %}
-    {% elif bl %}
-      <span style="font-size:.73rem;color:#64748b">
-        Aplicado {{ bl.get('fecha_aplicacion','')[:10] }} ·
-        {% if bl.get('posicion_antes') %}Posición antes: #{{ bl.posicion_antes }}{% endif %}
-        {% if bl.get('visitas_antes') %}· Visitas antes: {{ bl.visitas_antes }}{% endif %}
-      </span>
+      <button onclick="refreshSeguimiento('{{ item.get('item_id','') }}', '{{ alias }}')"
+              id="btn-seg-{{ item.get('item_id','') }}"
+              style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+        <i class="bi bi-rulers me-1"></i>Medir ahora
+      </button>
+    {% else %}
+      <span style="font-size:.73rem;color:#64748b;flex:1">Si aplicaste esta optimización en MercadoLibre, registrá el baseline para poder medir si funcionó.</span>
+      <button onclick="marcarAplicadoYMedir('{{ item.get('item_id','') }}', '{{ alias }}', this)"
+              style="font-size:.68rem;padding:2px 8px;background:#64748b;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+        <i class="bi bi-check2-circle me-1"></i>Ya apliqué — capturar baseline
+      </button>
     {% endif %}
-    <button onclick="refreshSeguimiento('{{ item.get('item_id','') }}', '{{ alias }}')"
-            id="btn-seg-{{ item.get('item_id','') }}"
-            style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
-      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
-    </button>
   </div>
-  {% endif %}
 
   <!-- ─ Título actual ────────────────────────────────────────────────── -->
   <div style="padding:9px 20px;background:#f8fafc;border-bottom:1px solid #f1f5f9">
@@ -955,6 +964,29 @@ const ALIAS_OPT = '{{ alias }}';
 const selectedCompetitors = {};  // id → detalle completo
 let kwResearchData = null;       // resultado de la investigación de keywords
 
+// ID seleccionado persistido en memoria — más confiable que leer el DOM en cada función
+let _persistedItemId = '';
+
+function _getSelectedItemId() {
+  const cust = document.getElementById('customIdOpt');
+  if (cust && cust.value.trim()) {
+    _persistedItemId = 'MLA' + cust.value.trim().replace(/^MLA-?/i, '');
+    return _persistedItemId;
+  }
+  const sel = document.getElementById('pubSelect');
+  if (sel && sel.value) {
+    _persistedItemId = sel.value;
+    return _persistedItemId;
+  }
+  const inp = document.getElementById('pubIdInput');
+  if (inp && inp.value.trim()) {
+    _persistedItemId = inp.value.trim().toUpperCase();
+    return _persistedItemId;
+  }
+  // Fallback: devolver el último valor conocido si el DOM fue alterado
+  return _persistedItemId;
+}
+
 // ── Habilitar botón Descubrir cuando se elige publicación ─────────────────────
 function _updateDescubrirBtn() {
   const btn  = document.getElementById('btnDescubrir');
@@ -974,16 +1006,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cust) cust.addEventListener('input',  _updateDescubrirBtn);
   _updateDescubrirBtn();
 });
-
-function _getSelectedItemId() {
-  const cust = document.getElementById('customIdOpt');
-  if (cust && cust.value.trim()) return 'MLA' + cust.value.trim().replace(/^MLA-?/i, '');
-  const sel = document.getElementById('pubSelect');
-  if (sel && sel.value) return sel.value;
-  const inp = document.getElementById('pubIdInput');
-  if (inp && inp.value.trim()) return inp.value.trim().toUpperCase();
-  return '';
-}
 
 // ── Toggle búsqueda manual ────────────────────────────────────────────────────
 function toggleManualSearch() {
@@ -1779,7 +1801,7 @@ function investigarKeywords() {
   fetch('/api/keywords-research', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({alias: ALIAS_OPT, producto: q})
+    body: JSON.stringify({alias: ALIAS_OPT, producto: q, item_id: _getSelectedItemId()})
   })
   .then(r => r.json())
   .then(data => {
@@ -1799,6 +1821,8 @@ function investigarKeywords() {
 
 function renderKwResults(data) {
   const el = document.getElementById('kwResults');
+  const positions = data.positions || {};
+  const hasPositions = Object.keys(positions).length > 0;
   const myTitle = (() => {
     const sel = document.getElementById('pubSelect');
     if (sel && sel.selectedOptions[0] && sel.selectedOptions[0].value) return sel.selectedOptions[0].text.toLowerCase();
@@ -1809,68 +1833,130 @@ function renderKwResults(data) {
     return myTitle && myTitle.includes(kw.toLowerCase());
   }
 
+  // Retorna HTML de un pill de posición para una keyword dada
+  function posPill(kw) {
+    const p = positions[kw];
+    if (!p) return '';
+    const pos = p.position;
+    let bg, color, label;
+    if (!p.aparece || pos === null) {
+      bg = '#fee2e2'; color = '#991b1b'; label = '🔴 No aparece';
+    } else if (pos <= 5) {
+      bg = '#dcfce7'; color = '#166534'; label = `🟢 #${pos}`;
+    } else if (pos <= 20) {
+      bg = '#fef9c3'; color = '#854d0e'; label = `🟡 #${pos}`;
+    } else if (pos <= 50) {
+      bg = '#ffedd5'; color = '#9a3412'; label = `🟠 #${pos}`;
+    } else {
+      bg = '#fee2e2'; color = '#991b1b'; label = `🔴 #${pos}`;
+    }
+    return `<span style="display:inline-flex;align-items:center;background:${bg};color:${color};border-radius:8px;padding:1px 7px;font-size:.68rem;font-weight:700;margin-left:4px;flex-shrink:0">${label}</span>`;
+  }
+
+  // Prioridad: popular (top 3 de ml_suggestions) + posición débil (>20 o no aparece)
+  function isPriority(kw) {
+    const mlIdx = (data.ml_suggestions || []).slice(0, 10).indexOf(kw);
+    const popular = mlIdx >= 0 && mlIdx <= 2;
+    const p = positions[kw];
+    const weak = p && (!p.aparece || (p.position !== null && p.position > 20));
+    return popular && weak;
+  }
+
   function kwBadge(kw, type) {
     const present = inMyTitle(kw);
     const bg    = present ? '#d1fae5' : (type === 'titulo' ? '#fef3c7' : '#eff6ff');
     const color = present ? '#065f46' : (type === 'titulo' ? '#92400e' : '#1e40af');
     const icon  = present ? '✓' : (type === 'titulo' ? '!' : '+');
     const tip   = present ? 'Ya está en tu título' : (type === 'titulo' ? 'Prioritario para el título' : 'Usar en descripción');
-    return `<span style="display:inline-flex;align-items:center;gap:3px;background:${bg};color:${color};border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:600;margin:2px;cursor:default" title="${tip}">${icon} ${kw}</span>`;
+    const prio  = isPriority(kw) ? `<span style="background:#ef4444;color:#fff;border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800;margin-left:3px">⚡ Prioridad</span>` : '';
+    return `<span style="display:inline-flex;align-items:center;gap:3px;background:${bg};color:${color};border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:600;margin:2px;cursor:default" title="${tip}">${icon} ${kw}${posPill(kw)}${prio}</span>`;
   }
 
   let html = '<div style="font-size:.82rem">';
 
-  // ── Sugerencias crudas de ML (dato real) ──────────────────────────────────
-  const mlSuggestions = data.ml_suggestions || [];
-  if (mlSuggestions.length) {
-    const total = mlSuggestions.length;
-    html += `<div style="margin-bottom:12px;padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px">
-      <div style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:8px">
-        <i class="bi bi-graph-up-arrow me-1"></i>Búsquedas REALES en MercadoLibre Argentina — ordenadas por popularidad
-      </div>`;
-    mlSuggestions.forEach((s, i) => {
-      const pct      = Math.round(((total - i) / total) * 100);
-      const present  = inMyTitle(s);
-      const barColor = present ? '#10b981' : (i < 3 ? '#3b82f6' : '#94a3b8');
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-        <span style="min-width:16px;font-size:.7rem;color:#64748b;font-weight:700">${i+1}</span>
-        <span style="flex:1;font-size:.82rem;font-weight:${i<3?'700':'400'};color:${present?'#065f46':'#1e293b'}">${s}${present?' <span style="color:#10b981;font-size:.7rem">✓ en tu título</span>':''}</span>
-        <div style="width:80px;background:#e2e8f0;border-radius:4px;height:6px;flex-shrink:0">
-          <div style="width:${pct}%;background:${barColor};height:6px;border-radius:4px"></div>
-        </div>
-        <span style="font-size:.68rem;color:#64748b;min-width:32px;text-align:right">${i===0?'+ popular':''}</span>
-      </div>`;
-    });
-    html += `<div style="font-size:.65rem;color:#64748b;margin-top:4px">
-      <i class="bi bi-info-circle me-1"></i>Fuente: motor de búsqueda de MercadoLibre. La barra indica popularidad relativa (posición 1 = más buscada).
-    </div></div>`;
+  // ── Encabezado de posicionamiento si hay datos ────────────────────────────
+  if (hasPositions) {
+    const aparece = Object.values(positions).filter(p => p.aparece).length;
+    const total   = Object.keys(positions).length;
+    html += `<div style="margin-bottom:10px;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:.75rem;color:#0369a1;display:flex;align-items:center;gap:6px">
+      <i class="bi bi-crosshair2"></i>
+      <strong>Tu publicación aparece en ${aparece} de ${total} búsquedas analizadas.</strong>
+      Los badges 🟢🟡🟠🔴 muestran tu posición actual. <strong style="color:#ef4444">⚡ Prioridad</strong> = muy buscada y posición débil → atacar primero.
+    </div>`;
   }
 
-  // ── Clasificación de Claude ───────────────────────────────────────────────
-  if (data.titulo?.length) {
+  // ── Keywords de poder (top 2 de Claude para el título) ───────────────────
+  const kwPoder = (data.titulo || []).slice(0, 2);
+  if (kwPoder.length) {
+    html += `<div style="margin-bottom:12px;padding:10px 14px;background:#fffbeb;border:2px solid #f59e0b;border-radius:10px">
+      <div style="font-size:.7rem;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
+        <i class="bi bi-lightning-fill me-1"></i>Keywords de poder — las más importantes para el título
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">`;
+    kwPoder.forEach(k => {
+      const present = inMyTitle(k);
+      const prio  = isPriority(k) ? `<span style="background:#ef4444;color:#fff;border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800">⚡ Prioridad</span>` : '';
+      html += `<div style="display:inline-flex;align-items:center;gap:5px;background:${present?'#d1fae5':'#fef3c7'};color:${present?'#065f46':'#92400e'};border:2px solid ${present?'#6ee7b7':'#f59e0b'};border-radius:8px;padding:5px 12px;font-size:.85rem;font-weight:800;flex-wrap:wrap">
+        ${present?'✓':''} ${k}${posPill(k)} ${present?'<span style="font-size:.65rem;font-weight:400">ya en tu título</span>':''} ${prio}
+      </div>`;
+    });
+    html += `</div>
+      <div style="font-size:.65rem;color:#92400e;margin-top:6px;opacity:.8">Estas 2 keywords son las que más impactan en el posicionamiento. Deben estar en las primeras palabras del título.</div>
+    </div>`;
+  }
+
+  // ── Otras keywords para el título ────────────────────────────────────────
+  const kwTituloRest = (data.titulo || []).slice(2);
+  if (kwTituloRest.length) {
     html += `<div style="margin-bottom:8px">
       <div style="font-size:.7rem;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:4px">
-        <i class="bi bi-tag me-1"></i>Para el TÍTULO — mayor impacto en posicionamiento
+        <i class="bi bi-tag me-1"></i>Título — palabras complementarias
       </div>
-      <div>${data.titulo.map(k => kwBadge(k, 'titulo')).join('')}</div>
+      <div>${kwTituloRest.map(k => kwBadge(k, 'titulo')).join('')}</div>
     </div>`;
   }
 
   if (data.descripcion?.length) {
     html += `<div style="margin-bottom:8px">
       <div style="font-size:.7rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:4px">
-        <i class="bi bi-text-paragraph me-1"></i>Para DESCRIPCIÓN — variantes semánticas y sinónimos
+        <i class="bi bi-text-paragraph me-1"></i>Descripción — variantes y sinónimos
       </div>
       <div>${data.descripcion.map(k => kwBadge(k, 'desc')).join('')}</div>
     </div>`;
   }
 
   if (data.long_tail?.length) {
-    html += `<div style="margin-bottom:8px">
+    html += `<div style="margin-bottom:10px">
       <div style="font-size:.7rem;font-weight:700;color:#5b21b6;text-transform:uppercase;margin-bottom:4px">
-        <i class="bi bi-bullseye me-1"></i>Long-tail — compradores con alta intención de compra
+        <i class="bi bi-bullseye me-1"></i>Long-tail — alta intención de compra
       </div>
       <div>${data.long_tail.map(k => kwBadge(k, 'desc')).join('')}</div>
+    </div>`;
+  }
+
+  // ── Búsquedas reales de ML (visible, top 10) ─────────────────────────────
+  const mlSuggestions = (data.ml_suggestions || []).slice(0, 10);
+  if (mlSuggestions.length) {
+    const total = mlSuggestions.length;
+    html += `<div style="margin-top:4px;padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px">
+      <div style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:8px">
+        <i class="bi bi-graph-up-arrow me-1"></i>Búsquedas reales en MercadoLibre — top ${total}
+      </div>`;
+    mlSuggestions.forEach((s, i) => {
+      const pct      = Math.round(((total - i) / total) * 100);
+      const present  = inMyTitle(s);
+      const barColor = present ? '#10b981' : (i < 2 ? '#3b82f6' : '#94a3b8');
+      const prio     = isPriority(s) ? `<span style="background:#ef4444;color:#fff;border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800;margin-left:4px">⚡</span>` : '';
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="min-width:16px;font-size:.68rem;color:#64748b;font-weight:700">${i+1}</span>
+        <span style="flex:1;font-size:.78rem;font-weight:${i<2?'700':'400'};color:${present?'#065f46':'#1e293b'}">${s}${present?' <span style="color:#10b981;font-size:.65rem">✓ en tu título</span>':''}${prio}</span>
+        ${posPill(s)}
+        <div style="width:50px;background:#e2e8f0;border-radius:4px;height:5px;flex-shrink:0">
+          <div style="width:${pct}%;background:${barColor};height:5px;border-radius:4px"></div>
+        </div>
+      </div>`;
+    });
+    html += `<div style="font-size:.63rem;color:#64748b;margin-top:4px"><i class="bi bi-info-circle me-1"></i>Fuente: autosuggest real de MercadoLibre. Posición 1 = más buscada.${hasPositions ? ' Los badges de posición muestran dónde aparecés hoy en esa búsqueda.' : ' Seleccioná una publicación antes de investigar para ver tu posición actual.'}</div>
     </div>`;
   }
 
@@ -1886,16 +1972,7 @@ function renderKwResults(data) {
 
 // ── Optimización ──────────────────────────────────────────────────────────────
 function startOptimization() {
-  let itemId = '';
-  const customVal = document.getElementById('customIdOpt').value.trim();
-  if (customVal) {
-    itemId = 'MLA' + customVal.replace(/^MLA-?/i, '');
-  } else {
-    const sel = document.getElementById('pubSelect');
-    if (sel && sel.value) itemId = sel.value;
-    const inp = document.getElementById('pubIdInput');
-    if (inp && inp.value.trim()) itemId = inp.value.trim().toUpperCase();
-  }
+  const itemId = _getSelectedItemId();
 
   if (!itemId) {
     // Resaltar Paso 1 y scrollear hasta él
@@ -2356,6 +2433,51 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Seguimiento post-optimización ────────────────────────────────────────────
+
+function marcarAplicadoYMedir(itemId, alias, btn) {
+  if (!confirm('¿Confirmas que ya aplicaste esta optimización en MercadoLibre?\nSe va a capturar tu posición y visitas actuales como baseline para medir el impacto.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Capturando...';
+
+  fetch('/api/opt-marcar-aplicado', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias, item_id: itemId})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Ya apliqué — capturar baseline';
+      showToast('❌ ' + (d.error || 'Error al capturar baseline'), 'warn');
+      return;
+    }
+    // Baseline capturado — ahora medir
+    const box = document.getElementById('seg-' + itemId);
+    if (box) {
+      box.style.background = '#f0f9ff';
+      box.style.borderBottomColor = '#bae6fd';
+      const bl = d.baseline;
+      const blInfo = bl.posicion_antes ? ` · Posición antes: #${bl.posicion_antes}` : '';
+      const visInfo = bl.visitas_antes !== undefined ? ` · Visitas antes: ${bl.visitas_antes}` : '';
+      box.innerHTML = `
+        <i class="bi bi-graph-up-arrow" style="color:#0369a1;flex-shrink:0"></i>
+        <span style="font-size:.75rem;font-weight:700;color:#0369a1;flex-shrink:0">Seguimiento</span>
+        <span style="font-size:.73rem;color:#64748b;flex:1">Baseline capturado hoy${blInfo}${visInfo} · Volvé en 7+ días para medir el impacto</span>
+        <button onclick="refreshSeguimiento('${itemId}','${alias}')" id="btn-seg-${itemId}"
+                style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+          <i class="bi bi-rulers me-1"></i>Medir ahora
+        </button>`;
+    }
+    showToast('✅ Baseline capturado. En 7+ días presioná "Medir ahora" para ver el impacto.', 'ok');
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Ya apliqué — capturar baseline';
+    showToast('❌ Error de conexión', 'warn');
+  });
+}
+
 function refreshSeguimiento(itemId, alias) {
   const btn = document.getElementById('btn-seg-' + itemId);
   const box = document.getElementById('seg-' + itemId);

@@ -1184,8 +1184,14 @@ def _get_item(item_id: str, token: str) -> dict:
     try:
         r = requests.get(f"{ML_API}/items/{item_id}",
                          headers={"Authorization": f"Bearer {token}"}, timeout=8)
-        return r.json() if r.ok else {}
-    except Exception:
+        if r.ok:
+            return r.json()
+        import sys
+        print(f"[_get_item] {item_id} → HTTP {r.status_code}: {r.text[:200]}", file=sys.stderr)
+        return {}
+    except Exception as e:
+        import sys
+        print(f"[_get_item] {item_id} → excepción: {e}", file=sys.stderr)
         return {}
 
 
@@ -1891,15 +1897,15 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     from rich.console import Console as RC
     _c = console or RC()
 
-    token = client.account.access_token
-    client._ensure_token()
+    client._ensure_token()                  # refrescar primero
+    token = client.account.access_token     # capturar después del refresh
 
     # ── Datos base ────────────────────────────────────────────────────────────
     _c.print("  [dim]Leyendo publicación...[/dim]", end=" ")
     item_data = _get_item(item_id, token)
     if not item_data:
         _c.print("[red]Error al obtener el item[/red]")
-        return {}
+        raise ValueError(f"No se encontró la publicación {item_id}. Verificá que el ID sea correcto y pertenezca a esta cuenta.")
 
     # ── Chequeo de catálogo ML ────────────────────────────────────────────────
     catalog_product_id = item_data.get("catalog_product_id") or ""
