@@ -3044,8 +3044,9 @@ def api_funnel(alias):
             pass
         _time_module.sleep(0.1)
 
-    # ── 3. Visitas en vivo para los que no tienen ──────────────────────────────
-    sin_visitas = [iid for iid, d in items_map.items() if d['visitas_30d'] is None]
+    # ── 3. Visitas en vivo para los que no tienen o tienen 0 en snapshot ─────────
+    # 0 en snapshot puede significar "estaba sin stock y pausado" — verificar en vivo
+    sin_visitas = [iid for iid, d in items_map.items() if not d['visitas_30d']]
     for iid in sin_visitas[:50]:
         try:
             r = req_lib.get(f'{ML}/items/{iid}/visits/time_window',
@@ -3057,7 +3058,7 @@ def api_funnel(alias):
         _time_module.sleep(0.08)
 
     # ── 3b. Ventas en vivo para ítems con visitas pero ventas=0 en snapshot ─────
-    # El snapshot puede estar desactualizado (ej: ítem sin stock cuando se calculó)
+    # Snapshot puede estar desactualizado si el ítem estuvo sin stock cuando se grabó
     date_from_v = (now - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
     sin_ventas_con_visitas = [
         iid for iid, d in items_map.items()
