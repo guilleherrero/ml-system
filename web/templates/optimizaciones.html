@@ -1004,6 +1004,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sel)  sel.addEventListener('change',  _updateDescubrirBtn);
   if (inp)  inp.addEventListener('input',   _updateDescubrirBtn);
   if (cust) cust.addEventListener('input',  _updateDescubrirBtn);
+
+  // Auto-seleccionar la primera publicación disponible si el select está vacío
+  if (sel && !sel.value && sel.options.length > 1) {
+    sel.selectedIndex = 1;
+    _persistedItemId = sel.value;
+  }
+
   _updateDescubrirBtn();
 });
 
