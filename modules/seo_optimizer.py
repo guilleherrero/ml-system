@@ -2161,9 +2161,14 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     _c.print(f"[green]{len(competitors)} competidores analizados[/green]")
 
     # ── M1.5: Expandir keywords con vocabulario de competidores ──────────────
-    _c.print("  [dim]M1.5 — Expandiendo keywords con vocabulario de competidores...[/dim]", end=" ")
+    # Fuentes: títulos + descripciones de competidores (primeras 300 chars) + descripción propia
+    # Las descripciones contienen long-tails y sinónimos que no entran en el título de 60 chars
+    _c.print("  [dim]M1.5 — Expandiendo keywords (títulos + descripciones propias y competidores)...[/dim]", end=" ")
     _comp_titles_raw = [c.get("title", "") for c in competitors if c.get("title")]
-    _extra_kws = _competitor_seeded_autosuggest_seo(_comp_titles_raw, title)
+    _comp_desc_raw   = [c.get("description", "")[:300] for c in competitors if c.get("description")]
+    _own_desc_chunk  = [description[:300]] if description else []
+    _source_texts    = _comp_titles_raw + _comp_desc_raw + _own_desc_chunk
+    _extra_kws = _competitor_seeded_autosuggest_seo(_source_texts, title)
     _seen_raw  = set(autosuggest_raw)
     _gap_kws   = []  # keywords nuevas del vocabulario competidor — las más valiosas para trackear
     for _kw in _extra_kws:
