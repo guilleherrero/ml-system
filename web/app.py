@@ -10382,12 +10382,23 @@ def _sync_full_inventory(alias):
 
             if inv_id:
                 try:
+                    # /stock (sin /fulfillment) puede incluir deposito del vendedor
+                    rs = _rq.get(f'{ML}/inventories/{inv_id}/stock',
+                                 headers=heads, timeout=(3, 6))
                     rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
                                  headers=heads, timeout=(3, 6))
+                    total_all = 0
+                    if rs.ok:
+                        sd = rs.json()
+                        total_all = int(sd.get('total', 0) or 0)
                     if rf.ok:
                         fdata = rf.json()
                         stock_en_full = int(fdata.get('total', total_ml) or total_ml)
-                        deposito      = max(0, total_ml - stock_en_full)
+                        # Si /stock devuelve un total mayor que /fulfillment, la diferencia es depósito
+                        if total_all > stock_en_full:
+                            deposito = total_all - stock_en_full
+                        else:
+                            deposito = max(0, total_ml - stock_en_full)
                 except Exception:
                     pass
 
@@ -10431,7 +10442,7 @@ def api_full_inventory_cache(alias):
 
 @app.route('/api/full-debug/<alias>')
 def api_full_debug(alias):
-    """Diagnóstico: muestra logistic_type e inventory_id reales de los primeros ítems."""
+    """Diagnóstico: prueba todos los endpoints de inventario para encontrar el deposito."""
     import requests as _rq
     try:
         token, user_id, heads = _ml_auth(alias)
@@ -10440,48 +10451,38 @@ def api_full_debug(alias):
 
     ML = 'https://api.mercadolibre.com'
 
-    # Primeros 20 IDs activos
-    r = _rq.get(f'{ML}/users/{user_id}/items/search', headers=heads,
-                params={'status': 'active', 'limit': 20}, timeout=12)
-    if not r.ok:
-        return jsonify({'ok': False, 'error': f'items/search {r.status_code}'})
-    ids = r.json().get('results', [])[:20]
+    # Tomar primer ítem del cache que tenga inv_id
+    from core.db_storage import db_load as _dl
+    cache = _dl(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
+    sample_items = [(k, v['inv_id']) for k, v in cache.get('items', {}).items() if v.get('inv_id')]
+    if not sample_items:
+        return jsonify({'ok': False, 'error': 'No hay cache con inv_id. Sincronizá primero.'})
 
-    # Batch con shipping
-    rb = _rq.get(f'{ML}/items', headers=heads,
-                 params={'ids': ','.join(ids), 'attributes': 'id,shipping,available_quantity'},
-                 timeout=12)
-    batch_items = []
-    if rb.ok:
-        for e in rb.json():
-            if e.get('code') == 200:
-                b = e['body']
-                batch_items.append({
-                    'id': b.get('id'),
-                    'logistic_type': (b.get('shipping') or {}).get('logistic_type', '—'),
-                    'available_quantity': b.get('available_quantity'),
-                })
+    iid, inv_id = sample_items[0]
+    result = {'item_id': iid, 'inv_id': inv_id, 'endpoints': {}}
 
-    # Individual fetch para el primer ítem: obtener inventory_id
-    ind_result = None
-    if ids:
-        ri = _rq.get(f'{ML}/items/{ids[0]}',
-                     params={'attributes': 'id,available_quantity,inventory_id'},
-                     headers=heads, timeout=8)
-        if ri.ok:
-            body = ri.json()
-            inv_id = body.get('inventory_id', '')
-            ind_result = {'id': body.get('id'), 'inventory_id': inv_id,
-                          'available_quantity': body.get('available_quantity')}
-            # Probar fulfillment si hay inventory_id
-            if inv_id:
-                rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
-                             headers=heads, timeout=6)
-                ind_result['fulfillment_ok'] = rf.ok
-                if rf.ok:
-                    ind_result['fulfillment'] = rf.json()
+    # 1. /inventories/{inv_id}/stock/fulfillment  (lo que ya usamos)
+    r1 = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment', headers=heads, timeout=8)
+    result['endpoints']['stock_fulfillment'] = r1.json() if r1.ok else f'HTTP {r1.status_code}'
 
-    return jsonify({'ok': True, 'batch_items': batch_items, 'individual_sample': ind_result})
+    # 2. /inventories/{inv_id}/stock  (sin /fulfillment — puede tener breakdown por ubicación)
+    r2 = _rq.get(f'{ML}/inventories/{inv_id}/stock', headers=heads, timeout=8)
+    result['endpoints']['stock'] = r2.json() if r2.ok else f'HTTP {r2.status_code}'
+
+    # 3. /inventories/{inv_id}  (info general del inventory)
+    r3 = _rq.get(f'{ML}/inventories/{inv_id}', headers=heads, timeout=8)
+    result['endpoints']['inventory'] = r3.json() if r3.ok else f'HTTP {r3.status_code}'
+
+    # 4. Item completo sin filtro de atributos (todos los campos)
+    r4 = _rq.get(f'{ML}/items/{iid}', headers=heads, timeout=8)
+    if r4.ok:
+        body = r4.json()
+        # Solo campos relevantes para no saturar la respuesta
+        result['item_fields'] = {k: body.get(k) for k in
+            ['id', 'available_quantity', 'inventory_id', 'seller_custom_field',
+             'variations', 'shipping', 'status', 'sold_quantity']}
+
+    return jsonify({'ok': True, **result})
 
 
 @app.route('/api/full-data/<alias>')
@@ -10630,8 +10631,17 @@ def api_full_data(alias):
         manual_dep = item_rep.get('deposito_stock')
         if iid in fulfillment_map:
             stock_en_full, cache_dep = fulfillment_map[iid]
-            # Si hay seguimiento manual, usar el menor: cubre ítems en tránsito aún no en ML
-            deposito = min(int(cache_dep), int(manual_dep)) if manual_dep is not None else cache_dep
+            cache_dep_int = int(cache_dep) if cache_dep else 0
+            if cache_dep_int > 0 and manual_dep is not None:
+                # Ambas fuentes disponibles: usar el menor (más conservador)
+                deposito = min(cache_dep_int, int(manual_dep))
+            elif cache_dep_int > 0:
+                deposito = cache_dep_int
+            elif manual_dep is not None:
+                # ML API no devolvió deposito (devuelve 0); usar seguimiento manual
+                deposito = int(manual_dep)
+            else:
+                deposito = None
         else:
             # Sin sync: si hay deposito_stock manual lo usamos; si no, es desconocido (None)
             stock_en_full = item['stock']
