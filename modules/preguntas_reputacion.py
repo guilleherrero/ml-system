@@ -112,6 +112,11 @@ INSTRUCCIONES:
 - Terminá siempre con una invitación a comprar o a hacer más preguntas
 - NO uses emojis ni signos de exclamación excesivos
 - NO repitas el nombre del producto completo en la respuesta
+- SEO: incluí de forma natural 1-2 keywords del título del producto en la respuesta
+  ML indexa las respuestas del vendedor — una respuesta con keywords refuerza el ranking
+  para esas búsquedas. Ejemplo: si el producto es "cortador puntas abiertas", una respuesta
+  que diga "Sí, el cortador de puntas funciona para cabello rizado..." suma señal SEO.
+  Nunca forzado — solo si encaja naturalmente en la respuesta.
 
 Respondé SOLO con el texto de la respuesta, sin introducción ni formato."""
 

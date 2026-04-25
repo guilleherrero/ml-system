@@ -1963,6 +1963,15 @@ DISTRIBUCIÓN DE KEYWORDS:
 - keyword_principal: 3–6 apariciones (densidad 1–2% del texto total — contar)
 - keywords_secundarias: 2–3 apariciones cada una
 - long_tail: mínimo 5 frases distribuidas naturalmente — nunca forzadas
+- DENSIDAD EN PRIMEROS 500 CHARS [CRÍTICO]: la keyword_principal debe aparecer al menos 2 veces
+  dentro de los primeros 500 caracteres — ML tiene un gancho de indexación en ese tramo inicial
+  que determina para qué búsquedas considera relevante la publicación
+- CONCORDANCIA SEMÁNTICA TÍTULO-DESCRIPCIÓN [CRÍTICO]: los tokens principales del título generado
+  (sustantivos y adjetivos clave) deben aparecer en los primeros 2-3 párrafos de la descripción
+  → ML cruza vocabulario del título con el de la descripción para validar coherencia semántica
+  → Si hay baja concordancia, puede bajar el ranking aunque cada sección esté bien optimizada
+  → Ejemplo: si el título dice "Cortador Puntas Abiertas Cabello Rizado", los párrafos 1-3 deben
+    usar "cortador", "puntas", "rizado" — no sinónimos distintos en esa zona inicial
 
 ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos ni bullets):
 1. APERTURA SEO [CRÍTICO — dentro de los primeros 300 chars]: keyword_principal + problema real + beneficio concreto

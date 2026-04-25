@@ -2705,13 +2705,25 @@ def preguntas(alias):
 
             for q in raw_qs:
                 iid = q.get('item_id', '')
+                # Calcular horas pendiente
+                _horas_pendiente = None
+                try:
+                    from datetime import timezone
+                    _dc = q.get('date_created', '')
+                    if _dc:
+                        _dt_q = datetime.fromisoformat(_dc.replace('Z', '+00:00'))
+                        _dt_now = datetime.now(timezone.utc)
+                        _horas_pendiente = round((_dt_now - _dt_q).total_seconds() / 3600, 1)
+                except Exception:
+                    pass
                 questions.append({
-                    'id':         q.get('id'),
-                    'text':       q.get('text', '').strip(),
-                    'date':       (q.get('date_created', '') or '')[:16].replace('T', ' '),
-                    'buyer':      (q.get('from') or {}).get('nickname', 'Comprador'),
-                    'item_id':    iid,
-                    'item_title': item_map.get(iid, iid),
+                    'id':              q.get('id'),
+                    'text':            q.get('text', '').strip(),
+                    'date':            (q.get('date_created', '') or '')[:16].replace('T', ' '),
+                    'buyer':           (q.get('from') or {}).get('nickname', 'Comprador'),
+                    'item_id':         iid,
+                    'item_title':      item_map.get(iid, iid),
+                    'horas_pendiente': _horas_pendiente,
                 })
         except Exception as e:
             fetch_error = str(e)
@@ -10890,6 +10902,43 @@ def _scheduler_run_all():
     _scheduler_last_run = datetime.now()
     print(f'[scheduler] Actualización diaria completada — {_scheduler_last_run.strftime("%Y-%m-%d %H:%M")}')
 
+    # ── Chequear preguntas antiguas sin responder ─────────────────────────────
+    try:
+        from core.account_manager import AccountManager as _AM_q
+        from datetime import timezone as _tz
+        _mgr_q   = _AM_q()
+        _pregs_viejas = []
+        for _acc_q in _mgr_q.list_accounts():
+            try:
+                _cl_q = _mgr_q.get_client(_acc_q.alias)
+                _cl_q._ensure_token()
+                _h_q = {'Authorization': f'Bearer {_cl_q.account.access_token}'}
+                _qr = req_lib.get(
+                    'https://api.mercadolibre.com/questions/search',
+                    headers=_h_q,
+                    params={'seller_id': _cl_q.account.user_id, 'status': 'UNANSWERED', 'limit': 50},
+                    timeout=8)
+                if _qr.ok:
+                    for _q in _qr.json().get('questions', []):
+                        _dc = _q.get('date_created', '')
+                        if _dc:
+                            _dt_q = datetime.fromisoformat(_dc.replace('Z', '+00:00'))
+                            _horas = (datetime.now(_tz.utc) - _dt_q).total_seconds() / 3600
+                            if _horas >= 4:
+                                _pregs_viejas.append({
+                                    'alias':  _acc_q.alias,
+                                    'horas':  round(_horas, 1),
+                                    'texto':  _q.get('text', '')[:80],
+                                    'item_id': _q.get('item_id', ''),
+                                })
+            except Exception:
+                pass
+        if _pregs_viejas:
+            print(f'[scheduler] {len(_pregs_viejas)} pregunta(s) sin responder hace 4+ horas')
+    except Exception as e:
+        print(f'[scheduler] Chequeo preguntas antiguas ERROR: {e}')
+        _pregs_viejas = []
+
     # ── Enviar resumen por email si está configurado ────────────────────────
     notif_cfg = _load_notif_config()
     if notif_cfg.get('activo') and notif_cfg.get('email_to'):
@@ -10899,8 +10948,15 @@ def _scheduler_run_all():
                 alertas_resp = api_alertas()
                 alertas_data = alertas_resp.get_json()
             all_alerts = alertas_data.get('alerts', [])
-            urgentes   = alertas_data.get('urgentes', 0)
-            importantes = alertas_data.get('importantes', 0)
+            # Agregar alertas de preguntas antiguas
+            for _pv in (_pregs_viejas or []):
+                all_alerts.append({
+                    'nivel':   'urgente' if _pv['horas'] >= 8 else 'importante',
+                    'cuenta':  _pv['alias'],
+                    'mensaje': f"Pregunta sin responder hace {_pv['horas']:.0f}h: \"{_pv['texto']}\" (item {_pv['item_id']})",
+                })
+            urgentes   = sum(1 for a in all_alerts if a.get('nivel') == 'urgente')
+            importantes = sum(1 for a in all_alerts if a.get('nivel') == 'importante')
 
             if urgentes > 0 or importantes > 0:
                 subject = f'⚠️ Sistema ML — {urgentes} urgente{"s" if urgentes!=1 else ""} · {importantes} importante{"s" if importantes!=1 else ""}'

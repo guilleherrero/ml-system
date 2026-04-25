@@ -176,6 +176,24 @@
     </div>
     <div class="q-meta">
       <i class="bi bi-clock me-1"></i>{{ q.date }}
+      {% if q.horas_pendiente is not none %}
+        {% if q.horas_pendiente >= 4 %}
+          <span style="margin-left:.5rem;background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;
+                       border-radius:10px;padding:.1rem .5rem;font-size:.68rem;font-weight:700;">
+            ⚠ {{ q.horas_pendiente|int }}h sin responder
+          </span>
+        {% elif q.horas_pendiente >= 1 %}
+          <span style="margin-left:.5rem;background:#fffbeb;color:#92400e;border:1px solid #fcd34d;
+                       border-radius:10px;padding:.1rem .5rem;font-size:.68rem;font-weight:700;">
+            {{ q.horas_pendiente|int }}h sin responder
+          </span>
+        {% else %}
+          <span style="margin-left:.5rem;background:#f0fdf4;color:#15803d;border:1px solid #86efac;
+                       border-radius:10px;padding:.1rem .5rem;font-size:.68rem;">
+            hace {{ (q.horas_pendiente * 60)|int }}min
+          </span>
+        {% endif %}
+      {% endif %}
     </div>
   </div>
 
