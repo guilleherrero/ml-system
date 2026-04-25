@@ -1661,6 +1661,12 @@ REGLAS DEL BLOQUE FAQ:
 - Elegí las 5 preguntas más frecuentes o que más impactan en la decisión de compra
 - Respondé cada una de forma directa y convincente (1–2 oraciones, español rioplatense)
 - Las respuestas deben eliminar dudas reales, no repetir lo ya dicho en la descripción
+- CRÍTICO — redactar las preguntas exactamente como las buscaría un comprador en ML o Google:
+  → búsqueda conversacional y específica, no técnica formal
+  → incluir la keyword o término del producto dentro de la pregunta misma
+  → Ejemplo correcto: "¿El cortador puntas abiertas funciona para cabello muy rizado?"
+  → Ejemplo incorrecto: "¿Es el producto apto para cabellos con textura rizada?"
+  → ML indexa el texto de las preguntas — una pregunta bien redactada captura búsquedas long-tail reales
 - Sin markdown, sin bullets, solo texto plano con este formato exacto:
 
 PREGUNTAS FRECUENTES
@@ -1960,6 +1966,9 @@ DISTRIBUCIÓN DE KEYWORDS:
 
 ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos ni bullets):
 1. APERTURA SEO [CRÍTICO — dentro de los primeros 300 chars]: keyword_principal + problema real + beneficio concreto
+   → La PRIMERA ORACIÓN debe contener la keyword_principal exacta — ML pondera el inicio del texto más que el resto
+   → Ejemplo correcto: "El cortador puntas abiertas Frizz Ender elimina el daño sin acortar el largo."
+   → Ejemplo incorrecto: "¿Cansado de las puntas dañadas? Este producto es para vos." (keyword ausente en la primera oración)
 2. QUÉ ES + PARA QUIÉN: descripción del producto + perfil del comprador ideal
 3. CÓMO FUNCIONA: mecanismo real de uso + por qué es efectivo
 4. BENEFICIOS COMPROBABLES: concretos y verificables — sin generalidades
@@ -1977,6 +1986,10 @@ ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos 
         · miedo refurbished → "El equipo llega sellado de fábrica con [número de serie / sticker]" (no "es original")
      → formato: prosa corrida, integrado naturalmente — nunca en formato Q&A explícito
 7. CARACTERÍSTICAS TÉCNICAS: especificaciones en lenguaje del comprador
+   → Cada característica debe comenzar con el término de búsqueda más relevante, no con el atributo técnico
+   → ML pondera las primeras palabras de cada segmento del texto
+   → Ejemplo correcto: "Cabello rizado: el mecanismo ajusta la presión automáticamente para no dañar la textura."
+   → Ejemplo incorrecto: "El mecanismo ajusta la presión automáticamente, ideal para cabello rizado."
 8. PRUEBA SOCIAL + CONFIANZA: {"usar los " + str(my_sold) + " ventas reales como dato de credibilidad. " if my_sold > 0 else "garantía propia, respaldo, experiencia de uso — solo datos reales, sin inventar. "}Nunca mencionar garantía ML (ya la muestra arriba)
 9. CIERRE Y CTA: refuerzo del beneficio principal + llamada a la acción + keyword_principal
 
