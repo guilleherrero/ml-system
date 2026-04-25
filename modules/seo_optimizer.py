@@ -1720,6 +1720,23 @@ def _build_synthesis_prompt(
     if opt_attrs:
         attrs_block += f"\nOPCIONALES ({len(opt_attrs)}):\n" + "\n".join(fmt_attr(a) for a in opt_attrs[:20])
 
+    # Atributos de texto libre — oportunidad SEO para keywords que no entraron en el título
+    _all_attrs = req_attrs + opt_attrs
+    _free_text_attrs = [a for a in _all_attrs if not a.get("values") and a.get("name")]
+    free_text_block = ""
+    if _free_text_attrs:
+        free_text_block = (
+            "\nATRIBUTOS DE TEXTO LIBRE — OPORTUNIDAD SEO CRÍTICA:\n"
+            "Estos campos NO tienen valores predefinidos → aceptan cualquier texto.\n"
+            "Estrategia: usá las variantes del cluster y long-tails que NO entraron en el título.\n"
+            "ML indexa estos campos de forma independiente al título — reforzás la señal de relevancia\n"
+            "para búsquedas secundarias sin tocar el límite de 60 caracteres del título.\n"
+            "REGLAS: no repetir la keyword principal exacta del título, no usar marcas de competidores,\n"
+            "no poner texto promocional (oferta, descuento, gratis). Solo términos descriptivos reales.\n\n"
+            "Campos disponibles:\n"
+            + "\n".join(f"  • {a['name']}" for a in _free_text_attrs[:10])
+        )
+
     # Keywords por tiers — jerarquía explícita para generación de títulos
     _t1s, _t2s, _t3s, _inf = [], [], [], []
     for k in keyword_analysis[:15]:
@@ -1859,7 +1876,7 @@ KEYWORDS REALES DEL AUTOSUGGEST ML (fuente primaria — prioridad absoluta sobre
 
 ATRIBUTOS OFICIALES DE LA CATEGORÍA "{category_name}":
 {attrs_block}
-
+{free_text_block}
 ANÁLISIS PREVIO (Haiku):
 {_smart_truncate(analysis_text, 2500)}
 {buyer_context}
