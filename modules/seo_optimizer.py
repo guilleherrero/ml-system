@@ -1953,8 +1953,18 @@ REGLAS TÉCNICAS DE ML:
 - PROHIBIDO: frases genéricas ("alta calidad", "excelente producto", "no te arrepentirás", "el mejor del mercado")
 
 LONGITUD CORRECTA ({desc_type}):
-- Zona crítica: PRIMEROS 300 CARACTERES — aquí el algoritmo de ML decide si el contenido es relevante o genérico
-  → DEBEN contener: keyword_principal + qué es el producto + para quién es
+- Zona crítica: PRIMEROS 300-400 CARACTERES — doble función obligatoria:
+  → FUNCIÓN SEO: el algoritmo de ML decide si el contenido es relevante o genérico
+     DEBEN contener: keyword_principal + qué es el producto + para quién es
+  → FUNCIÓN MOBILE [CRÍTICO DE CONVERSIÓN]: más del 70% del tráfico en ML Argentina es mobile
+     En mobile ML muestra SOLO estos primeros 300-400 chars antes del botón "Ver más"
+     Si este tramo no engancha al comprador mobile, no expande y no compra
+     DEBE funcionar como argumento de venta completo por sí solo:
+     problema que resuelve + beneficio principal + para quién es → todo en ese espacio
+     Ejemplo correcto: "El cortador puntas abiertas Frizz Ender elimina el daño sin acortar el largo.
+     Ideal para cabello rizado, teñido o con tratamientos. Separás un mechón, lo pasás por la ranura
+     y solo corta las puntas dañadas — sin tijera, sin peluquería, sin perder largo."
+     Ese bloque ya vendió en mobile aunque el comprador no expanda.
 - Rango objetivo: {desc_range}
 - Por encima de 3000 caracteres: retornos decrecientes — evitar salvo excepción justificada
 - Si la ficha técnica está bien completada → la descripción puede y debe ser más corta y enfocada
@@ -2001,6 +2011,15 @@ ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos 
    → Ejemplo incorrecto: "El mecanismo ajusta la presión automáticamente, ideal para cabello rizado."
 8. PRUEBA SOCIAL + CONFIANZA: {"usar los " + str(my_sold) + " ventas reales como dato de credibilidad. " if my_sold > 0 else "garantía propia, respaldo, experiencia de uso — solo datos reales, sin inventar. "}Nunca mencionar garantía ML (ya la muestra arriba)
 9. CIERRE Y CTA: refuerzo del beneficio principal + llamada a la acción + keyword_principal
+
+PALABRAS DE ALTA CONVERSIÓN — POSICIONES ESTRATÉGICAS [CRÍTICO]:
+ML correlaciona estas palabras con tasas de compra altas y las pondera en el ranking.
+No van en el título (muchas están prohibidas ahí). Van en la descripción en estas zonas:
+  → Bloque 7 (características): "original", "certificado", "compatible con", "incluye", "viene con"
+  → Bloque 8 (confianza): "garantía", "stock disponible", "entrega en [N] días hábiles", "sellado de fábrica"
+  → Bloque 9 (cierre): "disponible", "unidades disponibles", "enviamos hoy", "entrega inmediata"
+REGLAS: solo usar las que apliquen realmente al producto — nunca inventar garantías ni stocks que no existen.
+Estas palabras en estas posiciones son señal de intención de venta real para el algoritmo.
 
 TONO según tipo de producto (detectar y aplicar):
 - Belleza/cuidado personal → resultado visual, sensación, experiencia
