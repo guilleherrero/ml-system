@@ -1941,12 +1941,13 @@ JERARQUÍA OBLIGATORIA DE KEYWORDS EN TÍTULOS:
 - Valores semánticamente correctos y limpios — sin keywords SEO dentro del valor
   EJEMPLO PROHIBIDO: COLOR = "Negro para cabello dañado" → correcto: COLOR = "Negro"
 - Si el valor no se puede inferir con certeza → [SUGERIR: descripción de qué dato va aquí]
-- Gap keywords y long-tail van SOLO en título y descripción, NUNCA en valores de atributos
+- Gap keywords y long-tail van en título, descripción y campos de texto libre — NUNCA en campos con valores predefinidos (los que tienen lista de opciones fija)
 
 ──── DESCRIPCIÓN ────
 REGLAS TÉCNICAS DE ML:
 - NUNCA repetir información que ya está en la ficha técnica — el comprador ya la leyó arriba. La descripción complementa, no repite
-- NUNCA repetir datos que ML ya muestra al comprador: envío, cuotas, devolución estándar, garantía ML
+- NUNCA repetir datos que ML ya muestra al comprador: condiciones de envío, cuotas, devolución estándar, garantía propia de ML
+  ACLARACIÓN: sí podés mencionar garantía PROPIA del producto/vendedor (ej: "garantía del fabricante 12 meses") y plazo de despacho propio del vendedor (ej: "despachamos en 24hs hábiles") — son datos distintos a los que ML muestra
 - NUNCA inventar características técnicas no confirmadas en los datos provistos
 - Texto plano únicamente — sin HTML, markdown, bullets con *, links, teléfonos, emails, URLs
 - Español rioplatense (vos, tus, tu)
@@ -2004,11 +2005,13 @@ ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos 
         · miedo material falso → "El cuero utilizado es [tipo] verificable al tacto por [característica]" (no "es material genuino")
         · miedo refurbished → "El equipo llega sellado de fábrica con [número de serie / sticker]" (no "es original")
      → formato: prosa corrida, integrado naturalmente — nunca en formato Q&A explícito
-7. CARACTERÍSTICAS TÉCNICAS: especificaciones en lenguaje del comprador
-   → Cada característica debe comenzar con el término de búsqueda más relevante, no con el atributo técnico
+7. CARACTERÍSTICAS TÉCNICAS: especificaciones en lenguaje del comprador — COMPLEMENTA la ficha técnica, no la repite
+   → Propósito: traducir los datos técnicos de la ficha a beneficios concretos que el comprador entiende
+   → NO copiar valores de la ficha técnica tal cual — transformarlos en contexto de uso real
+   → Ejemplo correcto: "Potencia 2200W: suficiente para secar cabello grueso en menos de 10 minutos sin dañar la fibra."
+   → Ejemplo incorrecto: "Potencia: 2200W. Peso: 350g." (eso ya está en la ficha técnica arriba)
+   → Cada característica debe comenzar con el término de búsqueda más relevante
    → ML pondera las primeras palabras de cada segmento del texto
-   → Ejemplo correcto: "Cabello rizado: el mecanismo ajusta la presión automáticamente para no dañar la textura."
-   → Ejemplo incorrecto: "El mecanismo ajusta la presión automáticamente, ideal para cabello rizado."
 8. PRUEBA SOCIAL + CONFIANZA: {"usar los " + str(my_sold) + " ventas reales como dato de credibilidad. " if my_sold > 0 else "garantía propia, respaldo, experiencia de uso — solo datos reales, sin inventar. "}Nunca mencionar garantía ML (ya la muestra arriba)
 9. CIERRE Y CTA: refuerzo del beneficio principal + llamada a la acción + keyword_principal
 
