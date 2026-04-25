@@ -4114,7 +4114,7 @@ def api_test_claude():
 
 @app.route('/monitor/<alias>')
 def monitor_evolucion(alias):
-    return render_template('monitor_evolucion.html', alias=alias, accounts=AccountManager().accounts)
+    return render_template('monitor_evolucion.html', alias=alias, accounts=get_accounts())
 
 
 @app.route('/api/monitor-evolucion/<alias>')
