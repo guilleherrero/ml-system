@@ -5554,6 +5554,7 @@ def meli_ads():
         'campaigns_count': 0,
         'ads_count':       0,
         'warnings':        [],
+        'auth_error':      False,
     }
     campaigns = []
 
@@ -5575,6 +5576,7 @@ def meli_ads():
             api_status['campaigns_count'] = _meta.get('campaigns_count', 0)
             api_status['ads_count']       = _meta.get('ads_count', 0)
             api_status['warnings']        = _meta.get('warnings', [])
+            api_status['auth_error']      = _meta.get('auth_error', False)
 
             # Análisis Claude se carga lazily por cada campaña desde el frontend
 

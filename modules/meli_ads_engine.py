@@ -2225,7 +2225,50 @@ def build_campaigns_from_api(token: str, date_from: str, date_to: str) -> tuple[
             meta['warnings'].append('Sin conexión con la API.')
         return [], meta
 
-    campaign_map = _discover_campaign_ids(token, user_id)
+    # ── Test rápido de permisos de Publicidad ────────────────────────────────
+    # Antes de escanear todos los ítems verificamos si el token tiene acceso
+    # al endpoint de advertising. Si devuelve 401 mostramos un mensaje claro.
+    _perm_test = _ads_get('/advertising/product_ads/campaigns', token)
+    if _perm_test['status'] == 401:
+        meta['auth_error'] = True
+        meta['warnings'].append(
+            'El token no tiene permisos de Publicidad (HTTP 401). '
+            'Reconectá tu cuenta desde el botón "Reconectar / Activar publicidad" '
+            'para habilitar el acceso a métricas de campañas.'
+        )
+        return [], meta
+
+    # ── Intento directo: listar campañas sin escanear ítem por ítem ──────────
+    campaign_map: dict[int, list[str]] = {}
+    _direct_ok = False
+    if _perm_test['ok'] and _perm_test['data']:
+        _direct_data = _perm_test['data']
+        _direct_camps = _direct_data if isinstance(_direct_data, list) else _direct_data.get('results', [])
+        for _c in _direct_camps:
+            _cid = _c.get('id')
+            if _cid:
+                campaign_map[int(_cid)] = []
+        if campaign_map:
+            _direct_ok = True
+            # Obtener ítems por campaña
+            import time as _t2
+            for _camp_id in list(campaign_map.keys()):
+                _ri = _ads_get('/advertising/product_ads/items', token,
+                                params={'campaign_id': _camp_id, 'limit': 100})
+                if _ri['ok'] and _ri['data']:
+                    _items_raw = _ri['data']
+                    _items_list = _items_raw if isinstance(_items_raw, list) else _items_raw.get('results', [])
+                    campaign_map[_camp_id] = [
+                        str(i.get('item_id') or i.get('id', ''))
+                        for i in _items_list
+                        if i.get('item_id') or i.get('id')
+                    ]
+                _t2.sleep(0.05)
+
+    # ── Fallback: escanear ítems activos ─────────────────────────────────────
+    if not _direct_ok:
+        campaign_map = _discover_campaign_ids(token, user_id)
+
     if not campaign_map:
         meta['warnings'].append('No se encontraron campañas con Product Ads activos.')
         return [], meta

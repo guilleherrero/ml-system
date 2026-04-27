@@ -235,18 +235,52 @@
 
 {# ─── No campaigns ────────────────────────────────────────────────────────────── #}
 {% if not campaigns %}
+  {% if as.auth_error %}
+  {# ── Error de permisos de Publicidad ───────────────────────────────────── #}
+  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:1.5rem;max-width:640px;margin:0 auto">
+    <div style="display:flex;align-items:flex-start;gap:1rem">
+      <i class="bi bi-key-fill" style="font-size:1.8rem;color:#c2410c;flex-shrink:0;margin-top:.1rem"></i>
+      <div style="flex:1">
+        <div style="font-size:1rem;font-weight:800;color:#92400e;margin-bottom:.5rem">
+          Falta el permiso de Publicidad
+        </div>
+        <div style="font-size:.82rem;color:#9a3412;line-height:1.6;margin-bottom:1rem">
+          Tu cuenta de MercadoLibre está conectada, pero el token actual no tiene
+          el permiso <strong>Publicidad (read)</strong> habilitado en el portal developer de ML.
+          Sin ese permiso no se pueden ver métricas de campañas ni ítems en ads.
+          <br><br>
+          <strong>Cómo solucionarlo:</strong>
+          <ol style="margin:.5rem 0 0 1.2rem;padding:0">
+            <li>Andá al <a href="https://developers.mercadolibre.com.ar/devcenter" target="_blank" style="color:#c2410c">portal developer de ML</a></li>
+            <li>Entrá a tu aplicación y habilitá el permiso <strong>Publicidad</strong></li>
+            <li>Volvé acá y presioná "Reconectar cuenta" para obtener el nuevo token</li>
+          </ol>
+        </div>
+        {% if account_alias %}
+        <a href="/oauth/connect/{{ account_alias }}"
+           style="display:inline-flex;align-items:center;gap:.5rem;background:#c2410c;color:#fff;border:none;border-radius:10px;padding:.6rem 1.2rem;font-size:.85rem;font-weight:700;text-decoration:none">
+          <i class="bi bi-arrow-right-circle-fill"></i> Reconectar cuenta con permisos de Publicidad
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% elif not as.api_connected %}
   <div class="empty-state">
     <i class="bi bi-megaphone"></i>
     <div style="font-size:.95rem;font-weight:700;color:#374151;margin-bottom:.4rem">No se encontraron campañas</div>
     <div style="font-size:.8rem">
-      {% if not as.api_connected %}
-        Conectá tu cuenta de MercadoLibre para ver tus campañas.
-        <br><a href="/cuentas" class="btn-action btn-primary mt-2" style="display:inline-flex;margin-top:.75rem">Conectar cuenta</a>
-      {% else %}
-        No hay campañas de Product Ads activas en esta cuenta.
-      {% endif %}
+      Conectá tu cuenta de MercadoLibre para ver tus campañas.
+      <br><a href="/cuentas" class="btn-action btn-primary mt-2" style="display:inline-flex;margin-top:.75rem">Conectar cuenta</a>
     </div>
   </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-megaphone"></i>
+    <div style="font-size:.95rem;font-weight:700;color:#374151;margin-bottom:.4rem">No se encontraron campañas</div>
+    <div style="font-size:.8rem">No hay campañas de Product Ads activas en esta cuenta.</div>
+  </div>
+  {% endif %}
 {% endif %}
 
 {# ─── Campaign cards ──────────────────────────────────────────────────────────── #}
