@@ -204,14 +204,15 @@
 
         <!-- ── Rango repricing ── -->
         <td style="padding:.75rem .75rem;min-width:160px">
-          <div class="rango-display" onclick="abrirRango(this)" title="Click para editar rango">
+          <div class="rango-display d-flex align-items-center gap-1" title="Click para editar rango">
             {% if it.precio_min is not none and it.precio_max is not none %}
-              <span style="font-size:.75rem;color:#374151">
+              <span style="font-size:.75rem;color:#374151;cursor:pointer" onclick="abrirRango(this.closest('td'))">
                 ${{ '{:,.0f}'.format(it.precio_min) }} — ${{ '{:,.0f}'.format(it.precio_max) }}
               </span>
-              <i class="bi bi-pencil rango-edit-icon"></i>
+              <i class="bi bi-pencil rango-edit-icon" style="cursor:pointer" onclick="abrirRango(this.closest('td'))"></i>
+              <i class="bi bi-x-circle" style="font-size:.65rem;color:#ef4444;cursor:pointer;opacity:.6" onclick="eliminarRango(this)" title="Eliminar rango"></i>
             {% else %}
-              <span style="font-size:.72rem;color:#94a3b8;font-style:italic">
+              <span style="font-size:.72rem;color:#94a3b8;font-style:italic;cursor:pointer" onclick="abrirRango(this.closest('td'))">
                 <i class="bi bi-plus-circle me-1"></i>Configurar rango
               </span>
             {% endif %}
@@ -255,6 +256,18 @@
             </button>
             {% endif %}
           {% endif %}
+          <!-- Input precio manual -->
+          <span class="precio-manual-toggle ms-1" title="Editar precio manualmente" style="cursor:pointer;color:#94a3b8;font-size:.8rem" onclick="togglePrecioManual(this)">
+            <i class="bi bi-pencil-square"></i>
+          </span>
+          <span class="precio-manual-form" style="display:none">
+            <input type="number" class="precio-manual-input" value="{{ it.precio | int }}" min="1" step="1"
+                   style="width:90px;font-size:.72rem;padding:2px 5px;border:1px solid #2563eb;border-radius:5px;text-align:right">
+            <button class="btn btn-xs btn-success ms-1" style="font-size:.65rem;padding:1px 6px"
+                    onclick="aplicarPrecioManual(this, '{{ alias }}', '{{ it.id }}')">OK</button>
+            <button class="btn btn-xs btn-outline-secondary ms-1" style="font-size:.65rem;padding:1px 6px"
+                    onclick="this.closest('.precio-manual-form').style.display='none';this.closest('td').querySelector('.precio-manual-toggle').style.display=''">✕</button>
+          </span>
         </td>
       </tr>
       {% endfor %}
@@ -313,20 +326,86 @@ function aplicarPrecio(btn, alias, itemId, precio) {
 }
 
 // ── Rango de repricing (inline edit) ─────────────────────────────────────────
-function abrirRango(displayEl) {
-  const cell  = displayEl.closest('td');
-  const form  = cell.querySelector('.rango-form');
-  displayEl.style.display = 'none';
-  form.style.display      = 'flex';
-  form.style.removeProperty('display');  // quitar el !important del Jinja
+function abrirRango(cell) {
+  const display = cell.querySelector('.rango-display');
+  const form    = cell.querySelector('.rango-form');
+  display.style.display = 'none';
+  form.style.display    = 'flex';
+  form.style.removeProperty('display');
   form.style.display = 'flex';
   cell.querySelector('.rango-min').focus();
+}
+
+function eliminarRango(btn) {
+  if (!confirm('¿Eliminar el rango configurado para esta publicación?')) return;
+  const row = btn.closest('tr');
+  fetch(`/api/salud-config/${encodeURIComponent(ALIAS)}`, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({item_id: row.dataset.id, delete: true}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      row.dataset.min = '';
+      row.dataset.max = '';
+      const cell    = btn.closest('td');
+      const display = cell.querySelector('.rango-display');
+      display.innerHTML = `<span style="font-size:.72rem;color:#94a3b8;font-style:italic;cursor:pointer" onclick="abrirRango(this.closest('td'))"><i class="bi bi-plus-circle me-1"></i>Configurar rango</span>`;
+    } else {
+      alert('Error: ' + (d.error || 'no se pudo eliminar'));
+    }
+  });
+}
+
+function togglePrecioManual(icon) {
+  const td   = icon.closest('td');
+  const form = td.querySelector('.precio-manual-form');
+  icon.style.display  = 'none';
+  form.style.display  = '';
+  td.querySelector('.precio-manual-input').select();
 }
 
 function cancelarRango(btn) {
   const cell = btn.closest('td');
   cell.querySelector('.rango-display').style.display = '';
   cell.querySelector('.rango-form').style.display = 'none';
+}
+
+function aplicarPrecioManual(btn, alias, itemId) {
+  const td    = btn.closest('td');
+  const input = td.querySelector('.precio-manual-input');
+  const precio = parseFloat(input.value);
+  if (!precio || precio <= 0) { alert('Precio inválido.'); return; }
+  if (!confirm(`¿Cambiar el precio a $${Math.round(precio).toLocaleString('es-AR')}?`)) return;
+  btn.disabled    = true;
+  btn.textContent = '…';
+  fetch(`/api/aplicar-precio/${encodeURIComponent(alias)}`, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({item_id: itemId, precio}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      const row = btn.closest('tr');
+      row.dataset.precio = d.precio_nuevo;
+      const precioCell = row.querySelector('td:nth-child(2)');
+      if (precioCell) precioCell.innerHTML = `<strong>$${Math.round(d.precio_nuevo).toLocaleString('es-AR')}</strong>`;
+      input.value = Math.round(d.precio_nuevo);
+      btn.textContent = '✓';
+      setTimeout(() => {
+        td.querySelector('.precio-manual-form').style.display = 'none';
+        td.querySelector('.precio-manual-toggle').style.display = '';
+        btn.disabled    = false;
+        btn.textContent = 'OK';
+      }, 1200);
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+      btn.disabled    = false;
+      btn.textContent = 'OK';
+    }
+  });
 }
 
 function guardarRango(btn) {

@@ -1922,17 +1922,30 @@ def api_aplicar_precio(alias):
     return jsonify({'ok': False, 'error': r.text[:200]}), r.status_code
 
 
-@app.route('/api/salud-config/<alias>', methods=['POST'])
+@app.route('/api/salud-config/<alias>', methods=['POST', 'DELETE'])
 def api_salud_config(alias):
-    """Guarda o actualiza precio_min / precio_max de una publicación de catálogo."""
-    data      = request.get_json(silent=True) or {}
-    item_id   = str(data.get('item_id', '')).strip()
+    """Guarda, actualiza o elimina precio_min / precio_max de una publicación de catálogo."""
+    data    = request.get_json(silent=True) or {}
+    item_id = str(data.get('item_id', '')).strip()
+    if not item_id:
+        return jsonify({'ok': False, 'error': 'item_id requerido'}), 400
+
+    cfg_path = os.path.join(CONFIG_DIR, 'repricing.json')
+    cfg = load_json(cfg_path) or {'items': {}}
+    cfg.setdefault('items', {})
+
+    # DELETE — eliminar rango
+    if request.method == 'DELETE' or data.get('delete'):
+        cfg['items'].pop(item_id, None)
+        save_json(cfg_path, cfg)
+        return jsonify({'ok': True})
+
     titulo    = str(data.get('titulo', ''))[:70]
     precio_min = data.get('precio_min')
     precio_max = data.get('precio_max')
 
-    if not item_id or precio_min is None or precio_max is None:
-        return jsonify({'ok': False, 'error': 'item_id, precio_min y precio_max requeridos'}), 400
+    if precio_min is None or precio_max is None:
+        return jsonify({'ok': False, 'error': 'precio_min y precio_max requeridos'}), 400
     try:
         precio_min = float(precio_min)
         precio_max = float(precio_max)
