@@ -4587,6 +4587,8 @@ def api_monitor_evolucion(alias):
             'dias_elapsed':     dias,
             'titulo_antes':     it.get('titulo_antes', ''),
             'titulo_despues':   it.get('titulo_despues', ''),
+            'origen':           it.get('origen', ''),
+            'item_id_original': it.get('item_id_original', ''),
             'applied':          it.get('applied', []),
             'baseline':         baseline,
             'ultimo_snapshot':  ultimo,
