@@ -5589,7 +5589,7 @@ def meli_ads():
         account_alias = None
 
     return render_template('meli_ads.html', campaigns=campaigns, api_status=api_status,
-                           account_alias=account_alias)
+                           account_alias=account_alias, accounts=get_accounts())
 
 
 @app.route('/api/meli-ads/campaign/<int:camp_id>/analysis')
@@ -6033,7 +6033,7 @@ def evaluar_producto():
         data = load_json(path)
         if data:
             historial.append(data)
-    return render_template('evaluar_producto.html', historial=historial)
+    return render_template('evaluar_producto.html', historial=historial, accounts=get_accounts())
 
 
 @app.route('/api/evaluar-producto', methods=['POST'])
