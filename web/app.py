@@ -54,8 +54,10 @@ app.jinja_env.filters['enumerate'] = enumerate
 app.jinja_env.globals['now'] = datetime.now
 
 # ── Logging ───────────────────────────────────────────────────────────────────
+_data_dir_log = os.path.join(os.path.dirname(__file__), '..', 'data')
+os.makedirs(_data_dir_log, exist_ok=True)
 _log_handler = logging.FileHandler(
-    os.path.join(os.path.dirname(__file__), '..', 'data', 'app.log'),
+    os.path.join(_data_dir_log, 'app.log'),
     encoding='utf-8',
 )
 _log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
@@ -67,7 +69,7 @@ _audit_logger = logging.getLogger('ml.audit')
 _audit_logger.setLevel(logging.INFO)
 _audit_logger.propagate = False
 _audit_handler = logging.FileHandler(
-    os.path.join(os.path.dirname(__file__), '..', 'data', 'audit.log'),
+    os.path.join(_data_dir_log, 'audit.log'),
     encoding='utf-8',
 )
 _audit_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
