@@ -236,7 +236,7 @@ function renderItem(it) {
   }
 
   // Métricas — siempre mostrar baseline; comparar con último snapshot si hay
-  const hasBaseline = b.visitas_30d !== undefined || b.ventas_30d !== undefined || b.posicion !== undefined;
+  const hasBaseline = b.visitas_7d !== undefined || b.ventas_30d !== undefined || b.ventas_total !== undefined || b.posicion !== undefined;
   let metricsBlock = '';
   if (hasBaseline) {
     const snapInfo = hasSnapshot
@@ -244,10 +244,11 @@ function renderItem(it) {
       : '<div class="no-data-msg" style="margin-top:.5rem;margin-bottom:.25rem">Métricas de línea base capturadas · Actualizá en unos días para ver la evolución.</div>';
     metricsBlock = `
     <div class="metrics-grid">
-      ${metricBox('Visitas 30d', b.visitas_30d, hasSnapshot ? u.visitas_30d : undefined, hasSnapshot ? d.visitas_30d : null, hasSnapshot ? d.visitas_pct : null, false, '')}
-      ${metricBox('Ventas 30d', b.ventas_30d,  hasSnapshot ? u.ventas_30d  : undefined, hasSnapshot ? d.ventas_30d  : null, hasSnapshot ? d.ventas_pct  : null, false, '')}
-      ${metricBox('Conversión', b.conv_pct,    hasSnapshot ? u.conv_pct    : undefined, hasSnapshot ? d.conv_pct    : null, null,                                  false, '%')}
-      ${metricBox('Posición',   b.posicion,    hasSnapshot ? u.posicion    : undefined, hasSnapshot ? d.posicion    : null, null,                                  true,  '°')}
+      ${metricBox('Visitas 7d',       b.visitas_7d,    hasSnapshot ? u.visitas_7d    : undefined, hasSnapshot ? d.visitas_7d    : null, hasSnapshot ? d.visitas_pct  : null, false, '')}
+      ${metricBox('Ventas 30d',       b.ventas_30d,    hasSnapshot ? u.ventas_30d    : undefined, hasSnapshot ? d.ventas_30d    : null, hasSnapshot ? d.ventas_pct   : null, false, '')}
+      ${metricBox('Ventas acumuladas',b.ventas_total,  hasSnapshot ? u.ventas_total  : undefined, hasSnapshot ? d.ventas_total  : null, null,                                false, '')}
+      ${metricBox('Conversión',       b.conv_pct,      hasSnapshot ? u.conv_pct      : undefined, hasSnapshot ? d.conv_pct      : null, null,                                false, '%')}
+      ${metricBox('Posición',         b.posicion,      hasSnapshot ? u.posicion      : undefined, hasSnapshot ? d.posicion      : null, null,                                true,  '°')}
     </div>
     ${snapInfo}`;
   } else {

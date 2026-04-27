@@ -4304,20 +4304,23 @@ def api_aplicar_optimizacion():
 
     # ── Capturar estado ANTES de aplicar cambios (para monitor de evolución) ──
     titulo_antes   = ''
-    visitas_antes  = 0
-    ventas_antes   = 0
-    conv_antes     = 0.0
-    posicion_antes = None
-    posicion_kw    = ''
+    visitas_antes      = 0
+    ventas_antes       = 0
+    ventas_total_antes = 0
+    conv_antes         = 0.0
+    posicion_antes     = None
+    posicion_kw        = ''
     try:
         client._ensure_token()
         _h_pre = {'Authorization': f'Bearer {client.account.access_token}'}
         _ir = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}', headers=_h_pre, timeout=8)
         if _ir.ok:
-            titulo_antes = _ir.json().get('title', '')
+            _ir_json       = _ir.json()
+            titulo_antes   = _ir_json.get('title', '')
+            ventas_total_antes = _ir_json.get('sold_quantity', 0)
         _vr = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
-            headers=_h_pre, params={'last': 30, 'unit': 'day'}, timeout=6)
+            headers=_h_pre, params={'last': 7, 'unit': 'day'}, timeout=6)
         if _vr.ok:
             visitas_antes = _vr.json().get('total_visits', 0)
         # Posición y conversión desde datos locales
@@ -4468,11 +4471,12 @@ def api_aplicar_optimizacion():
         # Buscar entrada existente para este item (actualizar si ya está)
         _existing = next((x for x in _mon['items'] if x.get('item_id') == item_id and x.get('alias') == alias), None)
         _baseline = {
-            'fecha':       _now,
-            'visitas_30d': visitas_antes,
-            'ventas_30d':  ventas_antes,
-            'conv_pct':    conv_antes,
-            'posicion':    posicion_antes,
+            'fecha':        _now,
+            'visitas_7d':   visitas_antes,
+            'ventas_30d':   ventas_antes,
+            'ventas_total': ventas_total_antes,
+            'conv_pct':     conv_antes,
+            'posicion':     posicion_antes,
             'posicion_kw': posicion_kw,
         }
         # Título del producto (nombre amigable)
@@ -4594,12 +4598,13 @@ def api_monitor_evolucion(alias):
             'ultimo_snapshot':  ultimo,
             'snapshots_n':      len(snapshots),
             'deltas': {
-                'visitas_30d':  _delta('visitas_30d'),
-                'visitas_pct':  _delta_pct('visitas_30d'),
-                'ventas_30d':   _delta('ventas_30d'),
-                'ventas_pct':   _delta_pct('ventas_30d'),
-                'conv_pct':     _delta('conv_pct'),
-                'posicion':     _delta('posicion'),
+                'visitas_7d':    _delta('visitas_7d'),
+                'visitas_pct':   _delta_pct('visitas_7d'),
+                'ventas_30d':    _delta('ventas_30d'),
+                'ventas_pct':    _delta_pct('ventas_30d'),
+                'ventas_total':  _delta('ventas_total'),
+                'conv_pct':      _delta('conv_pct'),
+                'posicion':      _delta('posicion'),
             },
         })
 
@@ -4625,13 +4630,19 @@ def api_monitor_refresh():
 
     snap = {'fecha': datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-    # Visitas 30d
+    # Visitas 7d + ventas acumuladas (sold_quantity desde ML API)
     try:
         _vr = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
-            headers=_h, params={'last': 30, 'unit': 'day'}, timeout=6)
+            headers=_h, params={'last': 7, 'unit': 'day'}, timeout=6)
         if _vr.ok:
-            snap['visitas_30d'] = _vr.json().get('total_visits', 0)
+            snap['visitas_7d'] = _vr.json().get('total_visits', 0)
+    except Exception:
+        pass
+    try:
+        _ir = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}', headers=_h, timeout=6)
+        if _ir.ok:
+            snap['ventas_total'] = _ir.json().get('sold_quantity', 0)
     except Exception:
         pass
 
@@ -4903,13 +4914,13 @@ def api_monitor_nueva_publicacion():
 
     # Capturar baseline de la nueva publicación (todo en 0 por ser nueva)
     _now = datetime.now().strftime('%Y-%m-%d %H:%M')
-    baseline = {'fecha': _now, 'visitas_30d': 0, 'ventas_30d': 0, 'conv_pct': 0.0, 'posicion': None}
+    baseline = {'fecha': _now, 'visitas_7d': 0, 'ventas_30d': 0, 'ventas_total': 0, 'conv_pct': 0.0, 'posicion': None}
     try:
         r_vis = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id_nuevo}/visits/time_window',
-            headers=heads, params={'last': 30, 'unit': 'day'}, timeout=6)
+            headers=heads, params={'last': 7, 'unit': 'day'}, timeout=6)
         if r_vis.ok:
-            baseline['visitas_30d'] = r_vis.json().get('total_visits', 0)
+            baseline['visitas_7d'] = r_vis.json().get('total_visits', 0)
     except Exception:
         pass
 
