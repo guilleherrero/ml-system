@@ -771,10 +771,15 @@
         <i class="bi bi-rulers me-1"></i>Medir ahora
       </button>
     {% else %}
-      <span style="font-size:.73rem;color:#64748b;flex:1">Si aplicaste esta optimización en MercadoLibre, registrá el baseline para poder medir si funcionó.</span>
+      <span style="font-size:.73rem;color:#64748b;flex:1">Si aplicaste cambios en MercadoLibre, capturá el baseline. También podés enviar esta publicación a Monitor de Evolución para hacer seguimiento sin aplicar nada.</span>
       <button onclick="marcarAplicadoYMedir('{{ item.get('item_id','') }}', '{{ alias }}', this)"
               style="font-size:.68rem;padding:2px 8px;background:#64748b;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
         <i class="bi bi-check2-circle me-1"></i>Ya apliqué — capturar baseline
+      </button>
+      <button onclick="enviarAMonitor('{{ item.get('item_id','') }}', {{ item.get('titulo_actual','')|tojson }}, '{{ alias }}', this)"
+              id="btn-monitor-{{ item.get('item_id','') }}"
+              style="font-size:.68rem;padding:2px 8px;background:#6d28d9;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+        <i class="bi bi-graph-up-arrow me-1"></i>Enviar a Monitor de Evolución
       </button>
     {% endif %}
   </div>
@@ -791,6 +796,7 @@
     <div class="opt-sec-hdr">
       <i class="bi bi-check-circle-fill" style="color:#16a34a;font-size:.88rem"></i>
       <span class="opt-sec-lbl" style="color:#166534">Títulos optimizados — elegí y copiá</span>
+      <span style="font-size:.65rem;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600;flex-shrink:0"><i class="bi bi-pencil me-1"></i>Click para editar</span>
       {% if tr_n %}
       <span class="badge ms-auto" style="background:#16a34a;font-size:.65rem;font-weight:700;flex-shrink:0">
         <i class="bi bi-stars me-1"></i>IA recomienda opción {{ tr_n }}
@@ -899,6 +905,7 @@
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.fchev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
       <i class="bi bi-table" style="color:#9a3412;font-size:.88rem"></i>
       <span class="opt-sec-lbl" style="color:#9a3412">Ficha técnica perfecta</span>
+      <span style="font-size:.65rem;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
       <div class="d-flex gap-2 ms-auto" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-warning fw-semibold" onclick="copyById('ficha-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
           <i class="bi bi-clipboard me-1"></i>Copiar
@@ -1044,6 +1051,7 @@
     <div class="opt-sec-hdr">
       <i class="bi bi-file-richtext-fill" style="color:#14532d;font-size:.88rem"></i>
       <span class="opt-sec-lbl" style="color:#14532d">Descripción superadora — lista para pegar en ML</span>
+      <span style="font-size:.65rem;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
       <div class="d-flex gap-2 ms-auto">
         {% if item.get('descripcion_aplicada') %}
         <span class="badge badge-ok"><i class="bi bi-check2 me-1"></i>Aplicada</span>
@@ -2734,6 +2742,40 @@ function marcarAplicadoYMedir(itemId, alias, btn) {
     btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Ya apliqué — capturar baseline';
     showToast('❌ Error de conexión', 'warn');
   });
+}
+
+async function enviarAMonitor(itemId, titulo, alias, btn) {
+  if (!confirm('¿Enviar esta publicación a Monitor de Evolución?\nSe va a capturar la posición y visitas actuales como punto de partida para medir cambios.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Registrando...';
+
+  const competidoresIds = Object.keys(selectedCompetitors);
+
+  try {
+    const r = await fetch('/api/monitor-iniciar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias, item_id: itemId, titulo_actual: titulo, competidores: competidoresIds})
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-graph-up-arrow me-1"></i>Enviar a Monitor de Evolución';
+      showToast('❌ ' + (d.error || 'Error al registrar en Monitor'), 'warn');
+      return;
+    }
+    btn.innerHTML = '<i class="bi bi-check2 me-1"></i>¡En Monitor!';
+    const bl = d.baseline;
+    const info = [];
+    if (bl.visitas_30d !== undefined) info.push(`Visitas 30d: ${bl.visitas_30d}`);
+    if (bl.posicion) info.push(`Posición actual: #${bl.posicion}`);
+    showToast('✅ Publicación registrada en Monitor de Evolución' + (info.length ? ' · ' + info.join(' · ') : '') + '. En unos días volvé a medir el impacto.');
+    setTimeout(() => { window.location.href = `/monitor/${alias}`; }, 2500);
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-graph-up-arrow me-1"></i>Enviar a Monitor de Evolución';
+    showToast('❌ Error de conexión', 'warn');
+  }
 }
 
 function refreshSeguimiento(itemId, alias) {

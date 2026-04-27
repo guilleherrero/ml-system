@@ -4860,6 +4860,76 @@ def api_opt_marcar_aplicado():
     return jsonify({'ok': True, 'baseline': baseline})
 
 
+@app.route('/api/monitor-iniciar', methods=['POST'])
+def api_monitor_iniciar():
+    """Registra un ítem en Monitor de Evolución para seguimiento, sin requerir que esté aplicado."""
+    body    = request.get_json() or {}
+    alias   = body.get('alias', '').strip()
+    item_id = body.get('item_id', '').strip().upper()
+    titulo  = body.get('titulo_actual', '').strip()
+    comps   = body.get('competidores', [])
+
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias o item_id'}), 400
+
+    try:
+        token, _, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    _now = datetime.now().strftime('%Y-%m-%d %H:%M')
+    baseline = {'fecha': _now}
+
+    try:
+        r_vis = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+            headers=heads, params={'last': 30, 'unit': 'day'}, timeout=6)
+        if r_vis.ok:
+            baseline['visitas_30d'] = r_vis.json().get('total_visits', 0)
+    except Exception:
+        pass
+
+    pos_data = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+    if item_id in pos_data:
+        hist = pos_data[item_id].get('history', {})
+        if hist:
+            last_date = max(hist.keys())
+            pos_val   = hist[last_date]
+            if pos_val != 999:
+                baseline['posicion'] = pos_val
+
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    if not isinstance(_mon, dict):
+        _mon = {'items': []}
+
+    _cutoff = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    _mon['items'] = [it for it in _mon.get('items', []) if (it.get('fecha_opt') or '')[:10] >= _cutoff]
+
+    existing = next((x for x in _mon['items'] if x.get('item_id') == item_id and x.get('alias') == alias), None)
+    entry_data = {
+        'item_id':         item_id,
+        'alias':           alias,
+        'titulo_producto': titulo or item_id,
+        'fecha_opt':       _now,
+        'titulo_antes':    titulo,
+        'titulo_despues':  titulo,
+        'baseline':        baseline,
+        'snapshots':       [],
+        'ultimo_snapshot': None,
+        'applied':         [],
+        'competidores':    comps,
+    }
+
+    if existing:
+        existing.update(entry_data)
+    else:
+        _mon['items'].append(entry_data)
+
+    save_json(_mon_path, _mon)
+    return jsonify({'ok': True, 'baseline': baseline})
+
+
 _STOP_WORDS = {
     'de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
     'con', 'para', 'por', 'en', 'y', 'o', 'a', 'al', 'sin', 'mas', 'más',
