@@ -784,6 +784,24 @@
     {% endif %}
   </div>
 
+  <!-- ─ Nueva publicación (cuando el título no es modificable por ventas) ── -->
+  {% if item.get('competidores_ids') or item.get('competidores_n', 0) > 0 %}
+  <div id="panel-nueva-{{ item.get('item_id','') }}"
+       style="background:#faf5ff;border-bottom:1px solid #e9d5ff;padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <i class="bi bi-box-arrow-up-right" style="color:#7c3aed;flex-shrink:0"></i>
+    <span style="font-size:.73rem;font-weight:700;color:#6d28d9;flex-shrink:0">¿Creaste una nueva publicación con esta optimización?</span>
+    <span style="font-size:.71rem;color:#7c3aed;flex:1">Ingresá su ID para registrarla en Monitor de Evolución con los {{ item.get('competidores_n', 0) }} competidores del análisis.</span>
+    <input id="nuevo-id-{{ item.get('item_id','') }}" type="text" placeholder="Ej: MLA1234567890"
+           style="font-size:.75rem;padding:3px 8px;border:1px solid #c4b5fd;border-radius:6px;width:160px;background:#fff;color:#1e293b"
+           oninput="this.value=this.value.toUpperCase().replace(/[^MLA0-9]/g,'')"
+    />
+    <button onclick="vincularNuevaPublicacion('{{ item.get('item_id','') }}', '{{ alias }}', this)"
+            style="font-size:.68rem;padding:3px 10px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0;font-weight:700">
+      <i class="bi bi-link-45deg me-1"></i>Vincular al Monitor
+    </button>
+  </div>
+  {% endif %}
+
   <!-- ─ Título actual ────────────────────────────────────────────────── -->
   <div style="padding:9px 20px;background:#f8fafc;border-bottom:1px solid #f1f5f9">
     <span style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8">Título actual</span>
@@ -2742,6 +2760,50 @@ function marcarAplicadoYMedir(itemId, alias, btn) {
     btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Ya apliqué — capturar baseline';
     showToast('❌ Error de conexión', 'warn');
   });
+}
+
+async function vincularNuevaPublicacion(itemIdOriginal, alias, btn) {
+  const input = document.getElementById('nuevo-id-' + itemIdOriginal);
+  const nuevoId = (input?.value || '').trim().toUpperCase();
+  if (!nuevoId || nuevoId.length < 10) {
+    input?.focus();
+    showToast('⚠️ Ingresá el ID de la nueva publicación (ej: MLA1234567890)', 'warn');
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Vinculando...';
+
+  try {
+    const r = await fetch('/api/monitor-nueva-publicacion', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({alias, item_id_nuevo: nuevoId, item_id_original: itemIdOriginal})
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-link-45deg me-1"></i>Vincular al Monitor';
+      showToast('❌ ' + (d.error || 'Error al vincular'), 'warn');
+      return;
+    }
+    const panel = document.getElementById('panel-nueva-' + itemIdOriginal);
+    if (panel) {
+      const titulo = d.titulo ? ` "${d.titulo.substring(0,50)}"` : '';
+      panel.innerHTML = `
+        <i class="bi bi-check-circle-fill" style="color:#16a34a;flex-shrink:0"></i>
+        <span style="font-size:.73rem;color:#15803d;flex:1">
+          <strong>${nuevoId}</strong>${titulo} registrada en Monitor de Evolución con ${d.competidores_n} competidores del análisis original.
+        </span>
+        <a href="/monitor/${alias}" style="font-size:.7rem;padding:3px 10px;background:#16a34a;color:#fff;border-radius:6px;text-decoration:none;font-weight:700">
+          <i class="bi bi-graph-up-arrow me-1"></i>Ver en Monitor
+        </a>`;
+    }
+    showToast(`✅ ${nuevoId} vinculada al Monitor con ${d.competidores_n} competidores. Volvé en unos días para medir el impacto.`);
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-link-45deg me-1"></i>Vincular al Monitor';
+    showToast('❌ Error de conexión', 'warn');
+  }
 }
 
 async function enviarAMonitor(itemId, titulo, alias, btn) {

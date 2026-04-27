@@ -4860,6 +4860,94 @@ def api_opt_marcar_aplicado():
     return jsonify({'ok': True, 'baseline': baseline})
 
 
+@app.route('/api/monitor-nueva-publicacion', methods=['POST'])
+def api_monitor_nueva_publicacion():
+    """
+    Vincula una publicación NUEVA (creada manualmente en ML) al Monitor de Evolución,
+    recuperando los competidores del análisis de optimización original.
+    Caso de uso: título no modificable (tiene ventas) → se crea nueva publicación.
+    """
+    body          = request.get_json() or {}
+    alias         = body.get('alias', '').strip()
+    item_id_nuevo = body.get('item_id_nuevo', '').strip().upper()
+    item_id_orig  = body.get('item_id_original', '').strip().upper()
+
+    if not alias or not item_id_nuevo:
+        return jsonify({'ok': False, 'error': 'Faltan alias o item_id_nuevo'}), 400
+
+    # Recuperar competidores del análisis original
+    comps = []
+    if item_id_orig:
+        opt_path = os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')
+        opt_data = load_json(opt_path) or {}
+        orig_opt = next((o for o in opt_data.get('optimizaciones', []) if o.get('item_id') == item_id_orig), None)
+        if orig_opt:
+            comps = orig_opt.get('competidores_ids', [])
+
+    try:
+        token, _, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    # Obtener título de la nueva publicación desde la API de ML
+    titulo_nuevo = ''
+    try:
+        r_item = req_lib.get(f'https://api.mercadolibre.com/items/{item_id_nuevo}',
+                             headers=heads, timeout=6)
+        if r_item.ok:
+            titulo_nuevo = r_item.json().get('title', '')
+    except Exception:
+        pass
+
+    # Capturar baseline de la nueva publicación
+    _now = datetime.now().strftime('%Y-%m-%d %H:%M')
+    baseline = {'fecha': _now}
+    try:
+        r_vis = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id_nuevo}/visits/time_window',
+            headers=heads, params={'last': 30, 'unit': 'day'}, timeout=6)
+        if r_vis.ok:
+            baseline['visitas_30d'] = r_vis.json().get('total_visits', 0)
+    except Exception:
+        pass
+
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    if not isinstance(_mon, dict):
+        _mon = {'items': []}
+
+    _cutoff = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    _mon['items'] = [it for it in _mon.get('items', []) if (it.get('fecha_opt') or '')[:10] >= _cutoff]
+
+    existing = next((x for x in _mon['items'] if x.get('item_id') == item_id_nuevo and x.get('alias') == alias), None)
+    entry = {
+        'item_id':          item_id_nuevo,
+        'alias':            alias,
+        'titulo_producto':  titulo_nuevo or item_id_nuevo,
+        'fecha_opt':        _now,
+        'titulo_antes':     titulo_nuevo,
+        'titulo_despues':   titulo_nuevo,
+        'baseline':         baseline,
+        'snapshots':        [],
+        'ultimo_snapshot':  None,
+        'applied':          ['titulo', 'descripcion', 'ficha'],
+        'competidores':     comps,
+        'item_id_original': item_id_orig,
+    }
+    if existing:
+        existing.update(entry)
+    else:
+        _mon['items'].append(entry)
+
+    save_json(_mon_path, _mon)
+    return jsonify({
+        'ok':            True,
+        'titulo':        titulo_nuevo,
+        'competidores_n': len(comps),
+        'baseline':      baseline,
+    })
+
+
 @app.route('/api/monitor-iniciar', methods=['POST'])
 def api_monitor_iniciar():
     """Registra un ítem en Monitor de Evolución para seguimiento, sin requerir que esté aplicado."""
@@ -9707,6 +9795,7 @@ CHECKLIST DE VALIDACIÓN INTERNA (verificar antes de entregar):
                 'resumen_mercado':   fortalezas_sec,
                 'puntaje_calidad':   puntaje_sec,
                 'competidores_n':    len(manual_competitor_products),
+                'competidores_ids':  [c.get('id','') for c in manual_competitor_products if c.get('id')],
                 'fecha':    datetime.now().strftime('%Y-%m-%d %H:%M'),
                 'aplicado': False,
             })
@@ -9848,7 +9937,8 @@ def api_optimizar_pub_v2():
                 'puntaje_calidad':      _sec(analysis, 'PUNTAJE DE CALIDAD ACTUAL'),
                 'analisis_ficha':       _sec(analysis, 'ANÁLISIS DE FICHA TÉCNICA'),
                 'analisis_desc':        _sec(analysis, 'ANÁLISIS DE DESCRIPCIÓN'),
-                'competidores_n':       len(result.get('competitor_insights', {}).get('keywords_frecuentes', [])),
+                'competidores_n':       len(comp_prods),
+                'competidores_ids':     [c.get('id','') for c in comp_prods if c.get('id')],
                 'fecha':                datetime.now().strftime('%Y-%m-%d %H:%M'),
                 'aplicado':             False,
             }
