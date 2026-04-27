@@ -1414,12 +1414,29 @@ def _get_description(item_id: str, token: str) -> str:
         return ""
 
 
-def _get_category_name(category_id: str) -> str:
+def _get_category_info(category_id: str) -> tuple[str, str]:
+    """Devuelve (name, path) de la categoría en una sola llamada a la API.
+    path = 'Electrónica > Cuidado Personal > Secadores de Cabello'
+    """
     try:
         r = requests.get(f"{ML_API}/categories/{category_id}", timeout=6)
-        return r.json().get("name", category_id) if r.ok else category_id
+        if not r.ok:
+            return category_id, ""
+        data = r.json()
+        name = data.get("name", category_id)
+        nodes = data.get("path_from_root", [])
+        path = " > ".join(n.get("name", "") for n in nodes if n.get("name")) if nodes else ""
+        return name, path
     except Exception:
-        return category_id
+        return category_id, ""
+
+
+def _get_category_name(category_id: str) -> str:
+    return _get_category_info(category_id)[0]
+
+
+def _get_category_path(category_id: str) -> str:
+    return _get_category_info(category_id)[1]
 
 
 def _get_category_attributes(category_id: str, token: str) -> dict:
@@ -1764,6 +1781,7 @@ def _build_synthesis_prompt(
     qa_insights: str = "",
     own_questions: list = None,
     keyword_clusters: list = None,
+    category_path: str = "",
 ) -> str:
     title        = item_data.get("title", "")
     my_sold      = item_data.get("sold_quantity", 0)
@@ -1925,6 +1943,8 @@ def _build_synthesis_prompt(
     desc_range  = "1200–2500 caracteres" if is_complex else "600–1200 caracteres"
     desc_type   = "producto complejo — justifica detalle técnico extendido" if is_complex else "producto simple — descripción directa, sin relleno"
 
+    category_display = category_path if category_path else category_name
+
     return f"""Sos un experto senior en SEO y conversión para MercadoLibre Argentina.
 Tu objetivo es producir el contenido más competitivo posible usando los datos reales del mercado provistos.
 Nunca inventés características técnicas. Nunca usés frases genéricas. Siempre priorizá claridad sobre creatividad.
@@ -1933,7 +1953,7 @@ Nunca inventés características técnicas. Nunca usés frases genéricas. Siemp
 
 ═══ DATOS REALES DEL MERCADO ═══
 TÍTULO ACTUAL ({len(title)} chars): {title}
-CATEGORÍA: {category_name}
+CATEGORÍA: {category_display}
 CAUSAS DE ALTO IMPACTO: {rc_summary}{price_block}{photos_block}{catalog_block}
 
 KEYWORDS REALES DEL AUTOSUGGEST ML (fuente primaria — prioridad absoluta sobre todo):
@@ -2139,6 +2159,7 @@ Estrategia: [una línea]
 OPCIÓN: [1 / 2 / 3] | Motivo: [una línea — por qué esta opción maximiza ranking + conversión para este producto específico]
 
 ## FICHA TÉCNICA PERFECTA
+Categoría: {category_display}
 [atributo]: [valor]
 
 ## DESCRIPCIÓN SUPERADORA
@@ -2423,7 +2444,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
 
     # ── Categoría y atributos ─────────────────────────────────────────────────
     _c.print("  [dim]Obteniendo categoría y atributos...[/dim]", end=" ")
-    category_name  = _get_category_name(category_id)
+    category_name, category_path = _get_category_info(category_id)
     category_attrs = _get_category_attributes(category_id, token)
     _c.print(f"[green]{category_name}[/green]")
 
@@ -2489,6 +2510,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         qa_insights=qa_insights,
         own_questions=own_questions,
         keyword_clusters=keyword_clusters,
+        category_path=category_path,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)
@@ -2511,6 +2533,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
             "item_id":         item_id,
             "title":           title,
             "category":        category_name,
+            "category_path":   category_path,
             "ml_score":        score_actual,
             "score_proyectado": score_proyectado,
             "difficulty":      difficulty["nivel"],
@@ -2571,7 +2594,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
 
     # Detectar categoría
     _c.print("  [dim]Detectando categoría...[/dim]", end=" ")
-    category_id, category_name = "", ""
+    category_id, category_name, category_path = "", "", ""
     try:
         r = requests.get(
             f"{ML_API}/sites/{ML_SITE}/domain_discovery/search",
@@ -2586,6 +2609,8 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     except Exception:
         pass
     _c.print(f"[green]{category_name or 'no detectada'}[/green]")
+    if category_id:
+        _, category_path = _get_category_info(category_id)
 
     # M3: competidores
     if competitor_products:
@@ -2676,6 +2701,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
         my_price=avg_price,
         qa_insights=qa_insights,
         keyword_clusters=keyword_clusters,
+        category_path=category_path,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
     seo_result     = _parse_synthesis(synthesis_text)
@@ -2683,10 +2709,11 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
 
     return {
         "summary": {
-            "product_idea": product_idea,
-            "category":     category_name,
-            "difficulty":   difficulty["nivel"],
-            "keywords_n":   len(keyword_analysis),
+            "product_idea":  product_idea,
+            "category":      category_name,
+            "category_path": category_path,
+            "difficulty":    difficulty["nivel"],
+            "keywords_n":    len(keyword_analysis),
         },
         "root_causes":         root_causes,
         "keyword_analysis":    keyword_analysis,

@@ -200,33 +200,61 @@ function renderItem(it) {
   // Alertas
   const alertasBlock = renderAlertas(alertas);
 
-  // Título compare — solo si se cambió el título
+  // Título compare
   let tituloBlock = '';
-  if (it.titulo_antes || it.titulo_despues) {
+  if (it.origen === 'nueva') {
+    // Publicación nueva creada con toda la optimización aplicada
+    const origLink = it.item_id_original
+      ? ` <span style="font-size:.72rem;color:#6b7280">(reemplaza a ${it.item_id_original})</span>` : '';
     tituloBlock = `<div class="titulo-compare">
-      <div class="titulo-box antes">
-        <div class="titulo-label">✗ Título anterior</div>
-        ${it.titulo_antes || '<em>no registrado</em>'}
-      </div>
-      <div class="titulo-box despues">
-        <div class="titulo-label">✓ Título aplicado</div>
-        ${it.titulo_despues || '<em>sin cambio de título</em>'}
+      <div class="titulo-box despues" style="flex:1">
+        <div class="titulo-label">🆕 Nueva publicación — optimización completa aplicada${origLink}</div>
+        ${it.titulo_despues || it.titulo_producto}
       </div>
     </div>`;
+  } else if (it.titulo_antes || it.titulo_despues) {
+    const mismosT = it.titulo_antes && it.titulo_despues && it.titulo_antes.trim() === it.titulo_despues.trim();
+    if (mismosT) {
+      tituloBlock = `<div class="titulo-compare">
+        <div class="titulo-box antes" style="flex:1">
+          <div class="titulo-label">📌 Título (sin cambio — publicación con ventas)</div>
+          ${it.titulo_antes}
+        </div>
+      </div>`;
+    } else {
+      tituloBlock = `<div class="titulo-compare">
+        <div class="titulo-box antes">
+          <div class="titulo-label">✗ Título anterior</div>
+          ${it.titulo_antes || '<em>no registrado</em>'}
+        </div>
+        <div class="titulo-box despues">
+          <div class="titulo-label">✓ Título aplicado</div>
+          ${it.titulo_despues || '<em>sin cambio de título</em>'}
+        </div>
+      </div>`;
+    }
   }
 
-  // Métricas
-  const metricsBlock = hasSnapshot ? `
+  // Métricas — siempre mostrar baseline; comparar con último snapshot si hay
+  const hasBaseline = b.visitas_30d !== undefined || b.ventas_30d !== undefined || b.posicion !== undefined;
+  let metricsBlock = '';
+  if (hasBaseline) {
+    const snapInfo = hasSnapshot
+      ? '<div class="snapshot-info">Última actualización: ' + (u.fecha || '—') + ' · ' + it.snapshots_n + ' snapshot' + (it.snapshots_n !== 1 ? 's' : '') + '</div>'
+      : '<div class="no-data-msg" style="margin-top:.5rem;margin-bottom:.25rem">Métricas de línea base capturadas · Actualizá en unos días para ver la evolución.</div>';
+    metricsBlock = `
     <div class="metrics-grid">
-      ${metricBox('Visitas 30d', b.visitas_30d, u.visitas_30d, d.visitas_30d, d.visitas_pct, false, '')}
-      ${metricBox('Ventas 30d', b.ventas_30d,  u.ventas_30d,  d.ventas_30d,  d.ventas_pct,  false, '')}
-      ${metricBox('Conversión', b.conv_pct,    u.conv_pct,    d.conv_pct,    null,           false, '%')}
-      ${metricBox('Posición',   b.posicion,    u.posicion,    d.posicion,    null,           true,  '°')}
+      ${metricBox('Visitas 30d', b.visitas_30d, hasSnapshot ? u.visitas_30d : undefined, hasSnapshot ? d.visitas_30d : null, hasSnapshot ? d.visitas_pct : null, false, '')}
+      ${metricBox('Ventas 30d', b.ventas_30d,  hasSnapshot ? u.ventas_30d  : undefined, hasSnapshot ? d.ventas_30d  : null, hasSnapshot ? d.ventas_pct  : null, false, '')}
+      ${metricBox('Conversión', b.conv_pct,    hasSnapshot ? u.conv_pct    : undefined, hasSnapshot ? d.conv_pct    : null, null,                                  false, '%')}
+      ${metricBox('Posición',   b.posicion,    hasSnapshot ? u.posicion    : undefined, hasSnapshot ? d.posicion    : null, null,                                  true,  '°')}
     </div>
-    <div class="snapshot-info">Última actualización: ${u.fecha || '—'} · ${it.snapshots_n} snapshot${it.snapshots_n !== 1 ? 's' : ''}</div>
-  ` : `<div class="no-data-msg" style="margin-bottom:.75rem">
-    Sin datos de seguimiento aún — actualizá las métricas para ver la evolución.
-  </div>`;
+    ${snapInfo}`;
+  } else {
+    metricsBlock = `<div class="no-data-msg" style="margin-bottom:.75rem">
+      Sin datos de seguimiento aún — actualizá las métricas para ver la evolución.
+    </div>`;
+  }
 
   // Badges de qué se aplicó
   const appliedBadges = (it.applied || []).map(a =>

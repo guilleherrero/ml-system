@@ -4899,9 +4899,9 @@ def api_monitor_nueva_publicacion():
     except Exception:
         pass
 
-    # Capturar baseline de la nueva publicación
+    # Capturar baseline de la nueva publicación (todo en 0 por ser nueva)
     _now = datetime.now().strftime('%Y-%m-%d %H:%M')
-    baseline = {'fecha': _now}
+    baseline = {'fecha': _now, 'visitas_30d': 0, 'ventas_30d': 0, 'conv_pct': 0.0, 'posicion': None}
     try:
         r_vis = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id_nuevo}/visits/time_window',
@@ -4925,14 +4925,15 @@ def api_monitor_nueva_publicacion():
         'alias':            alias,
         'titulo_producto':  titulo_nuevo or item_id_nuevo,
         'fecha_opt':        _now,
-        'titulo_antes':     titulo_nuevo,
+        'titulo_antes':     '',
         'titulo_despues':   titulo_nuevo,
+        'origen':           'nueva',
+        'item_id_original': item_id_orig,
         'baseline':         baseline,
         'snapshots':        [],
         'ultimo_snapshot':  None,
         'applied':          ['titulo', 'descripcion', 'ficha'],
         'competidores':     comps,
-        'item_id_original': item_id_orig,
     }
     if existing:
         existing.update(entry)
@@ -9926,6 +9927,7 @@ def api_optimizar_pub_v2():
                 'precio_recomendado':        opt_plan.get('precio_recomendado', ''),
                 'fotos_recomendadas':        opt_plan.get('fotos_recomendadas', ''),
                 'alerta_catalogo':           opt_plan.get('alerta_catalogo', ''),
+                'category_path':             summary.get('category_path', ''),
                 'score_actual':              summary.get('ml_score', 0),
                 'score_proyectado':          summary.get('score_proyectado', 0),
                 'score_oficial_ml':          (result.get('_ml_quality_oficial') or {}).get('score', 0),
@@ -10087,6 +10089,7 @@ def api_lanzar_nuevo_v2():
                 'analisis_ficha':            _sec(analysis, 'ANÁLISIS DE FICHA TÉCNICA'),
                 'dificultad':                result.get('summary', {}).get('difficulty', ''),
                 'categoria':                 result.get('summary', {}).get('category', ''),
+                'category_path':             result.get('summary', {}).get('category_path', ''),
                 'competidores_n':            len(comp_prods),
                 'fecha':                     datetime.now().strftime('%Y-%m-%d %H:%M'),
             }
