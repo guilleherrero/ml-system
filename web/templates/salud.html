@@ -18,6 +18,15 @@
 .pct-up   { color:#dc2626; font-weight:600; }
 .pct-down { color:#16a34a; font-weight:600; }
 .pct-zero { color:#64748b; }
+.rango-display { cursor:pointer; }
+.rango-display:hover .rango-edit-icon { opacity:1; }
+.rango-edit-icon { opacity:0; transition:opacity .15s; font-size:.65rem; color:#94a3b8; margin-left:3px; }
+.rango-form { display:none; gap:4px; align-items:center; }
+.rango-form input {
+  width:80px; font-size:.72rem; padding:2px 5px; border:1px solid #cbd5e1;
+  border-radius:5px; text-align:right;
+}
+.rango-form input:focus { outline:none; border-color:#2563eb; }
 </style>
 
 <div class="page-header">
@@ -25,9 +34,15 @@
     <h1><i class="bi bi-tag-fill me-2 text-primary"></i>Salud de catálogo</h1>
     <div class="sub">{{ alias }} — publicaciones que compiten en catálogo ML</div>
   </div>
-  <a href="/stock/{{ alias }}" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-box-seam me-1"></i>Stock y rentabilidad
-  </a>
+  <div class="d-flex gap-2 align-items-center">
+    <button class="btn btn-sm btn-success" id="btn-repricing" onclick="aplicarRepricing()">
+      <i class="bi bi-arrow-repeat me-1"></i>Aplicar repricing
+      {% if resumen.configurados %}<span class="badge bg-white text-success ms-1">{{ resumen.configurados }}</span>{% endif %}
+    </button>
+    <a href="/stock/{{ alias }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-box-seam me-1"></i>Stock y rentabilidad
+    </a>
+  </div>
 </div>
 
 {% if not items %}
@@ -60,10 +75,10 @@
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #94a3b8">
-      <div style="font-size:2rem;font-weight:800;color:#64748b">{{ resumen.sin_datos }}</div>
-      <div style="font-size:.75rem;color:#64748b;font-weight:600">SIN DATOS</div>
-      <div style="font-size:.68rem;color:#94a3b8">catálogo sin competidores</div>
+    <div class="card text-center p-3" style="border-top:3px solid #f59e0b">
+      <div style="font-size:2rem;font-weight:800;color:#d97706">{{ resumen.configurados }}</div>
+      <div style="font-size:.75rem;color:#64748b;font-weight:600">CON RANGO</div>
+      <div style="font-size:.68rem;color:#94a3b8">repricing automático</div>
     </div>
   </div>
 </div>
@@ -93,9 +108,13 @@
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Mi precio</th>
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Buy box</th>
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Diferencia</th>
-            <th class="text-center" style="padding:.75rem .75rem">Estado</th>
+          <th class="text-center" style="padding:.75rem .75rem">Estado</th>
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Stock ganador</th>
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Precio ideal</th>
+          <th style="padding:.75rem .75rem;white-space:nowrap">
+            Rango
+            <span style="font-weight:400;color:#94a3b8;font-size:.68rem;margin-left:3px">min — max</span>
+          </th>
           <th class="text-center" style="padding:.75rem .75rem">Compets.</th>
           <th style="padding:.75rem .75rem"></th>
         </tr>
@@ -103,8 +122,16 @@
       <tbody id="cat-tbody">
       {% for it in items %}
       {% set estado = 'ganando' if it.we_win == true else ('perdiendo' if it.we_win == false else 'sin_datos') %}
-      <tr class="cat-row" data-estado="{{ estado }}">
-        <td style="padding:.75rem 1rem;max-width:320px">
+      <tr class="cat-row" data-estado="{{ estado }}"
+          data-id="{{ it.id }}"
+          data-titulo="{{ it.titulo | e }}"
+          data-precio="{{ it.precio }}"
+          data-buy-box="{{ it.buy_box_price or '' }}"
+          data-segundo="{{ it.segundo_precio or '' }}"
+          data-we-win="{{ 'true' if it.we_win == true else ('false' if it.we_win == false else '') }}"
+          data-min="{{ it.precio_min or '' }}"
+          data-max="{{ it.precio_max or '' }}">
+        <td style="padding:.75rem 1rem;max-width:260px">
           <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.titulo }}</div>
           <div style="font-size:.7rem;color:#94a3b8">{{ it.id }}{% if it.status == 'paused' %} · <span class="text-warning">pausada</span>{% endif %}</div>
         </td>
@@ -122,10 +149,10 @@
           {% if it.diferencia_pct is not none %}
             {% if it.diferencia_pct > 0 %}
               <span class="pct-up">+{{ it.diferencia_pct }}%</span>
-              <div style="font-size:.68rem;color:#94a3b8">más caro</div>
+              <div style="font-size:.68rem;color:#94a3b8">{% if it.we_win %}sobre compet.{% else %}más caro{% endif %}</div>
             {% elif it.diferencia_pct < 0 %}
               <span class="pct-down">{{ it.diferencia_pct }}%</span>
-              <div style="font-size:.68rem;color:#94a3b8">más barato</div>
+              <div style="font-size:.68rem;color:#94a3b8">{% if it.we_win %}bajo compet.{% else %}más barato{% endif %}</div>
             {% else %}
               <span class="pct-zero">0%</span>
               <div style="font-size:.68rem;color:#94a3b8">precio igual</div>
@@ -174,6 +201,34 @@
             <span class="text-muted">—</span>
           {% endif %}
         </td>
+
+        <!-- ── Rango repricing ── -->
+        <td style="padding:.75rem .75rem;min-width:160px">
+          <div class="rango-display" onclick="abrirRango(this)" title="Click para editar rango">
+            {% if it.precio_min is not none and it.precio_max is not none %}
+              <span style="font-size:.75rem;color:#374151">
+                ${{ '{:,.0f}'.format(it.precio_min) }} — ${{ '{:,.0f}'.format(it.precio_max) }}
+              </span>
+              <i class="bi bi-pencil rango-edit-icon"></i>
+            {% else %}
+              <span style="font-size:.72rem;color:#94a3b8;font-style:italic">
+                <i class="bi bi-plus-circle me-1"></i>Configurar rango
+              </span>
+            {% endif %}
+          </div>
+          <div class="rango-form d-flex" style="display:none!important">
+            <input type="number" class="rango-min" placeholder="Mín"
+                   value="{{ it.precio_min | int if it.precio_min is not none else '' }}" min="1" step="1">
+            <span style="font-size:.75rem;color:#94a3b8;padding:0 2px">—</span>
+            <input type="number" class="rango-max" placeholder="Máx"
+                   value="{{ it.precio_max | int if it.precio_max is not none else '' }}" min="1" step="1">
+            <button class="btn btn-xs btn-primary ms-1" style="font-size:.65rem;padding:1px 6px"
+                    onclick="guardarRango(this)">OK</button>
+            <button class="btn btn-xs btn-outline-secondary ms-1" style="font-size:.65rem;padding:1px 6px"
+                    onclick="cancelarRango(this)">✕</button>
+          </div>
+        </td>
+
         <td class="text-center" style="padding:.75rem .75rem;color:#64748b">
           {% if it.competidores > 0 %}{{ it.competidores }}{% else %}—{% endif %}
         </td>
@@ -213,6 +268,9 @@
 
 {% block scripts %}
 <script>
+const ALIAS = {{ alias | tojson }};
+
+// ── Filtros ───────────────────────────────────────────────────────────────────
 function filtrar(tipo, btn) {
   document.querySelectorAll('#filtros .filter-pill').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -221,8 +279,9 @@ function filtrar(tipo, btn) {
   });
 }
 
+// ── Cambio de precio manual ───────────────────────────────────────────────────
 function aplicarPrecio(btn, alias, itemId, precio) {
-  if (!confirm(`¿Cambiar el precio de esta publicación a $${precio.toLocaleString('es-AR')}?`)) return;
+  if (!confirm(`¿Cambiar el precio de esta publicación a $${Math.round(precio).toLocaleString('es-AR')}?`)) return;
   btn.disabled = true;
   btn.textContent = 'Aplicando…';
   fetch(`/api/aplicar-precio/${encodeURIComponent(alias)}`, {
@@ -235,10 +294,11 @@ function aplicarPrecio(btn, alias, itemId, precio) {
     if (d.ok) {
       btn.textContent = '✓ Aplicado';
       btn.classList.replace('btn-primary', 'btn-success');
-      // Actualizar el precio mostrado en la fila
+      btn.classList.replace('btn-warning', 'btn-success');
       const row = btn.closest('tr');
       const precioCell = row.querySelector('td:nth-child(2)');
       if (precioCell) precioCell.innerHTML = `<strong>$${Math.round(d.precio_nuevo).toLocaleString('es-AR')}</strong>`;
+      row.dataset.precio = d.precio_nuevo;
     } else {
       btn.disabled = false;
       btn.textContent = 'Error — reintentar';
@@ -249,7 +309,167 @@ function aplicarPrecio(btn, alias, itemId, precio) {
   .catch(() => {
     btn.disabled = false;
     btn.textContent = 'Error — reintentar';
-    btn.classList.replace('btn-primary', 'btn-danger');
+  });
+}
+
+// ── Rango de repricing (inline edit) ─────────────────────────────────────────
+function abrirRango(displayEl) {
+  const cell  = displayEl.closest('td');
+  const form  = cell.querySelector('.rango-form');
+  displayEl.style.display = 'none';
+  form.style.display      = 'flex';
+  form.style.removeProperty('display');  // quitar el !important del Jinja
+  form.style.display = 'flex';
+  cell.querySelector('.rango-min').focus();
+}
+
+function cancelarRango(btn) {
+  const cell = btn.closest('td');
+  cell.querySelector('.rango-display').style.display = '';
+  cell.querySelector('.rango-form').style.display = 'none';
+}
+
+function guardarRango(btn) {
+  const cell   = btn.closest('td');
+  const row    = cell.closest('tr');
+  const minVal = parseFloat(cell.querySelector('.rango-min').value);
+  const maxVal = parseFloat(cell.querySelector('.rango-max').value);
+
+  if (!minVal || !maxVal || minVal <= 0 || maxVal <= 0 || minVal >= maxVal) {
+    alert('El mínimo debe ser menor que el máximo y ambos mayores a 0.');
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = '…';
+
+  fetch(`/api/salud-config/${encodeURIComponent(ALIAS)}`, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({
+      item_id:   row.dataset.id,
+      titulo:    row.dataset.titulo,
+      precio_min: minVal,
+      precio_max: maxVal,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      // Actualizar display y data attributes
+      row.dataset.min = minVal;
+      row.dataset.max = maxVal;
+      const display = cell.querySelector('.rango-display');
+      display.innerHTML = `<span style="font-size:.75rem;color:#374151">$${Math.round(minVal).toLocaleString('es-AR')} — $${Math.round(maxVal).toLocaleString('es-AR')}</span><i class="bi bi-pencil rango-edit-icon"></i>`;
+      display.style.display = '';
+      cell.querySelector('.rango-form').style.display = 'none';
+    } else {
+      alert('Error: ' + (d.error || 'no se pudo guardar'));
+      btn.disabled    = false;
+      btn.textContent = 'OK';
+    }
+  })
+  .catch(() => {
+    alert('Error de conexión.');
+    btn.disabled    = false;
+    btn.textContent = 'OK';
+  });
+}
+
+// ── Repricing automático en bloque ───────────────────────────────────────────
+function calcularPrecioRepricing(precio, buyBox, segundo, weWin, minP, maxP) {
+  // Misma lógica que Python: beat competitor -1%, raise si ganando
+  let nuevo = precio;
+  if (weWin === 'true') {
+    // Ganando: subir hacia 2do competidor si hay margen
+    if (segundo && segundo - 1 > precio) {
+      nuevo = Math.min(segundo - 1, maxP);
+    }
+  } else if (weWin === 'false') {
+    // Perdiendo: bajar al buy box -1%
+    if (buyBox && buyBox > 0) {
+      const target = Math.round(buyBox * 0.99);
+      nuevo = Math.max(target, minP);
+    }
+  } else {
+    // Sin datos: subir 2% si podemos
+    nuevo = Math.min(Math.round(precio * 1.02), maxP);
+  }
+  // Respetar rango
+  nuevo = Math.max(minP, Math.min(maxP, nuevo));
+  return Math.round(nuevo);
+}
+
+function aplicarRepricing() {
+  const btn = document.getElementById('btn-repricing');
+  const rows = [...document.querySelectorAll('#cat-tbody .cat-row')].filter(r => r.dataset.min && r.dataset.max);
+
+  if (!rows.length) {
+    alert('No hay publicaciones con rango configurado. Hacé click en "Configurar rango" en cada fila.');
+    return;
+  }
+
+  const cambios = [];
+  const resumen = [];
+
+  rows.forEach(row => {
+    const precio   = parseFloat(row.dataset.precio);
+    const buyBox   = parseFloat(row.dataset.buyBox)   || null;
+    const segundo  = parseFloat(row.dataset.segundo)  || null;
+    const weWin    = row.dataset.weWin;
+    const minP     = parseFloat(row.dataset.min);
+    const maxP     = parseFloat(row.dataset.max);
+    const titulo   = row.dataset.titulo || row.dataset.id;
+
+    const nuevo = calcularPrecioRepricing(precio, buyBox, segundo, weWin, minP, maxP);
+    if (Math.abs(nuevo - precio) > 0.5) {
+      cambios.push({item_id: row.dataset.id, precio_nuevo: nuevo});
+      const dir = nuevo > precio ? '↑' : '↓';
+      resumen.push(`${dir} ${titulo.substring(0,45)}…: $${Math.round(precio).toLocaleString('es-AR')} → $${nuevo.toLocaleString('es-AR')}`);
+    }
+  });
+
+  if (!cambios.length) {
+    alert(`Se analizaron ${rows.length} publicaciones con rango. Ninguna requiere ajuste en este momento.`);
+    return;
+  }
+
+  const msg = `Se van a actualizar ${cambios.length} precio${cambios.length > 1 ? 's' : ''}:\n\n` + resumen.join('\n') + '\n\n¿Aplicar?';
+  if (!confirm(msg)) return;
+
+  btn.disabled    = true;
+  btn.innerHTML   = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando…';
+
+  fetch(`/api/salud-repricing/${encodeURIComponent(ALIAS)}`, {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({cambios}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Aplicar repricing';
+    if (d.ok) {
+      let msg = `✓ ${d.aplicados} precio${d.aplicados !== 1 ? 's' : ''} actualizado${d.aplicados !== 1 ? 's' : ''}.`;
+      if (d.errores && d.errores.length) msg += `\n⚠ ${d.errores.length} error(es).`;
+      alert(msg);
+      // Actualizar precios en la tabla
+      cambios.forEach(c => {
+        const row = document.querySelector(`tr[data-id="${c.item_id}"]`);
+        if (row) {
+          row.dataset.precio = c.precio_nuevo;
+          const cell = row.querySelector('td:nth-child(2)');
+          if (cell) cell.innerHTML = `<strong>$${c.precio_nuevo.toLocaleString('es-AR')}</strong>`;
+        }
+      });
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  })
+  .catch(() => {
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Aplicar repricing';
+    alert('Error de conexión.');
   });
 }
 </script>

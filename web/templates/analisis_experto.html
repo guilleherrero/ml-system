@@ -13,8 +13,8 @@
   padding:1.25rem 1.5rem; margin-bottom:1.25rem;
   background:#fff;
 }
+.seccion-card.diag     { border-left:5px solid #2563eb; background:#f0f7ff; }
 .seccion-card.urgente  { border-left:5px solid #ef4444; background:#fffbfb; }
-.seccion-card.top      { border-left:5px solid #f59e0b; background:#fffdf5; }
 .seccion-card.opor     { border-left:5px solid #10b981; background:#f9fffe; }
 .seccion-card.china    { border-left:5px solid #6366f1; background:#fafaff; }
 .seccion-card.lastres  { border-left:5px solid #94a3b8; background:#f8fafc; }
@@ -143,17 +143,25 @@ function mostrarResultado(d) {
   const rev = d.revenue || {};
   const metaBar = document.getElementById('meta-bar');
   metaBar.style.display = 'flex';
+  let deltaChip = '';
+  if (rev['7d'] != null && rev['prev_7d'] != null && rev['prev_7d'] > 0) {
+    const delta = ((rev['7d'] - rev['prev_7d']) / rev['prev_7d'] * 100).toFixed(1);
+    const color = delta >= 0 ? '#16a34a' : '#dc2626';
+    const sign  = delta >= 0 ? '▲' : '▼';
+    deltaChip = `<span class="meta-chip" style="color:${color};font-weight:700">${sign} ${Math.abs(delta)}% esta semana</span>`;
+  }
   metaBar.innerHTML = `
     <span class="meta-chip"><i class="bi bi-clock"></i> Análisis del ${d.fecha}</span>
-    ${rev['30d'] != null ? `<span class="meta-chip"><i class="bi bi-graph-up"></i> $${Math.round(rev['30d']).toLocaleString('es-AR')} últimos 30 días</span>` : ''}
-    ${rev['7d']  != null ? `<span class="meta-chip"><i class="bi bi-calendar-week"></i> $${Math.round(rev['7d']).toLocaleString('es-AR')} últimos 7 días</span>` : ''}
     ${rev['hoy'] != null ? `<span class="meta-chip"><i class="bi bi-sun"></i> $${Math.round(rev['hoy']).toLocaleString('es-AR')} hoy</span>` : ''}
+    ${rev['7d']  != null ? `<span class="meta-chip"><i class="bi bi-calendar-week"></i> $${Math.round(rev['7d']).toLocaleString('es-AR')} esta semana</span>` : ''}
+    ${deltaChip}
+    ${rev['30d'] != null ? `<span class="meta-chip"><i class="bi bi-graph-up"></i> $${Math.round(rev['30d']).toLocaleString('es-AR')} últimos 30 días</span>` : ''}
     ${d.tokens   ? `<span class="meta-chip"><i class="bi bi-cpu"></i> ${d.tokens.toLocaleString()} tokens</span>` : ''}`;
 
   // Parsear secciones del texto
   const texto   = d.analisis || '';
   const config  = [
-    { emoji: '🏆', cls: 'top',     icon: 'bi-trophy-fill',       color: '#f59e0b' },
+    { emoji: '🔍', cls: 'diag',    icon: 'bi-search',            color: '#2563eb' },
     { emoji: '🚨', cls: 'urgente', icon: 'bi-exclamation-circle-fill', color: '#ef4444' },
     { emoji: '💡', cls: 'opor',    icon: 'bi-lightbulb-fill',    color: '#10b981' },
     { emoji: '📦', cls: 'china',   icon: 'bi-box-seam-fill',     color: '#6366f1' },

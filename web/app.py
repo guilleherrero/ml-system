@@ -5,6 +5,7 @@ Abrí en el navegador: http://localhost:8080
 """
 
 import json
+import logging
 import os
 import re
 import sys
@@ -16,7 +17,7 @@ from datetime import datetime, timedelta, date
 
 import requests as req_lib
 import anthropic
-from flask import Flask, render_template, redirect, url_for, jsonify, request, Response, stream_with_context, make_response
+from flask import Flask, render_template, redirect, url_for, jsonify, request, Response, stream_with_context, make_response, session
 
 # Limpiar el API key de caracteres invisibles (newline, espacios) que rompen httpcore
 _raw_key = os.environ.get('ANTHROPIC_API_KEY', '')
@@ -27,12 +28,57 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from core.fees import get_fee_rates, get_rate
 from core.db_storage import db_load, db_save
+from core.auth import (
+    needs_setup, get_current_user, login_user, logout_user,
+    create_user, update_user, delete_user, list_users,
+    get_permitted_accounts,
+)
+from werkzeug.security import check_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET', 'ml-sistema-local-secret-2026')
-app.config['TEMPLATES_AUTO_RELOAD'] = True
+_flask_secret = os.environ.get('FLASK_SECRET', '')
+if not _flask_secret:
+    import warnings
+    warnings.warn(
+        'FLASK_SECRET no configurada — se usa clave de desarrollo. '
+        'Definí la variable de entorno FLASK_SECRET antes de exponer el sistema en red.',
+        stacklevel=2,
+    )
+    _flask_secret = 'ml-sistema-local-secret-2026'
+app.secret_key = _flask_secret
+app.config['TEMPLATES_AUTO_RELOAD']        = True
+app.config['PERMANENT_SESSION_LIFETIME']   = timedelta(days=7)
+app.config['SESSION_COOKIE_HTTPONLY']      = True
+app.config['SESSION_COOKIE_SAMESITE']      = 'Lax'
 app.jinja_env.filters['enumerate'] = enumerate
 app.jinja_env.globals['now'] = datetime.now
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+_log_handler = logging.FileHandler(
+    os.path.join(os.path.dirname(__file__), '..', 'data', 'app.log'),
+    encoding='utf-8',
+)
+_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+app.logger.addHandler(_log_handler)
+app.logger.setLevel(logging.INFO)
+
+# ── Audit trail ───────────────────────────────────────────────────────────────
+_audit_logger = logging.getLogger('ml.audit')
+_audit_logger.setLevel(logging.INFO)
+_audit_logger.propagate = False
+_audit_handler = logging.FileHandler(
+    os.path.join(os.path.dirname(__file__), '..', 'data', 'audit.log'),
+    encoding='utf-8',
+)
+_audit_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+_audit_logger.addHandler(_audit_handler)
+
+
+def _audit(action: str, **kwargs):
+    """Registra una acción crítica en audit.log con usuario y contexto."""
+    user    = session.get('username', 'sistema')
+    details = ' '.join(f'{k}={v!r}' for k, v in kwargs.items())
+    _audit_logger.info('[%s] %s %s', user, action, details)
 
 DATA_DIR        = os.path.join(os.path.dirname(__file__), '..', 'data')
 CONFIG_DIR      = os.path.join(os.path.dirname(__file__), '..', 'config')
@@ -75,15 +121,27 @@ def _log_token_usage(funcion: str, modelo: str, input_tokens: int, output_tokens
         if len(log['entries']) > 1000:
             log['entries'] = log['entries'][-1000:]
         save_json(TOKEN_LOG_PATH, log)
-    except Exception:
-        pass
+    except Exception as e:
+        app.logger.error('_log_token_usage failed: %s', e)
 
 def safe(alias):
     return alias.replace(' ', '_').replace('/', '-')
 
 
+def _assert_valid_alias(alias: str):
+    """Lanza ValueError si el alias no existe en accounts.json.
+    Previene path traversal: nadie puede construir rutas con alias inventados."""
+    known = {
+        a.get('alias', '')
+        for a in (load_json(os.path.join(CONFIG_DIR, 'accounts.json')) or {}).get('accounts', [])
+    }
+    if alias not in known:
+        raise ValueError(f'Alias desconocido: {alias!r}')
+
+
 def _ml_auth(alias: str):
     """Devuelve (token, user_id, heads) con token refrescado automáticamente."""
+    _assert_valid_alias(alias)
     from core.account_manager import AccountManager as _AM
     mgr = _AM()
     client = mgr.get_client(alias)
@@ -289,8 +347,189 @@ def _competitor_seeded_autosuggest(competitor_titles: list, seed_title: str) -> 
 
 
 def get_accounts():
-    data = load_json(os.path.join(CONFIG_DIR, 'accounts.json'))
-    return [a for a in (data or {}).get('accounts', []) if a.get('active')]
+    all_accs = [a for a in (load_json(os.path.join(CONFIG_DIR, 'accounts.json')) or {}).get('accounts', []) if a.get('active')]
+    return get_permitted_accounts(all_accs)
+
+
+# ── Auth middleware ────────────────────────────────────────────────────────────
+
+_AUTH_EXEMPT = {'/login', '/logout', '/setup'}
+
+
+def _get_request_alias() -> str | None:
+    """Extrae el alias del request: URL primero, luego JSON body (para POST)."""
+    alias = (request.view_args or {}).get('alias')
+    if alias:
+        return alias
+    if request.method in ('POST', 'PUT', 'PATCH'):
+        try:
+            body = request.get_json(silent=True) or {}
+            a = body.get('alias', '').strip() if isinstance(body, dict) else ''
+            if a:
+                return a
+        except Exception:
+            pass
+    return None
+
+
+@app.before_request
+def require_login():
+    if request.path.startswith('/static'):
+        return
+    if request.path in _AUTH_EXEMPT:
+        return
+    # Si no existe ningún admin todavía, el sistema funciona sin login
+    if needs_setup():
+        return
+    if not session.get('user_id'):
+        return redirect(f'/login?next={request.path}')
+    # Verificar acceso al alias si el usuario no es admin
+    if not session.get('is_admin'):
+        alias = _get_request_alias()
+        if alias:
+            from core.auth import user_can_access
+            if not user_can_access(alias):
+                app.logger.warning(
+                    'Acceso denegado: user=%s alias=%s path=%s',
+                    session.get('username'), alias, request.path,
+                )
+                if request.path.startswith('/api/'):
+                    return jsonify({'ok': False, 'error': 'Sin acceso a esta cuenta'}), 403
+                return redirect('/')
+
+
+# ── Rutas de autenticación ─────────────────────────────────────────────────────
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if session.get('user_id'):
+        return redirect('/')
+    if needs_setup():
+        return redirect('/setup')
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username', '')
+        user = login_user(username, request.form.get('password', ''))
+        if user:
+            _audit('LOGIN', usuario=username)
+            next_url = request.form.get('next') or request.args.get('next') or '/'
+            return redirect(next_url)
+        _audit_logger.warning('[%s] LOGIN_FALLIDO ip=%s', username, request.remote_addr)
+        error = 'Usuario o contraseña incorrectos.'
+    return render_template('login.html', error=error, next=request.args.get('next', ''))
+
+
+@app.route('/logout')
+def logout():
+    _audit('LOGOUT')
+    logout_user()
+    return redirect('/login')
+
+
+@app.route('/setup', methods=['GET', 'POST'])
+def setup():
+    if not needs_setup():
+        return redirect('/')
+    error = None
+    if request.method == 'POST':
+        username  = request.form.get('username', '').strip()
+        password  = request.form.get('password', '')
+        password2 = request.form.get('password2', '')
+        if not username or not password:
+            error = 'Completá todos los campos.'
+        elif password != password2:
+            error = 'Las contraseñas no coinciden.'
+        elif len(password) < 6:
+            error = 'La contraseña debe tener al menos 6 caracteres.'
+        else:
+            user = create_user(username, password, is_admin=True)
+            login_user(username, password)
+            return redirect('/')
+    return render_template('setup.html', error=error)
+
+
+# ── Gestión de usuarios (solo admin) ──────────────────────────────────────────
+
+@app.route('/settings/usuarios')
+def settings_usuarios():
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+    all_accounts = [a for a in (load_json(os.path.join(CONFIG_DIR, 'accounts.json')) or {}).get('accounts', []) if a.get('active')]
+    return render_template('settings_usuarios.html',
+                           users=list_users(),
+                           current_user=user,
+                           all_accounts=all_accounts,
+                           accounts=get_accounts())
+
+
+@app.route('/api/usuarios/crear', methods=['POST'])
+def api_usuarios_crear():
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+    body     = request.get_json() or {}
+    username = body.get('username', '').strip()
+    password = body.get('password', '')
+    accounts = body.get('accounts', [])
+    if not username or not password:
+        return jsonify({'ok': False, 'error': 'Faltan datos'})
+    from core.auth import get_user_by_username
+    if get_user_by_username(username):
+        return jsonify({'ok': False, 'error': 'Ese nombre de usuario ya existe'})
+    user = create_user(username, password, is_admin=False, accounts=accounts)
+    _audit('CREAR_USUARIO', nuevo_usuario=username, cuentas=','.join(accounts))
+    return jsonify({'ok': True, 'id': user['id']})
+
+
+@app.route('/api/usuarios/actualizar', methods=['POST'])
+def api_usuarios_actualizar():
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+    body     = request.get_json() or {}
+    user_id  = body.get('id', '')
+    accounts = body.get('accounts', [])
+    kwargs   = {'accounts': accounts}
+    if body.get('password'):
+        kwargs['password'] = body['password']
+    ok = update_user(user_id, **kwargs)
+    if ok:
+        changed = 'password+cuentas' if body.get('password') else 'cuentas'
+        _audit('EDITAR_USUARIO', user_id=user_id, cambios=changed, cuentas=','.join(accounts))
+    return jsonify({'ok': ok})
+
+
+@app.route('/api/usuarios/eliminar', methods=['POST'])
+def api_usuarios_eliminar():
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+    body    = request.get_json() or {}
+    user_id = body.get('id', '')
+    user    = get_current_user()
+    if user and user['id'] == user_id:
+        return jsonify({'ok': False, 'error': 'No podés eliminarte a vos mismo'})
+    ok = delete_user(user_id)
+    if ok:
+        _audit('ELIMINAR_USUARIO', user_id=user_id)
+    return jsonify({'ok': ok})
+
+
+@app.route('/api/usuarios/cambiar-pass-admin', methods=['POST'])
+def api_usuarios_cambiar_pass_admin():
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+    body   = request.get_json() or {}
+    actual = body.get('actual', '')
+    nueva  = body.get('nueva', '')
+    user   = get_current_user()
+    if not user:
+        return jsonify({'ok': False, 'error': 'Sesión inválida'})
+    from core.auth import load_users
+    full_user = next((u for u in load_users().get('users', []) if u['id'] == user['id']), None)
+    if not full_user or not check_password_hash(full_user['password_hash'], actual):
+        return jsonify({'ok': False, 'error': 'La contraseña actual es incorrecta'})
+    update_user(user['id'], password=nueva)
+    _audit('CAMBIAR_PASSWORD_ADMIN')
+    return jsonify({'ok': True})
 
 def build_calendario():
     from modules.radar_oportunidades import _build_calendario
@@ -1565,27 +1804,34 @@ def salud(alias):
                     it['buy_box_price']     = bb_price
                     it['buy_box_winner_id'] = winner_id
                     it['we_win']            = (winner_id == it['id'])
-                    if bb_price > 0:
-                        it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
+                    # diferencia_pct: si ganamos → margen sobre 2do competidor
+                    #                 si perdemos → cuánto más caro estamos vs el buy box
 
                     # 2do competidor: si ganamos es sellers[1], si perdemos también hay uno detrás
                     if it['we_win'] and len(sellers) >= 2:
                         it['segundo_precio'] = float(sellers[1].get('price') or 0)
                     elif not it['we_win'] and len(sellers) >= 2:
-                        # Puede que seamos nosotros el 2do, o un tercero
                         for s in sellers[1:]:
                             sid = s.get('id') or s.get('item_id', '')
                             if sid != winner_id:
                                 it['segundo_precio'] = float(s.get('price') or 0)
                                 break
 
+                    # diferencia_pct: referencia según si ganamos o perdemos
+                    if it['we_win']:
+                        if it['segundo_precio'] and it['segundo_precio'] > 0:
+                            it['diferencia_pct'] = round((it['precio'] - it['segundo_precio']) / it['segundo_precio'] * 100, 1)
+                        # si no hay 2do competidor, no hay diferencia relevante
+                    elif bb_price > 0:
+                        it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
+
                     # Precio ideal:
                     # - Perdiendo → buy_box_price - 1
-                    # - Ganando con 2do competidor → segundo_precio - 1 (podemos subir)
+                    # - Ganando con 2do competidor → segundo_precio - 1 (solo si es mayor al precio actual)
                     # - Ganando sin 2do → precio actual está bien
                     if not it['we_win'] and bb_price > 0:
                         it['precio_ideal'] = max(1.0, bb_price - 1)
-                    elif it['we_win'] and it['segundo_precio']:
+                    elif it['we_win'] and it['segundo_precio'] and it['segundo_precio'] - 1 > it['precio']:
                         it['precio_ideal'] = max(1.0, it['segundo_precio'] - 1)
                     else:
                         it['precio_ideal'] = it['precio']
@@ -1626,6 +1872,15 @@ def salud(alias):
         'sin_datos': sum(1 for i in catalog_items if i['we_win'] is None),
     }
 
+    # 5 — Incorporar rangos de repricing configurados
+    repricing_cfg = load_json(os.path.join(CONFIG_DIR, 'repricing.json')) or {}
+    items_cfg = repricing_cfg.get('items', {})
+    for it in catalog_items:
+        rc = items_cfg.get(it['id'], {})
+        it['precio_min'] = rc.get('precio_min')
+        it['precio_max'] = rc.get('precio_max')
+    resumen['configurados'] = sum(1 for i in catalog_items if i.get('precio_min') is not None)
+
     return render_template('salud.html', alias=alias, items=catalog_items,
                            resumen=resumen, accounts=get_accounts())
 
@@ -1660,8 +1915,86 @@ def api_aplicar_precio(alias):
     )
     if r.ok:
         nuevo = r.json().get('price', precio)
+        _audit('CAMBIAR_PRECIO', alias=alias, item_id=item_id, precio_nuevo=nuevo)
         return jsonify({'ok': True, 'precio_nuevo': nuevo})
     return jsonify({'ok': False, 'error': r.text[:200]}), r.status_code
+
+
+@app.route('/api/salud-config/<alias>', methods=['POST'])
+def api_salud_config(alias):
+    """Guarda o actualiza precio_min / precio_max de una publicación de catálogo."""
+    data      = request.get_json(silent=True) or {}
+    item_id   = str(data.get('item_id', '')).strip()
+    titulo    = str(data.get('titulo', ''))[:70]
+    precio_min = data.get('precio_min')
+    precio_max = data.get('precio_max')
+
+    if not item_id or precio_min is None or precio_max is None:
+        return jsonify({'ok': False, 'error': 'item_id, precio_min y precio_max requeridos'}), 400
+    try:
+        precio_min = float(precio_min)
+        precio_max = float(precio_max)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'precios inválidos'}), 400
+    if precio_min <= 0 or precio_max <= 0 or precio_min >= precio_max:
+        return jsonify({'ok': False, 'error': 'precio_min debe ser menor que precio_max y mayor a 0'}), 400
+
+    cfg_path = os.path.join(CONFIG_DIR, 'repricing.json')
+    cfg = load_json(cfg_path) or {'items': {}}
+    cfg.setdefault('items', {})
+    existing = cfg['items'].get(item_id, {})
+    existing.update({
+        'titulo':      titulo,
+        'precio_min':  round(precio_min, 2),
+        'precio_max':  round(precio_max, 2),
+        'alias':       alias,
+    })
+    cfg['items'][item_id] = existing
+    save_json(cfg_path, cfg)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/salud-repricing/<alias>', methods=['POST'])
+def api_salud_repricing(alias):
+    """Aplica repricing automático a los ítems enviados (ya calculados en el frontend)."""
+    data    = request.get_json(silent=True) or {}
+    cambios = data.get('cambios', [])   # [{item_id, precio_nuevo}]
+
+    if not cambios:
+        return jsonify({'ok': True, 'aplicados': 0, 'errores': []})
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    heads_json = {**heads, 'Content-Type': 'application/json'}
+    aplicados  = 0
+    errores    = []
+
+    for c in cambios:
+        item_id    = str(c.get('item_id', '')).strip()
+        precio_nuevo = c.get('precio_nuevo')
+        if not item_id or precio_nuevo is None:
+            continue
+        try:
+            precio_nuevo = float(precio_nuevo)
+            r = req_lib.put(
+                f'https://api.mercadolibre.com/items/{item_id}',
+                headers=heads_json,
+                json={'price': precio_nuevo},
+                timeout=10,
+            )
+            if r.ok:
+                aplicados += 1
+                _audit('REPRICING_AUTO', alias=alias, item_id=item_id, precio_nuevo=precio_nuevo)
+            else:
+                errores.append({'item_id': item_id, 'error': r.text[:100]})
+        except Exception as ex:
+            errores.append({'item_id': item_id, 'error': str(ex)})
+        _time_module.sleep(0.15)
+
+    return jsonify({'ok': True, 'aplicados': aplicados, 'errores': errores})
 
 
 @app.route('/api/costos-items/<alias>')
@@ -3851,6 +4184,60 @@ def api_opt_seguimiento(alias, item_id):
     return jsonify(result)
 
 
+@app.route('/api/ml-quality-scores/<alias>')
+def api_ml_quality_scores(alias):
+    """Devuelve el score de calidad ML para todas las publicaciones del alias."""
+    from core.account_manager import AccountManager
+    from modules.seo_optimizer import _get_ml_quality_score
+
+    try:
+        mgr    = AccountManager()
+        client = mgr.get_client(alias)
+        client._ensure_token()
+        token  = client.account.access_token
+
+        comp  = load_json(os.path.join(DATA_DIR, f'competencia_{safe(alias)}.json'))
+        stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json'))
+        pubs  = []
+        if comp:
+            for cat in comp.get('categorias', {}).values():
+                for p in cat.get('mis_publicaciones', []):
+                    pid = p.get('id', '') or p.get('item_id', '')
+                    if pid and not any(x['id'] == pid for x in pubs):
+                        pubs.append({'id': pid, 'titulo': p.get('titulo', '')})
+        if not pubs and stock:
+            for p in stock.get('items', []):
+                pid = p.get('id', '') or p.get('item_id', '')
+                if pid and not any(x['id'] == pid for x in pubs):
+                    pubs.append({'id': pid, 'titulo': p.get('titulo', '')})
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def _fetch_score(pub):
+            score_data = _get_ml_quality_score(pub['id'], token)
+            return {
+                'id':      pub['id'],
+                'titulo':  pub['titulo'],
+                'score':   score_data.get('score', 0),
+                'level':   score_data.get('level', ''),
+                'reasons': score_data.get('reasons', [])[:3],
+            }
+
+        results = []
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = {pool.submit(_fetch_score, pub): pub for pub in pubs[:40]}
+            for fut in as_completed(futures):
+                try:
+                    results.append(fut.result())
+                except Exception:
+                    pass
+
+        results.sort(key=lambda x: x['score'])
+        return jsonify({'ok': True, 'items': results})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
 @app.route('/api/borrar-optimizacion', methods=['POST'])
 def api_borrar_optimizacion():
     body    = request.get_json() or {}
@@ -4054,6 +4441,12 @@ def api_aplicar_optimizacion():
         _mon       = load_json(_mon_path) or {'items': []}
         if not isinstance(_mon, dict):
             _mon = {'items': []}
+        # Purgar ítems con optimización de más de 90 días
+        _cutoff = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+        _mon['items'] = [
+            it for it in _mon.get('items', [])
+            if (it.get('fecha_opt') or '')[:10] >= _cutoff
+        ]
 
         # Buscar entrada existente para este item (actualizar si ya está)
         _existing = next((x for x in _mon['items'] if x.get('item_id') == item_id and x.get('alias') == alias), None)
@@ -4095,6 +4488,9 @@ def api_aplicar_optimizacion():
                 'applied':         applied,
             })
         save_json(_mon_path, _mon)
+
+    if applied:
+        _audit('APLICAR_ML', alias=alias, item_id=item_id, campos=','.join(applied))
 
     result = {'ok': True, 'applied': applied, 'json_updated': json_updated}
     if attrs_errors:
@@ -6184,6 +6580,8 @@ def api_repricing_apply():
 
         save_json(os.path.join(CONFIG_DIR, 'repricing.json'), cfg)
 
+        if applied:
+            _audit('REPRICING_APPLY', alias=alias, items_actualizados=len(applied), errores=len(errors))
         return jsonify({'ok': True, 'applied': len(applied), 'errors': errors})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
@@ -10841,6 +11239,86 @@ def api_notificaciones_test():
     return jsonify({'ok': ok, 'mensaje': msg if not ok else 'Email de prueba enviado correctamente.'})
 
 
+# ── Ads summary para el scheduler ────────────────────────────────────────────
+
+def _collect_ads_summary(alias: str, token: str):
+    """Recopila métricas de Meli Ads (últimos 7d + presupuesto de hoy) y las cachea."""
+    try:
+        from modules.meli_ads_engine import (
+            _discover_campaign_ids,
+            _ads_get,
+            _get_campaign_detail,
+            _float as _af,
+            _int  as _ai,
+        )
+    except ImportError:
+        return
+
+    r_me = req_lib.get('https://api.mercadolibre.com/users/me',
+        headers={'Authorization': f'Bearer {token}'}, timeout=8)
+    if not r_me.ok:
+        return
+    uid = r_me.json().get('id')
+    if not uid:
+        return
+
+    now_art  = datetime.utcnow() - timedelta(hours=3)
+    d7_to    = now_art.strftime('%Y-%m-%d')
+    d7_from  = (now_art - timedelta(days=7)).strftime('%Y-%m-%d')
+
+    camp_map = _discover_campaign_ids(token, uid)
+    if not camp_map:
+        db_save(os.path.join(DATA_DIR, f'ads_summary_{safe(alias)}.json'), {
+            'alias': alias, 'fecha': now_art.strftime('%d/%m/%Y %H:%M'),
+            'sin_campanas': True,
+        })
+        return
+
+    total_spend = total_rev = total_conv = total_impr = total_clicks = 0.0
+    budget_warnings = []
+
+    for cid in camp_map:
+        _r7 = _ads_get(f'/advertising/product_ads/campaigns/{cid}/metrics', token,
+                       params={'date_from': d7_from, 'date_to': d7_to})
+        if _r7['ok'] and _r7['data']:
+            _m = _r7['data']
+            total_spend  += _af(_m.get('cost', 0))
+            total_rev    += _af(_m.get('amount_total', 0))
+            total_conv   += _ai(_m.get('sold_quantity_total', 0))
+            total_impr   += _ai(_m.get('impressions', 0))
+            total_clicks += _ai(_m.get('clicks', 0))
+
+        det    = _get_campaign_detail(token, cid)
+        budget = _af(det.get('budget', 0))
+        if budget > 0:
+            _rt = _ads_get(f'/advertising/product_ads/campaigns/{cid}/metrics', token,
+                           params={'date_from': d7_to, 'date_to': d7_to})
+            today_sp  = _af((_rt.get('data') or {}).get('cost', 0)) if _rt['ok'] else 0.0
+            today_pct = round(today_sp / budget * 100, 1)
+            if today_pct >= 75:
+                budget_warnings.append({
+                    'nombre':      det.get('name', f'Campaña {cid}'),
+                    'pct':         today_pct,
+                    'presupuesto': round(budget),
+                    'gastado_hoy': round(today_sp),
+                })
+
+    db_save(os.path.join(DATA_DIR, f'ads_summary_{safe(alias)}.json'), {
+        'alias':       alias,
+        'fecha':       now_art.strftime('%d/%m/%Y %H:%M'),
+        'periodo':     f'{d7_from} → {d7_to}',
+        'campanas':    len(camp_map),
+        'spend_7d':    round(total_spend),
+        'revenue_7d':  round(total_rev),
+        'conversiones': int(total_conv),
+        'roas':        round(total_rev / total_spend, 2) if total_spend > 0 else None,
+        'acos':        round(total_spend / total_rev, 4) if total_rev > 0 else None,
+        'ctr':         round(total_clicks / total_impr * 100, 2) if total_impr > 0 else None,
+        'budget_warnings': budget_warnings,
+        'sin_campanas': False,
+    })
+
+
 # ── Scheduler automático ──────────────────────────────────────────────────────
 
 def _scheduler_run_all():
@@ -10864,6 +11342,7 @@ def _scheduler_run_all():
         try:
             client = mgr.get_client(alias)
         except Exception as e:
+            app.logger.error('[scheduler] %s — no se pudo obtener cliente: %s', alias, e)
             print(f'[scheduler] {alias} — no se pudo obtener cliente: {e}')
             continue
 
@@ -10871,31 +11350,44 @@ def _scheduler_run_all():
             run_reputacion(client, alias)
             print(f'[scheduler] {alias} — reputación OK')
         except Exception as e:
+            app.logger.error('[scheduler] %s — reputación ERROR: %s', alias, e)
             print(f'[scheduler] {alias} — reputación ERROR: {e}')
 
         try:
             run_stock(client, alias)
             print(f'[scheduler] {alias} — stock OK')
         except Exception as e:
+            app.logger.error('[scheduler] %s — stock ERROR: %s', alias, e)
             print(f'[scheduler] {alias} — stock ERROR: {e}')
 
         try:
             run_pos(client, alias)
             print(f'[scheduler] {alias} — posiciones OK')
         except Exception as e:
+            app.logger.error('[scheduler] %s — posiciones ERROR: %s', alias, e)
             print(f'[scheduler] {alias} — posiciones ERROR: {e}')
 
         try:
             _sync_full_inventory(alias)
             print(f'[scheduler] {alias} — inventario Full OK')
         except Exception as e:
+            app.logger.error('[scheduler] %s — inventario Full ERROR: %s', alias, e)
             print(f'[scheduler] {alias} — inventario Full ERROR: {e}')
+
+        try:
+            client._ensure_token()
+            _collect_ads_summary(alias, client.account.access_token)
+            print(f'[scheduler] {alias} — Meli Ads OK')
+        except Exception as e:
+            app.logger.error('[scheduler] %s — Meli Ads ERROR: %s', alias, e)
+            print(f'[scheduler] {alias} — Meli Ads ERROR: {e}')
 
     # ── Monitor de Evolución: evaluar alertas post-optimización ───────────────
     try:
         _scheduler_check_monitor()
         print('[scheduler] Monitor de evolución — OK')
     except Exception as e:
+        app.logger.error('[scheduler] Monitor de evolución ERROR: %s', e)
         print(f'[scheduler] Monitor de evolución ERROR: {e}')
 
     global _scheduler_last_run
@@ -11109,6 +11601,13 @@ def _scheduler_check_monitor():
         it['alertas'] = alertas_existentes + alertas
         changed = True
         print(f'[monitor] {alias}/{item_id} — {len(alertas)} alerta(s) generadas (día {dias})')
+
+    # Purgar ítems con optimización de más de 90 días
+    _cutoff = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    before  = len(_mon['items'])
+    _mon['items'] = [it for it in _mon['items'] if (it.get('fecha_opt') or '')[:10] >= _cutoff]
+    if len(_mon['items']) < before:
+        changed = True
 
     if changed:
         save_json(_mon_path, _mon)
@@ -11894,24 +12393,31 @@ def api_analisis_experto_run(alias):
     if not items_raw:
         return jsonify({'ok': False, 'error': 'Sin datos de stock. Ejecutá la actualización primero.'}), 400
 
-    # ── 2. Revenue rápido via ML API ─────────────────────────────────────────
-    revenue_hoy = revenue_7d = revenue_30d = None
+    # ── 2. Revenue, posiciones y preguntas via ML API ─────────────────────────
+    revenue_hoy = revenue_7d = revenue_30d = revenue_prev_7d = None
+    pos_drops    = []
+    n_unanswered = 0
+    seller_metrics = {}
+    heads = user_id = None
     try:
         token, user_id, heads = _ml_auth(alias)
         now      = _dt.utcnow() - _td(hours=3)
         hoy_from = now.strftime('%Y-%m-%dT00:00:00.000-03:00')
         d7_from  = (now - _td(days=7)).strftime('%Y-%m-%dT00:00:00.000-03:00')
         d30_from = (now - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
+        d14_from = (now - _td(days=14)).strftime('%Y-%m-%dT00:00:00.000-03:00')
+        d7_to    = (now - _td(days=7)).strftime('%Y-%m-%dT23:59:59.000-03:00')
 
-        def _fetch_rev(date_from):
+        def _fetch_rev(date_from, date_to=None):
             total, offset = 0, 0
             while True:
+                params = {'seller': user_id, 'order.status': 'paid',
+                          'order.date_created.from': date_from,
+                          'limit': 50, 'offset': offset}
+                if date_to:
+                    params['order.date_created.to'] = date_to
                 r = req_lib.get('https://api.mercadolibre.com/orders/search',
-                    headers=heads,
-                    params={'seller': user_id, 'order.status': 'paid',
-                            'order.date_created.from': date_from,
-                            'limit': 50, 'offset': offset},
-                    timeout=10)
+                    headers=heads, params=params, timeout=10)
                 if not r.ok:
                     break
                 data    = r.json()
@@ -11925,9 +12431,55 @@ def api_analisis_experto_run(alias):
                     break
             return round(total) if total else None
 
-        revenue_hoy  = _fetch_rev(hoy_from)
-        revenue_7d   = _fetch_rev(d7_from)
-        revenue_30d  = _fetch_rev(d30_from)
+        revenue_hoy     = _fetch_rev(hoy_from)
+        revenue_7d      = _fetch_rev(d7_from)
+        revenue_30d     = _fetch_rev(d30_from)
+        revenue_prev_7d = _fetch_rev(d14_from, d7_to)
+
+        try:
+            _rq = req_lib.get('https://api.mercadolibre.com/questions/search',
+                headers=heads,
+                params={'seller_id': user_id, 'status': 'UNANSWERED', 'limit': 1},
+                timeout=8)
+            if _rq.ok:
+                n_unanswered = _rq.json().get('paging', {}).get('total', 0)
+        except Exception:
+            pass
+
+        try:
+            _rs = req_lib.get(f'https://api.mercadolibre.com/users/{user_id}',
+                headers=heads, timeout=8)
+            if _rs.ok:
+                _rep = _rs.json().get('seller_reputation', {})
+                _met = _rep.get('metrics', {})
+                seller_metrics = {
+                    'cancelaciones': _met.get('cancellations', {}).get('rate'),
+                    'demoras':       _met.get('delayed_handling_time', {}).get('rate'),
+                    'reclamos':      _met.get('claims', {}).get('rate'),
+                }
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    try:
+        pos_snap = db_load(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+        _now_art = _dt.utcnow() - _td(hours=3)
+        for _pid, _pdata in pos_snap.items():
+            _hist = _pdata.get('history', {})
+            _pa, _prev = None, None
+            for _d in range(0, 2):
+                _k = (_now_art - _td(days=_d)).strftime('%Y-%m-%d')
+                if _k in _hist:
+                    _pa = _hist[_k]; break
+            for _d in range(2, 8):
+                _k = (_now_art - _td(days=_d)).strftime('%Y-%m-%d')
+                if _k in _hist:
+                    _prev = _hist[_k]; break
+            if _pa and _prev and _pa != 999 and _pa - _prev >= 5:
+                pos_drops.append({'titulo': _pdata.get('title', '')[:50],
+                                  'antes': _prev, 'ahora': _pa, 'caida': _pa - _prev})
+        pos_drops.sort(key=lambda x: x['caida'], reverse=True)
     except Exception:
         pass
 
@@ -11981,12 +12533,79 @@ def api_analisis_experto_run(alias):
     demoras    = rep_latest.get('demoras_pct',  rep_latest.get('delayed_rate', None))
     nivel      = rep_latest.get('nivel', rep_latest.get('level_id', ''))
 
-    # ── 4. Construir el prompt ────────────────────────────────────────────────
-    def fmt_money(v):
-        return f'${v:,.0f}' if v is not None else '—'
+    # ── 3b. Precio vs competidores en top 5 productos ────────────────────────
+    comp_precios = []
+    if heads and top_items:
+        try:
+            _pos_kw = db_load(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+            _kw_map = {pid: pd.get('keyword', '') for pid, pd in _pos_kw.items()}
+            _stop   = {'de','para','con','sin','y','el','la','los','las','un','una','-','–'}
 
+            def _check_price(it):
+                _iid = it.get('id', '')
+                _kw  = _kw_map.get(_iid, '')
+                if not _kw:
+                    _words = [w for w in it.get('titulo', '').lower().split()
+                              if w.isalpha() and w not in _stop and len(w) > 2]
+                    _kw = ' '.join(_words[:4])
+                if not _kw:
+                    return None
+                _r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
+                    headers=heads, params={'q': _kw, 'limit': 10}, timeout=8)
+                if not _r.ok:
+                    return None
+                _res = _r.json().get('results', [])
+                _others = [float(x['price']) for x in _res
+                           if x.get('id') != _iid and float(x.get('price', 0)) > 0][:5]
+                if not _others:
+                    return None
+                _min_p = min(_others)
+                _my_p  = float(it.get('precio', 0) or 0)
+                if _my_p <= 0:
+                    return None
+                return {'titulo': it.get('titulo', '')[:50],
+                        'mi_precio': round(_my_p),
+                        'min_comp':  round(_min_p),
+                        'gap_pct':   round((_my_p - _min_p) / _min_p * 100, 1)}
+
+            from concurrent.futures import ThreadPoolExecutor as _TPExec
+            with _TPExec(max_workers=3) as _pool:
+                _futs = [_pool.submit(_check_price, it) for it in top_items[:5]]
+                for _fut in _futs:
+                    try:
+                        _r2 = _fut.result(timeout=12)
+                        if _r2:
+                            comp_precios.append(_r2)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # ── 3b.1 Meli Ads (caché del scheduler) ──────────────────────────────────
+    ads_snap = db_load(os.path.join(DATA_DIR, f'ads_summary_{safe(alias)}.json')) or {}
+
+    # ── 3c. Cobertura por categoría ───────────────────────────────────────────
+    cat_stats = {}
+    for _it in items_raw:
+        _cat = _it.get('category_id', '') or 'otras'
+        if _cat not in cat_stats:
+            cat_stats[_cat] = {'total': 0, 'venden': 0}
+        cat_stats[_cat]['total'] += 1
+        if float(_it.get('velocidad', 0) or 0) > 0:
+            cat_stats[_cat]['venden'] += 1
+
+    cat_trend_lines = []
+    for _cat, _st in sorted(cat_stats.items(), key=lambda x: x[1]['total'], reverse=True)[:6]:
+        _pct  = round(_st['venden'] / max(_st['total'], 1) * 100)
+        _flag = ' ⚠ baja cobertura' if _pct < 40 and _st['total'] >= 3 else ''
+        cat_trend_lines.append(
+            f"  {_cat}: {_st['venden']}/{_st['total']} publicaciones vendiendo ({_pct}%){_flag}"
+        )
+    cat_trend_txt = '\n'.join(cat_trend_lines) or '  Sin datos de categoría'
+
+    # ── 4. Construir el prompt ────────────────────────────────────────────────
     top_txt = '\n'.join(
-        f"  {i+1}. {it['titulo']} | {fmt_money(it['ingreso_30'])}/mes | "
+        f"  {i+1}. {it['titulo']} | ${it['ingreso_30']:,}/mes | "
         f"{it['vel']:.1f}u/día | Stock: {it['stock']}u "
         f"({'⚠️ ' + str(it['dias_stock']) + ' días' if it['dias_stock'] and it['dias_stock'] <= 20 else str(it['dias_stock']) + ' días' if it['dias_stock'] else 'sin vel'})"
         f" | Margen: {str(it['margen_pct']) + '%' if it['margen_pct'] else 'sin costo cargado'}"
@@ -12008,6 +12627,70 @@ def api_analisis_experto_run(alias):
         for it in baja_conversion[:5]
     ) or '  Ninguno'
 
+    _fmt_m  = lambda v: f'${v:,.0f}' if v is not None else '—'
+    _fmt_pct = lambda v: f"{round(float(v) * 100, 1)}%" if v is not None else 'sin dato'
+
+    pos_drops_txt = '\n'.join(
+        f"  - {p['titulo']}: cayó de #{p['antes']} a #{p['ahora']} (−{p['caida']} posiciones)"
+        for p in pos_drops[:5]
+    ) or '  Sin caídas detectadas esta semana'
+
+    delta_7d_str = ''
+    if revenue_7d is not None and revenue_prev_7d is not None and revenue_prev_7d > 0:
+        _delta = round((revenue_7d - revenue_prev_7d) / revenue_prev_7d * 100, 1)
+        _sign  = '▲' if _delta >= 0 else '▼'
+        delta_7d_str = f'  {_sign} {abs(_delta)}% vs semana anterior ({_fmt_m(revenue_prev_7d)})'
+
+    # Ads summary text
+    if ads_snap and not ads_snap.get('sin_campanas'):
+        _bw = ads_snap.get('budget_warnings', [])
+        _bw_txt = ''
+        if _bw:
+            _bw_txt = '\n' + '\n'.join(
+                f"  ⚠ Campaña '{w['nombre']}': usó {w['pct']}% del presupuesto diario "
+                f"(${w['gastado_hoy']:,} de ${w['presupuesto']:,}) — "
+                f"{'se queda sin presupuesto a mitad del día' if w['pct'] >= 90 else 'presupuesto casi agotado'}"
+                for w in _bw
+            )
+        _roas_v = ads_snap.get('roas')
+        _acos_v = ads_snap.get('acos')
+        ads_context = (
+            f"PUBLICIDAD MELI ADS (últimos 7 días — actualizado {ads_snap.get('fecha','?')}):\n"
+            f"- Campañas activas: {ads_snap.get('campanas', '—')}\n"
+            f"- Inversión: ${ads_snap.get('spend_7d', 0):,}\n"
+            f"- Ventas generadas por ads: ${ads_snap.get('revenue_7d', 0):,}\n"
+            f"- Conversiones vía ads: {ads_snap.get('conversiones', '—')}\n"
+            f"- ROAS: {_roas_v}x (saludable >3x, crítico <2x) "
+            f"{'⚠ BAJO' if _roas_v and _roas_v < 2 else ('OK' if _roas_v and _roas_v >= 3 else '')}\n"
+            f"- ACoS: {round(_acos_v*100,1) if _acos_v else '—'}% (saludable <15%) "
+            f"{'⚠ ALTO' if _acos_v and _acos_v > 0.20 else ''}\n"
+            f"- CTR: {ads_snap.get('ctr', '—')}%"
+            + _bw_txt
+        )
+    elif ads_snap.get('sin_campanas'):
+        ads_context = 'PUBLICIDAD MELI ADS: Sin campañas activas detectadas.'
+    else:
+        ads_context = 'PUBLICIDAD MELI ADS: Sin datos (se actualizan en el próximo ciclo del scheduler).'
+
+    comp_txt_lines = []
+    for _cp in comp_precios:
+        if _cp['gap_pct'] > 5:
+            comp_txt_lines.append(
+                f"  - {_cp['titulo']}: tu precio ${_cp['mi_precio']:,} | "
+                f"más barato en mercado ${_cp['min_comp']:,} → {_cp['gap_pct']}% más caro"
+            )
+        elif _cp['gap_pct'] < -5:
+            comp_txt_lines.append(
+                f"  - {_cp['titulo']}: tu precio ${_cp['mi_precio']:,} | "
+                f"más barato en mercado ${_cp['min_comp']:,} → podés subir {abs(_cp['gap_pct'])}%"
+            )
+        else:
+            comp_txt_lines.append(
+                f"  - {_cp['titulo']}: tu precio ${_cp['mi_precio']:,} | "
+                f"más barato en mercado ${_cp['min_comp']:,} → precio competitivo"
+            )
+    comp_precios_txt = '\n'.join(comp_txt_lines) or '  Sin datos (corré Posiciones primero)'
+
     total_items  = len(items_raw)
     items_venden = sum(1 for it in items_raw if float(it.get('velocidad', 0) or 0) > 0)
 
@@ -12024,9 +12707,27 @@ Fecha del análisis: {(_dt.utcnow() - _td(hours=3)).strftime('%d/%m/%Y %H:%M')} 
 ═══════════════════════════════════════════════
 
 INGRESOS:
-- Hoy: {fmt_money(revenue_hoy)}
-- Últimos 7 días: {fmt_money(revenue_7d)}
-- Últimos 30 días: {fmt_money(revenue_30d)}
+- Hoy: {_fmt_m(revenue_hoy)}
+- Esta semana (7 días): {_fmt_m(revenue_7d)}{delta_7d_str}
+- Semana anterior (7-14 días): {_fmt_m(revenue_prev_7d)}
+- Últimos 30 días: {_fmt_m(revenue_30d)}
+
+MÉTRICAS DE VENDEDOR (ML las usa para rankear toda la cuenta):
+- Cancelaciones (60d): {_fmt_pct(seller_metrics.get('cancelaciones'))} [límite: 3%]
+- Envíos demorados (60d): {_fmt_pct(seller_metrics.get('demoras'))} [límite: 10%]
+- Reclamos (60d): {_fmt_pct(seller_metrics.get('reclamos'))} [límite: 2%]
+- Preguntas sin responder: {n_unanswered} [ML penaliza vendedores lentos]
+
+POSICIONAMIENTO — CAÍDAS ESTA SEMANA ({len(pos_drops)} publicaciones):
+{pos_drops_txt}
+
+COBERTURA POR CATEGORÍA:
+{cat_trend_txt}
+
+{ads_context}
+
+PRECIO VS MERCADO (top 5 productos por ingresos):
+{comp_precios_txt}
 
 CATÁLOGO:
 - Total publicaciones activas: {total_items}
@@ -12036,13 +12737,13 @@ CATÁLOGO:
 TOP PRODUCTOS POR INGRESOS (30 días):
 {top_txt}
 
-ALERTAS DE STOCK (productos que venden con stock crítico ≤14 días):
+ALERTAS DE STOCK (stock crítico ≤14 días):
 {crit_txt}
 
-PROBLEMAS DE CONVERSIÓN (muchas visitas pero pocas ventas):
+PROBLEMAS DE CONVERSIÓN (visitas altas, ventas bajas):
 {conv_txt}
 
-STOCK MUERTO (productos sin ventas pero con stock):
+STOCK MUERTO:
 {sin_vta_txt}
 
 REPUTACIÓN:
@@ -12054,18 +12755,26 @@ REPUTACIÓN:
 Generá el informe con EXACTAMENTE estas 5 secciones. Usá emojis como se indica. \
 Sé concreto, específico y accionable. Priorizá por impacto económico real.
 
-🏆 MIS PRODUCTOS MÁS IMPORTANTES
-[Identificá los 3-5 productos que son el corazón del negocio. Indicá cuáles hay que proteger, \
-cuáles tienen riesgo de stock y cuáles están en buena posición. \
-Explicá por qué son importantes y qué NO hay que hacer con ellos.]
+🔍 DIAGNÓSTICO SEMANAL
+[Empezá con los números: esta semana vs la anterior en pesos y %. \
+Luego identificá la causa raíz cruzando TODAS las señales disponibles: \
+(1) métricas de vendedor fuera de límite → penalización de cuenta, \
+(2) posiciones caídas → pérdida de visibilidad orgánica, \
+(3) ROAS bajo o presupuesto de ads agotado → la publicidad no está rindiendo o se corta a mitad del día, \
+(4) precios fuera de mercado → perdés el buy box, \
+(5) categorías con baja cobertura → problema de nicho. \
+Distinguí si el problema es de TODA la cuenta o de productos específicos. \
+Sé directo, nombrá productos y números concretos.]
 
 🚨 URGENTE — HACER HOY
 [Máximo 4 acciones. Solo lo que si no se hace HOY tiene consecuencia directa en ventas o reputación. \
-Para cada una: producto específico, problema, acción exacta, impacto estimado en pesos si podés.]
+Para cada una: producto o métrica específica, problema, acción exacta, impacto estimado en pesos. \
+Si el presupuesto de ads se agota antes de las 18hs, es urgente subirlo.]
 
 💡 OPORTUNIDADES ESTA SEMANA
-[Máximo 4 acciones. Cosas que con poco esfuerzo dan buen resultado. \
-Ejemplos: subir precio donde hay margen, mejorar conversión, activar Full en candidatos.]
+[Máximo 4 acciones de alto impacto con poco esfuerzo. \
+Considerá: subir precio donde sos el más barato con margen, mejorar conversión en los de muchas visitas, \
+activar Full en candidatos de alto volumen, responder preguntas, optimizar ACoS si está alto.]
 
 📦 PRÓXIMO PEDIDO A CHINA
 [Lista priorizada en 3 categorías:
@@ -12074,7 +12783,7 @@ REPONER PRONTO: productos que venden bien pero tienen margen de tiempo
 NO PIDAS: productos sin movimiento o con stock excesivo]
 
 ⚠️ LASTRES Y RIESGOS
-[Qué está pesando sin dar retorno. Stock muerto, concentración de riesgo, tendencias preocupantes. \
+[Qué está pesando sin dar retorno. Stock muerto, concentración de riesgo, categorías con baja cobertura. \
 Sé directo — si algo hay que cortar, decilo.]"""
 
     # ── 5. Llamar a Claude ────────────────────────────────────────────────────
@@ -12096,7 +12805,8 @@ Sé directo — si algo hay que cortar, decilo.]"""
         'alias':     alias,
         'fecha':     (_dt.utcnow() - _td(hours=3)).strftime('%d/%m/%Y %H:%M'),
         'analisis':  texto,
-        'revenue':   {'hoy': revenue_hoy, '7d': revenue_7d, '30d': revenue_30d},
+        'revenue':   {'hoy': revenue_hoy, '7d': revenue_7d, '30d': revenue_30d,
+                      'prev_7d': revenue_prev_7d},
         'tokens':    msg.usage.input_tokens + msg.usage.output_tokens,
     }
     db_save_fn(os.path.join(DATA_DIR, f'analisis_experto_{safe(alias)}.json'), resultado)
@@ -12108,6 +12818,18 @@ _scheduler_last_run = None  # datetime del último run completado
 
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
+
+@app.route('/admin/restart', methods=['POST'])
+def admin_restart():
+    """Reinicia el proceso del servidor para aplicar cambios de código."""
+    import threading
+    def _do_restart():
+        import time as _t
+        _t.sleep(0.5)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    threading.Thread(target=_do_restart, daemon=True).start()
+    return jsonify({'ok': True})
+
 
 if __name__ == '__main__':
     app.config['TEMPLATES_AUTO_RELOAD'] = True

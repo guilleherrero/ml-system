@@ -37,8 +37,21 @@ def _load_snapshots(alias: str) -> dict:
     return data if data is not None else {}
 
 
+_POS_RETENTION_DAYS = 60
+
+
+def _trim_pos_history(data: dict) -> dict:
+    """Elimina entradas de historial con más de 90 días de antigüedad."""
+    cutoff = (datetime.now() - timedelta(days=_POS_RETENTION_DAYS)).strftime('%Y-%m-%d')
+    for item in data.values():
+        hist = item.get('history')
+        if isinstance(hist, dict):
+            item['history'] = {d: v for d, v in hist.items() if d >= cutoff}
+    return data
+
+
 def _save_snapshots(alias: str, data: dict):
-    db_save(_data_path(alias), data)
+    db_save(_data_path(alias), _trim_pos_history(data))
 
 
 def _search_position(item_id: str, category_id: str, keywords: str,

@@ -333,6 +333,16 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
             item_data = {}
             current_price = float(item_cfg.get("precio_actual", 0))
 
+        # Solo procesar publicaciones de catálogo
+        if not item_data.get("catalog_product_id"):
+            continue
+
+        # Estado de la publicación
+        item_status = item_data.get("status", "unknown")
+        sub_status  = item_data.get("sub_status", [])
+        if item_status == "closed" and "deleted" in sub_status:
+            item_status = "deleted_by_ml"
+
         # Precio del competidor — usa catalog_product_id si está disponible
         competitor_info = _get_competitor_info({
             "id": item_id,
@@ -368,6 +378,7 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
             "we_win_buy_box": we_win_buy_box,
             "total_sellers": total_sellers,
             "match_quality": match_quality,
+            "status": item_status,
         })
 
         if changed:
@@ -417,19 +428,38 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
     return results
 
 
+def _status_order(r: dict) -> int:
+    s = r.get("status", "unknown")
+    if s == "active":         return 0
+    if s == "paused":         return 1
+    if s == "deleted_by_ml":  return 3
+    return 2  # closed por vendedor u otros
+
+
+def _status_label(r: dict) -> str:
+    s = r.get("status", "unknown")
+    if s == "active":        return "[green]Activa[/green]"
+    if s == "paused":        return "[yellow]Pausada[/yellow]"
+    if s == "deleted_by_ml": return "[red]Eliminada ML[/red]"
+    if s == "closed":        return "[dim]Cerrada[/dim]"
+    return "[dim]?[/dim]"
+
+
 def _show_results_table(results: list[dict]):
     table = Table(box=box.ROUNDED, show_header=True, header_style="bold", expand=True)
     table.add_column("Publicación", ratio=3, no_wrap=True)
-    table.add_column("Tipo",      min_width=8)
+    table.add_column("Estado",     min_width=12)
+    table.add_column("Tipo",       min_width=8)
     table.add_column("Competidor", justify="right", min_width=12)
-    table.add_column("Actual",    justify="right", min_width=10)
-    table.add_column("Nuevo",     justify="right", min_width=10)
+    table.add_column("Actual",     justify="right", min_width=10)
+    table.add_column("Nuevo",      justify="right", min_width=10)
     table.add_column("Razón", ratio=2)
 
-    for r in sorted(results, key=lambda x: (-x.get("is_catalog", False), -abs(x["precio_nuevo"] - x["precio_actual"]))):
+    for r in sorted(results, key=lambda x: (_status_order(x), -x.get("is_catalog", False), -abs(x["precio_nuevo"] - x["precio_actual"]))):
         titulo = r["titulo"][:45] + "…" if len(r["titulo"]) > 45 else r["titulo"]
-        actual = f"${r['precio_actual']:,.0f}"
         delta  = r["precio_nuevo"] - r["precio_actual"]
+
+        estado = _status_label(r)
 
         # Tipo y calidad del match
         if r.get("is_catalog"):
@@ -456,7 +486,7 @@ def _show_results_table(results: list[dict]):
         else:
             nuevo = f"[dim]${r['precio_nuevo']:,.0f}[/dim]"
 
-        table.add_row(titulo, tipo, comp, actual, nuevo, r["razon"])
+        table.add_row(titulo, estado, tipo, comp, f"${r['precio_actual']:,.0f}", nuevo, r["razon"])
 
     console.print(table)
 

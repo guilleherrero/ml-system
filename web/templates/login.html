@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión — Sistema ML</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f1117; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .login-box { background: #1a1d26; border: 1px solid #2a2d3a; border-radius: 16px; padding: 2.5rem 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+    .brand { text-align: center; margin-bottom: 2rem; }
+    .brand-icon { width: 52px; height: 52px; background: linear-gradient(135deg,#3b82f6,#6366f1); border-radius: 14px; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 1.4rem; color: #fff; }
+    .brand-name { font-size: 1.2rem; font-weight: 700; color: #fff; }
+    .brand-sub  { font-size: .78rem; color: #6b7280; margin-top: 2px; }
+    .form-label { font-size: .8rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; display: block; }
+    .form-group { margin-bottom: 1.1rem; }
+    .form-control { width: 100%; background: #0f1117; border: 1px solid #2a2d3a; border-radius: 8px; padding: 10px 14px; color: #f1f5f9; font-size: .9rem; outline: none; transition: border-color .15s; }
+    .form-control:focus { border-color: #3b82f6; }
+    .form-control::placeholder { color: #374151; }
+    .btn-login { width: 100%; background: linear-gradient(135deg,#3b82f6,#6366f1); color: #fff; border: none; border-radius: 8px; padding: 11px; font-size: .9rem; font-weight: 600; cursor: pointer; transition: opacity .15s; margin-top: .5rem; }
+    .btn-login:hover { opacity: .9; }
+    .btn-login:disabled { opacity: .5; cursor: not-allowed; }
+    .alert-error { background: #2d1515; border: 1px solid #7f1d1d; border-radius: 8px; padding: 10px 14px; color: #fca5a5; font-size: .82rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="brand">
+      <div class="brand-icon"><i class="bi bi-stars"></i></div>
+      <div class="brand-name">Sistema ML</div>
+      <div class="brand-sub">Control total de cuentas</div>
+    </div>
+
+    {% if error %}
+    <div class="alert-error"><i class="bi bi-exclamation-triangle-fill"></i> {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login" id="loginForm">
+      {% if next %}
+      <input type="hidden" name="next" value="{{ next }}">
+      {% endif %}
+      <div class="form-group">
+        <label class="form-label" for="username">Usuario</label>
+        <input type="text" id="username" name="username" class="form-control"
+               placeholder="Nombre de usuario" autocomplete="username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Contraseña</label>
+        <input type="password" id="password" name="password" class="form-control"
+               placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn-login" id="btnLogin">
+        Ingresar
+      </button>
+    </form>
+  </div>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', function() {
+      const btn = document.getElementById('btnLogin');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Verificando...';
+    });
+  </script>
+</body>
+</html>

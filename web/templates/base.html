@@ -171,7 +171,26 @@
 
     <!-- ── POR CUENTA ─────────────────────────────────────────── -->
     {% if accounts %}
+
+    <!-- Filtro de cuentas activas -->
+    {% if accounts | length > 1 %}
+    <div id="acc-filter" style="padding:6px 10px 4px;display:flex;flex-wrap:wrap;gap:4px">
+      {% for acc in accounts %}
+      <button
+        id="acc-btn-{{ loop.index }}"
+        data-alias="{{ acc.alias }}"
+        onclick="toggleAccount('{{ acc.alias }}', {{ loop.index }})"
+        style="font-size:.62rem;font-weight:700;padding:3px 9px;border-radius:10px;border:1px solid #2a3a5c;background:#1a2540;color:#60a5fa;cursor:pointer;transition:all .15s;white-space:nowrap"
+        title="Mostrar/ocultar {{ acc.alias }}">
+        {{ acc.alias }}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     {% for acc in accounts %}
+
+    <div class="acc-group" id="acc-group-{{ acc.alias | replace(' ','_') }}" data-alias="{{ acc.alias }}">
 
     <div class="sec-account">
       <i class="bi bi-shop"></i>{{ acc.alias }}
@@ -208,6 +227,9 @@
     <a href="/funnel/{{ acc.alias }}" class="{{ 'active' if request.path == '/funnel/'~acc.alias else '' }}">
       <i class="bi bi-funnel"></i> Funnel de Conversión
     </a>
+    <a href="/analisis-experto/{{ acc.alias }}" class="nav-primary {{ 'active' if request.path == '/analisis-experto/'~acc.alias else '' }}">
+      <i class="bi bi-stethoscope"></i> Consultor IA
+    </a>
 
     <!-- Operaciones -->
     <div class="sec">Operaciones</div>
@@ -227,6 +249,8 @@
     <a href="/reputacion/{{ acc.alias }}" class="{{ 'active' if request.path == '/reputacion/'~acc.alias else '' }}">
       <i class="bi bi-shield-check"></i> Reputación
     </a>
+
+    </div>{# /acc-group #}
     {% endfor %}
     {% endif %}
 
@@ -247,8 +271,34 @@
     <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
       <i class="bi bi-gear"></i> Configuración
     </a>
+    {% if session.get('is_admin') %}
+    <a href="/settings/usuarios" class="{{ 'active' if request.path == '/settings/usuarios' else '' }}">
+      <i class="bi bi-people"></i> Usuarios
+    </a>
+    {% endif %}
+    <a href="#" onclick="reiniciarServidor();return false;" style="color:#6b7280">
+      <i class="bi bi-arrow-clockwise"></i> Reiniciar servidor
+    </a>
 
   </nav>
+
+  <!-- Usuario logueado -->
+  <div style="padding:10px 14px;border-top:1px solid #1e2128;margin-top:auto;display:flex;align-items:center;gap:8px">
+    <div style="width:28px;height:28px;border-radius:50%;background:{% if session.get('is_admin') %}#1d3461{% else %}#163016{% endif %};display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;color:{% if session.get('is_admin') %}#60a5fa{% else %}#86efac{% endif %};flex-shrink:0">
+      {{ (session.get('username') or 'U')[0].upper() }}
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:.75rem;font-weight:600;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ session.get('username') or '' }}</div>
+      <div style="font-size:.62rem;color:#6b7280">{% if session.get('is_admin') %}Admin{% else %}Usuario{% endif %}</div>
+    </div>
+    <button onclick="reiniciarServidor()" title="Reiniciar servidor (aplicar cambios)" style="background:none;border:none;color:#6b7280;font-size:.85rem;flex-shrink:0;cursor:pointer;padding:0" onmouseover="this.style.color='#f59e0b'" onmouseout="this.style.color='#6b7280'">
+      <i class="bi bi-arrow-clockwise"></i>
+    </button>
+    <a href="/logout" title="Cerrar sesión" style="color:#6b7280;font-size:.85rem;flex-shrink:0;text-decoration:none" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#6b7280'">
+      <i class="bi bi-box-arrow-right"></i>
+    </a>
+  </div>
+
 </div>
 
 <div id="main">
@@ -319,6 +369,55 @@ function runComando(comando, alias) {
     }).catch(() => {});
 })();
 
+// ── Selector de cuentas activas ───────────────────────────────────────────
+(function initAccountFilter() {
+  const LS_KEY = 'ml_active_accounts';
+  const groups = document.querySelectorAll('.acc-group');
+  if (!groups.length) return;
+
+  const allAliases = [...groups].map(g => g.dataset.alias);
+
+  function getSaved() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return new Set(parsed);
+      }
+    } catch(e) {}
+    return new Set(allAliases); // por defecto: todas activas
+  }
+
+  function applyState(active) {
+    groups.forEach(g => {
+      g.style.display = active.has(g.dataset.alias) ? '' : 'none';
+    });
+    allAliases.forEach((alias, i) => {
+      const btn = document.getElementById(`acc-btn-${i + 1}`);
+      if (!btn) return;
+      const on = active.has(alias);
+      btn.style.background  = on ? '#1a2540' : '#0f1117';
+      btn.style.color        = on ? '#60a5fa' : '#374151';
+      btn.style.borderColor  = on ? '#2a3a5c' : '#1e2128';
+      btn.style.opacity      = on ? '1' : '0.5';
+    });
+  }
+
+  let active = getSaved();
+  applyState(active);
+
+  window.toggleAccount = function(alias, idx) {
+    if (active.has(alias)) {
+      if (active.size === 1) return; // siempre al menos una activa
+      active.delete(alias);
+    } else {
+      active.add(alias);
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify([...active]));
+    applyState(active);
+  };
+})();
+
 (function loadQuestionCounts() {
   const aliases = [{% for acc in accounts %}{{ acc.alias | tojson }}{% if not loop.last %},{% endif %}{% endfor %}];
   aliases.forEach(alias => {
@@ -343,6 +442,17 @@ function runComando(comando, alias) {
       }).catch(() => {});
   });
 })();
+
+
+function reiniciarServidor() {
+  if (!confirm('¿Reiniciar el servidor para aplicar los últimos cambios?\nLa página se va a recargar automáticamente.')) return;
+  fetch('/admin/restart', {method: 'POST'})
+    .then(() => {
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:12px;font-family:sans-serif;color:#475569"><div class="spinner-border" style="width:2rem;height:2rem;color:#2563eb" role="status"></div><div style="font-weight:600">Reiniciando servidor…</div></div>';
+      setTimeout(() => { location.reload(); }, 3000);
+    })
+    .catch(() => { alert('Error al reiniciar. Reiniciá manualmente.'); });
+}
 </script>
 </body>
 </html>

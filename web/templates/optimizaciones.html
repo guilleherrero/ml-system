@@ -89,6 +89,41 @@
 .opt-stat-box.blue  .opt-stat-num { color:#1d4ed8; }
 .opt-stat-box.green .opt-stat-num { color:#16a34a; }
 .opt-stat-lbl { font-size:.7rem; color:#64748b; font-weight:600; margin-top:4px; }
+
+/* Quality scores panel */
+.qs-row { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:7px; cursor:pointer; transition:background .12s; border:1px solid transparent; margin-bottom:4px; }
+.qs-row:hover { background:#f0f9ff; border-color:#bae6fd; }
+.qs-row:last-child { margin-bottom:0; }
+.qs-score { font-size:1rem; font-weight:800; min-width:36px; text-align:center; }
+.qs-score.bad  { color:#dc2626; }
+.qs-score.mid  { color:#d97706; }
+.qs-score.good { color:#16a34a; }
+.qs-bar-wrap { flex:1; min-width:0; }
+.qs-title { font-size:.78rem; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px; font-weight:500; }
+.qs-bar-bg { height:5px; background:#f1f5f9; border-radius:3px; overflow:hidden; }
+.qs-bar { height:100%; border-radius:3px; transition:width .4s; }
+.qs-bar.bad  { background:#ef4444; }
+.qs-bar.mid  { background:#f59e0b; }
+.qs-bar.good { background:#22c55e; }
+.qs-level { font-size:.65rem; color:#64748b; min-width:60px; text-align:right; white-space:nowrap; }
+.qs-sel-btn { font-size:.68rem; padding:2px 8px; border-radius:5px; border:1px solid #3b82f6; color:#3b82f6; background:transparent; white-space:nowrap; }
+.qs-sel-btn:hover { background:#3b82f6; color:#fff; }
+
+/* ── Modal confirmar aplicar en ML ───────────────────────────────────── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1100; align-items:center; justify-content:center; }
+.modal-overlay.show { display:flex; }
+.modal-box-apply { background:#fff; border-radius:14px; padding:1.75rem; width:100%; max-width:520px; max-height:88vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+.modal-apply-title { font-size:1rem; font-weight:700; color:#1e293b; margin-bottom:1.25rem; display:flex; align-items:center; gap:8px; }
+.modal-apply-section { margin-bottom:1rem; }
+.modal-apply-label { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#64748b; margin-bottom:6px; }
+.modal-apply-after { background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:10px 13px; font-size:.88rem; color:#14532d; line-height:1.65; font-weight:500; }
+.modal-apply-text  { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 13px; font-size:.83rem; color:#374151; line-height:1.65; max-height:200px; overflow-y:auto; white-space:pre-wrap; }
+.modal-apply-warn  { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 13px; font-size:.78rem; color:#92400e; display:flex; align-items:flex-start; gap:8px; margin-top:1rem; }
+.btn-modal-cancel  { background:transparent; color:#64748b; border:1px solid #e2e8f0; border-radius:7px; padding:9px 18px; font-size:.87rem; cursor:pointer; }
+.btn-modal-confirm { background:#2563eb; color:#fff; border:none; border-radius:7px; padding:9px 22px; font-size:.87rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background .15s; }
+.btn-modal-confirm:hover:not(:disabled) { background:#1d4ed8; }
+.btn-modal-confirm:disabled { background:#93c5fd; cursor:not-allowed; }
+.modal-char-warn { background:#fef9c3; border:1px solid #fde68a; border-radius:6px; padding:6px 10px; font-size:.75rem; color:#92400e; margin-top:8px; }
 </style>
 <div class="page-header">
   <div>
@@ -158,6 +193,27 @@
           </div>
         </div>
       </div>
+
+      {% if pubs_disponibles %}
+      <!-- Panel de puntajes de calidad ML -->
+      <div style="margin-top:12px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden" id="qs-panel">
+        <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:9px 14px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleQsPanel()">
+          <i class="bi bi-bar-chart-fill" style="color:#3b82f6;font-size:.85rem"></i>
+          <span style="font-size:.82rem;font-weight:700;color:#1e293b">Puntaje de calidad ML — ver cuáles necesitan optimización</span>
+          <span id="qs-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 8px;font-size:.65rem;font-weight:700;margin-left:2px"></span>
+          <button class="btn btn-sm ms-auto" style="font-size:.72rem;padding:3px 10px;border:1px solid #3b82f6;color:#3b82f6;background:transparent;border-radius:6px"
+                  onclick="event.stopPropagation();cargarPuntajesML()" id="qs-btn">
+            <i class="bi bi-arrow-repeat me-1"></i>Cargar puntajes
+          </button>
+          <i class="bi bi-chevron-down" id="qs-chevron" style="font-size:.72rem;color:#94a3b8;transition:transform .2s"></i>
+        </div>
+        <div id="qs-body" style="display:none">
+          <div id="qs-content" style="padding:12px 14px">
+            <div style="font-size:.8rem;color:#94a3b8">Hacé clic en <strong>Cargar puntajes</strong> para ver el score que ML asigna a cada publicación, ordenadas de peor a mejor.</div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <!-- PASO 2: Competidores -->
@@ -1031,6 +1087,28 @@
   Sin optimizaciones generadas aún. Usá el formulario de arriba para crear tu primera optimización.
 </div>
 {% endif %}
+
+<!-- ── Modal: Confirmar aplicar en MercadoLibre ──────────────────────── -->
+<div class="modal-overlay" id="modalAplicarML">
+  <div class="modal-box-apply">
+    <div class="modal-apply-title">
+      <i class="bi bi-cloud-upload" style="color:#2563eb"></i>
+      <span id="modal-apply-heading">Aplicar en MercadoLibre</span>
+    </div>
+    <div id="modal-apply-body"></div>
+    <div class="modal-apply-warn">
+      <i class="bi bi-exclamation-triangle-fill" style="flex-shrink:0;margin-top:1px"></i>
+      <span>Este cambio se aplicará <strong>inmediatamente</strong> en tu publicación de MercadoLibre.</span>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem">
+      <button class="btn-modal-cancel" onclick="cerrarModalAplicar()">Cancelar</button>
+      <button class="btn-modal-confirm" id="btn-modal-apply-confirm">
+        <i class="bi bi-cloud-upload"></i>Confirmar y aplicar
+      </button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -2150,43 +2228,70 @@ function startOptimization() {
   });
 }
 
+// ── Modal confirmar aplicar en ML ────────────────────────────────────────────
+let _pendingApplyFn = null;
+
+function cerrarModalAplicar() {
+  document.getElementById('modalAplicarML').classList.remove('show');
+  _pendingApplyFn = null;
+}
+
+function _abrirModalAplicar(heading, bodyHtml, onConfirm) {
+  document.getElementById('modal-apply-heading').textContent = heading;
+  document.getElementById('modal-apply-body').innerHTML = bodyHtml;
+  const confirmBtn = document.getElementById('btn-modal-apply-confirm');
+  confirmBtn.disabled = false;
+  confirmBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Confirmar y aplicar';
+  confirmBtn.onclick = () => {
+    cerrarModalAplicar();
+    onConfirm();
+  };
+  const overlay = document.getElementById('modalAplicarML');
+  overlay.classList.add('show');
+  overlay.onclick = e => { if (e.target === overlay) cerrarModalAplicar(); };
+}
+
 function aplicarTitulo(itemId, tituloElId, btnId) {
   const el    = document.getElementById(tituloElId);
   const btn   = document.getElementById(btnId);
   const titulo = el ? el.innerText.trim() : '';
   if (!titulo) { alert('Sin título para aplicar.'); return; }
-  if (titulo.length > 60) {
-    if (!confirm(`El título tiene ${titulo.length} caracteres (máximo recomendado: 60). ¿Aplicar igual?`)) return;
-  } else {
-    if (!confirm(`¿Aplicar este título directamente en MercadoLibre?\n\n"${titulo}"`)) return;
-  }
-  btn.disabled  = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
 
-  fetch('/api/aplicar-optimizacion', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, titulo })
-  })
-  .then(r => r.json())
-  .then(d => {
-    if (d.ok) {
-      btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>¡Aplicado!';
-      btn.className = btn.className.replace('btn-outline-primary', 'btn-success');
-      setTimeout(() => {
-        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
-        btn.className = btn.className.replace('btn-success', 'btn-outline-primary');
+  const charWarn = titulo.length > 60
+    ? `<div class="modal-char-warn"><i class="bi bi-exclamation-triangle me-1"></i>El título tiene <strong>${titulo.length} caracteres</strong> — máximo recomendado: 60.</div>`
+    : `<div style="font-size:.72rem;color:#64748b;margin-top:5px">${titulo.length} / 60 caracteres</div>`;
+
+  const bodyHtml = `
+    <div class="modal-apply-section">
+      <div class="modal-apply-label">Nuevo título</div>
+      <div class="modal-apply-after">${titulo}</div>
+      ${charWarn}
+    </div>`;
+
+  _abrirModalAplicar('Aplicar título en MercadoLibre', bodyHtml, () => {
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+    fetch('/api/aplicar-optimizacion', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, titulo })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>¡Aplicado! Redirigiendo...';
+        btn.className = btn.className.replace('btn-outline-primary', 'btn-success');
+        setTimeout(() => { window.location.href = `/monitor/${ALIAS_OPT}`; }, 1500);
+      } else {
         btn.disabled  = false;
-      }, 3500);
-    } else {
+        btn.innerHTML = '❌ Error';
+        alert('Error al aplicar: ' + (d.error || d.errors?.join(', ') || 'desconocido'));
+      }
+    })
+    .catch(() => {
       btn.disabled  = false;
-      btn.innerHTML = '❌ Error';
-      alert('Error al aplicar: ' + (d.error || d.errors?.join(', ') || 'desconocido'));
-    }
-  })
-  .catch(() => {
-    btn.disabled  = false;
-    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+      btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+    });
   });
 }
 
@@ -2194,7 +2299,6 @@ function aplicarFicha(itemId, fichaElId, btnId) {
   const fichaEl = document.getElementById(fichaElId);
   const btn     = document.getElementById(btnId);
   if (!fichaEl || !fichaEl.innerText.trim()) { alert('Sin ficha técnica para aplicar.'); return; }
-  if (!confirm('¿Aplicar la ficha técnica directamente en MercadoLibre?\nSolo se actualizan los campos que Claude generó.')) return;
 
   // Parsear "Nombre: Valor" línea a línea
   const lines = fichaEl.innerText.trim().split('\n');
@@ -2210,31 +2314,45 @@ function aplicarFicha(itemId, fichaElId, btnId) {
   }
   if (!attributes.length) { alert('No se encontraron campos válidos para aplicar.'); return; }
 
-  btn.disabled  = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+  const rows = attributes.map(a =>
+    `<div style="display:flex;gap:8px;font-size:.82rem;padding:4px 0;border-bottom:1px solid #f1f5f9">
+      <span style="min-width:130px;font-weight:600;color:#475569">${a.name}</span>
+      <span style="color:#1e293b">${a.value}</span>
+    </div>`).join('');
 
-  fetch('/api/aplicar-optimizacion', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, attributes })
-  })
-  .then(r => r.json())
-  .then(d => {
-    if (d.ok) {
-      const applied = d.applied || [];
-      const warnings = d.attrs_warnings || [];
-      btn.outerHTML = `<span class="badge" style="background:#0f766e;color:#fff;padding:4px 8px;border-radius:5px">
-        <i class="bi bi-check2 me-1"></i>${applied.join(', ')} aplicado${warnings.length ? ' ⚠️ ' + warnings.length + ' no mapeados' : ''}</span>`;
-    } else {
+  const bodyHtml = `
+    <div class="modal-apply-section">
+      <div class="modal-apply-label">${attributes.length} campos de ficha técnica</div>
+      <div class="modal-apply-text" style="padding:8px 12px">${rows}</div>
+      <div style="font-size:.72rem;color:#64748b;margin-top:5px">Solo se actualizan los campos generados por Claude. Los demás no se tocan.</div>
+    </div>`;
+
+  _abrirModalAplicar('Aplicar ficha técnica en MercadoLibre', bodyHtml, () => {
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+    fetch('/api/aplicar-optimizacion', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, attributes })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        const warnings = d.attrs_warnings || [];
+        btn.outerHTML = `<span class="badge" style="background:#0f766e;color:#fff;padding:4px 8px;border-radius:5px">
+          <i class="bi bi-check2 me-1"></i>¡Aplicado! Redirigiendo...${warnings.length ? ' ⚠️ ' + warnings.length + ' no mapeados' : ''}</span>`;
+        setTimeout(() => { window.location.href = `/monitor/${ALIAS_OPT}`; }, 1500);
+      } else {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+        alert('Error: ' + (d.error || 'desconocido'));
+      }
+    })
+    .catch(() => {
       btn.disabled  = false;
       btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
-      alert('Error: ' + (d.error || 'desconocido'));
-    }
-  })
-  .catch(() => {
-    btn.disabled  = false;
-    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
-    alert('Error de conexión');
+      alert('Error de conexión');
+    });
   });
 }
 
@@ -2246,29 +2364,41 @@ function aplicarDescripcion(itemId, btnId) {
   let textoDesc = desc.innerText.trim();
   const clIdx = textoDesc.indexOf('### CHECKLIST DE VALIDACIÓN INTERNA');
   if (clIdx > 0) textoDesc = textoDesc.slice(0, clIdx).trim();
-  if (!confirm('¿Aplicar esta descripción directamente en MercadoLibre?')) return;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
-  fetch('/api/aplicar-optimizacion', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, descripcion: textoDesc })
-  })
-  .then(r => r.json())
-  .then(d => {
-    if (d.ok) {
-      btn.outerHTML = '<span class="badge badge-ok"><i class="bi bi-check2 me-1"></i>Descripción aplicada</span>';
-      if (!d.json_updated) console.warn('Descripción aplicada en ML pero el registro local no se encontró para item_id:', itemId);
-    } else {
-      btn.disabled = false;
+
+  const preview = textoDesc.length > 400 ? textoDesc.slice(0, 400) + '…' : textoDesc;
+  const words   = textoDesc.split(/\s+/).filter(Boolean).length;
+  const bodyHtml = `
+    <div class="modal-apply-section">
+      <div class="modal-apply-label">Vista previa de la descripción</div>
+      <div class="modal-apply-text">${preview}</div>
+      <div style="font-size:.72rem;color:#64748b;margin-top:5px">${words} palabras · texto plano sin HTML</div>
+    </div>`;
+
+  _abrirModalAplicar('Aplicar descripción en MercadoLibre', bodyHtml, () => {
+    btn.disabled  = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando...';
+    fetch('/api/aplicar-optimizacion', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ alias: ALIAS_OPT, item_id: itemId, descripcion: textoDesc })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        btn.outerHTML = '<span class="badge badge-ok"><i class="bi bi-check2 me-1"></i>¡Aplicado! Redirigiendo...</span>';
+        if (!d.json_updated) console.warn('Descripción aplicada en ML pero sin registro local para:', itemId);
+        setTimeout(() => { window.location.href = `/monitor/${ALIAS_OPT}`; }, 1500);
+      } else {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
+        alert('Error: ' + (d.error || 'desconocido'));
+      }
+    })
+    .catch(() => {
+      btn.disabled  = false;
       btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
-      alert('Error: ' + (d.error || 'desconocido'));
-    }
-  })
-  .catch(() => {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Aplicar en ML';
-    alert('Error de conexión.');
+      alert('Error de conexión.');
+    });
   });
 }
 
@@ -2750,6 +2880,90 @@ function cargarMisPreguntas() {
       btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Analizar mis preguntas';
       document.getElementById('mq-content').innerHTML = `<div class="alert alert-danger py-2 small">Error: ${e}</div>`;
     });
+}
+
+// ── Puntajes de calidad ML ─────────────────────────────────────────────────
+let _qsLoaded = false;
+
+function toggleQsPanel() {
+  const body    = document.getElementById('qs-body');
+  const chevron = document.getElementById('qs-chevron');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  chevron.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function _qsClass(score) {
+  return score >= 71 ? 'good' : score >= 50 ? 'mid' : 'bad';
+}
+
+function cargarPuntajesML() {
+  const btn     = document.getElementById('qs-btn');
+  const content = document.getElementById('qs-content');
+  const body    = document.getElementById('qs-body');
+  const chevron = document.getElementById('qs-chevron');
+  if (!btn || !content) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #ddd;border-top-color:#3b82f6;border-radius:50%;animation:spin .6s linear infinite"></span> Cargando...';
+  body.style.display = 'block';
+  chevron.style.transform = 'rotate(180deg)';
+  content.innerHTML = '<div style="font-size:.8rem;color:#94a3b8;padding:4px 0">Consultando ML para cada publicación... puede tardar unos segundos.</div>';
+
+  fetch(`/api/ml-quality-scores/${encodeURIComponent(ALIAS_OPT)}`)
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Actualizar';
+      if (!data.ok || !data.items || !data.items.length) {
+        content.innerHTML = '<div style="font-size:.8rem;color:#94a3b8">No se encontraron publicaciones con score disponible.</div>';
+        return;
+      }
+      _qsLoaded = true;
+      const below50 = data.items.filter(x => x.score < 50).length;
+      const badge   = document.getElementById('qs-badge');
+      if (badge && below50 > 0) {
+        badge.textContent = below50 + ' con score bajo';
+        badge.style.display = 'inline-block';
+      }
+      const rows = data.items.map(item => {
+        const cls    = _qsClass(item.score);
+        const pct    = item.score || 0;
+        const reasonsHtml = item.reasons && item.reasons.length
+          ? `<div style="font-size:.65rem;color:#94a3b8;margin-top:1px">${item.reasons.slice(0,2).join(' · ')}</div>`
+          : '';
+        return `<div class="qs-row" onclick="seleccionarDesdeQs('${item.id}')">
+          <div class="qs-score ${cls}">${item.score || '—'}</div>
+          <div class="qs-bar-wrap">
+            <div class="qs-title">${item.titulo || item.id}</div>
+            ${reasonsHtml}
+            <div class="qs-bar-bg"><div class="qs-bar ${cls}" style="width:${pct}%"></div></div>
+          </div>
+          <div class="qs-level">${item.level || ''}</div>
+          <button class="qs-sel-btn" onclick="event.stopPropagation();seleccionarDesdeQs('${item.id}')">Optimizar →</button>
+        </div>`;
+      }).join('');
+      content.innerHTML = `<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">
+        ${data.items.length} publicaciones · ordenadas de menor a mayor score · hacé clic para seleccionar
+      </div>${rows}`;
+    })
+    .catch(e => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Cargar puntajes';
+      content.innerHTML = `<div style="font-size:.8rem;color:#dc2626">Error: ${e.message}</div>`;
+    });
+}
+
+function seleccionarDesdeQs(itemId) {
+  const sel = document.getElementById('pubSelect');
+  if (sel) {
+    sel.value = itemId;
+    sel.dispatchEvent(new Event('change'));
+  }
+  // Scroll al formulario
+  const paso1 = document.querySelector('[data-paso1]');
+  if (paso1) paso1.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 </script>
 {% endblock %}

@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block title %} — Usuarios{% endblock %}
+{% block content %}
+<style>
+.usr-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; margin-bottom:1rem; overflow:hidden; }
+.usr-card-hdr { padding:12px 18px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:10px; }
+.usr-avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.9rem; flex-shrink:0; }
+.usr-avatar.admin { background:#eff6ff; color:#1d4ed8; }
+.usr-avatar.user  { background:#f0fdf4; color:#15803d; }
+.usr-name { font-weight:600; font-size:.92rem; color:#1e293b; }
+.usr-role { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:2px 8px; border-radius:8px; }
+.usr-role.admin { background:#dbeafe; color:#1d4ed8; }
+.usr-role.user  { background:#dcfce7; color:#15803d; }
+.usr-body { padding:12px 18px; }
+.acc-tag { display:inline-flex; align-items:center; gap:4px; font-size:.75rem; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px; padding:3px 9px; margin:2px; color:#475569; }
+.acc-tag i { font-size:.7rem; color:#3b82f6; }
+.btn-del { font-size:.75rem; padding:4px 12px; border-radius:6px; border:1px solid #ef4444; color:#ef4444; background:transparent; cursor:pointer; transition:all .15s; }
+.btn-del:hover { background:#ef4444; color:#fff; }
+.btn-edit { font-size:.75rem; padding:4px 12px; border-radius:6px; border:1px solid #64748b; color:#64748b; background:transparent; cursor:pointer; transition:all .15s; }
+.btn-edit:hover { background:#64748b; color:#fff; }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center; }
+.modal-overlay.show { display:flex; }
+.modal-box { background:#fff; border-radius:14px; padding:1.75rem; width:100%; max-width:460px; max-height:90vh; overflow-y:auto; }
+.modal-title { font-size:1rem; font-weight:700; color:#1e293b; margin-bottom:1.25rem; display:flex; align-items:center; gap:8px; }
+.form-group { margin-bottom:1rem; }
+.form-label { font-size:.78rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-bottom:5px; display:block; }
+.form-control { width:100%; border:1px solid #e2e8f0; border-radius:7px; padding:8px 12px; font-size:.87rem; outline:none; transition:border-color .15s; }
+.form-control:focus { border-color:#3b82f6; }
+.acc-check-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:6px; }
+.acc-check-item { display:flex; align-items:center; gap:7px; padding:7px 10px; border:1px solid #e2e8f0; border-radius:7px; cursor:pointer; transition:all .12s; font-size:.82rem; color:#374151; }
+.acc-check-item:hover { border-color:#3b82f6; background:#eff6ff; }
+.acc-check-item input[type=checkbox] { accent-color:#3b82f6; width:15px; height:15px; }
+.btn-primary { background:#3b82f6; color:#fff; border:none; border-radius:7px; padding:9px 20px; font-size:.87rem; font-weight:600; cursor:pointer; transition:opacity .15s; }
+.btn-primary:hover { opacity:.9; }
+.btn-secondary { background:transparent; color:#64748b; border:1px solid #e2e8f0; border-radius:7px; padding:9px 18px; font-size:.87rem; cursor:pointer; }
+.hint-text { font-size:.72rem; color:#94a3b8; margin-top:3px; }
+.empty-state { text-align:center; padding:3rem 1rem; color:#94a3b8; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-people me-2 text-primary"></i>Gestión de Usuarios</h1>
+    <div class="sub">Control de acceso al sistema</div>
+  </div>
+  <button class="btn btn-primary" onclick="abrirModalCrear()">
+    <i class="bi bi-person-plus me-1"></i> Nuevo usuario
+  </button>
+</div>
+
+<!-- Tarjeta admin -->
+<div class="usr-card">
+  <div class="usr-card-hdr">
+    <div class="usr-avatar admin"><i class="bi bi-shield-fill"></i></div>
+    <div style="flex:1">
+      <div class="usr-name">{{ current_user.username }} <span class="usr-role admin">Admin</span></div>
+      <div style="font-size:.72rem;color:#94a3b8;margin-top:1px">Acceso total al sistema</div>
+    </div>
+    <button class="btn-edit" onclick="abrirModalCambiarPass()">
+      <i class="bi bi-key me-1"></i>Cambiar contraseña
+    </button>
+  </div>
+</div>
+
+<!-- Lista de usuarios normales -->
+{% if users %}
+{% for u in users %}
+{% if not u.is_admin %}
+<div class="usr-card" id="usr-card-{{ u.id }}">
+  <div class="usr-card-hdr">
+    <div class="usr-avatar user">{{ u.username[0].upper() }}</div>
+    <div style="flex:1">
+      <div class="usr-name">{{ u.username }} <span class="usr-role user">Usuario</span></div>
+      <div style="font-size:.72rem;color:#94a3b8;margin-top:1px">
+        {% if u.accounts %}Acceso a {{ u.accounts|length }} cuenta(s){% else %}Sin cuentas asignadas{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn-edit" onclick='abrirModalEditar({{ u | tojson }})'>
+        <i class="bi bi-pencil me-1"></i>Editar
+      </button>
+      <button class="btn-del" onclick="eliminarUsuario('{{ u.id }}', '{{ u.username }}')">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+  </div>
+  {% if u.accounts %}
+  <div class="usr-body">
+    <div style="font-size:.72rem;color:#64748b;margin-bottom:4px;font-weight:600">CUENTAS CON ACCESO:</div>
+    {% for acc in u.accounts %}
+    <span class="acc-tag"><i class="bi bi-shop"></i>{{ acc }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endfor %}
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-people" style="font-size:2.5rem;display:block;margin-bottom:.75rem"></i>
+  <div style="font-size:.9rem">No hay usuarios creados todavía.</div>
+  <div style="font-size:.8rem;margin-top:.5rem">Creá usuarios para dar acceso limitado a otras personas.</div>
+</div>
+{% endif %}
+
+<!-- ── Modal: Crear usuario ──────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalCrear">
+  <div class="modal-box">
+    <div class="modal-title"><i class="bi bi-person-plus text-primary"></i> Nuevo usuario</div>
+    <div class="form-group">
+      <label class="form-label">Nombre de usuario</label>
+      <input type="text" id="crear-username" class="form-control" placeholder="ej: vendedor1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contraseña</label>
+      <input type="password" id="crear-password" class="form-control" placeholder="Mínimo 6 caracteres">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cuentas con acceso</label>
+      <div class="acc-check-grid" id="crear-acc-grid">
+        {% for acc in all_accounts %}
+        <label class="acc-check-item">
+          <input type="checkbox" name="crear-acc" value="{{ acc.alias }}">
+          <i class="bi bi-shop" style="color:#3b82f6;font-size:.8rem"></i>
+          {{ acc.alias }}
+        </label>
+        {% endfor %}
+      </div>
+      <div class="hint-text">Si no seleccionás ninguna, el usuario no verá ninguna cuenta.</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem">
+      <button class="btn-secondary" onclick="cerrarModales()">Cancelar</button>
+      <button class="btn-primary" onclick="crearUsuario()">
+        <i class="bi bi-check2 me-1"></i>Crear usuario
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Editar usuario ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modalEditar">
+  <div class="modal-box">
+    <div class="modal-title"><i class="bi bi-pencil text-primary"></i> Editar usuario</div>
+    <input type="hidden" id="edit-user-id">
+    <div class="form-group">
+      <label class="form-label">Usuario</label>
+      <input type="text" id="edit-username" class="form-control" readonly style="background:#f8fafc;color:#64748b">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nueva contraseña <span style="font-weight:400;text-transform:none;font-size:.7rem;color:#94a3b8">(dejá vacío para no cambiarla)</span></label>
+      <input type="password" id="edit-password" class="form-control" placeholder="Nueva contraseña">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Cuentas con acceso</label>
+      <div class="acc-check-grid" id="edit-acc-grid">
+        {% for acc in all_accounts %}
+        <label class="acc-check-item">
+          <input type="checkbox" name="edit-acc" value="{{ acc.alias }}">
+          <i class="bi bi-shop" style="color:#3b82f6;font-size:.8rem"></i>
+          {{ acc.alias }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem">
+      <button class="btn-secondary" onclick="cerrarModales()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarEdicion()">
+        <i class="bi bi-check2 me-1"></i>Guardar cambios
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Cambiar contraseña admin ───────────────────────────────────── -->
+<div class="modal-overlay" id="modalPass">
+  <div class="modal-box">
+    <div class="modal-title"><i class="bi bi-key text-primary"></i> Cambiar contraseña admin</div>
+    <div class="form-group">
+      <label class="form-label">Contraseña actual</label>
+      <input type="password" id="pass-actual" class="form-control" placeholder="Contraseña actual">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nueva contraseña</label>
+      <input type="password" id="pass-nueva" class="form-control" placeholder="Mínimo 6 caracteres">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirmar nueva contraseña</label>
+      <input type="password" id="pass-nueva2" class="form-control" placeholder="Repetí la nueva contraseña">
+    </div>
+    <div id="pass-error" style="display:none" class="hint-text" style="color:#ef4444"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem">
+      <button class="btn-secondary" onclick="cerrarModales()">Cancelar</button>
+      <button class="btn-primary" onclick="cambiarPassAdmin()">
+        <i class="bi bi-check2 me-1"></i>Cambiar contraseña
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ALIAS_ADMIN = {{ current_user.username | tojson }};
+
+function cerrarModales() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('show'));
+}
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) cerrarModales(); });
+});
+
+function abrirModalCrear() {
+  document.getElementById('crear-username').value = '';
+  document.getElementById('crear-password').value = '';
+  document.querySelectorAll('[name=crear-acc]').forEach(cb => cb.checked = false);
+  document.getElementById('modalCrear').classList.add('show');
+  setTimeout(() => document.getElementById('crear-username').focus(), 80);
+}
+
+function abrirModalEditar(u) {
+  document.getElementById('edit-user-id').value  = u.id;
+  document.getElementById('edit-username').value = u.username;
+  document.getElementById('edit-password').value = '';
+  document.querySelectorAll('[name=edit-acc]').forEach(cb => {
+    cb.checked = (u.accounts || []).includes(cb.value);
+  });
+  document.getElementById('modalEditar').classList.add('show');
+}
+
+function abrirModalCambiarPass() {
+  document.getElementById('pass-actual').value = '';
+  document.getElementById('pass-nueva').value  = '';
+  document.getElementById('pass-nueva2').value = '';
+  document.getElementById('pass-error').style.display = 'none';
+  document.getElementById('modalPass').classList.add('show');
+}
+
+async function crearUsuario() {
+  const username = document.getElementById('crear-username').value.trim();
+  const password = document.getElementById('crear-password').value;
+  const accounts = [...document.querySelectorAll('[name=crear-acc]:checked')].map(cb => cb.value);
+  if (!username || !password) return alert('Completá usuario y contraseña.');
+  if (password.length < 6) return alert('La contraseña debe tener al menos 6 caracteres.');
+  const r = await fetch('/api/usuarios/crear', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username, password, accounts})
+  });
+  const data = await r.json();
+  if (data.ok) { cerrarModales(); location.reload(); }
+  else alert('Error: ' + (data.error || 'desconocido'));
+}
+
+async function guardarEdicion() {
+  const id       = document.getElementById('edit-user-id').value;
+  const password = document.getElementById('edit-password').value;
+  const accounts = [...document.querySelectorAll('[name=edit-acc]:checked')].map(cb => cb.value);
+  const body     = {id, accounts};
+  if (password) {
+    if (password.length < 6) return alert('La contraseña debe tener al menos 6 caracteres.');
+    body.password = password;
+  }
+  const r = await fetch('/api/usuarios/actualizar', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  if (data.ok) { cerrarModales(); location.reload(); }
+  else alert('Error: ' + (data.error || 'desconocido'));
+}
+
+async function eliminarUsuario(id, nombre) {
+  if (!confirm(`¿Eliminar el usuario "${nombre}"?\n\nEsta acción no se puede deshacer.`)) return;
+  const r = await fetch('/api/usuarios/eliminar', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({id})
+  });
+  const data = await r.json();
+  if (data.ok) {
+    const card = document.getElementById(`usr-card-${id}`);
+    if (card) card.remove();
+  } else alert('Error: ' + (data.error || 'desconocido'));
+}
+
+async function cambiarPassAdmin() {
+  const actual  = document.getElementById('pass-actual').value;
+  const nueva   = document.getElementById('pass-nueva').value;
+  const nueva2  = document.getElementById('pass-nueva2').value;
+  const errEl   = document.getElementById('pass-error');
+  if (nueva !== nueva2) { errEl.textContent = 'Las contraseñas nuevas no coinciden.'; errEl.style.display='block'; return; }
+  if (nueva.length < 6) { errEl.textContent = 'Mínimo 6 caracteres.'; errEl.style.display='block'; return; }
+  errEl.style.display = 'none';
+  const r = await fetch('/api/usuarios/cambiar-pass-admin', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({actual, nueva})
+  });
+  const data = await r.json();
+  if (data.ok) { cerrarModales(); alert('Contraseña actualizada correctamente.'); }
+  else { errEl.textContent = data.error || 'Error desconocido'; errEl.style.display='block'; }
+}
+</script>
+{% endblock %}

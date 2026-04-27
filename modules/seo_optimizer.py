@@ -1469,6 +1469,7 @@ def _build_analysis_prompt(
     category_name: str,
     ml_quality_oficial: dict = None,
     title_violations: list = None,
+    is_new_listing: bool = False,
 ) -> str:
     title        = item_data.get("title", "")
     price        = float(item_data.get("price", 0))
@@ -1558,6 +1559,64 @@ def _build_analysis_prompt(
     req_attrs = category_attrs.get("required", [])
     miss_req  = ml_score.get("missing_required", [])
     miss_opt  = ml_score.get("missing_optional", [])
+
+    if is_new_listing:
+        return f"""Sos un ingeniero SEO de marketplace y estratega de conversión especializado en MercadoLibre Argentina.
+Tenés acceso a datos REALES del mercado. Tu análisis debe ser preciso, accionable y basado únicamente en estos datos.
+
+JERARQUÍA DE FUENTES: autosuggest ML = fuente primaria (refleja búsquedas reales de compradores).
+Competidores = fuente secundaria (patrones observables, no autoridad). Nunca invertir esta prioridad.
+
+CONTEXTO: Este es un PRODUCTO NUEVO a lanzar — no existe publicación propia aún.
+El objetivo es entender el mercado, identificar oportunidades y preparar la publicación perfecta desde el día 1.
+
+═══ PRODUCTO A LANZAR ═══
+Producto: {title}
+Categoría detectada: {category_name}
+Precio esperado: ${price:,.0f}
+Dificultad de entrada: {difficulty.get('nivel', '?').upper()}
+
+═══ M1: KEYWORD ANALYSIS — FUENTE PRINCIPAL ═══
+(40% posición autosuggest + 25% presencia competidores + 15% en título + 10% semántica)
+{kw_block}
+
+Keywords con mayor volumen de búsqueda: {', '.join(f'"{k}"' for k in ml_score.get('kw_missing', [])[:6]) or 'ver tabla arriba'}
+
+═══ M3: COMPETITOR INTELLIGENCE ═══
+{comp_block}
+
+PATRONES DETECTADOS EN COMPETIDORES:
+Keywords frecuentes en títulos top: {', '.join(comp_patterns.get('keywords_frecuentes', [])[:10])}
+Keywords gap (oportunidades no aprovechadas): {', '.join(comp_patterns.get('keywords_gap', [])[:8])}
+Longitud promedio de títulos: {comp_patterns.get('avg_title_length', 0)} chars
+Precio promedio competidores: ${comp_patterns.get('avg_price', 0):,.0f}
+
+═══ M5: DIFFICULTY SCORE: {difficulty.get('nivel', '?').upper()} ═══
+Factores: {' | '.join(difficulty.get('factores', ['Sin datos suficientes']))}
+
+═══ ATRIBUTOS CATEGORÍA "{category_name}" ═══
+Requeridos a completar ({len(miss_req)}): {', '.join(miss_req[:8]) or 'ninguno'}
+Opcionales recomendados ({len(miss_opt)}): {', '.join(miss_opt[:8]) or 'ninguno'}
+
+─────────────────────────────────────────────────────
+INSTRUCCIÓN: Analizá el mercado desde la perspectiva de un nuevo entrante.
+Identificá debilidades de los competidores que son oportunidades de diferenciación.
+Separar claramente: DATO REAL vs INFERENCIA.
+─────────────────────────────────────────────────────
+
+## ANÁLISIS DE COMPETIDORES
+[Por competidor: fortalezas y debilidades concretas. Qué hacen bien y qué dejan sin cubrir. Máximo 3 bullets por competidor.]
+
+## OPORTUNIDAD DE ENTRADA
+[Dónde están los gaps reales del mercado: keywords no aprovechadas, objeciones sin responder, segmentos sin atender. Máximo 5 bullets concretos basados en los datos.]
+
+## PUNTAJE DE CALIDAD DE COMPETIDORES
+[Para los 3 mejores competidores: puntaje estimado de su publicación en título/ficha/descripción/fotos. Identificar cuál es el más vulnerable y por qué.]
+
+## ANÁLISIS DE FICHA TÉCNICA
+Atributos requeridos de la categoría ({len(miss_req)}): {', '.join(miss_req[:6]) or 'ninguno'}
+Opcionales importantes ({len(miss_opt)}): {', '.join(miss_opt[:6]) or 'ninguno'}
+[Para cada atributo requerido: qué valor típico usan los competidores. Solo datos observables.]"""
 
     return f"""Sos un ingeniero SEO de marketplace y estratega de conversión especializado en MercadoLibre Argentina.
 Tenés acceso a datos REALES del mercado. Tu análisis debe ser preciso, accionable y basado únicamente en estos datos.
@@ -1856,7 +1915,8 @@ def _build_synthesis_prompt(
         gap_block = (
             "\nGAP KEYWORDS — lenguaje del mercado que tus competidores usan y vos no tenés:\n"
             "  → Incorporar al menos las 2 más importantes: en TÍTULO y en DESCRIPCIÓN de forma natural.\n"
-            "  → PROHIBIDO ponerlas en valores de atributos de la ficha.\n"
+            "  → En campos de texto libre de la ficha: sí permitido (ML los indexa).\n"
+            "  → PROHIBIDO ponerlas en campos con valores predefinidos (los que tienen lista fija de opciones).\n"
             + "\n".join(f"  ▸ {kw}" for kw in gap_keywords[:10])
         )
 
@@ -1971,7 +2031,7 @@ LONGITUD CORRECTA ({desc_type}):
 - Si la ficha técnica está bien completada → la descripción puede y debe ser más corta y enfocada
 
 DISTRIBUCIÓN DE KEYWORDS:
-- keyword_principal: 3–6 apariciones (densidad 1–2% del texto total — contar)
+- keyword_principal: 2–3 apariciones (densidad máx 1–2% del texto total — contar; más repeticiones activa filtro de spam)
 - keywords_secundarias: 2–3 apariciones cada una
 - long_tail: mínimo 5 frases distribuidas naturalmente — nunca forzadas
 - DENSIDAD EN PRIMEROS 500 CHARS [CRÍTICO]: la keyword_principal debe aparecer al menos 2 veces
@@ -2032,7 +2092,7 @@ TONO según tipo de producto (detectar y aplicar):
 - Hogar/muebles → practicidad, medidas reales, integración en el espacio
 
 CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
-□ keyword_principal aparece 3–6 veces — contadas
+□ keyword_principal aparece 2–3 veces — contadas (no más, evita penalización por spam)
 □ 5+ long-tail keywords distribuidas en el texto
 □ Longitud total dentro de {desc_range} — contada
 □ Bloque 1 completo dentro de los primeros 300 chars
@@ -2538,10 +2598,12 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     comp_patterns = analyze_competitor_patterns(competitors, product_idea)
     _c.print(f"[green]{len(competitors)} competidores analizados[/green]")
 
-    # M1.5: Expandir keywords con vocabulario de competidores
-    _c.print("  [dim]M1.5 — Expandiendo keywords con vocabulario de competidores...[/dim]", end=" ")
+    # M1.5: Expandir keywords con vocabulario de competidores (títulos + descripciones)
+    _c.print("  [dim]M1.5 — Expandiendo keywords (títulos + descripciones de competidores)...[/dim]", end=" ")
     _comp_titles_raw = [c.get("title", "") for c in competitors if c.get("title")]
-    _extra_kws = _competitor_seeded_autosuggest_seo(_comp_titles_raw, product_idea)
+    _comp_desc_raw   = [c.get("description", "")[:300] for c in competitors if c.get("description")]
+    _source_texts    = _comp_titles_raw + _comp_desc_raw
+    _extra_kws = _competitor_seeded_autosuggest_seo(_source_texts, product_idea)
     _seen_raw  = set(autosuggest_raw)
     _added     = 0
     for _kw in _extra_kws:
@@ -2599,6 +2661,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     prompt_analysis = _build_analysis_prompt(
         item_mock, "", keyword_analysis, [], comps_trimmed,
         comp_patterns, root_causes, difficulty, ml_score, category_attrs, category_name,
+        is_new_listing=True,
     )
     analysis_text = _call_claude(prompt_analysis, max_tokens=2000, console=_c, fast=True)
 
@@ -2614,7 +2677,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
         qa_insights=qa_insights,
         keyword_clusters=keyword_clusters,
     )
-    synthesis_text = _call_claude(prompt_synthesis, max_tokens=3200, console=_c, fast=False)
+    synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
     seo_result     = _parse_synthesis(synthesis_text)
     confidence     = build_confidence_layer(keyword_analysis, root_causes, difficulty)
 
