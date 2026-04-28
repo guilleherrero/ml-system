@@ -11915,23 +11915,10 @@ def api_full_stock_check(alias, item_id):
         if not r.ok:
             return jsonify({'ok': False, 'error': f'ML API: {r.status_code}'}), r.status_code
 
-        body         = r.json()
-        inv_id       = body.get('inventory_id', '')
-        total_ml     = int(body.get('available_quantity', 0) or 0)
-        stock_en_full = total_ml
+        body          = r.json()
+        inv_id        = body.get('inventory_id', '')
+        stock_en_full = int(body.get('available_quantity', 0) or 0)
         deposito      = 0
-
-        if inv_id:
-            try:
-                rf = req_lib.get(
-                    f'https://api.mercadolibre.com/inventories/{inv_id}/stock/fulfillment',
-                    headers=heads, timeout=6)
-                if rf.ok:
-                    fdata = rf.json()
-                    stock_en_full = int(fdata.get('total', total_ml) or total_ml)
-                    deposito      = max(0, total_ml - stock_en_full)
-            except Exception:
-                pass
 
         return jsonify({
             'ok':             True,
@@ -12030,31 +12017,11 @@ def _sync_full_inventory(alias):
                 continue
             body     = r.json()
             inv_id   = body.get('inventory_id', '')
-            total_ml = int(body.get('available_quantity', 0) or 0)
-            stock_en_full = total_ml
-            deposito      = 0
-
-            if inv_id:
-                try:
-                    # /stock (sin /fulfillment) puede incluir deposito del vendedor
-                    rs = _rq.get(f'{ML}/inventories/{inv_id}/stock',
-                                 headers=heads, timeout=(3, 6))
-                    rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
-                                 headers=heads, timeout=(3, 6))
-                    total_all = 0
-                    if rs.ok:
-                        sd = rs.json()
-                        total_all = int(sd.get('total', 0) or 0)
-                    if rf.ok:
-                        fdata = rf.json()
-                        stock_en_full = int(fdata.get('total', total_ml) or total_ml)
-                        # Si /stock devuelve un total mayor que /fulfillment, la diferencia es depósito
-                        if total_all > stock_en_full:
-                            deposito = total_all - stock_en_full
-                        else:
-                            deposito = max(0, total_ml - stock_en_full)
-                except Exception:
-                    pass
+            # available_quantity del item es el stock real que ML puede vender.
+            # /inventories/.../stock devuelve 403 y /stock/fulfillment devuelve 0
+            # en cuentas self_service, así que available_quantity es la fuente confiable.
+            stock_en_full = int(body.get('available_quantity', 0) or 0)
+            deposito      = 0  # ML no expone depósito propio vía API; se usa ingreso manual
 
             result[iid] = {'stock_en_full': stock_en_full, 'deposito': deposito,
                            'inv_id': inv_id}
