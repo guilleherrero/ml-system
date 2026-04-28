@@ -12103,7 +12103,7 @@ def api_list_aliases():
 
 @app.route('/api/full-debug/<alias>')
 def api_full_debug(alias):
-    """Diagnóstico: prueba todos los endpoints de inventario para encontrar el deposito."""
+    """Diagnóstico: busca el primer ítem Full activo y prueba todos los endpoints de inventario."""
     import requests as _rq
     try:
         token, user_id, heads = _ml_auth(alias)
@@ -12111,37 +12111,62 @@ def api_full_debug(alias):
         return jsonify({'ok': False, 'error': str(e)})
 
     ML = 'https://api.mercadolibre.com'
+    FULL_LOGISTICS = ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
 
-    # Tomar primer ítem del cache que tenga inv_id
-    from core.db_storage import db_load as _dl
-    cache = _dl(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
-    sample_items = [(k, v['inv_id']) for k, v in cache.get('items', {}).items() if v.get('inv_id')]
-    if not sample_items:
-        return jsonify({'ok': False, 'error': 'No hay cache con inv_id. Sincronizá primero.'})
+    # Buscar primer ítem Full activo directamente desde la API (sin cache)
+    iid, inv_id = None, None
+    try:
+        r_ids = _rq.get(f'{ML}/users/{user_id}/items/search', headers=heads,
+                        params={'status': 'active', 'limit': 50}, timeout=10)
+        if r_ids.ok:
+            ids = r_ids.json().get('results', [])
+            # Batch para identificar cuáles son Full
+            for b in range(0, len(ids), 20):
+                batch = ids[b:b+20]
+                rb = _rq.get(f'{ML}/items', headers=heads,
+                             params={'ids': ','.join(batch), 'attributes': 'id,shipping,inventory_id'},
+                             timeout=10)
+                if rb.ok:
+                    for e in rb.json():
+                        if e.get('code') != 200:
+                            continue
+                        body    = e.get('body', {})
+                        logtype = (body.get('shipping') or {}).get('logistic_type', '')
+                        if logtype in FULL_LOGISTICS:
+                            iid    = body.get('id')
+                            inv_id = body.get('inventory_id', '')
+                            break
+                if iid:
+                    break
+    except Exception as ex:
+        return jsonify({'ok': False, 'error': f'Error buscando ítems: {ex}'})
 
-    iid, inv_id = sample_items[0]
+    if not iid:
+        return jsonify({'ok': False, 'error': 'No se encontraron ítems Full activos en esta cuenta.'})
+
     result = {'item_id': iid, 'inv_id': inv_id, 'endpoints': {}}
 
-    # 1. /inventories/{inv_id}/stock/fulfillment  (lo que ya usamos)
-    r1 = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment', headers=heads, timeout=8)
-    result['endpoints']['stock_fulfillment'] = r1.json() if r1.ok else f'HTTP {r1.status_code}'
-
-    # 2. /inventories/{inv_id}/stock  (sin /fulfillment — puede tener breakdown por ubicación)
-    r2 = _rq.get(f'{ML}/inventories/{inv_id}/stock', headers=heads, timeout=8)
-    result['endpoints']['stock'] = r2.json() if r2.ok else f'HTTP {r2.status_code}'
-
-    # 3. /inventories/{inv_id}  (info general del inventory)
-    r3 = _rq.get(f'{ML}/inventories/{inv_id}', headers=heads, timeout=8)
-    result['endpoints']['inventory'] = r3.json() if r3.ok else f'HTTP {r3.status_code}'
-
-    # 4. Item completo sin filtro de atributos (todos los campos)
+    # Item individual (available_quantity + inventory_id)
     r4 = _rq.get(f'{ML}/items/{iid}', headers=heads, timeout=8)
     if r4.ok:
         body = r4.json()
-        # Solo campos relevantes para no saturar la respuesta
         result['item_fields'] = {k: body.get(k) for k in
-            ['id', 'available_quantity', 'inventory_id', 'seller_custom_field',
-             'variations', 'shipping', 'status', 'sold_quantity']}
+            ['id', 'available_quantity', 'inventory_id', 'shipping', 'status', 'sold_quantity']}
+        if not inv_id:
+            inv_id = body.get('inventory_id', '')
+            result['inv_id'] = inv_id
+
+    if inv_id:
+        r1 = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment', headers=heads, timeout=8)
+        result['endpoints']['stock_fulfillment'] = r1.json() if r1.ok else f'HTTP {r1.status_code}'
+
+        r2 = _rq.get(f'{ML}/inventories/{inv_id}/stock', headers=heads, timeout=8)
+        result['endpoints']['stock'] = r2.json() if r2.ok else f'HTTP {r2.status_code}'
+
+        r3 = _rq.get(f'{ML}/inventories/{inv_id}', headers=heads, timeout=8)
+        result['endpoints']['inventory'] = r3.json() if r3.ok else f'HTTP {r3.status_code}'
+    else:
+        result['endpoints']['nota'] = 'inventory_id vacío — ítem Full sin inventory_id asignado'
 
     return jsonify({'ok': True, **result})
 
