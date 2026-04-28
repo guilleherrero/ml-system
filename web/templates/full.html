@@ -262,15 +262,20 @@
       </div>
       <div class="modal-body">
         <div class="row g-3 mb-4">
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label fw-semibold" style="font-size:.85rem">Lead time global (días)</label>
             <input type="number" class="form-control form-control-sm" id="cfg-lead-global" value="18" min="1" max="90">
             <div class="form-text">Días desde que pedís hasta que el stock llega al centro Full.</div>
           </div>
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label fw-semibold" style="font-size:.85rem">Tránsito global desde China (días)</label>
             <input type="number" class="form-control form-control-sm" id="cfg-transit-global" value="25" min="1" max="120">
             <div class="form-text">Días de tránsito para calcular cuánto stock pedir.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold" style="font-size:.85rem">Días para "Stock muerto en Full"</label>
+            <input type="number" class="form-control form-control-sm" id="cfg-dias-muerto" value="60" min="1" max="365">
+            <div class="form-text">Días sin venta en almacén ML a partir de los cuales ML te cobra almacenamiento.</div>
           </div>
         </div>
         <div id="cfg-items-container">
@@ -780,6 +785,7 @@ function abrirConfig() {
       _repCfg  = d.rep;
       document.getElementById('cfg-lead-global').value    = d.full.global_lead_days    || 18;
       document.getElementById('cfg-transit-global').value = d.rep.transit_days_global  || 25;
+      document.getElementById('cfg-dias-muerto').value    = d.full.dias_muerto_full     || 60;
 
       // Tabla por item
       const container = document.getElementById('cfg-items-table');
@@ -816,8 +822,9 @@ function abrirConfig() {
 function guardarConfig() {
   const leadGlobal    = parseInt(document.getElementById('cfg-lead-global').value)    || 18;
   const transitGlobal = parseInt(document.getElementById('cfg-transit-global').value) || 25;
+  const diasMuerto    = parseInt(document.getElementById('cfg-dias-muerto').value)    || 60;
 
-  const newFull = { global_lead_days: leadGlobal, items: {} };
+  const newFull = { global_lead_days: leadGlobal, dias_muerto_full: diasMuerto, items: {} };
   const newRep  = { transit_days_global: transitGlobal, items: {} };
 
   document.querySelectorAll('.cfg-lead').forEach(el => {

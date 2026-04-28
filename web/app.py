@@ -12183,6 +12183,8 @@ def api_full_data(alias):
     full_cfg = db_load(os.path.join(CONFIG_DIR, 'full_config.json'))  or {'global_lead_days': 18, 'items': {}}
     rep_cfg  = db_load(os.path.join(CONFIG_DIR, 'reposicion.json'))   or {'transit_days_global': 25, 'items': {}}
     costos   = db_load(os.path.join(CONFIG_DIR, 'costos.json'))       or {}
+    # Días sin venta a partir de los cuales ML cobra almacenamiento (configurable, default 60)
+    dias_muerto_full = int(full_cfg.get('dias_muerto_full', 60))
 
     # Stock snapshot guardado (velocidad pre-calculada)
     stock_snap = db_load(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
@@ -12375,8 +12377,8 @@ def api_full_data(alias):
             alerta = 'SIN_STOCK'
         elif dias_stock is not None and dias_stock <= lead_days:
             alerta = 'REPONER_URGENTE'
-        elif sin_ventas_dias is not None and sin_ventas_dias >= 21 and stock_full_real > 0:
-            # Stock muerto REAL: unidades físicas en almacén ML sin venderse → costo de almacenamiento
+        elif sin_ventas_dias is not None and sin_ventas_dias >= dias_muerto_full and stock_full_real > 0:
+            # Stock muerto REAL: unidades físicas en almacén ML sin venderse → ML cobra almacenamiento
             alerta = 'STOCK_MUERTO'
         elif sin_ventas_dias is not None and sin_ventas_dias >= 21 and (deposito or 0) > 0:
             # Stock lento en depósito propio: no genera costo ML, pero tampoco se mueve
