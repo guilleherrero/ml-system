@@ -130,20 +130,24 @@ def safe(alias):
     return alias.replace(' ', '_').replace('/', '-')
 
 
+def _resolve_alias(alias: str) -> str:
+    """Devuelve el alias con el casing exacto guardado (case-insensitive lookup).
+    Lanza ValueError si no existe."""
+    accounts = (load_json(os.path.join(CONFIG_DIR, 'accounts.json')) or {}).get('accounts', [])
+    for a in accounts:
+        if a.get('alias', '').lower() == alias.lower():
+            return a['alias']
+    raise ValueError(f'Alias desconocido: {alias!r}')
+
+
 def _assert_valid_alias(alias: str):
-    """Lanza ValueError si el alias no existe en accounts.json.
-    Previene path traversal: nadie puede construir rutas con alias inventados."""
-    known = {
-        a.get('alias', '')
-        for a in (load_json(os.path.join(CONFIG_DIR, 'accounts.json')) or {}).get('accounts', [])
-    }
-    if alias not in known:
-        raise ValueError(f'Alias desconocido: {alias!r}')
+    """Lanza ValueError si el alias no existe en accounts.json."""
+    _resolve_alias(alias)
 
 
 def _ml_auth(alias: str):
     """Devuelve (token, user_id, heads) con token refrescado automáticamente."""
-    _assert_valid_alias(alias)
+    alias = _resolve_alias(alias)
     from core.account_manager import AccountManager as _AM
     mgr = _AM()
     client = mgr.get_client(alias)
