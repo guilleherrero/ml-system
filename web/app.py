@@ -12213,7 +12213,21 @@ def api_full_data(alias):
             break
         _time_module.sleep(0.1)
 
+    # 3a — Leer cache de inventario Full (generado por scheduler o sync manual)
+    # IMPORTANTE: la cache es la fuente de verdad para detectar ítems en Full.
+    # ML cambia logistic_type dinámicamente (ej: pasa a 'self_service_in' cuando
+    # el stock en el almacén ML llega a 0), así que no se puede confiar solo en
+    # logistic_type para saber si un ítem está inscripto en Full.
+    inv_cache = db_load(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
+    inv_items  = inv_cache.get('items', {})
+    fulfillment_map = {
+        iid: (v.get('stock_en_full', 0), v.get('deposito', 0))
+        for iid, v in inv_items.items()
+    }
+    cached_full_ids = set(fulfillment_map.keys())
+
     # 2 — Fetch detalles: separar Full vs no-Full
+    # Full = en cache de inventario (ya sincronizado) O logistic_type en FULL_LOGISTICS
     FULL_LOGISTICS = ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
     full_items  = []
     nofull_items = []
@@ -12231,8 +12245,9 @@ def api_full_data(alias):
                     body     = e.get('body', {})
                     shipping = body.get('shipping') or {}
                     logistic = shipping.get('logistic_type', '')
+                    iid      = body.get('id', '')
                     item_data = {
-                        'id':           body.get('id', ''),
+                        'id':           iid,
                         'titulo':       body.get('title', '')[:65],
                         'precio':       float(body.get('price', 0) or 0),
                         'stock':        int(body.get('available_quantity', 0) or 0),
@@ -12241,21 +12256,13 @@ def api_full_data(alias):
                         'permalink':    body.get('permalink', ''),
                         'free_shipping': bool(shipping.get('free_shipping')),
                     }
-                    if logistic in FULL_LOGISTICS:
+                    if iid in cached_full_ids or logistic in FULL_LOGISTICS:
                         full_items.append(item_data)
                     else:
                         nofull_items.append(item_data)
         except Exception:
             pass
         _time_module.sleep(0.1)
-
-    # 3a — Leer cache de inventario Full (generado por scheduler o sync manual)
-    inv_cache = db_load(os.path.join(DATA_DIR, f'full_inventory_{safe(alias)}.json')) or {}
-    inv_items  = inv_cache.get('items', {})
-    fulfillment_map = {
-        iid: (v.get('stock_en_full', 0), v.get('deposito', 0))
-        for iid, v in inv_items.items()
-    }
 
     # 3 — Analizar cada item Full
     results = []
