@@ -12299,9 +12299,13 @@ def api_full_data(alias):
             # Sin sync: si hay deposito_stock manual lo usamos; si no, es desconocido (None)
             stock_en_full = item['stock']
             deposito = int(manual_dep) if manual_dep is not None else None
-        item['stock'] = stock_en_full
-        dep_real    = deposito if deposito is not None else 0
-        stock_total = stock_en_full + dep_real + en_transito
+        # available_quantity de ML incluye depósito propio + stock en Full.
+        # stock_full_real = available_quantity - deposito_propio (lo que está físicamente en ML)
+        available_qty = item['stock']  # available_quantity del batch
+        dep_real      = deposito if deposito is not None else 0
+        stock_full_real = max(0, available_qty - dep_real)
+        item['stock'] = available_qty
+        stock_total   = available_qty + en_transito
 
         # Días de stock (incluye en tránsito a Full)
         dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None
@@ -12342,11 +12346,13 @@ def api_full_data(alias):
             alerta = 'ESCALAR'
 
         results.append({
-            'id':              iid,
-            'titulo':          item['titulo'],
-            'precio':          item['precio'],
-            'stock':           item['stock'],
-            'deposito':        deposito,
+            'id':               iid,
+            'titulo':           item['titulo'],
+            'precio':           item['precio'],
+            'stock':            item['stock'],
+            'available_quantity': available_qty,
+            'stock_full_real':  stock_full_real,
+            'deposito':         deposito,
             'en_transito':     en_transito,
             'stock_total':     stock_total,
             'vel_30':          vel_30,
@@ -12440,6 +12446,30 @@ def api_full_data(alias):
                     'sugeridos': sugeridos[:20],   # top 20
                     'global_lead_days': full_cfg.get('global_lead_days', 18),
                     'transit_days_global': rep_cfg.get('transit_days_global', 25)})
+
+
+@app.route('/api/full-deposito-update', methods=['POST'])
+def api_full_deposito_update():
+    """Guarda el stock de depósito propio de un ítem Full directamente desde la tabla."""
+    from core.db_storage import db_load, db_save as db_save_fn
+    body    = request.get_json() or {}
+    alias   = body.get('alias', '').strip()
+    item_id = body.get('item_id', '').strip().upper()
+    val     = int(body.get('deposito_stock', 0) or 0)
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan campos'}), 400
+    try:
+        _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    rep_path = os.path.join(CONFIG_DIR, 'reposicion.json')
+    rep_cfg  = db_load(rep_path) or {}
+    rep_cfg.setdefault('items', {})[item_id] = {
+        **(rep_cfg.get('items', {}).get(item_id) or {}),
+        'deposito_stock': val,
+    }
+    db_save_fn(rep_path, rep_cfg)
+    return jsonify({'ok': True, 'item_id': item_id, 'deposito_stock': val})
 
 
 @app.route('/api/full-config/<alias>', methods=['GET', 'POST'])

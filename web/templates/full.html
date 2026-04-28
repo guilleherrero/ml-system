@@ -432,8 +432,10 @@ function renderTabla(items) {
         <span style="font-weight:600">${fmtPeso(it.precio)}</span>
         ${it.valor_venta ? `<div style="font-size:.65rem;color:#94a3b8">stock: ${fmtPeso(it.valor_venta)}</div>` : ''}
       </td>
-      <td class="text-end" style="padding:.7rem .7rem;font-weight:700;color:#6366f1">${it.stock}</td>
-      <td class="text-end" style="padding:.7rem .7rem;color:#64748b">${it.deposito === null || it.deposito === undefined ? '<span class="text-muted" title="Sincronizá o ingresá el stock en la configuración">—</span>' : it.deposito > 0 ? `<span style="font-weight:600">${it.deposito}</span>` : '0'}</td>
+      <td class="text-end" style="padding:.7rem .7rem;font-weight:700;color:#6366f1">${it.stock_full_real}</td>
+      <td class="text-end" style="padding:.7rem .7rem">
+        <span class="dep-display" data-id="${it.id}" title="Click para editar" style="cursor:pointer;border-bottom:1px dashed #94a3b8;color:#64748b;font-weight:${it.deposito > 0 ? '600' : '400'}">${it.deposito !== null && it.deposito !== undefined ? it.deposito : '—'}</span>
+      </td>
       <td class="text-end" style="padding:.7rem .7rem">${it.en_transito > 0 ? `<span style="color:#f59e0b;font-weight:600">${it.en_transito}</span><div style="font-size:.65rem;color:#94a3b8">en camino</div>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.vel_30 > 0 ? it.vel_30.toFixed(1) : '<span class="text-muted">0</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">${it.revenue_30d > 0 ? `<span style="font-weight:600;color:#059669">${fmtPeso(it.revenue_30d)}</span>` : '<span class="text-muted">—</span>'}</td>
@@ -449,6 +451,38 @@ function renderTabla(items) {
         </div>
       </td>
     </tr>`).join('');
+
+  // Edición inline de depósito propio
+  document.querySelectorAll('.dep-display').forEach(el => {
+    el.addEventListener('click', function() {
+      const id  = this.dataset.id;
+      const cur = this.textContent.trim() === '—' ? '' : this.textContent.trim();
+      const td  = this.parentElement;
+      td.innerHTML = `<input type="number" min="0" class="dep-input form-control form-control-sm text-end" data-id="${id}" value="${cur}" style="width:70px;display:inline-block;padding:2px 6px;font-size:.82rem" autofocus>`;
+      const inp = td.querySelector('.dep-input');
+      inp.focus();
+      inp.select();
+      const save = async () => {
+        const val = parseInt(inp.value) || 0;
+        try {
+          await fetch('/api/full-deposito-update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({alias: ALIAS, item_id: id, deposito_stock: val})
+          });
+          // Actualizar item en memoria y re-renderizar
+          const it = _fullItems.find(x => x.id === id);
+          if (it) {
+            it.deposito = val;
+            it.stock_full_real = it.available_quantity - val;
+          }
+        } catch(e) {}
+        renderTabla(_fullItems);
+      };
+      inp.addEventListener('blur', save);
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') renderTabla(_fullItems); });
+    });
+  });
 }
 
 // ── Retirar de Full ───────────────────────────────────────────────────────────
