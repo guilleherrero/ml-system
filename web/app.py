@@ -11917,8 +11917,23 @@ def api_full_stock_check(alias, item_id):
 
         body          = r.json()
         inv_id        = body.get('inventory_id', '')
-        stock_en_full = int(body.get('available_quantity', 0) or 0)
+        total_ml      = int(body.get('available_quantity', 0) or 0)
+        stock_en_full = total_ml
         deposito      = 0
+
+        if inv_id:
+            try:
+                rf = req_lib.get(
+                    f'https://api.mercadolibre.com/inventories/{inv_id}/stock/fulfillment',
+                    headers=heads, timeout=6)
+                if rf.ok:
+                    fdata   = rf.json()
+                    f_total = fdata.get('total')
+                    if f_total is not None:
+                        stock_en_full = int(f_total)
+                        deposito      = max(0, total_ml - stock_en_full)
+            except Exception:
+                pass
 
         return jsonify({
             'ok':             True,
@@ -12015,13 +12030,26 @@ def _sync_full_inventory(alias):
             if not r.ok:
                 _time_module.sleep(0.2)
                 continue
-            body     = r.json()
-            inv_id   = body.get('inventory_id', '')
-            # available_quantity del item es el stock real que ML puede vender.
-            # /inventories/.../stock devuelve 403 y /stock/fulfillment devuelve 0
-            # en cuentas self_service, así que available_quantity es la fuente confiable.
-            stock_en_full = int(body.get('available_quantity', 0) or 0)
-            deposito      = 0  # ML no expone depósito propio vía API; se usa ingreso manual
+            body      = r.json()
+            inv_id    = body.get('inventory_id', '')
+            total_ml  = int(body.get('available_quantity', 0) or 0)
+            stock_en_full = total_ml
+            deposito      = 0
+
+            if inv_id:
+                try:
+                    rf = _rq.get(f'{ML}/inventories/{inv_id}/stock/fulfillment',
+                                 headers=heads, timeout=(3, 6))
+                    if rf.ok:
+                        fdata = rf.json()
+                        # IMPORTANTE: usar comparación con None, no 'or'
+                        # porque total=0 es válido (stock en ML = 0, todo en depósito)
+                        f_total = fdata.get('total')
+                        if f_total is not None:
+                            stock_en_full = int(f_total)
+                            deposito      = max(0, total_ml - stock_en_full)
+                except Exception:
+                    pass
 
             result[iid] = {'stock_en_full': stock_en_full, 'deposito': deposito,
                            'inv_id': inv_id}
@@ -12299,13 +12327,11 @@ def api_full_data(alias):
             # Sin sync: si hay deposito_stock manual lo usamos; si no, es desconocido (None)
             stock_en_full = item['stock']
             deposito = int(manual_dep) if manual_dep is not None else None
-        # available_quantity de ML incluye depósito propio + stock en Full.
-        # stock_full_real = available_quantity - deposito_propio (lo que está físicamente en ML)
-        available_qty = item['stock']  # available_quantity del batch
-        dep_real      = deposito if deposito is not None else 0
-        stock_full_real = max(0, available_qty - dep_real)
-        item['stock'] = available_qty
-        stock_total   = available_qty + en_transito
+        available_qty   = item['stock']   # available_quantity total desde ML
+        dep_real        = deposito if deposito is not None else 0
+        stock_full_real = stock_en_full   # lo que está físicamente en el almacén de ML
+        item['stock']   = available_qty
+        stock_total     = available_qty + en_transito
 
         # Días de stock (incluye en tránsito a Full)
         dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None
