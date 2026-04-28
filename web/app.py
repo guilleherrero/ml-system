@@ -12089,6 +12089,13 @@ def api_full_inventory_cache(alias):
                     'sample': sample})
 
 
+@app.route('/api/list-aliases')
+def api_list_aliases():
+    """Temporal: lista los aliases disponibles en el servidor."""
+    accs = (load_json(os.path.join(CONFIG_DIR, 'accounts.json')) or {}).get('accounts', [])
+    return jsonify({'aliases': [a.get('alias') for a in accs if a.get('active')]})
+
+
 @app.route('/api/full-debug/<alias>')
 def api_full_debug(alias):
     """Diagnóstico: prueba todos los endpoints de inventario para encontrar el deposito."""
