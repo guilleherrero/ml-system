@@ -12335,6 +12335,8 @@ def api_full_data(alias):
 
         # Días de stock (incluye en tránsito a Full)
         dias_stock = round(stock_total / vel_30, 1) if vel_30 > 0 else None
+        # Días solo del stock físico en almacén Full (sin depósito ni en tránsito)
+        dias_full  = round(stock_full_real / vel_30, 1) if vel_30 > 0 and stock_full_real > 0 else None
 
         # Margen (Full siempre free shipping, commission 16.5% gold_pro / 13% gold_special)
         comision = 0.13 if item['listing_type'] in ('gold_special', 'silver') else 0.165
@@ -12355,10 +12357,10 @@ def api_full_data(alias):
         valor_venta = round(item['precio'] * item['stock'])
         valor_costo = round(costo * item['stock']) if costo else None
 
-        # Costo almacenamiento acumulado (~$12/u/día)
+        # Costo almacenamiento acumulado: solo sobre stock en Full (~$12/u/día)
         costo_almac = None
-        if sin_ventas_dias and item['stock'] > 0:
-            costo_almac = round(item['stock'] * sin_ventas_dias * 12.0)
+        if sin_ventas_dias and stock_full_real > 0:
+            costo_almac = round(stock_full_real * sin_ventas_dias * 12.0)
 
         # Clasificación (en tránsito cuenta para evitar falsas alertas)
         alerta = 'OK'
@@ -12383,6 +12385,7 @@ def api_full_data(alias):
             'stock_total':     stock_total,
             'vel_30':          vel_30,
             'dias_stock':      dias_stock,
+            'dias_full':       dias_full,
             'lead_days':       lead_days,
             'transit':         transit,
             'margen_pct':      margen_pct,
@@ -12397,7 +12400,17 @@ def api_full_data(alias):
         })
 
     alerta_order = {'SIN_STOCK': 0, 'REPONER_URGENTE': 1, 'STOCK_MUERTO': 2, 'ESCALAR': 3, 'OK': 4}
-    results.sort(key=lambda x: (alerta_order.get(x['alerta'], 9), -(x['vel_30'] or 0)))
+    def _full_sort_key(x):
+        sfr = x.get('stock_full_real') or 0
+        df  = x.get('dias_full')
+        ao  = alerta_order.get(x['alerta'], 9)
+        vel = -(x['vel_30'] or 0)
+        if sfr > 0:
+            # Tiene stock en Full: primero y ordenados por días restantes en Full (más urgente primero)
+            return (0, df if df is not None else 9999, ao, vel)
+        else:
+            return (1, 9999, ao, vel)
+    results.sort(key=_full_sort_key)
 
     costo_muerto = sum(r.get('costo_almac') or 0 for r in results if r['alerta'] == 'STOCK_MUERTO')
     resumen = {

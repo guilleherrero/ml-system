@@ -324,7 +324,7 @@ fetch(`/api/full-data/${encodeURIComponent(ALIAS)}`)
     renderCards(d.resumen);
     renderFiltros(d.resumen);
     renderTabla(_fullItems);
-    renderRetirar(_fullItems.filter(i => i.alerta === 'STOCK_MUERTO'));
+    renderRetirar(_fullItems.filter(i => i.alerta === 'STOCK_MUERTO' && (i.stock_full_real || 0) > 0));
     renderEscalar(_fullItems.filter(i => i.alerta === 'ESCALAR'));
     renderSugeridos(d.sugeridos || []);
     cargarPedidos();
@@ -432,7 +432,15 @@ function renderTabla(items) {
         <span style="font-weight:600">${fmtPeso(it.precio)}</span>
         ${it.valor_venta ? `<div style="font-size:.65rem;color:#94a3b8">stock: ${fmtPeso(it.valor_venta)}</div>` : ''}
       </td>
-      <td class="text-end" style="padding:.7rem .7rem;font-weight:700;color:#6366f1">${it.stock_full_real}</td>
+      <td class="text-end" style="padding:.7rem .7rem">
+        <span style="font-weight:700;color:#6366f1">${it.stock_full_real}</span>
+        ${(function(){
+          if (!it.dias_full) return '';
+          const d = Math.round(it.dias_full);
+          const cls = d <= it.lead_days ? 'color:#dc2626' : (d <= it.lead_days*1.5 ? 'color:#d97706' : 'color:#94a3b8');
+          return `<div style="font-size:.63rem;${cls}">${d}d en Full</div>`;
+        })()}
+      </td>
       <td class="text-end" style="padding:.7rem .7rem">
         <span class="dep-display" data-id="${it.id}" title="Click para editar" style="cursor:pointer;border-bottom:1px dashed #94a3b8;color:#64748b;font-weight:${it.deposito > 0 ? '600' : '400'}">${it.deposito !== null && it.deposito !== undefined ? it.deposito : '—'}</span>
       </td>
@@ -492,8 +500,11 @@ function renderRetirar(items) {
   sec.style.display = '';
   document.getElementById('retirar-tbody').innerHTML = items.map(it => `
     <tr>
-      <td style="padding:.65rem 1rem;font-weight:600">${it.titulo}</td>
-      <td class="text-end" style="padding:.65rem .7rem">${it.stock}</td>
+      <td style="padding:.65rem 1rem;font-weight:600;max-width:260px">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
+        <div style="font-size:.68rem;color:#94a3b8">${it.id}</div>
+      </td>
+      <td class="text-end" style="padding:.65rem .7rem;font-weight:700;color:#6366f1">${it.stock_full_real}</td>
       <td class="text-end" style="padding:.65rem .7rem;color:#d97706;font-weight:600">${it.sin_ventas_dias !== null ? it.sin_ventas_dias + ' días' : '—'}</td>
       <td class="text-end" style="padding:.65rem .7rem;color:#dc2626;font-weight:600">${it.costo_almac ? '$' + Math.round(it.costo_almac).toLocaleString('es-AR') : '—'}</td>
       <td style="padding:.65rem .7rem">
