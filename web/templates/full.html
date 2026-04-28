@@ -6,6 +6,7 @@
 .badge-sin    { background:#fef2f2; color:#dc2626; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-urg    { background:#fee2e2; color:#dc2626; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-muerto { background:#fef3c7; color:#d97706; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-sinmov { background:#f1f5f9; color:#475569; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-escalar{ background:#dcfce7; color:#16a34a; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-ok     { background:#f1f5f9; color:#64748b; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .filter-pill  { border:1px solid #e5e7eb; border-radius:20px; padding:.3rem .85rem; font-size:.78rem; cursor:pointer; color:#374151; background:#fff; transition:all .15s; white-space:nowrap; }
@@ -360,7 +361,7 @@ function renderCards(r) {
     <div class="col-6 col-md-2">
       <div class="card text-center p-3" style="border-top:3px solid #f59e0b">
         <div style="font-size:2rem;font-weight:800;color:#d97706">${r.muerto}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600">STOCK MUERTO</div>
+        <div style="font-size:.72rem;color:#64748b;font-weight:600">MUERTO EN FULL</div>
         ${costoStr}
       </div>
     </div>
@@ -386,7 +387,8 @@ function renderFiltros(r) {
     <button class="filter-pill active" onclick="filtrar('todos',this)">Todos <span class="badge bg-secondary ms-1">${r.total}</span></button>
     <button class="filter-pill" onclick="filtrar('SIN_STOCK',this)" style="border-color:#fecaca"><i class="bi bi-x-octagon me-1 text-danger"></i>Sin stock <span class="badge bg-danger ms-1">${r.sin_stock}</span></button>
     <button class="filter-pill" onclick="filtrar('REPONER_URGENTE',this)" style="border-color:#fecaca"><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Reponer ya <span class="badge bg-danger ms-1">${r.urgente}</span></button>
-    <button class="filter-pill" onclick="filtrar('STOCK_MUERTO',this)" style="border-color:#fde68a"><i class="bi bi-archive me-1 text-warning"></i>Stock muerto <span class="badge bg-warning text-dark ms-1">${r.muerto}</span></button>
+    <button class="filter-pill" onclick="filtrar('STOCK_MUERTO',this)" style="border-color:#fde68a"><i class="bi bi-archive me-1 text-warning"></i>Stock muerto Full <span class="badge bg-warning text-dark ms-1">${r.muerto}</span></button>
+    <button class="filter-pill" onclick="filtrar('SIN_MOVIMIENTO',this)" style="border-color:#e2e8f0"><i class="bi bi-pause-circle me-1 text-secondary"></i>Sin movimiento <span class="badge bg-secondary ms-1">${r.sin_movimiento || 0}</span></button>
     <button class="filter-pill" onclick="filtrar('ESCALAR',this)" style="border-color:#bbf7d0"><i class="bi bi-rocket-takeoff me-1 text-success"></i>Escalar <span class="badge bg-success ms-1">${r.escalar}</span></button>
     <button class="filter-pill" onclick="filtrar('OK',this)" style="border-color:#e2e8f0"><i class="bi bi-check-circle me-1 text-secondary"></i>OK <span class="badge bg-secondary ms-1">${r.ok}</span></button>`;
 }
@@ -403,7 +405,8 @@ function filtrar(tipo, btn) {
 const BADGE = {
   SIN_STOCK:       '<span class="badge-sin"><i class="bi bi-x-octagon me-1"></i>Sin stock</span>',
   REPONER_URGENTE: '<span class="badge-urg"><i class="bi bi-exclamation-triangle me-1"></i>Reponer ya</span>',
-  STOCK_MUERTO:    '<span class="badge-muerto"><i class="bi bi-archive me-1"></i>Stock muerto</span>',
+  STOCK_MUERTO:    '<span class="badge-muerto"><i class="bi bi-archive me-1"></i>Stock muerto Full</span>',
+  SIN_MOVIMIENTO:  '<span class="badge-sinmov"><i class="bi bi-pause-circle me-1"></i>Sin movimiento</span>',
   ESCALAR:         '<span class="badge-escalar"><i class="bi bi-rocket-takeoff me-1"></i>Escalar</span>',
   OK:              '<span class="badge-ok"><i class="bi bi-check-circle me-1"></i>OK</span>',
 };

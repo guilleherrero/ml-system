@@ -12375,8 +12375,12 @@ def api_full_data(alias):
             alerta = 'SIN_STOCK'
         elif dias_stock is not None and dias_stock <= lead_days:
             alerta = 'REPONER_URGENTE'
-        elif sin_ventas_dias is not None and sin_ventas_dias >= 21 and item['stock'] > 0:
+        elif sin_ventas_dias is not None and sin_ventas_dias >= 21 and stock_full_real > 0:
+            # Stock muerto REAL: unidades físicas en almacén ML sin venderse → costo de almacenamiento
             alerta = 'STOCK_MUERTO'
+        elif sin_ventas_dias is not None and sin_ventas_dias >= 21 and (deposito or 0) > 0:
+            # Stock lento en depósito propio: no genera costo ML, pero tampoco se mueve
+            alerta = 'SIN_MOVIMIENTO'
         elif vel_30 > 0 and margen_pct is not None and margen_pct >= 15 and (dias_stock is None or dias_stock >= 30):
             alerta = 'ESCALAR'
 
@@ -12406,7 +12410,7 @@ def api_full_data(alias):
             'permalink':       item['permalink'],
         })
 
-    alerta_order = {'SIN_STOCK': 0, 'REPONER_URGENTE': 1, 'STOCK_MUERTO': 2, 'ESCALAR': 3, 'OK': 4}
+    alerta_order = {'SIN_STOCK': 0, 'REPONER_URGENTE': 1, 'STOCK_MUERTO': 2, 'SIN_MOVIMIENTO': 3, 'ESCALAR': 4, 'OK': 5}
     def _full_sort_key(x):
         sfr = x.get('stock_full_real') or 0
         df  = x.get('dias_full')
@@ -12425,8 +12429,9 @@ def api_full_data(alias):
         'sin_stock':        sum(1 for r in results if r['alerta'] == 'SIN_STOCK'),
         'urgente':          sum(1 for r in results if r['alerta'] == 'REPONER_URGENTE'),
         'muerto':           sum(1 for r in results if r['alerta'] == 'STOCK_MUERTO'),
+        'sin_movimiento':   sum(1 for r in results if r['alerta'] == 'SIN_MOVIMIENTO'),
         'escalar':          sum(1 for r in results if r['alerta'] == 'ESCALAR'),
-        'ok':               sum(1 for r in results if r['alerta'] == 'OK'),
+        'ok':               sum(1 for r in results if r['alerta'] in ('OK',)),
         'costo_muerto':     costo_muerto,
         'valor_venta_total': sum(r.get('valor_venta') or 0 for r in results),
         'valor_costo_total': sum(r.get('valor_costo') or 0 for r in results if r.get('valor_costo') is not None),
