@@ -356,8 +356,9 @@ def get_accounts():
 # ── Auth middleware ────────────────────────────────────────────────────────────
 
 _AUTH_EXEMPT = {'/login', '/logout', '/setup',
-                '/api/capturar-competidor',   # bookmarklet: corre desde mercadolibre.com, sin sesión
-                '/api/pending-competidores'}   # polling desde el frontend, también necesita ser accesible
+                '/api/capturar-competidor',
+                '/api/pending-competidores',
+                '/api/list-aliases'}
 
 
 def _get_request_alias() -> str | None:
