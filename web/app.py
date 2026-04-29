@@ -362,7 +362,8 @@ def get_accounts():
 _AUTH_EXEMPT = {'/login', '/logout', '/setup',
                 '/api/capturar-competidor',
                 '/api/pending-competidores',
-                '/api/list-aliases'}
+                '/api/list-aliases',
+                '/api/ping'}
 
 
 def _get_request_alias() -> str | None:
@@ -385,6 +386,12 @@ def _get_request_alias() -> str | None:
 def require_login():
     if request.path.startswith('/static'):
         return
+    # Auto-actualizar datos si no corrió hoy (resuelve el problema de Render durmiendo)
+    if request.path not in _AUTH_EXEMPT and not request.path.startswith('/static'):
+        try:
+            _auto_update_if_needed()
+        except Exception:
+            pass
     if request.path in _AUTH_EXEMPT:
         return
     # Si no existe ningún admin todavía, el sistema funciona sin login
@@ -11539,6 +11546,18 @@ def _collect_ads_summary(alias: str, token: str):
 
 def _scheduler_run_all():
     """Actualiza datos de todas las cuentas una vez por día: reputación, stock y posiciones."""
+    global _scheduler_running
+    if _scheduler_running:
+        print('[scheduler] Ya hay una actualización en curso, saltando.')
+        return
+    _scheduler_running = True
+    try:
+        _scheduler_run_all_inner()
+    finally:
+        _scheduler_running = False
+
+
+def _scheduler_run_all_inner():
     from core.account_manager import AccountManager
     from modules.preguntas_reputacion import run_reputacion
     from modules.stock_rentabilidad import run as run_stock
@@ -11608,6 +11627,13 @@ def _scheduler_run_all():
 
     global _scheduler_last_run
     _scheduler_last_run = datetime.now()
+    # Persistir en disco para sobrevivir reinicios del servidor
+    try:
+        from core.db_storage import db_save as _dbs
+        _dbs(os.path.join(DATA_DIR, '_scheduler_last_run.json'),
+             {'last_run': _scheduler_last_run.strftime('%Y-%m-%d %H:%M')})
+    except Exception:
+        pass
     print(f'[scheduler] Actualización diaria completada — {_scheduler_last_run.strftime("%Y-%m-%d %H:%M")}')
 
     # ── Chequear preguntas antiguas sin responder ─────────────────────────────
@@ -11875,6 +11901,14 @@ def api_debug_data(alias):
         'pos_found':   pos is not None,
         'pos_items':   len(pos) if isinstance(pos, dict) else 0,
     })
+
+
+@app.route('/api/ping')
+def api_ping():
+    """Health check público — usado por servicios externos para mantener el servidor despierto."""
+    updated_today = bool(_scheduler_last_run and _scheduler_last_run.date() >= date.today())
+    return jsonify({'ok': True, 'updated_today': updated_today,
+                    'last_run': _scheduler_last_run.strftime('%Y-%m-%d %H:%M') if _scheduler_last_run else None})
 
 
 @app.route('/api/scheduler-status')
@@ -13113,9 +13147,39 @@ Sé directo — si algo hay que cortar, decilo.]"""
 
 _app_scheduler = None
 _scheduler_last_run = None  # datetime del último run completado
+_scheduler_running  = False  # flag para evitar ejecuciones simultáneas
+
+# Restaurar last_run desde disco (sobrevive reinicios)
+try:
+    _saved_run = db_load(os.path.join(DATA_DIR, '_scheduler_last_run.json')) or {}
+    if _saved_run.get('last_run'):
+        _scheduler_last_run = datetime.strptime(_saved_run['last_run'], '%Y-%m-%d %H:%M')
+        print(f'[scheduler] Último run restaurado desde disco: {_scheduler_last_run}')
+except Exception:
+    pass
 
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
+
+
+def _auto_update_if_needed():
+    """Corre el scheduler en background si no corrió hoy. Llamado en before_request."""
+    global _scheduler_running
+    if _scheduler_running:
+        return
+    today = date.today()
+    if _scheduler_last_run and _scheduler_last_run.date() >= today:
+        return
+    import threading
+    _scheduler_running = True
+    def _run():
+        try:
+            _scheduler_run_all_inner()
+        finally:
+            global _scheduler_running
+            _scheduler_running = False
+    threading.Thread(target=_run, daemon=True).start()
+    print('[scheduler] Auto-run disparado: datos no actualizados hoy')
 
 @app.route('/admin/restart', methods=['POST'])
 def admin_restart():
