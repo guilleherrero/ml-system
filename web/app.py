@@ -258,6 +258,19 @@ def _norm_kw(text: str) -> str:
     return unicodedata.normalize('NFKD', text.lower()).encode('ascii', 'ignore').decode()
 
 
+_COMPLEX_CATS = {
+    "electronica", "tecnologia", "celular", "notebook", "computadora",
+    "tablet", "tv", "monitor", "audio", "gaming", "mueble", "colchon",
+    "sofa", "auto", "moto", "repuesto", "autoparte", "herramienta",
+    "construccion", "salud", "medico", "ortopedico", "electrodomestico",
+}
+
+_SIMPLE_CATS = {
+    "accesorio", "bijouterie", "papeleria", "bazar", "libreria",
+    "decoracion",
+}
+
+
 def _extract_competitor_phrases(competitor_titles: list, seed_title: str) -> list:
     """
     Extrae bigramas y trigramas de títulos de competidores.
@@ -5008,15 +5021,34 @@ def api_monitor_iniciar():
     _now = datetime.now().strftime('%Y-%m-%d %H:%M')
     baseline = {'fecha': _now}
 
+    # Visitas 7d (igual que el resto del monitor)
     try:
         r_vis = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
-            headers=heads, params={'last': 30, 'unit': 'day'}, timeout=6)
+            headers=heads, params={'last': 7, 'unit': 'day'}, timeout=6)
         if r_vis.ok:
-            baseline['visitas_30d'] = r_vis.json().get('total_visits', 0)
+            baseline['visitas_7d'] = r_vis.json().get('total_visits', 0)
     except Exception:
         pass
 
+    # Ventas acumuladas
+    try:
+        r_item = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}',
+                             headers=heads, timeout=6)
+        if r_item.ok:
+            baseline['ventas_total'] = r_item.json().get('sold_quantity', 0)
+    except Exception:
+        pass
+
+    # Ventas 30d y conversión desde stock local
+    _stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    for _si in (_stock_data.get('items') or []):
+        if _si.get('id') == item_id:
+            baseline['ventas_30d'] = _si.get('ventas_30d') or 0
+            baseline['conv_pct']   = _si.get('conversion_pct') or 0.0
+            break
+
+    # Posición
     pos_data = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
     if item_id in pos_data:
         hist = pos_data[item_id].get('history', {})
@@ -5035,24 +5067,33 @@ def api_monitor_iniciar():
     _mon['items'] = [it for it in _mon.get('items', []) if (it.get('fecha_opt') or '')[:10] >= _cutoff]
 
     existing = next((x for x in _mon['items'] if x.get('item_id') == item_id and x.get('alias') == alias), None)
-    entry_data = {
-        'item_id':         item_id,
-        'alias':           alias,
-        'titulo_producto': titulo or item_id,
-        'fecha_opt':       _now,
-        'titulo_antes':    titulo,
-        'titulo_despues':  titulo,
-        'baseline':        baseline,
-        'snapshots':       [],
-        'ultimo_snapshot': None,
-        'applied':         [],
-        'competidores':    comps,
-    }
 
     if existing:
-        existing.update(entry_data)
+        # Re-registro: actualizar baseline y datos pero preservar historial de snapshots
+        existing.update({
+            'titulo_producto': titulo or item_id,
+            'fecha_opt':       _now,
+            'titulo_antes':    titulo,
+            'titulo_despues':  titulo,
+            'origen':          'directo',
+            'baseline':        baseline,
+            'competidores':    comps,
+        })
     else:
-        _mon['items'].append(entry_data)
+        _mon['items'].append({
+            'item_id':         item_id,
+            'alias':           alias,
+            'titulo_producto': titulo or item_id,
+            'fecha_opt':       _now,
+            'titulo_antes':    titulo,
+            'titulo_despues':  titulo,
+            'origen':          'directo',
+            'baseline':        baseline,
+            'snapshots':       [],
+            'ultimo_snapshot': None,
+            'applied':         [],
+            'competidores':    comps,
+        })
 
     save_json(_mon_path, _mon)
     return jsonify({'ok': True, 'baseline': baseline})
@@ -9462,7 +9503,7 @@ DESCRIPCIÓN ACTUAL ({len(my_description)} caracteres{' — mostrando primeros 1
             algo_block = """REGLAS DEL ALGORITMO ML:
 TÍTULO: keyword principal al inicio · formato Producto+Marca+Atributo · ≤60 chars · sin artículos · sin símbolos · sin repetición
 FICHA: cada campo vacío penaliza visibilidad · campos filtro (marca/modelo/talle/material) peso doble · campos requeridos vacíos = penalización directa
-DESCRIPCIÓN: 600-800 palabras · densidad keyword 2-3% · variantes semánticas · estructura: beneficio→spec→diferencial→uso→CTA
+DESCRIPCIÓN: 600-800 palabras · keyword_principal: 2–3 apariciones en total — densidad objetivo ~1.5% · variantes semánticas · estructura: beneficio→spec→diferencial→uso→CTA
 OTROS: Premium +40% exposición · envío gratis mejora ranking · mínimo 6 fotos · foto principal fondo blanco"""
 
             # ── Bloque de datos ML ────────────────────────────────────────────
@@ -9556,16 +9597,51 @@ REGLA: las keywords están clasificadas por volumen real. TIER 1 = máximo volum
 
             sold_note = f'IMPORTANTE: Esta publicación tuvo {my_sold} ventas — el título NO se puede cambiar en ML. Generá los títulos alternativos de todas formas para cuando se cree una nueva publicación.' if my_sold > 0 else 'La publicación NO tuvo ventas aún — el título SÍ se puede cambiar.'
 
-            # ── Detectar complejidad del producto para adaptar cantidad de bloques ──
-            _complex_keywords = ['electr', 'herramienta', 'salud', 'medic', 'ortop', 'comput',
-                                  'celular', 'tablet', 'audio', 'cámara', 'impres', 'motor',
-                                  'industr', 'profesional', 'técnic', 'solar', 'batería']
-            _cat_lower = cat_name.lower()
-            _title_lower = title.lower()
-            _is_complex = (
-                any(k in _cat_lower or k in _title_lower for k in _complex_keywords)
-                or len(kw_info) >= 3          # muchas queries informacionales = producto técnico
-                or len(my_attrs) >= 10        # ficha técnica extensa = producto complejo
+            # ── Clasificación ternaria de complejidad del producto ──
+            _cat_norm = _norm_kw(cat_name)
+            _cx, _sx  = 0, 0
+            _cx_r, _sx_r = [], []
+            if any(kw in _cat_norm for kw in _COMPLEX_CATS):
+                _cx += 2; _cx_r.append("cat_compleja")
+            if any(kw in _cat_norm for kw in _SIMPLE_CATS):
+                _sx += 2; _sx_r.append("cat_simple")
+            if len(my_attrs) >= 10:
+                _cx += 1; _cx_r.append("muchos_attrs")
+            elif 0 < len(my_attrs) <= 3:
+                _sx += 1; _sx_r.append("pocos_attrs")
+            if len(kw_info) >= 3:
+                _cx += 1; _cx_r.append("kw_informacionales")
+            if price > 0 and _comp_prices:
+                _pct_v = sum(1 for p in _comp_prices if p < price) / len(_comp_prices)
+                if _pct_v >= 0.75:
+                    _cx += 1; _cx_r.append(f"precio_pct{round(_pct_v*100)}")
+                elif _pct_v <= 0.25:
+                    _sx += 1; _sx_r.append(f"precio_pct{round(_pct_v*100)}")
+            _justif_cls      = ",".join(_cx_r + _sx_r) or "sin_señales"
+            _is_fallback_cls = max(_cx, _sx) < 2
+            if _cx >= 2 and _cx > _sx:
+                _product_type = "COMPLEJO"
+            elif _sx >= 2 and _sx > _cx:
+                _product_type = "SIMPLE"
+            else:
+                _product_type = "INTERMEDIO"
+            _log_cls = (
+                f"[clasificacion] {_product_type} | fallback={_is_fallback_cls} | "
+                f"titulo='{title[:40]}' | señales={_cx}c/{_sx}s | razones={_justif_cls}"
+            )
+            if _is_fallback_cls:
+                app.logger.warning(_log_cls)
+            else:
+                app.logger.info(_log_cls)
+            _type_lengths_a = {"SIMPLE": "600–1200", "INTERMEDIO": "1000–1800", "COMPLEJO": "1200–2500"}
+            _type_structs_a = {"SIMPLE": "5 bloques", "INTERMEDIO": "9 bloques", "COMPLEJO": "9 bloques"}
+            _type_block     = (
+                f"═══ TIPO DE PRODUCTO (clasificado por Python — no reclasificar) ═══\n"
+                f"Clasificación: {_product_type}\n"
+                f"Justificación: {_justif_cls}\n"
+                f"Estructura a usar: {_type_structs_a[_product_type]}\n"
+                f"Longitud objetivo: {_type_lengths_a[_product_type]} chars\n"
+                f"════════════════════════════════════════════════════"
             )
 
             # ── Instrucción de uso de reseñas (mejora: decirle a Claude CÓMO usarlas) ──
@@ -9587,12 +9663,14 @@ REGLA: las keywords están clasificadas por volumen real. TIER 1 = máximo volum
                                 f'indican objeciones activas — priorizarlas') if my_questions_unanswered else ''
             _sold_cred      = (f'{my_sold} ventas reales — usar como dato de credibilidad. '
                                if my_sold > 0 else 'garantía propia, respaldo, experiencia de uso — solo datos reales. ')
-            _longitud_line  = ('- Producto complejo detectado → apuntá a 1200–2500 caracteres'
-                               if _is_complex else
-                               '- Producto simple detectado → apuntá a 600–1200 caracteres '
-                               '(no rellenar con genéricos para alcanzar un largo mayor)')
+            _longitud_line  = (
+                f"- Producto {_product_type.lower()} detectado → apuntá a "
+                f"{_type_lengths_a[_product_type]} caracteres"
+                + (" (no rellenar con genéricos para alcanzar un largo mayor)"
+                   if _product_type == "SIMPLE" else "")
+            )
 
-            if _is_complex:
+            if _product_type != "SIMPLE":  # COMPLEJO o INTERMEDIO → 9 bloques
                 _bloques_estructura = f"""ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos ni bullets):
 1. APERTURA SEO [CRÍTICO — dentro de los primeros 300 chars]: TIER 1 keyword #1 + problema real que resuelve + beneficio concreto
 2. QUÉ ES + PARA QUIÉN: descripción del producto + perfil del comprador ideal
@@ -9618,6 +9696,8 @@ REGLA: las keywords están clasificadas por volumen real. TIER 1 = máximo volum
             prompt_sintesis = f"""Sos el mejor especialista en MercadoLibre Argentina. Tenés métricas reales, análisis de mercado y datos de la API de ML. Construí el output final perfecto.
 
 {sold_note}{historial_section}
+
+{_type_block}
 
 {algo_block}
 
@@ -9683,7 +9763,7 @@ LONGITUD:
 - Por encima de 3000: retornos decrecientes — evitar
 
 DISTRIBUCIÓN DE KEYWORDS:
-- TIER 1: 3–5 apariciones distribuidas (densidad 1–2% del texto — contar)
+- TIER 1: 2–3 apariciones distribuidas (densidad ~1.5% del texto — contar)
 - TIER 2: 2–3 apariciones cada una
 - TIER 3: 1–2 apariciones (perfiles alternativos)
 - INFORMACIONALES: usarlas como preguntas retóricas integradas en prosa — nunca en título
@@ -9698,7 +9778,7 @@ TONO según categoría (detectar y aplicar):
 - Hogar/muebles/herramientas → practicidad, medidas reales, integración
 
 CHECKLIST DE VALIDACIÓN INTERNA (verificar antes de entregar):
-□ TIER 1 keyword aparece 3–5 veces — contadas
+□ TIER 1 keyword aparece 2–3 veces — contadas
 □ 5+ keywords de TIER 2/3 distribuidas naturalmente
 □ Bloque 1 completo dentro de los primeros 300 chars
 {_checklist_bloques}
@@ -11840,15 +11920,28 @@ def _scheduler_check_monitor():
                 it['alertas'] = alertas_existentes + nuevas
                 print(f'[monitor] {alias}/{item_id} — {len(nuevas)} alerta(s) hito {hito_key}')
 
+    if not changed:
+        return
+
+    # Re-cargar datos frescos del DB antes de guardar para no pisar ítems
+    # agregados concurrentemente (race condition con api_monitor_iniciar).
+    # Solo transferimos snapshots/alertas; el resto del item queda intacto.
+    _mon_fresh = load_json(_mon_path) or {'items': []}
+    _processed = {(x.get('item_id'), x.get('alias')): x for x in _mon['items']}
+    for _fi in _mon_fresh.get('items', []):
+        _fkey = (_fi.get('item_id'), _fi.get('alias'))
+        if _fkey not in _processed:
+            continue
+        _proc = _processed[_fkey]
+        _fi['snapshots']       = _proc.get('snapshots', _fi.get('snapshots', []))
+        _fi['ultimo_snapshot'] = _proc.get('ultimo_snapshot', _fi.get('ultimo_snapshot'))
+        if 'alertas' in _proc:
+            _fi['alertas'] = _proc['alertas']
+
     # Purgar ítems con optimización de más de 90 días
     _cutoff = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-    before  = len(_mon['items'])
-    _mon['items'] = [it for it in _mon['items'] if (it.get('fecha_opt') or '')[:10] >= _cutoff]
-    if len(_mon['items']) < before:
-        changed = True
-
-    if changed:
-        save_json(_mon_path, _mon)
+    _mon_fresh['items'] = [it for it in _mon_fresh.get('items', []) if (it.get('fecha_opt') or '')[:10] >= _cutoff]
+    save_json(_mon_path, _mon_fresh)
 
 
 def _start_scheduler():

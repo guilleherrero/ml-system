@@ -19,6 +19,7 @@ REGLAS:
   ✗  NO generar atributos falsos
 """
 
+import logging
 import re
 import time
 import unicodedata
@@ -150,12 +151,19 @@ _CATEGORY_CONTEXT = [
     },
 ]
 
-_COMPLEX_CATEGORY_KEYWORDS = {
-    "electronica", "tecnologia", "celular", "notebook", "computadora", "tablet",
-    "tv", "monitor", "audio", "gaming", "hogar", "mueble", "colchon", "sofa",
-    "auto", "moto", "repuesto", "autoparte", "herramienta", "construccion",
-    "salud", "medico", "ortopedico", "electrodomestico",
+_COMPLEX_CATS = {
+    "electronica", "tecnologia", "celular", "notebook", "computadora",
+    "tablet", "tv", "monitor", "audio", "gaming", "mueble", "colchon",
+    "sofa", "auto", "moto", "repuesto", "autoparte", "herramienta",
+    "construccion", "salud", "medico", "ortopedico", "electrodomestico",
 }
+
+_SIMPLE_CATS = {
+    "accesorio", "bijouterie", "papeleria", "bazar", "libreria",
+    "decoracion",
+}
+
+_logger = logging.getLogger(__name__)
 
 
 def _smart_truncate(text: str, max_chars: int) -> str:
@@ -190,10 +198,54 @@ def _get_category_context(category_name: str) -> str:
     return ""
 
 
-def _is_complex_product(category_name: str) -> bool:
-    """Detecta si el producto es complejo (requiere descripción más larga)."""
+def _classify_product_complexity(
+    category_name: str,
+    attrs_count: int = 0,
+    kw_info_count: int = 0,
+    my_price: float = 0.0,
+    avg_comp_price: float = 0.0,
+) -> tuple:
+    """Clasifica producto en SIMPLE/INTERMEDIO/COMPLEJO.
+    Returns (tipo, justificacion, is_fallback, signals_str).
+    """
     cat_norm = _strip_accents(category_name)
-    return any(kw in cat_norm for kw in _COMPLEX_CATEGORY_KEYWORDS)
+    complex_signals = 0
+    simple_signals  = 0
+    reasons: list = []
+
+    if any(kw in cat_norm for kw in _COMPLEX_CATS):
+        complex_signals += 2
+        reasons.append("cat_compleja")
+    if any(kw in cat_norm for kw in _SIMPLE_CATS):
+        simple_signals += 2
+        reasons.append("cat_simple")
+    if attrs_count >= 10:
+        complex_signals += 1
+        reasons.append("muchos_attrs")
+    elif 0 < attrs_count <= 3:
+        simple_signals += 1
+        reasons.append("pocos_attrs")
+    if kw_info_count >= 3:
+        complex_signals += 1
+        reasons.append("kw_informacionales")
+    if avg_comp_price > 0 and my_price > 0:
+        ratio = my_price / avg_comp_price
+        if ratio >= 1.5:
+            complex_signals += 1
+            reasons.append("precio_alto")
+        elif ratio <= 0.6:
+            simple_signals += 1
+            reasons.append("precio_bajo")
+
+    justif      = ",".join(reasons) if reasons else "sin_señales"
+    is_fallback = max(complex_signals, simple_signals) < 2
+    signals_str = f"{complex_signals}c/{simple_signals}s"
+
+    if complex_signals >= 2 and complex_signals > simple_signals:
+        return "COMPLEJO", justif, False, signals_str
+    if simple_signals >= 2 and simple_signals > complex_signals:
+        return "SIMPLE", justif, False, signals_str
+    return "INTERMEDIO", justif, is_fallback, signals_str
 
 
 # ── Helpers de tokenización ───────────────────────────────────────────────────
@@ -1938,10 +1990,39 @@ def _build_synthesis_prompt(
             + "\n".join(f"  ▸ {kw}" for kw in gap_keywords[:10])
         )
 
-    # Longitud adaptativa según complejidad del producto
-    is_complex  = _is_complex_product(category_name)
-    desc_range  = "1200–2500 caracteres" if is_complex else "600–1200 caracteres"
-    desc_type   = "producto complejo — justifica detalle técnico extendido" if is_complex else "producto simple — descripción directa, sin relleno"
+    # Clasificación ternaria de complejidad
+    _avg_comp    = comp_patterns.get("avg_price", 0.0)
+    _kw_info_n   = sum(1 for kw in keyword_analysis if kw.get("tipo_intencion") == "informativa")
+    _attrs_total = len(req_attrs) + len(opt_attrs)
+    _product_type, _justif, _is_fallback, _signals = _classify_product_complexity(
+        category_name,
+        attrs_count=_attrs_total,
+        kw_info_count=_kw_info_n,
+        my_price=my_price,
+        avg_comp_price=_avg_comp,
+    )
+    if _is_fallback:
+        _logger.warning(
+            "[clasificacion] %s | fallback=True | titulo='%s' | señales=%s | razones=%s",
+            _product_type, title[:40], _signals, _justif,
+        )
+    else:
+        _logger.info(
+            "[clasificacion] %s | fallback=False | titulo='%s' | señales=%s | razones=%s",
+            _product_type, title[:40], _signals, _justif,
+        )
+    _type_lengths = {"SIMPLE": "600–1200", "INTERMEDIO": "1000–1800", "COMPLEJO": "1200–2500"}
+    _type_structs = {"SIMPLE": "5 bloques", "INTERMEDIO": "9 bloques", "COMPLEJO": "9 bloques"}
+    desc_range   = f"{_type_lengths[_product_type]} caracteres"
+    desc_type    = f"producto {_product_type.lower()} — {_type_structs[_product_type]}, {_type_lengths[_product_type]} chars"
+    _type_block  = (
+        f"═══ TIPO DE PRODUCTO (clasificado por Python — no reclasificar) ═══\n"
+        f"Clasificación: {_product_type}\n"
+        f"Justificación: {_justif}\n"
+        f"Estructura a usar: {_type_structs[_product_type]}\n"
+        f"Longitud objetivo: {_type_lengths[_product_type]} chars\n"
+        f"════════════════════════════════════════════════════"
+    )
 
     category_display = category_path if category_path else category_name
 
@@ -1950,6 +2031,8 @@ Tu objetivo es producir el contenido más competitivo posible usando los datos r
 Nunca inventés características técnicas. Nunca usés frases genéricas. Siempre priorizá claridad sobre creatividad.
 
 {sold_note}{social_proof_note}
+
+{_type_block}
 
 ═══ DATOS REALES DEL MERCADO ═══
 TÍTULO ACTUAL ({len(title)} chars): {title}
@@ -1978,6 +2061,29 @@ Formato exacto a reproducir en ## KEYWORDS ELEGIDAS:
   EXCLUIDAS: [cualquier keyword con compatibilidad "peligrosa" o intención solo informativa — listarlas]
 
 El autosuggest tiene prioridad absoluta. Los competidores complementan solo si no contradicen el autosuggest.
+
+═══ ESTRATEGIA SEGÚN BOTTLENECK DETECTADO ═══
+
+Adaptá la estrategia según el bottleneck identificado en el análisis:
+
+- BOTTLENECK = TRÁFICO (visitas <40 pero conversión ≥4%):
+  → El listing convierte cuando lo ven, falta visibilidad.
+  → Priorizá títulos con TIER 1 #1 al inicio + gap_keywords.
+  → La descripción es secundaria — mantenerla, no reescribirla.
+
+- BOTTLENECK = CONVERSIÓN (visitas ≥40 pero conversión <2%):
+  → El tráfico está, falta convencer.
+  → Título conservador. Reforzar bloques 4, 5, 6 y 8 de la descripción.
+  → Incluir nota al usuario sobre fotos al inicio del output.
+
+- BOTTLENECK = CRÍTICO (ambos bajos):
+  → Reescritura completa con foco en CLARIDAD antes que en SEO.
+  → Bloque 1 debe responder qué es y para quién en 2 oraciones máximo.
+
+- BOTTLENECK = ESCALADO (ambos buenos):
+  → Los TIER 1 ya funcionan — no romperlos.
+  → Usar TIER 3 y long-tails para capturar segmentos no explorados.
+  → Variantes alternativas de título prioritarias.
 
 ═══ INSTRUCCIONES POR SECCIÓN ═══
 
@@ -2024,6 +2130,8 @@ JERARQUÍA OBLIGATORIA DE KEYWORDS EN TÍTULOS:
 - Gap keywords y long-tail van en título, descripción y campos de texto libre — NUNCA en campos con valores predefinidos (los que tienen lista de opciones fija)
 
 ──── DESCRIPCIÓN ────
+ANTES DE EMPEZAR: el título que vas a usar como ancla semántica de la descripción es el indicado en TÍTULO RECOMENDADO. Identificá los 3-4 tokens principales (sustantivos y adjetivos clave) de ese título y aseguralos en los primeros 2 párrafos de la descripción.
+
 REGLAS TÉCNICAS DE ML:
 - NUNCA repetir información que ya está en la ficha técnica — el comprador ya la leyó arriba. La descripción complementa, no repite
 - NUNCA repetir datos que ML ya muestra al comprador: condiciones de envío, cuotas, devolución estándar, garantía propia de ML
@@ -2051,12 +2159,12 @@ LONGITUD CORRECTA ({desc_type}):
 - Si la ficha técnica está bien completada → la descripción puede y debe ser más corta y enfocada
 
 DISTRIBUCIÓN DE KEYWORDS:
-- keyword_principal: 2–3 apariciones (densidad máx 1–2% del texto total — contar; más repeticiones activa filtro de spam)
+- keyword_principal: 2–3 apariciones en total — densidad objetivo ~1.5%
 - keywords_secundarias: 2–3 apariciones cada una
 - long_tail: mínimo 5 frases distribuidas naturalmente — nunca forzadas
-- DENSIDAD EN PRIMEROS 500 CHARS [CRÍTICO]: la keyword_principal debe aparecer al menos 2 veces
-  dentro de los primeros 500 caracteres — ML tiene un gancho de indexación en ese tramo inicial
-  que determina para qué búsquedas considera relevante la publicación
+- PRIMERA ORACIÓN: keyword_principal exacta en la oración inicial.
+  PRIMEROS 500 CHARS: incluir la keyword_principal una vez + al menos
+  una variante semántica del cluster.
 - CONCORDANCIA SEMÁNTICA TÍTULO-DESCRIPCIÓN [CRÍTICO]: los tokens principales del título generado
   (sustantivos y adjetivos clave) deben aparecer en los primeros 2-3 párrafos de la descripción
   → ML cruza vocabulario del título con el de la descripción para validar coherencia semántica
@@ -2096,7 +2204,7 @@ ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos 
 9. CIERRE Y CTA: refuerzo del beneficio principal + llamada a la acción + keyword_principal
 
 PALABRAS DE ALTA CONVERSIÓN — POSICIONES ESTRATÉGICAS [CRÍTICO]:
-ML correlaciona estas palabras con tasas de compra altas y las pondera en el ranking.
+Estas palabras suelen correlacionar con conversión cuando aplican realmente al producto. NO incluirlas si no son verdad — la regla de no inventar características es absoluta.
 No van en el título (muchas están prohibidas ahí). Van en la descripción en estas zonas:
   → Bloque 7 (características): "original", "certificado", "compatible con", "incluye", "viene con"
   → Bloque 8 (confianza): "garantía", "stock disponible", "entrega en [N] días hábiles", "sellado de fábrica"
@@ -2111,18 +2219,49 @@ TONO según tipo de producto (detectar y aplicar):
 - Moda/indumentaria → estilo, comodidad, ocasión de uso
 - Hogar/muebles → practicidad, medidas reales, integración en el espacio
 
+ESTRUCTURA ALTERNATIVA — 5 BLOQUES (solo si producto = SIMPLE):
+
+Si el tipo detectado es SIMPLE, usá esta estructura en lugar de los 9 bloques.
+Los 5 bloques son cierres autocontenidos, no recortes de los 9:
+
+1. APERTURA SEO — keyword_principal en primera oración + problema +
+   beneficio. Dentro de 300 chars.
+2. QUÉ ES + PARA QUIÉN + CÓMO SE USA — un solo párrafo directo.
+   Producto + comprador ideal + uso típico en 3-4 oraciones.
+3. BENEFICIOS + DIFERENCIACIÓN — 3-4 beneficios concretos en prosa.
+   Si tenés datos reales de competidores, incluí UNA comparación.
+   Si no, profundizá en beneficios sin comparativa.
+4. DUDAS + OBJECIONES — neutralizar las 3 dudas más frecuentes con
+   datos concretos (no promesas vacías).
+5. PRUEBA SOCIAL + CIERRE Y CTA — ventas reales o garantía propia +
+   refuerzo del beneficio principal + CTA + keyword_principal.
+
 CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
 □ keyword_principal aparece 2–3 veces — contadas (no más, evita penalización por spam)
 □ 5+ long-tail keywords distribuidas en el texto
 □ Longitud total dentro de {desc_range} — contada
 □ Bloque 1 completo dentro de los primeros 300 chars
-□ 9 bloques presentes y diferenciados
+□ Tipo de producto recibido: {_product_type} — no reclasificar
+□ Si SIMPLE: 5 bloques presentes y diferenciados, longitud 600–1200
+□ Si INTERMEDIO o COMPLEJO: 9 bloques presentes y diferenciados,
+  longitud 1000–1800 (intermedio) o 1200–2500 (complejo)
 □ Sin información de ficha técnica repetida
 □ Sin datos que ML ya muestra arriba
 □ Sin características inventadas
 □ Sin frases genéricas
 □ Títulos: sin símbolos, sin CAPS, sin prohibidos, ≤60 chars cada uno (contados)
 □ Título recomendado indicado con justificación
+
+═══ AUTO-VERIFICACIÓN OBLIGATORIA ANTES DE ENTREGAR ═══
+Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
+1. Contá apariciones de keyword_principal en la descripción → debe estar entre 2 y 3.
+2. Contá long-tail keywords distribuidas → mínimo 5.
+3. Contá caracteres totales del bloque 1 → ≤300.
+4. Verificá que los tokens principales del TÍTULO RECOMENDADO
+   aparezcan en los primeros 2 párrafos.
+
+Si alguno falla, REESCRIBÍ esa parte antes de entregar la respuesta
+final. No marques el checklist como aprobado si algún ítem no cumple.
 
 ═══ FORMATO DE ENTREGA — EXACTAMENTE ESTAS SECCIONES EN ESTE ORDEN ═══
 

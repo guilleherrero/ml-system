@@ -2829,7 +2829,7 @@ async function enviarAMonitor(itemId, titulo, alias, btn) {
     btn.innerHTML = '<i class="bi bi-check2 me-1"></i>¡En Monitor!';
     const bl = d.baseline;
     const info = [];
-    if (bl.visitas_30d !== undefined) info.push(`Visitas 30d: ${bl.visitas_30d}`);
+    if (bl.visitas_7d !== undefined) info.push(`Visitas 7d: ${bl.visitas_7d}`);
     if (bl.posicion) info.push(`Posición actual: #${bl.posicion}`);
     showToast('✅ Publicación registrada en Monitor de Evolución' + (info.length ? ' · ' + info.join(' · ') : '') + '. En unos días volvé a medir el impacto.');
     setTimeout(() => { window.location.href = `/monitor/${alias}`; }, 2500);
