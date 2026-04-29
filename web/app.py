@@ -5169,8 +5169,9 @@ def _ml_autosuggest(query: str, limit: int = 8) -> list[str]:
         )
         if r.ok:
             return [s['q'] for s in r.json().get('suggested_queries', []) if s.get('q')]
-    except Exception:
-        pass
+        app.logger.warning('[autosuggest] HTTP %s para query=%r', r.status_code, query[:40])
+    except Exception as _as_err:
+        app.logger.warning('[autosuggest] excepción para query=%r: %s', query[:40], _as_err)
     return []
 
 
@@ -8877,8 +8878,42 @@ def api_reverse_keywords():
                     kw_data[kw_norm]['sources'].add(source)
                 _time.sleep(0.1)
 
+        # ── Fallback: extraer keywords directamente de los títulos si autosuggest falló ──
         if not kw_data:
-            return jsonify({'ok': False, 'error': 'No se pudieron obtener keywords de los competidores'}), 400
+            app.logger.warning('[reverse-keywords] autosuggest vacío para %d competidores — usando fallback por tokenización', len(competitors))
+            for comp in competitors[:8]:
+                comp_title = (comp.get('title') or '').strip()
+                if not comp_title or comp_title == comp.get('id', ''):
+                    continue
+                title_words_fb = [
+                    w for w in re.findall(r'[a-záéíóúüñ0-9]+', comp_title.lower())
+                    if len(w) >= 3 and w not in _stopwords
+                ]
+                # Bigramas del título como keywords
+                seen_for_comp = set()
+                for i in range(len(title_words_fb)):
+                    # palabra suelta
+                    kw_norm = title_words_fb[i]
+                    if kw_norm not in seen_for_comp:
+                        seen_for_comp.add(kw_norm)
+                        if kw_norm not in kw_data:
+                            kw_data[kw_norm] = {'keyword': kw_norm, 'competitors': [], 'positions': [], 'sources': set(), 'in_ours': False}
+                        kw_data[kw_norm]['competitors'].append(comp_title[:50])
+                        kw_data[kw_norm]['positions'].append(i + 1)
+                        kw_data[kw_norm]['sources'].add('titulo_fallback')
+                    # bigrama
+                    if i + 1 < len(title_words_fb):
+                        bi = f'{title_words_fb[i]} {title_words_fb[i+1]}'
+                        if bi not in seen_for_comp:
+                            seen_for_comp.add(bi)
+                            if bi not in kw_data:
+                                kw_data[bi] = {'keyword': bi, 'competitors': [], 'positions': [], 'sources': set(), 'in_ours': False}
+                            kw_data[bi]['competitors'].append(comp_title[:50])
+                            kw_data[bi]['positions'].append(i + 1)
+                            kw_data[bi]['sources'].add('titulo_fallback')
+
+        if not kw_data:
+            return jsonify({'ok': False, 'error': 'No se pudieron obtener keywords de los competidores. Los competidores no tienen títulos válidos.'}), 400
 
         # ── Marcar cuáles ya tiene el usuario ────────────────────────────────
         our_token_sets = [
