@@ -157,6 +157,18 @@
     </div>
   </div>
 
+  <!-- Botón Actualizar datos — siempre visible -->
+  <div style="padding:8px 10px;border-bottom:1px solid #1e2128">
+    <button id="nav-actualizar" onclick="actualizarDatos()"
+      style="width:100%;background:#1a2540;border:1px solid #2a3a5c;color:#60a5fa;border-radius:8px;padding:7px 10px;font-size:.78rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s"
+      onmouseover="this.style.background='#1e3160';this.style.borderColor='#3b82f6'"
+      onmouseout="this.style.background='#1a2540';this.style.borderColor='#2a3a5c'">
+      <i class="bi bi-cloud-download" style="font-size:.85rem"></i>
+      <span id="nav-actualizar-text">Actualizar datos ahora</span>
+    </button>
+    <div id="nav-actualizar-status" style="font-size:.67rem;color:#6b7280;text-align:center;margin-top:4px;display:none"></div>
+  </div>
+
   <nav>
 
     <!-- ── CONTROL GLOBAL ─────────────────────────────────────── -->
@@ -276,9 +288,6 @@
       <i class="bi bi-people"></i> Usuarios
     </a>
     {% endif %}
-    <a href="#" onclick="actualizarDatos();return false;" style="color:#6b7280" id="nav-actualizar">
-      <i class="bi bi-cloud-download"></i> Actualizar datos
-    </a>
     <a href="#" onclick="reiniciarServidor();return false;" style="color:#6b7280">
       <i class="bi bi-arrow-clockwise"></i> Reiniciar servidor
     </a>
@@ -448,26 +457,36 @@ function runComando(comando, alias) {
 
 
 function actualizarDatos() {
-  const link = document.getElementById('nav-actualizar');
-  if (link._running) return;
-  link._running = true;
-  link.innerHTML = '<span class="spinner-border spinner-border-sm me-1" style="width:.75rem;height:.75rem"></span> Actualizando…';
-  link.style.color = '#f59e0b';
+  const btn  = document.getElementById('nav-actualizar');
+  const txt  = document.getElementById('nav-actualizar-text');
+  const sta  = document.getElementById('nav-actualizar-status');
+  if (btn._running) return;
+  btn._running = true;
+  btn.disabled = true;
+  btn.style.opacity = '.7';
+  txt.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem;border-width:2px"></span> Actualizando…';
+  sta.style.display = 'none';
   fetch('/api/scheduler-run-now', {method: 'POST'})
     .then(r => r.json())
     .then(() => {
-      link.innerHTML = '<i class="bi bi-check-circle me-1" style="color:#22c55e"></i> Actualización iniciada';
-      link.style.color = '#22c55e';
+      txt.innerHTML = '<i class="bi bi-check-circle-fill" style="color:#22c55e"></i> Iniciado — tarda ~3 min';
+      btn.style.borderColor = '#22c55e';
+      sta.style.display = '';
+      sta.innerHTML = 'Recargá la página cuando termine';
       setTimeout(() => {
-        link.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos';
-        link.style.color = '';
-        link._running = false;
-      }, 4000);
+        txt.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos ahora';
+        btn.style.borderColor = '';
+        btn.style.opacity = '';
+        btn.disabled = false;
+        btn._running = false;
+        sta.style.display = 'none';
+      }, 8000);
     })
     .catch(() => {
-      link.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos';
-      link.style.color = '';
-      link._running = false;
+      txt.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos ahora';
+      btn.style.opacity = '';
+      btn.disabled = false;
+      btn._running = false;
     });
 }
 
