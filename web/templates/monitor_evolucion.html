@@ -242,7 +242,24 @@ function renderItem(it) {
     const snapInfo = hasSnapshot
       ? '<div class="snapshot-info">Última actualización: ' + (u.fecha || '—') + ' · ' + it.snapshots_n + ' snapshot' + (it.snapshots_n !== 1 ? 's' : '') + '</div>'
       : '<div class="no-data-msg" style="margin-top:.5rem;margin-bottom:.25rem">Métricas de línea base capturadas · Actualizá en unos días para ver la evolución.</div>';
+
+    // Bloque visitas ayer (solo si hay datos del último snapshot)
+    const ayer = it.visitas_ayer;
+    const diarioBlock = (ayer !== null && ayer !== undefined) ? `
+    <div style="display:flex;gap:.75rem;margin-bottom:.75rem;align-items:center;flex-wrap:wrap">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.45rem .9rem;display:flex;align-items:center;gap:.5rem">
+        <i class="bi bi-calendar-day" style="color:#64748b;font-size:.85rem"></i>
+        <span style="font-size:.75rem;color:#64748b;font-weight:600">Visitas ayer</span>
+        <span style="font-size:1.15rem;font-weight:800;color:${ayer === 0 ? '#dc2626' : '#1e293b'}">${ayer}</span>
+        ${ayer === 0 ? '<span style="font-size:.65rem;color:#dc2626;font-weight:600">⚠ sin tráfico ayer</span>' : ''}
+      </div>
+      <div style="font-size:.68rem;color:#94a3b8">
+        <i class="bi bi-info-circle me-1"></i>Actualizá para refrescar
+      </div>
+    </div>` : '';
+
     metricsBlock = `
+    ${diarioBlock}
     <div class="metrics-grid">
       ${metricBox('Visitas 7d',       b.visitas_7d,    hasSnapshot ? u.visitas_7d    : undefined, hasSnapshot ? d.visitas_7d    : null, hasSnapshot ? d.visitas_pct  : null, false, '')}
       ${metricBox('Ventas 30d',       b.ventas_30d,    hasSnapshot ? u.ventas_30d    : undefined, hasSnapshot ? d.ventas_30d    : null, hasSnapshot ? d.ventas_pct   : null, false, '')}

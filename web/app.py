@@ -4602,6 +4602,7 @@ def api_monitor_evolucion(alias):
             'baseline':         baseline,
             'ultimo_snapshot':  ultimo,
             'snapshots_n':      len(snapshots),
+            'visitas_ayer':     ultimo.get('visitas_ayer'),
             'deltas': {
                 'visitas_7d':    _delta('visitas_7d'),
                 'visitas_pct':   _delta_pct('visitas_7d'),
@@ -4635,13 +4636,28 @@ def api_monitor_refresh():
 
     snap = {'fecha': datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-    # Visitas 7d + ventas acumuladas (sold_quantity desde ML API)
+    # Visitas 7d + desglose diario (hoy y ayer)
     try:
         _vr = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
             headers=_h, params={'last': 7, 'unit': 'day'}, timeout=6)
         if _vr.ok:
             snap['visitas_7d'] = _vr.json().get('total_visits', 0)
+    except Exception:
+        pass
+    try:
+        _vd = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+            headers=_h, params={'last': 2, 'unit': 'day'}, timeout=6)
+        if _vd.ok:
+            dias_visitas = _vd.json().get('visits', [])
+            # visits viene ordenado de más antiguo a más nuevo
+            if len(dias_visitas) >= 2:
+                snap['visitas_ayer'] = dias_visitas[-2].get('total', 0)
+                snap['visitas_hoy']  = dias_visitas[-1].get('total', 0)
+            elif len(dias_visitas) == 1:
+                snap['visitas_hoy']  = dias_visitas[-1].get('total', 0)
+                snap['visitas_ayer'] = 0
     except Exception:
         pass
     try:
