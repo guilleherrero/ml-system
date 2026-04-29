@@ -5159,19 +5159,31 @@ _AUTOSUGGEST_HEADERS = {
 }
 
 def _ml_autosuggest(query: str, limit: int = 8) -> list[str]:
-    """Devuelve sugerencias reales de búsqueda de ML para una query, ordenadas por popularidad."""
-    try:
-        r = req_lib.get(
-            'https://http2.mlstatic.com/resources/sites/MLA/autosuggest',
-            params={'q': query, 'limit': limit, 'lang': 'es_AR'},
-            headers=_AUTOSUGGEST_HEADERS,
-            timeout=6
-        )
-        if r.ok:
-            return [s['q'] for s in r.json().get('suggested_queries', []) if s.get('q')]
-        app.logger.warning('[autosuggest] HTTP %s para query=%r', r.status_code, query[:40])
-    except Exception as _as_err:
-        app.logger.warning('[autosuggest] excepción para query=%r: %s', query[:40], _as_err)
+    """Devuelve sugerencias reales de búsqueda de ML para una query, ordenadas por popularidad.
+    Incluye retry con backoff en caso de rate limit (429).
+    """
+    import time as _t_as
+    for _attempt in range(3):
+        try:
+            r = req_lib.get(
+                'https://http2.mlstatic.com/resources/sites/MLA/autosuggest',
+                params={'q': query, 'limit': limit, 'lang': 'es_AR'},
+                headers=_AUTOSUGGEST_HEADERS,
+                timeout=6
+            )
+            if r.ok:
+                return [s['q'] for s in r.json().get('suggested_queries', []) if s.get('q')]
+            if r.status_code == 429:
+                app.logger.warning('[autosuggest] rate limit (429) intento %d para query=%r — esperando %ds',
+                                   _attempt + 1, query[:40], _attempt + 1)
+                _t_as.sleep(_attempt + 1)
+                continue
+            app.logger.warning('[autosuggest] HTTP %s para query=%r', r.status_code, query[:40])
+            break
+        except Exception as _as_err:
+            app.logger.warning('[autosuggest] excepción intento %d para query=%r: %s', _attempt + 1, query[:40], _as_err)
+            if _attempt < 2:
+                _t_as.sleep(0.5)
     return []
 
 

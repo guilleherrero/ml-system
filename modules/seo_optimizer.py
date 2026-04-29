@@ -369,9 +369,7 @@ def _extract_competitor_phrases_seo(competitor_titles: list, seed_title: str) ->
         if phrase not in seed_norm
     ]
     candidates.sort(key=lambda x: (-x[1], -len(x[0].split())))
-    # 20 candidatos: antes con solo títulos alcanzaba con 10,
-    # ahora que incluye descripciones hay más vocabulario valioso para explorar
-    return [p for p, _ in candidates[:20]]
+    return [p for p, _ in candidates[:10]]
 
 
 def _competitor_seeded_autosuggest_seo(competitor_titles: list, seed_title: str) -> list:
@@ -429,18 +427,29 @@ def _ml_autosuggest(query: str, limit: int = 10) -> list:
     """
     Consulta el autosuggest real de ML.
     El orden devuelto por ML es el orden de popularidad de búsqueda.
+    Incluye retry con backoff en caso de rate limit (429).
     """
-    try:
-        r = requests.get(
-            ML_AS_URL,
-            params={"q": query, "limit": limit, "lang": "es_AR"},
-            headers=_AS_HEADERS,
-            timeout=6,
-        )
-        if r.ok:
-            return [s["q"] for s in r.json().get("suggested_queries", []) if s.get("q")]
-    except Exception:
-        pass
+    for _attempt in range(3):
+        try:
+            r = requests.get(
+                ML_AS_URL,
+                params={"q": query, "limit": limit, "lang": "es_AR"},
+                headers=_AS_HEADERS,
+                timeout=6,
+            )
+            if r.ok:
+                return [s["q"] for s in r.json().get("suggested_queries", []) if s.get("q")]
+            if r.status_code == 429:
+                _logger.warning("[autosuggest] rate limit (429) en intento %d para query=%r — esperando %ds",
+                                _attempt + 1, query[:40], (_attempt + 1))
+                time.sleep(_attempt + 1)
+                continue
+            _logger.warning("[autosuggest] HTTP %s para query=%r", r.status_code, query[:40])
+            break
+        except Exception as _err:
+            _logger.warning("[autosuggest] excepción en intento %d para query=%r: %s", _attempt + 1, query[:40], _err)
+            if _attempt < 2:
+                time.sleep(0.5)
     return []
 
 
