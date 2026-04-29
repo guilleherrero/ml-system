@@ -8933,6 +8933,12 @@ def api_reverse_keywords():
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+# ⚠️ LEGACY — NO USAR EN PRODUCCIÓN
+# Endpoint obsoleto reemplazado por api_optimizar_pub_v2 (línea 9937).
+# La UI usa /api/optimizar-pub-v2 desde abril 2026 (commit f00982d).
+# Mantenido temporalmente como referencia. Pendiente eliminación.
+# Si pensás aplicar cambios acá, primero verificá si vale la pena
+# o si conviene deprecarlo de una vez.
 @app.route('/api/optimizar-pub', methods=['POST'])
 def api_optimizar_pub():
     """SSE: genera título y descripción optimizados para una publicación."""
