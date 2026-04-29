@@ -157,7 +157,7 @@
     </div>
   </div>
 
-  <!-- Botón Actualizar datos — siempre visible -->
+  <!-- Botón Actualizar datos + última actualización -->
   <div style="padding:8px 10px;border-bottom:1px solid #1e2128">
     <button id="nav-actualizar" onclick="actualizarDatos()"
       style="width:100%;background:#1a2540;border:1px solid #2a3a5c;color:#60a5fa;border-radius:8px;padding:7px 10px;font-size:.78rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s"
@@ -167,6 +167,9 @@
       <span id="nav-actualizar-text">Actualizar datos ahora</span>
     </button>
     <div id="nav-actualizar-status" style="font-size:.67rem;color:#6b7280;text-align:center;margin-top:4px;display:none"></div>
+    <div id="nav-ultima-act" style="font-size:.65rem;color:#4b5563;text-align:center;margin-top:5px">
+      <i class="bi bi-clock me-1"></i><span id="nav-ultima-act-text">verificando…</span>
+    </div>
   </div>
 
   <nav>
@@ -456,6 +459,25 @@ function runComando(comando, alias) {
 })();
 
 
+// Mostrar última actualización al cargar
+fetch('/api/scheduler-status')
+  .then(r => r.json())
+  .then(d => {
+    const el = document.getElementById('nav-ultima-act-text');
+    if (!el) return;
+    if (d.last_run && d.last_run !== 'Nunca (desde el último reinicio del servidor)') {
+      el.textContent = 'Últ. act: ' + d.last_run.replace(' (ART)','');
+      el.parentElement.style.color = '#6b7280';
+    } else {
+      el.textContent = 'Sin actualizar aún';
+      el.parentElement.style.color = '#d97706';
+    }
+  })
+  .catch(() => {
+    const el = document.getElementById('nav-ultima-act-text');
+    if (el) el.textContent = 'estado desconocido';
+  });
+
 function actualizarDatos() {
   const btn  = document.getElementById('nav-actualizar');
   const txt  = document.getElementById('nav-actualizar-text');
@@ -473,6 +495,8 @@ function actualizarDatos() {
       btn.style.borderColor = '#22c55e';
       sta.style.display = '';
       sta.innerHTML = 'Recargá la página cuando termine';
+      const ult = document.getElementById('nav-ultima-act-text');
+      if (ult) { ult.textContent = 'actualizando ahora…'; ult.parentElement.style.color = '#f59e0b'; }
       setTimeout(() => {
         txt.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos ahora';
         btn.style.borderColor = '';
