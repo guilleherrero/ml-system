@@ -276,6 +276,9 @@
       <i class="bi bi-people"></i> Usuarios
     </a>
     {% endif %}
+    <a href="#" onclick="actualizarDatos();return false;" style="color:#6b7280" id="nav-actualizar">
+      <i class="bi bi-cloud-download"></i> Actualizar datos
+    </a>
     <a href="#" onclick="reiniciarServidor();return false;" style="color:#6b7280">
       <i class="bi bi-arrow-clockwise"></i> Reiniciar servidor
     </a>
@@ -443,6 +446,30 @@ function runComando(comando, alias) {
   });
 })();
 
+
+function actualizarDatos() {
+  const link = document.getElementById('nav-actualizar');
+  if (link._running) return;
+  link._running = true;
+  link.innerHTML = '<span class="spinner-border spinner-border-sm me-1" style="width:.75rem;height:.75rem"></span> Actualizando…';
+  link.style.color = '#f59e0b';
+  fetch('/api/scheduler-run-now', {method: 'POST'})
+    .then(r => r.json())
+    .then(() => {
+      link.innerHTML = '<i class="bi bi-check-circle me-1" style="color:#22c55e"></i> Actualización iniciada';
+      link.style.color = '#22c55e';
+      setTimeout(() => {
+        link.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos';
+        link.style.color = '';
+        link._running = false;
+      }, 4000);
+    })
+    .catch(() => {
+      link.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos';
+      link.style.color = '';
+      link._running = false;
+    });
+}
 
 function reiniciarServidor() {
   if (!confirm('¿Reiniciar el servidor para aplicar los últimos cambios?\nLa página se va a recargar automáticamente.')) return;
