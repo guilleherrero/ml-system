@@ -4653,18 +4653,16 @@ def api_monitor_refresh():
     except Exception:
         pass
     try:
+        from datetime import datetime as _dtn, timedelta as _tdd
+        _ayer = (_dtn.now() - _tdd(days=1)).strftime('%Y-%m-%d')
         _vd = req_lib.get(
             f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
-            headers=_h, params={'last': 2, 'unit': 'day'}, timeout=6)
+            headers=_h,
+            params={'date_from': f'{_ayer}T00:00:00.000-03:00',
+                    'date_to':   f'{_ayer}T23:59:59.000-03:00'},
+            timeout=6)
         if _vd.ok:
-            dias_visitas = _vd.json().get('visits', [])
-            # visits viene ordenado de más antiguo a más nuevo
-            if len(dias_visitas) >= 2:
-                snap['visitas_ayer'] = dias_visitas[-2].get('total', 0)
-                snap['visitas_hoy']  = dias_visitas[-1].get('total', 0)
-            elif len(dias_visitas) == 1:
-                snap['visitas_hoy']  = dias_visitas[-1].get('total', 0)
-                snap['visitas_ayer'] = 0
+            snap['visitas_ayer'] = _vd.json().get('total_visits', 0)
     except Exception:
         pass
     try:
@@ -11755,15 +11753,18 @@ def _scheduler_check_monitor():
                 headers=_h, params={'last': 7, 'unit': 'day'}, timeout=6)
             if _vr.ok:
                 snap['visitas_7d'] = _vr.json().get('total_visits', 0)
-            # Visitas ayer
+            # Visitas ayer (fecha exacta, más confiable que last=2)
+            from datetime import datetime as _dtn2, timedelta as _tdd2
+            _ayer_s = (_dtn2.now() - _tdd2(days=1)).strftime('%Y-%m-%d')
             _vd = req_lib.get(
                 f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
-                headers=_h, params={'last': 2, 'unit': 'day'}, timeout=6)
+                headers=_h,
+                params={'date_from': f'{_ayer_s}T00:00:00.000-03:00',
+                        'date_to':   f'{_ayer_s}T23:59:59.000-03:00'},
+                timeout=6)
             if _vd.ok:
-                dv = _vd.json().get('visits', [])
-                if len(dv) >= 2:
-                    snap['visitas_ayer'] = dv[-2].get('total', 0)
-                    snap['visitas_hoy']  = dv[-1].get('total', 0)
+                snap['visitas_ayer'] = _vd.json().get('total_visits', 0)
+                snap['visitas_hoy']  = snap.get('visitas_hoy', 0)  # placeholder
             # Ventas acumuladas
             _ir = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}', headers=_h, timeout=6)
             if _ir.ok:
