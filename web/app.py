@@ -11710,8 +11710,9 @@ def _scheduler_run_all_inner():
 
 def _scheduler_check_monitor():
     """
-    Evalúa items del Monitor de Evolución con 7+ días desde la optimización.
-    Refresca métricas, genera alertas y las guarda en el JSON del monitor.
+    Toma snapshot diario de TODOS los ítems monitoreados y genera alertas en hitos.
+    - Snapshots: todos los días, para todos los ítems (independientemente de días elapsed)
+    - Alertas: solo en hitos (7d, 30d) si no fueron generadas ya
     """
     from core.account_manager import AccountManager as _AM
     _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
@@ -11719,40 +11720,58 @@ def _scheduler_check_monitor():
     if not _mon.get('items'):
         return
 
-    _now = datetime.now()
-    changed = False
+    _now     = datetime.now()
+    _today   = _now.strftime('%Y-%m-%d')
+    changed  = False
+    HITOS    = [7, 30, 60, 90]
 
     for it in _mon['items']:
-        # Solo evaluar items con 7+ días y sin alerta de 7 días ya generada
-        try:
-            _fd   = it.get('fecha_opt', '')[:10]
-            dias  = (_now - datetime.strptime(_fd, '%Y-%m-%d')).days
-        except Exception:
-            continue
-        if dias < 7:
-            continue
-        # No volver a evaluar si ya hay alerta del hito de 7 días
-        alertas_existentes = it.get('alertas', [])
-        if any(a.get('hito') == '7d' for a in alertas_existentes):
-            continue
-
-        # Refrescar métricas actuales
         alias   = it.get('alias', '')
         item_id = it.get('item_id', '')
-        snap    = {'fecha': _now.strftime('%Y-%m-%d %H:%M')}
+        if not alias or not item_id:
+            continue
+
         try:
-            mgr = _AM()
+            _fd  = it.get('fecha_opt', '')[:10]
+            dias = (_now - datetime.strptime(_fd, '%Y-%m-%d')).days
+        except Exception:
+            continue
+
+        # ── Snapshot diario: siempre, para todos los ítems ───────────────
+        # Evitar duplicado si ya hay un snapshot de hoy
+        snaps_hoy = [s for s in (it.get('snapshots') or []) if (s.get('fecha') or '')[:10] == _today]
+        if snaps_hoy:
+            continue  # ya se tomó snapshot hoy
+
+        snap = {'fecha': _now.strftime('%Y-%m-%d %H:%M')}
+        try:
+            mgr    = _AM()
             client = mgr.get_client(alias)
             client._ensure_token()
             _h = {'Authorization': f'Bearer {client.account.access_token}'}
+            # Visitas 7d
             _vr = req_lib.get(
                 f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
-                headers=_h, params={'last': 30, 'unit': 'day'}, timeout=6)
+                headers=_h, params={'last': 7, 'unit': 'day'}, timeout=6)
             if _vr.ok:
-                snap['visitas_30d'] = _vr.ok and _vr.json().get('total_visits', 0)
+                snap['visitas_7d'] = _vr.json().get('total_visits', 0)
+            # Visitas ayer
+            _vd = req_lib.get(
+                f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+                headers=_h, params={'last': 2, 'unit': 'day'}, timeout=6)
+            if _vd.ok:
+                dv = _vd.json().get('visits', [])
+                if len(dv) >= 2:
+                    snap['visitas_ayer'] = dv[-2].get('total', 0)
+                    snap['visitas_hoy']  = dv[-1].get('total', 0)
+            # Ventas acumuladas
+            _ir = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}', headers=_h, timeout=6)
+            if _ir.ok:
+                snap['ventas_total'] = _ir.json().get('sold_quantity', 0)
         except Exception:
             pass
 
+        # Posición y conversión desde datos locales (ya actualizados por el scheduler)
         _pos_data   = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
         _stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
         if item_id in _pos_data:
@@ -11768,81 +11787,57 @@ def _scheduler_check_monitor():
                 break
 
         it.setdefault('snapshots', []).append(snap)
-        it['snapshots']       = it['snapshots'][-30:]
+        it['snapshots']       = it['snapshots'][-60:]   # guardar hasta 60 días
         it['ultimo_snapshot'] = snap
-
-        # ── Generar alerta comparando baseline vs snapshot ────────────────
-        baseline = it.get('baseline') or {}
-        alertas  = []
-
-        def _delta(key):
-            b = baseline.get(key)
-            u = snap.get(key)
-            if b is None or u is None:
-                return None
-            return round(u - b, 2)
-
-        d_pos     = _delta('posicion')
-        d_vis     = _delta('visitas_30d')
-        d_ventas  = _delta('ventas_30d')
-        b_vis     = baseline.get('visitas_30d') or 0
-        b_pos     = baseline.get('posicion')
-
-        # Posición
-        if d_pos is not None and b_pos is not None:
-            if d_pos <= -3:
-                alertas.append({
-                    'hito':    '7d',
-                    'nivel':   'bueno',
-                    'tipo':    'posicion_sube',
-                    'mensaje': f'Subiste {abs(int(d_pos))} posiciones ({b_pos}° → {snap.get("posicion")}°) en {dias} días.',
-                    'fecha':   _now.strftime('%Y-%m-%d'),
-                    'leida':   False,
-                })
-            elif d_pos >= 3:
-                alertas.append({
-                    'hito':    '7d',
-                    'nivel':   'warning',
-                    'tipo':    'posicion_baja',
-                    'mensaje': f'⚠ Posición bajó {int(d_pos)} lugares ({b_pos}° → {snap.get("posicion")}°) en {dias} días. Considerá revertir el título.',
-                    'fecha':   _now.strftime('%Y-%m-%d'),
-                    'leida':   False,
-                })
-            else:
-                alertas.append({
-                    'hito':    '7d',
-                    'nivel':   'neutro',
-                    'tipo':    'posicion_estable',
-                    'mensaje': f'Posición sin cambio significativo ({b_pos}° → {snap.get("posicion", b_pos)}°) en {dias} días.',
-                    'fecha':   _now.strftime('%Y-%m-%d'),
-                    'leida':   False,
-                })
-
-        # Visitas (solo si hay baseline significativo)
-        if d_vis is not None and b_vis >= 10:
-            pct = round(d_vis / b_vis * 100, 1)
-            if pct >= 20:
-                alertas.append({
-                    'hito':    '7d',
-                    'nivel':   'bueno',
-                    'tipo':    'visitas_suben',
-                    'mensaje': f'Visitas subieron {pct}% ({int(b_vis)} → {int(snap.get("visitas_30d", b_vis))}) en {dias} días.',
-                    'fecha':   _now.strftime('%Y-%m-%d'),
-                    'leida':   False,
-                })
-            elif pct <= -20:
-                alertas.append({
-                    'hito':    '7d',
-                    'nivel':   'warning',
-                    'tipo':    'visitas_bajan',
-                    'mensaje': f'⚠ Visitas bajaron {abs(pct)}% ({int(b_vis)} → {int(snap.get("visitas_30d", b_vis))}) en {dias} días.',
-                    'fecha':   _now.strftime('%Y-%m-%d'),
-                    'leida':   False,
-                })
-
-        it['alertas'] = alertas_existentes + alertas
         changed = True
-        print(f'[monitor] {alias}/{item_id} — {len(alertas)} alerta(s) generadas (día {dias})')
+        print(f'[monitor] {alias}/{item_id} — snapshot día {dias}')
+
+        # ── Alertas en hitos (solo si no generadas ya para ese hito) ────
+        alertas_existentes = it.get('alertas', [])
+        hitos_ya = {a.get('hito') for a in alertas_existentes}
+        baseline = it.get('baseline') or {}
+
+        for hito in HITOS:
+            hito_key = f'{hito}d'
+            if dias < hito or hito_key in hitos_ya:
+                continue
+
+            nuevas = []
+            b_vis = baseline.get('visitas_7d') or 0
+            b_pos = baseline.get('posicion')
+
+            d_pos = None
+            if b_pos is not None and snap.get('posicion') is not None:
+                d_pos = round(snap['posicion'] - b_pos, 1)
+
+            d_vis = None
+            if b_vis and snap.get('visitas_7d') is not None:
+                d_vis = round(snap['visitas_7d'] - b_vis, 1)
+
+            if d_pos is not None:
+                if d_pos <= -3:
+                    nuevas.append({'hito': hito_key, 'nivel': 'bueno',   'tipo': 'posicion_sube',
+                        'mensaje': f'Subiste {abs(int(d_pos))} posiciones ({b_pos}° → {snap["posicion"]}°) en {dias} días.',
+                        'fecha': _today, 'leida': False})
+                elif d_pos >= 3:
+                    nuevas.append({'hito': hito_key, 'nivel': 'warning', 'tipo': 'posicion_baja',
+                        'mensaje': f'⚠ Posición bajó {int(d_pos)} lugares ({b_pos}° → {snap["posicion"]}°) en {dias} días.',
+                        'fecha': _today, 'leida': False})
+
+            if d_vis is not None and b_vis >= 5:
+                pct = round(d_vis / b_vis * 100, 1)
+                if pct >= 20:
+                    nuevas.append({'hito': hito_key, 'nivel': 'bueno',   'tipo': 'visitas_suben',
+                        'mensaje': f'Visitas 7d subieron {pct}% ({int(b_vis)} → {int(snap["visitas_7d"])}) en {dias} días.',
+                        'fecha': _today, 'leida': False})
+                elif pct <= -20:
+                    nuevas.append({'hito': hito_key, 'nivel': 'warning', 'tipo': 'visitas_bajan',
+                        'mensaje': f'⚠ Visitas 7d bajaron {abs(pct)}% ({int(b_vis)} → {int(snap["visitas_7d"])}) en {dias} días.',
+                        'fecha': _today, 'leida': False})
+
+            if nuevas:
+                it['alertas'] = alertas_existentes + nuevas
+                print(f'[monitor] {alias}/{item_id} — {len(nuevas)} alerta(s) hito {hito_key}')
 
     # Purgar ítems con optimización de más de 90 días
     _cutoff = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
