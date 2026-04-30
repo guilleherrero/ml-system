@@ -4621,6 +4621,7 @@ def api_monitor_evolucion(alias):
             'applied':          it.get('applied', []),
             'baseline':         baseline,
             'ultimo_snapshot':  ultimo,
+            'snapshots':        snapshots,
             'snapshots_n':      len(snapshots),
             'visitas_ayer':     ultimo.get('visitas_ayer'),
             'deltas': {
@@ -4908,6 +4909,50 @@ def api_opt_marcar_aplicado():
     opt_item['baseline']   = baseline
     opt_item['seguimiento'] = None
     save_json(opt_path, data)
+
+    # Registrar en Monitor de Evolución para tracking con línea de tiempo
+    _now_mon  = datetime.now().strftime('%Y-%m-%d %H:%M')
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon      = load_json(_mon_path) or {'items': []}
+    if not isinstance(_mon, dict):
+        _mon = {'items': []}
+    _mon_baseline = {
+        'fecha':       _now_mon,
+        'visitas_7d':  baseline.get('visitas_antes', 0),
+        'ventas_30d':  0,
+        'ventas_total': 0,
+        'conv_pct':    0.0,
+        'posicion':    baseline.get('posicion_antes'),
+        'posicion_kw': None,
+    }
+    _titulo_prod   = opt_item.get('titulo_actual', item_id)
+    _titulo_nuevo  = opt_item.get('titulo_nuevo', '')
+    _existing_mon  = next((x for x in _mon.get('items', [])
+                           if x.get('item_id') == item_id and x.get('alias') == alias), None)
+    if _existing_mon:
+        _existing_mon.update({
+            'fecha_opt':      _now_mon,
+            'titulo_antes':   _titulo_prod,
+            'titulo_despues': _titulo_nuevo,
+            'baseline':       _mon_baseline,
+            'snapshots':      [],
+            'ultimo_snapshot': None,
+            'applied':        ['manual'],
+        })
+    else:
+        _mon['items'].append({
+            'item_id':         item_id,
+            'alias':           alias,
+            'titulo_producto': _titulo_prod,
+            'fecha_opt':       _now_mon,
+            'titulo_antes':    _titulo_prod,
+            'titulo_despues':  _titulo_nuevo,
+            'baseline':        _mon_baseline,
+            'snapshots':       [],
+            'ultimo_snapshot': None,
+            'applied':         ['manual'],
+        })
+    save_json(_mon_path, _mon)
 
     return jsonify({'ok': True, 'baseline': baseline})
 

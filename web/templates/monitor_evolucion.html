@@ -116,6 +116,27 @@
 
 .snapshot-info { font-size: .72rem; color: #94a3b8; margin-top: .5rem; text-align: right; }
 
+.timeline-toggle {
+  font-size: .72rem; color: #3b82f6; cursor: pointer; border: none; background: none;
+  padding: .25rem 0; display: flex; align-items: center; gap: .3rem; margin-top: .5rem;
+}
+.timeline-toggle:hover { text-decoration: underline; }
+.timeline-table {
+  width: 100%; border-collapse: collapse; font-size: .73rem; margin-top: .5rem;
+}
+.timeline-table th {
+  font-size: .65rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;
+  letter-spacing: .04em; padding: .35rem .5rem; border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
+.timeline-table td {
+  padding: .35rem .5rem; border-bottom: 1px solid #f1f5f9; color: #334155;
+}
+.timeline-table tr.baseline-row td { background: #eff6ff; font-weight: 600; }
+.timeline-pos-up   { color: #15803d; font-weight: 700; }
+.timeline-pos-down { color: #dc2626; font-weight: 700; }
+.timeline-pos-flat { color: #64748b; }
+
 .alerta-banner {
   display: flex; align-items: flex-start; gap: .6rem;
   padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
@@ -188,6 +209,61 @@ function renderAlertas(alertas) {
         <div class="alerta-fecha">${a.fecha || ''}</div>
       </div>
     </div>`).join('');
+}
+
+function renderTimeline(it) {
+  const snaps   = it.snapshots || [];
+  const b       = it.baseline  || {};
+  const basePOS = b.posicion;
+  const baseVIS = b.visitas_7d;
+  const baseDate = (b.fecha || it.fecha_opt || '').slice(0, 10);
+
+  let rows = `<tr class="baseline-row">
+    <td>📌 ${baseDate}</td>
+    <td>${basePOS !== null && basePOS !== undefined ? '#' + basePOS : '—'}</td>
+    <td>${baseVIS !== null && baseVIS !== undefined ? baseVIS : '—'}</td>
+    <td><span style="font-size:.65rem;background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:8px;font-weight:700">BASELINE</span></td>
+  </tr>`;
+
+  snaps.forEach(s => {
+    const pos = s.posicion;
+    const vis = s.visitas_7d;
+    const fecha = (s.fecha || '').slice(0, 10);
+    let posCell = pos !== null && pos !== undefined ? '#' + pos : '—';
+    let posCls  = 'timeline-pos-flat';
+    let deltaTxt = '';
+    if (basePOS !== null && basePOS !== undefined && pos !== null && pos !== undefined) {
+      const d = pos - basePOS;
+      if (d < 0) { posCls = 'timeline-pos-up';   deltaTxt = ` <span style="font-size:.65rem">(${d})</span>`; }
+      if (d > 0) { posCls = 'timeline-pos-down';  deltaTxt = ` <span style="font-size:.65rem">(+${d})</span>`; }
+    }
+    let visDelta = '';
+    if (baseVIS !== null && baseVIS !== undefined && vis !== null && vis !== undefined) {
+      const dv = vis - baseVIS;
+      const sign = dv > 0 ? '+' : '';
+      const col  = dv > 0 ? '#15803d' : dv < 0 ? '#dc2626' : '#64748b';
+      visDelta = ` <span style="font-size:.65rem;color:${col}">(${sign}${dv})</span>`;
+    }
+    rows += `<tr>
+      <td>${fecha}</td>
+      <td class="${posCls}">${posCell}${deltaTxt}</td>
+      <td>${vis !== null && vis !== undefined ? vis : '—'}${visDelta}</td>
+      <td style="color:#94a3b8;font-size:.68rem">${s.ventas_total !== undefined ? s.ventas_total + ' vtas' : ''}</td>
+    </tr>`;
+  });
+
+  const tbl = `<table class="timeline-table">
+    <thead><tr>
+      <th>Fecha</th><th>Posición</th><th>Visitas 7d</th><th>Ventas</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  const id = 'tl-' + it.item_id.replace(/[^a-z0-9]/gi, '_');
+  return `<button class="timeline-toggle" onclick="(function(b,t){b.innerHTML=(t.style.display==='none'?(t.style.display='',b.innerHTML.replace('▶','▼')):(t.style.display='none',b.innerHTML.replace('▼','▶')))})(this,document.getElementById('${id}'))">
+    <i class="bi bi-clock-history"></i> ▶ Ver línea de tiempo (${snaps.length} actualización${snaps.length !== 1 ? 'es' : ''})
+  </button>
+  <div id="${id}" style="display:none">${tbl}</div>`;
 }
 
 function renderItem(it) {
@@ -304,6 +380,7 @@ function renderItem(it) {
       ${alertasBlock}
       ${tituloBlock}
       ${metricsBlock}
+      ${it.snapshots_n > 0 ? renderTimeline(it) : ''}
     </div>
   </div>`;
 }
