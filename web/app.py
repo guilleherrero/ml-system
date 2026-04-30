@@ -10014,8 +10014,9 @@ CHECKLIST DE VALIDACIÓN INTERNA (verificar antes de entregar):
                 'puntaje_calidad':   puntaje_sec,
                 'competidores_n':    len(manual_competitor_products),
                 'competidores_ids':  [c.get('id','') for c in manual_competitor_products if c.get('id')],
-                'fecha':    datetime.now().strftime('%Y-%m-%d %H:%M'),
-                'aplicado': False,
+                'fecha':             datetime.now().strftime('%Y-%m-%d %H:%M'),
+                'aplicado':          False,
+                'sold_quantity':     my_sold,
             })
             existing['optimizaciones'] = opts[:20]
             existing['fecha'] = datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -10160,6 +10161,7 @@ def api_optimizar_pub_v2():
                 'competidores_ids':     [c.get('id','') for c in comp_prods if c.get('id')],
                 'fecha':                datetime.now().strftime('%Y-%m-%d %H:%M'),
                 'aplicado':             False,
+                'sold_quantity':        item_data.get('sold_quantity', 0),
             }
 
             # ── Persistir ─────────────────────────────────────────────────────

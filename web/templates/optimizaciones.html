@@ -612,9 +612,10 @@
 </div>
 
 {% for item in items %}
-{% set outer_idx = loop.index %}
-{% set titulos   = item.get('titulos_alt', []) %}
-{% set tr_n      = item.get('titulo_recomendado_n', 0) %}
+{% set outer_idx  = loop.index %}
+{% set titulos    = item.get('titulos_alt', []) %}
+{% set tr_n       = item.get('titulo_recomendado_n', 0) %}
+{% set has_ventas = item.get('sold_quantity', 0) > 0 %}
 
 <div class="opt-card">
 
@@ -821,6 +822,15 @@
       </span>
       {% endif %}
     </div>
+    {% if has_ventas %}
+    <div style="display:flex;align-items:flex-start;gap:.6rem;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:.6rem .9rem;margin:.75rem 1rem .25rem;font-size:.8rem;color:#92400e">
+      <i class="bi bi-lock-fill flex-shrink-0" style="margin-top:.1rem"></i>
+      <div>
+        <strong>Esta publicación tiene {{ item.get('sold_quantity') }} venta{{ 's' if item.get('sold_quantity') != 1 else '' }} — ML no permite editar el título.</strong>
+        Copiá el título elegido para usarlo en una nueva publicación, o aplicá la <strong>descripción + ficha técnica</strong> directamente abajo.
+      </div>
+    </div>
+    {% endif %}
     <div class="opt-sec-body">
       {% if titulos %}
         {% for t in titulos %}
@@ -840,12 +850,14 @@
                     style="font-size:.74rem;padding:4px 10px">
               <i class="bi bi-clipboard me-1"></i>Copiar
             </button>
+            {% if not has_ventas %}
             <button class="btn btn-sm btn-outline-primary fw-semibold flex-shrink-0"
                     id="btn-apply-tit-{{ outer_idx }}-{{ loop.index }}"
                     onclick="aplicarTitulo('{{ item.get('item_id','') }}', 'titulo-{{ outer_idx }}-{{ loop.index }}', 'btn-apply-tit-{{ outer_idx }}-{{ loop.index }}')"
                     style="font-size:.74rem;padding:4px 10px">
               <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
             </button>
+            {% endif %}
           </div>
           {% if t.estrategia %}
           <div class="t-opt-strat"><i class="bi bi-lightbulb text-warning flex-shrink-0"></i>{{ t.estrategia }}</div>
@@ -866,12 +878,14 @@
                   style="font-size:.74rem;padding:4px 10px">
             <i class="bi bi-clipboard me-1"></i>Copiar
           </button>
+          {% if not has_ventas %}
           <button class="btn btn-sm btn-outline-primary fw-semibold flex-shrink-0"
                   id="btn-apply-tit-{{ outer_idx }}-1"
                   onclick="aplicarTitulo('{{ item.get('item_id','') }}', 'titulo-{{ outer_idx }}-1', 'btn-apply-tit-{{ outer_idx }}-1')"
                   style="font-size:.74rem;padding:4px 10px">
             <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
           </button>
+          {% endif %}
         </div>
       </div>
       {% endif %}
@@ -1070,13 +1084,18 @@
       <i class="bi bi-file-richtext-fill" style="color:#14532d;font-size:.88rem"></i>
       <span class="opt-sec-lbl" style="color:#14532d">Descripción superadora — lista para pegar en ML</span>
       <span style="font-size:.65rem;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
+      {% if has_ventas and not item.get('descripcion_aplicada') %}
+      <span style="font-size:.65rem;color:#15803d;background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:2px 7px;font-weight:700;flex-shrink:0">
+        <i class="bi bi-arrow-up-circle-fill me-1"></i>Acción disponible para esta publicación
+      </span>
+      {% endif %}
       <div class="d-flex gap-2 ms-auto">
         {% if item.get('descripcion_aplicada') %}
         <span class="badge badge-ok"><i class="bi bi-check2 me-1"></i>Aplicada</span>
         {% else %}
-        <button class="btn btn-sm btn-outline-success fw-semibold" id="btn-apply-desc-{{ outer_idx }}"
+        <button class="btn btn-sm fw-semibold" id="btn-apply-desc-{{ outer_idx }}"
                 onclick="aplicarDescripcion('{{ item.get('item_id','') }}', 'btn-apply-desc-{{ outer_idx }}')"
-                style="font-size:.73rem;padding:3px 10px">
+                style="font-size:.73rem;padding:3px 10px;{% if has_ventas %}background:#16a34a;color:#fff;border:none;{% else %}border:1px solid #16a34a;color:#16a34a;background:transparent;{% endif %}">
           <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
         </button>
         {% endif %}
