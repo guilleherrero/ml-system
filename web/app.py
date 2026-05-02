@@ -12269,265 +12269,22 @@ def _scheduler_check_monitor():
     save_json(_mon_path, _mon_fresh)
 
 
-def _job_repricing_hourly():
-    """Job 2 — Buy Box check + repricing en horario comercial.
-
-    Skip silencioso si config/repricing.json está vacío (sin reglas activas).
-    Solo procesa cuentas con active=True.
-    """
-    repricing_cfg = load_json(os.path.join(CONFIG_DIR, 'repricing.json')) or {}
-    if not repricing_cfg.get('items'):
-        print('[job_repricing] Sin reglas de repricing activas — skip silencioso.')
-        return
-
-    from core.account_manager import AccountManager
-    from modules.repricing import run as run_repricing
-    mgr = AccountManager()
-    accounts = [a for a in mgr.list_accounts() if a.active]
-    if not accounts:
-        print('[job_repricing] Sin cuentas activas.')
-        return
-
-    for acc in accounts:
-        try:
-            client = mgr.get_client(acc.alias)
-            run_repricing(client, acc.alias, dry_run=False)
-            print(f'[job_repricing] {acc.alias} OK')
-        except Exception as e:
-            app.logger.error('[job_repricing] %s — error: %s', acc.alias, e)
-            raise   # propagar para que el retry del JobManager lo capture
-
-
-def _job_questions_15min():
-    """Job 3 — Refrescar preguntas pendientes en horario comercial.
-
-    Solo procesa cuentas con active=True. Idempotente.
-    """
-    from core.account_manager import AccountManager
-    mgr = AccountManager()
-    accounts = [a for a in mgr.list_accounts() if a.active]
-    if not accounts:
-        return
-
-    for acc in accounts:
-        try:
-            client = mgr.get_client(acc.alias)
-            client._ensure_token()
-            heads = {'Authorization': f'Bearer {client.account.access_token}'}
-            r = req_lib.get(
-                'https://api.mercadolibre.com/questions/search',
-                headers=heads,
-                params={'seller_id': client.account.user_id,
-                        'status': 'UNANSWERED', 'limit': 50},
-                timeout=8,
-            )
-            if r.ok:
-                qs = r.json().get('questions', [])
-                # Persistir count para que la UI lo muestre — NO responder automáticamente
-                preg_path = os.path.join(DATA_DIR, f'preguntas_pendientes_{safe(acc.alias)}.json')
-                save_json(preg_path, {
-                    'fecha':         datetime.now().strftime('%Y-%m-%d %H:%M'),
-                    'count':         len(qs),
-                    'preguntas':     qs[:50],
-                })
-        except Exception as e:
-            app.logger.warning('[job_questions] %s — error: %s', acc.alias, e)
-            raise
-
-
-def _job_buybox_check():
-    """Job 5 — Verificar Buy Box en publicaciones de catálogo cada 6h.
-
-    Compara contra el último snapshot guardado. Si Buy Box se perdió,
-    persiste alerta para que aparezca en /alertas en la próxima carga.
-    Solo procesa cuentas con active=True.
-    """
-    from core.account_manager import AccountManager
-    mgr = AccountManager()
-    accounts = [a for a in mgr.list_accounts() if a.active]
-    if not accounts:
-        return
-
-    snap_path = os.path.join(DATA_DIR, 'buybox_snapshots.json')
-    snapshots = load_json(snap_path) or {}
-    nuevas_perdidas: list = []
-
-    for acc in accounts:
-        try:
-            client = mgr.get_client(acc.alias)
-            client._ensure_token()
-            token = client.account.access_token
-            heads = {'Authorization': f'Bearer {token}'}
-
-            # Cargar lista de publicaciones de catálogo (ya está en stock JSON)
-            stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(acc.alias)}.json')) or {}
-            for it in stock.get('items', [])[:50]:   # cap a 50 por cuenta para no saturar
-                item_id = it.get('id', '')
-                if not item_id:
-                    continue
-                # Verificar status del catálogo via API
-                try:
-                    r_item = req_lib.get(
-                        f'https://api.mercadolibre.com/items/{item_id}',
-                        headers=heads,
-                        params={'attributes': 'id,catalog_product_id,catalog_listing'},
-                        timeout=6,
-                    )
-                    if not r_item.ok:
-                        continue
-                    body = r_item.json()
-                    cpid = body.get('catalog_product_id')
-                    if not cpid:
-                        continue
-                    # Buy box winner
-                    rp = req_lib.get(
-                        f'https://api.mercadolibre.com/products/{cpid}/items',
-                        headers=heads, params={'limit': 5}, timeout=6,
-                    )
-                    if not rp.ok:
-                        continue
-                    sellers = rp.json().get('results', [])
-                    we_win = bool(sellers) and (sellers[0].get('id') == item_id or
-                                                 sellers[0].get('item_id') == item_id)
-
-                    prev = snapshots.get(f'{acc.alias}::{item_id}', {})
-                    if prev.get('we_win') and not we_win:
-                        nuevas_perdidas.append({
-                            'alias':   acc.alias,
-                            'item_id': item_id,
-                            'titulo':  it.get('titulo', '')[:80],
-                            'fecha':   datetime.now().strftime('%Y-%m-%d %H:%M'),
-                        })
-                    snapshots[f'{acc.alias}::{item_id}'] = {
-                        'we_win': we_win,
-                        'fecha':  datetime.now().strftime('%Y-%m-%d %H:%M'),
-                    }
-                except Exception:
-                    continue
-                _time_module.sleep(0.1)
-        except Exception as e:
-            app.logger.warning('[job_buybox] %s — error: %s', acc.alias, e)
-            raise
-
-    save_json(snap_path, snapshots)
-    if nuevas_perdidas:
-        # Persistir lista de Buy Box perdidos para que /alertas las muestre
-        save_json(os.path.join(DATA_DIR, 'buybox_perdidos_recientes.json'), {
-            'fecha':    datetime.now().strftime('%Y-%m-%d %H:%M'),
-            'items':    nuevas_perdidas,
-        })
-
-
-def _job_weekly_reopt():
-    """Job 4 — RESERVADO. Re-optimización IA de publicaciones que perdieron
-    posiciones esta semana.
-
-    NO se ejecuta por cron (slot reservado). Disparable manualmente desde
-    /settings con el botón "Re-optimizar publicaciones que perdieron posiciones".
-
-    Filtro inteligente: solo publicaciones con caída >5 posiciones esta semana
-    (no Top X ciego — re-optimizar lo que no necesita es destructivo).
-    """
-    from core.account_manager import AccountManager
-    from modules.seo_optimizer import run_full_optimization
-
-    mgr = AccountManager()
-    accounts = [a for a in mgr.list_accounts() if a.active]
-    procesadas = 0
-
-    for acc in accounts:
-        pos_path = os.path.join(DATA_DIR, f'posiciones_{safe(acc.alias)}.json')
-        pos_data = load_json(pos_path) or {}
-
-        # Identificar items con caída >5 posiciones en últimos 7 días
-        candidatos: list[str] = []
-        for item_id, item_data in pos_data.items():
-            hist = item_data.get('history', {})
-            if not hist:
-                continue
-            fechas = sorted(hist.keys())[-8:]
-            valid = [(f, hist[f]) for f in fechas if hist.get(f) and hist[f] != 999]
-            if len(valid) < 2:
-                continue
-            primera_pos = valid[0][1]
-            ultima_pos  = valid[-1][1]
-            caida = ultima_pos - primera_pos   # positivo = empeoró
-            if caida > 5:
-                candidatos.append(item_id)
-
-        if not candidatos:
-            print(f'[job_weekly_reopt] {acc.alias}: sin candidatos (ningún item perdió >5 posiciones).')
-            continue
-
-        client = mgr.get_client(acc.alias)
-        for item_id in candidatos[:5]:   # cap a 5 por cuenta para limitar costo Claude
-            try:
-                run_full_optimization(item_id, client)
-                procesadas += 1
-            except Exception as e:
-                app.logger.warning('[job_weekly_reopt] %s/%s — error: %s', acc.alias, item_id, e)
-
-    print(f'[job_weekly_reopt] Re-optimización manual completada — {procesadas} publicaciones procesadas.')
-
-
 def _start_scheduler():
-    """Inicia APScheduler con los 5 jobs del Sprint 2 vía JobManager."""
+    """Inicia APScheduler para actualización diaria a las 7:00 AM."""
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.cron import CronTrigger
-        from apscheduler.triggers.interval import IntervalTrigger
-        from core.scheduler_manager import JobManager
 
         scheduler = BackgroundScheduler(timezone='America/Argentina/Buenos_Aires')
+        scheduler.add_job(
+            _scheduler_run_all,
+            trigger=CronTrigger(hour=7, minute=0, timezone='America/Argentina/Buenos_Aires'),
+            id='daily_update',
+            name='Actualización diaria ML',
+            replace_existing=True,
+        )
         scheduler.start()
-
-        jm = JobManager(scheduler, data_dir=DATA_DIR, config_dir=CONFIG_DIR)
-
-        # Job 1 — Daily 7:00 AM ART (ya existía, ahora con retry + histórico)
-        jm.register_job(
-            'daily_update', _scheduler_run_all,
-            CronTrigger(hour=7, minute=0, timezone='America/Argentina/Buenos_Aires'),
-            name='Actualización diaria',
-            description='Refresh principal de data: reputación, stock, posiciones, Full, Meli Ads, monitor',
-        )
-
-        # Job 2 — Repricing horario comercial (8-22 ART) cada 1h
-        jm.register_job(
-            'repricing_hourly', _job_repricing_hourly,
-            CronTrigger(hour='8-22', minute=0, timezone='America/Argentina/Buenos_Aires'),
-            name='Repricing horario',
-            description='Buy Box + repricing automático en horario comercial. Skip si no hay reglas activas.',
-        )
-
-        # Job 3 — Preguntas cada 15 min (8-22 ART)
-        jm.register_job(
-            'questions_15min', _job_questions_15min,
-            CronTrigger(hour='8-22', minute='*/15', timezone='America/Argentina/Buenos_Aires'),
-            name='Preguntas pendientes',
-            description='Refrescar preguntas sin responder cada 15 min en horario comercial',
-        )
-
-        # Job 4 — RESERVADO (re-optimización semanal). Disparable manual.
-        jm.register_job(
-            'weekly_reopt', _job_weekly_reopt,
-            None,   # trigger ignorado para reservados
-            name='Re-optimización semanal IA',
-            description='Re-optimizar publicaciones que perdieron >5 posiciones esta semana. Solo disparo manual.',
-            reserved=True,
-        )
-
-        # Job 5 — Buy Box check cada 6 horas
-        jm.register_job(
-            'buybox_6h', _job_buybox_check,
-            IntervalTrigger(hours=6, timezone='America/Argentina/Buenos_Aires'),
-            name='Buy Box check',
-            description='Verificar Buy Box en publicaciones de catálogo cada 6h. Alerta si se perdió.',
-        )
-
-        global _job_manager
-        _job_manager = jm
-
-        print(f'[scheduler] Activo — 5 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — actualización automática todos los días a las 7:00 AM (ART)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')
@@ -12591,128 +12348,11 @@ def api_scheduler_status():
 
 @app.route('/api/scheduler-run-now', methods=['POST'])
 def api_scheduler_run_now():
-    """Fuerza una actualización inmediata (manual). Mantenido para retrocompat."""
+    """Fuerza una actualización inmediata (manual)."""
     import threading
     t = threading.Thread(target=_scheduler_run_all, daemon=True)
     t.start()
     return jsonify({'ok': True, 'mensaje': 'Actualización iniciada en background.'})
-
-
-# ── Cron Jobs — gestión vía JobManager ──────────────────────────────────────
-
-@app.route('/api/scheduler-jobs')
-def api_scheduler_jobs():
-    """Lista de jobs registrados con metadata + estado (next_run, last_run, etc.)."""
-    if _job_manager is None:
-        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
-    return jsonify({'ok': True, 'jobs': _job_manager.list_jobs()})
-
-
-@app.route('/api/scheduler-toggle/<job_id>', methods=['POST'])
-def api_scheduler_toggle(job_id):
-    """Pausa o reanuda un job. Body: {action: 'pause'|'resume'}."""
-    if _job_manager is None:
-        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
-    body = request.get_json(silent=True) or {}
-    action = (body.get('action') or '').strip().lower()
-    if action == 'pause':
-        _job_manager.pause_job(job_id)
-        return jsonify({'ok': True, 'job_id': job_id, 'paused': True})
-    if action == 'resume':
-        _job_manager.resume_job(job_id)
-        return jsonify({'ok': True, 'job_id': job_id, 'paused': False})
-    return jsonify({'ok': False, 'error': "action debe ser 'pause' o 'resume'"}), 400
-
-
-@app.route('/api/scheduler-history/<job_id>')
-def api_scheduler_history(job_id):
-    """Últimas N corridas del job (más reciente primero). Default: 20."""
-    if _job_manager is None:
-        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
-    try:
-        limit = int(request.args.get('limit', 20))
-    except (TypeError, ValueError):
-        limit = 20
-    return jsonify({
-        'ok':      True,
-        'job_id':  job_id,
-        'history': _job_manager.get_history(job_id, limit=limit),
-    })
-
-
-@app.route('/api/scheduler-run-job/<job_id>', methods=['POST'])
-def api_scheduler_run_job(job_id):
-    """Dispara un job específico manualmente (incluido los reservados)."""
-    if _job_manager is None:
-        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
-    ok = _job_manager.run_now(job_id)
-    if not ok:
-        return jsonify({'ok': False, 'error': f'Job no encontrado: {job_id}'}), 404
-    return jsonify({'ok': True, 'mensaje': f'Job {job_id} disparado en background.'})
-
-
-@app.route('/api/reporte-semanal-download')
-def api_reporte_semanal_download():
-    """Genera reporte semanal como JSON descargable.
-
-    Cuando se configure SMTP, el envío automático por email se va a
-    apoyar en este mismo generador. Por ahora solo descarga.
-    """
-    from core.account_manager import AccountManager
-    from datetime import datetime as _dt, timedelta as _td
-
-    mgr = AccountManager()
-    accounts = [a for a in mgr.list_accounts() if a.active]
-    fecha_desde = (_dt.now() - _td(days=7)).strftime('%Y-%m-%d')
-    fecha_hasta = _dt.now().strftime('%Y-%m-%d')
-
-    reporte: dict = {
-        'fecha_generado':  _dt.now().strftime('%Y-%m-%d %H:%M (ART)'),
-        'periodo':         f'{fecha_desde} al {fecha_hasta}',
-        'cuentas':         [],
-    }
-
-    for acc in accounts:
-        s = safe(acc.alias)
-        stock_data = load_json(os.path.join(DATA_DIR, f'stock_{s}.json')) or {}
-        rep_data   = load_json(os.path.join(DATA_DIR, f'reputacion_{s}.json')) or []
-        items      = stock_data.get('items', [])
-
-        ventas_30d_total = sum(int(i.get('ventas_30d') or 0) for i in items)
-        visitas_30d_tot  = sum(int(i.get('visitas_30d') or 0) for i in items)
-        rep_latest       = rep_data[-1] if rep_data else {}
-
-        sin_stock  = [i for i in items if i.get('alerta_stock') == 'SIN_STOCK']
-        margen_neg = [i for i in items if i.get('alerta_margen') == 'NEGATIVO']
-
-        reporte['cuentas'].append({
-            'alias':            acc.alias,
-            'publicaciones':    len(items),
-            'ventas_30d_total': ventas_30d_total,
-            'visitas_30d_tot':  visitas_30d_tot,
-            'reputacion':       {
-                'reclamos_pct':      rep_latest.get('reclamos_pct'),
-                'demoras_pct':       rep_latest.get('demoras_pct'),
-                'cancelaciones_pct': rep_latest.get('cancelaciones_pct'),
-            },
-            'alertas': {
-                'sin_stock':       len(sin_stock),
-                'margen_negativo': len(margen_neg),
-            },
-        })
-
-    # Histórico del scheduler para incluir en el reporte
-    if _job_manager is not None:
-        reporte['scheduler'] = {
-            'jobs':            _job_manager.list_jobs(),
-        }
-
-    fname = f'reporte_semanal_{_dt.now().strftime("%Y%m%d_%H%M")}.json'
-    body  = json.dumps(reporte, ensure_ascii=False, indent=2)
-    resp  = make_response(body)
-    resp.headers['Content-Type']        = 'application/json; charset=utf-8'
-    resp.headers['Content-Disposition'] = f'attachment; filename="{fname}"'
-    return resp
 
 
 # ── Mercado Envíos Full ───────────────────────────────────────────────────────
@@ -13920,7 +13560,6 @@ Sé directo — si algo hay que cortar, decilo.]"""
 
 
 _app_scheduler = None
-_job_manager   = None  # JobManager wrappeando _app_scheduler
 _scheduler_last_run = None  # datetime del último run completado
 _scheduler_running  = False  # flag para evitar ejecuciones simultáneas
 
