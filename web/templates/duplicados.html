@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %} — Duplicados {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+.dup-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  margin-bottom:1.25rem; overflow:hidden;
+}
+.dup-card.severidad-puro          { border-left:4px solid #dc2626; }
+.dup-card.severidad-subperformante{ border-left:4px solid #f59e0b; }
+
+.dup-header {
+  padding:.75rem 1rem; background:#f8fafc; border-bottom:1px solid #e2e8f0;
+  display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
+}
+.dup-header .titulo  { font-weight:700; color:#0f172a; font-size:.95rem; }
+.dup-header .meta    { font-size:.74rem; color:#64748b; }
+.severidad-badge {
+  font-size:.66rem; font-weight:800; padding:2px 8px; border-radius:10px;
+  text-transform:uppercase; letter-spacing:.04em;
+}
+.severidad-badge.puro          { background:#fee2e2; color:#b91c1c; }
+.severidad-badge.subperformante{ background:#fef3c7; color:#b45309; }
+
+.dup-table { width:100%; border-collapse:collapse; font-size:.83rem; }
+.dup-table th {
+  text-align:left; font-size:.66rem; font-weight:700; color:#94a3b8;
+  text-transform:uppercase; letter-spacing:.04em;
+  padding:.5rem .8rem; background:#fafafa; border-bottom:1px solid #e2e8f0;
+}
+.dup-table td {
+  padding:.6rem .8rem; border-bottom:1px solid #f1f5f9;
+}
+.dup-table tr.ganadora td { background:#f0fdf4; }
+.ganadora-badge {
+  background:#dcfce7; color:#15803d; font-size:.62rem; font-weight:700;
+  padding:1px 6px; border-radius:8px; margin-left:.3rem; vertical-align:middle;
+}
+
+.metric-cell .v { font-weight:700; color:#0f172a; }
+.metric-cell .l { font-size:.66rem; color:#94a3b8; }
+
+.action-row {
+  padding:.65rem 1rem; background:#fafafa; border-top:1px solid #e2e8f0;
+  display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
+}
+.btn-pause-batch {
+  font-size:.78rem; padding:.35rem .9rem; border-radius:7px;
+  background:#dc2626; color:#fff; border:none; font-weight:600; cursor:pointer;
+}
+.btn-pause-batch:hover { background:#b91c1c; }
+.btn-pause-batch:disabled { opacity:.5; cursor:not-allowed; }
+.btn-ignore {
+  font-size:.74rem; padding:.3rem .75rem; border-radius:7px;
+  background:transparent; color:#64748b; border:1px solid #cbd5e1;
+  cursor:pointer;
+}
+.btn-ignore:hover { background:#f1f5f9; color:#1e293b; }
+.btn-ml {
+  font-size:.72rem; color:#3b82f6; text-decoration:none;
+}
+.btn-ml:hover { text-decoration:underline; }
+
+.empty-state { text-align:center; padding:4rem 2rem; color:#94a3b8; }
+.empty-state i { font-size:3rem; display:block; margin-bottom:1rem; }
+
+.summary-bar {
+  display:flex; gap:1.5rem; flex-wrap:wrap; padding:.9rem 1.2rem;
+  background:#fafafa; border:1px solid #e2e8f0; border-radius:10px;
+  margin-bottom:1.5rem; font-size:.85rem;
+}
+.summary-bar .num { font-weight:800; color:#0f172a; font-size:1.1rem; }
+.summary-bar .lbl { font-size:.7rem; color:#64748b; text-transform:uppercase;
+                     letter-spacing:.03em; font-weight:600; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-files me-2 text-danger"></i>Duplicados / Canibalización</h1>
+    <div class="sub">{{ alias }}{% if fecha_stock %} — datos de stock al {{ fecha_stock }}{% endif %}</div>
+  </div>
+</div>
+
+{% if not clusters %}
+<div class="empty-state">
+  <i class="bi bi-check-circle text-success"></i>
+  <p style="font-size:1.05rem;font-weight:600;color:#1e293b;margin-bottom:.4rem">
+    Sin duplicados detectados
+  </p>
+  <p style="font-size:.88rem">
+    No se encontraron clusters de publicaciones canibalizándose en el catálogo de {{ alias }}.
+  </p>
+</div>
+{% else %}
+
+<div class="summary-bar">
+  <div>
+    <div class="num">{{ resumen.puros }}</div>
+    <div class="lbl"><span class="severidad-badge puro" style="margin-right:.3rem">PURO</span>clusters</div>
+  </div>
+  <div>
+    <div class="num">{{ resumen.subperformantes }}</div>
+    <div class="lbl"><span class="severidad-badge subperformante" style="margin-right:.3rem">SUBP.</span>clusters</div>
+  </div>
+  <div>
+    <div class="num">{{ "{:,}".format(resumen.visitas_perdidas_30d) }}</div>
+    <div class="lbl">Visitas perdidas / 30d</div>
+  </div>
+  <div>
+    <div class="num">${{ "{:,.0f}".format(resumen.impacto_monetario_estimado) }}</div>
+    <div class="lbl">Impacto estimado / mes</div>
+  </div>
+  <div style="font-size:.7rem;color:#94a3b8;align-self:center;max-width:280px;line-height:1.4">
+    <i class="bi bi-info-circle me-1"></i>
+    Impacto = visitas perdidas × conversión de la ganadora × precio. Estimación, no real.
+  </div>
+</div>
+
+{% for c in clusters %}
+<div class="dup-card severidad-{{ c.severidad }}" id="cluster-{{ c.cluster_id }}">
+  <div class="dup-header">
+    <span class="severidad-badge {{ c.severidad }}">
+      {% if c.severidad == 'puro' %}🔴 Duplicado puro{% else %}🟡 Subperformante{% endif %}
+    </span>
+    <span class="titulo">{{ c.titulo_corto or 'Cluster sin nombre' }}</span>
+    <span class="meta">{{ c.items|length }} MLAs</span>
+    <span class="meta">·</span>
+    <span class="meta">{{ c.visitas_perdidas_30d }} visitas perdidas/mes</span>
+    {% if c.impacto_monetario_estimado > 0 %}
+    <span class="meta">·</span>
+    <span class="meta" style="color:#b91c1c;font-weight:600">
+      ≈ ${{ "{:,.0f}".format(c.impacto_monetario_estimado) }}/mes
+    </span>
+    {% endif %}
+  </div>
+
+  <table class="dup-table">
+    <thead>
+      <tr>
+        <th>Publicación</th>
+        <th class="text-end">Precio</th>
+        <th class="text-end">Ventas 30d</th>
+        <th class="text-end">Visitas 30d</th>
+        <th class="text-end">Conv.</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for it in c.items %}
+      <tr class="{{ 'ganadora' if it.es_ganadora else '' }}" data-mla="{{ it.id }}" data-ventas="{{ it.ventas_30d }}">
+        <td>
+          <div style="font-weight:600;color:#0f172a;font-size:.84rem">
+            {{ it.titulo[:75] }}
+            {% if it.es_ganadora %}<span class="ganadora-badge">★ GANADORA</span>{% endif %}
+          </div>
+          <div style="font-size:.7rem;color:#94a3b8">{{ it.id }}</div>
+        </td>
+        <td class="text-end metric-cell"><span class="v">${{ "{:,.0f}".format(it.precio) }}</span></td>
+        <td class="text-end metric-cell">
+          <span class="v {% if it.ventas_30d == 0 %}text-danger{% endif %}">{{ it.ventas_30d }}</span>
+        </td>
+        <td class="text-end metric-cell"><span class="v">{{ it.visitas_30d }}</span></td>
+        <td class="text-end metric-cell">
+          <span class="v">{% if it.conversion_pct %}{{ "%.2f"|format(it.conversion_pct) }}%{% else %}—{% endif %}</span>
+        </td>
+        <td>
+          <a href="https://articulo.mercadolibre.com.ar/{{ it.id|replace('MLA','MLA-') }}"
+             target="_blank" class="btn-ml" title="Ver publicación en ML">
+            <i class="bi bi-box-arrow-up-right"></i>
+          </a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="action-row">
+    <button class="btn-pause-batch" onclick="abrirModalPausar('{{ c.cluster_id }}')">
+      <i class="bi bi-pause-circle me-1"></i>Pausar las que no venden
+    </button>
+    <span style="font-size:.74rem;color:#64748b">
+      {% if c.severidad == 'puro' %}
+      Recomendación: pausar las que tienen 0 ventas, mantener la ganadora.
+      {% else %}
+      Recomendación: revisar pricing/foto de las variantes con 0 ventas; si no mejoran, pausar.
+      {% endif %}
+    </span>
+    <button class="btn-ignore ms-auto" onclick="abrirModalIgnorar('{{ c.cluster_id }}')">
+      <i class="bi bi-eye-slash me-1"></i>Ignorar este cluster
+    </button>
+  </div>
+</div>
+{% endfor %}
+
+{% endif %}
+
+<!-- ── Modal pausar ─────────────────────────────────────────────── -->
+<div id="modal-pausar" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;max-width:640px;width:92%;padding:1.5rem;max-height:85vh;overflow-y:auto">
+    <h5 style="font-weight:700;color:#1e293b;margin-bottom:1rem">
+      <i class="bi bi-pause-circle text-danger me-1"></i>Confirmar pausa batch
+    </h5>
+    <div id="modal-pausar-body" style="font-size:.88rem"></div>
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.2rem">
+      <button onclick="cerrarModal('modal-pausar')" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:7px;cursor:pointer">Cancelar</button>
+      <button id="btn-confirmar-pausa" onclick="ejecutarPausaBatch()" style="padding:.5rem 1rem;background:#dc2626;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:600">
+        Pausar seleccionadas
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal ignorar ────────────────────────────────────────────── -->
+<div id="modal-ignorar" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;max-width:480px;width:92%;padding:1.5rem">
+    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+      <i class="bi bi-eye-slash text-secondary me-1"></i>Ignorar cluster
+    </h5>
+    <p style="font-size:.86rem;color:#64748b;margin-bottom:1rem">
+      Marcar todos los pares de este cluster como "no son duplicados" para que no aparezcan más en el detector.
+    </p>
+    <textarea id="ignorar-razon" placeholder="Razón (opcional): ej. son productos distintos aunque parezcan iguales"
+              style="width:100%;min-height:64px;border:1px solid #cbd5e1;border-radius:7px;padding:.5rem;font-size:.85rem;font-family:inherit"></textarea>
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.2rem">
+      <button onclick="cerrarModal('modal-ignorar')" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:7px;cursor:pointer">Cancelar</button>
+      <button id="btn-confirmar-ignorar" onclick="ejecutarIgnorar()" style="padding:.5rem 1rem;background:#475569;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:600">
+        Ignorar cluster
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ALIAS = {{ alias | tojson }};
+let _cluster_actual = null;
+
+function abrirModal(id) { document.getElementById(id).style.display = 'flex'; }
+function cerrarModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function _itemsDelCluster(cluster_id) {
+  const card = document.getElementById('cluster-' + cluster_id);
+  if (!card) return [];
+  return [...card.querySelectorAll('tbody tr')].map(tr => ({
+    mla:    tr.dataset.mla,
+    ventas: parseInt(tr.dataset.ventas) || 0,
+    titulo: tr.querySelector('td div').textContent.trim().slice(0, 80),
+  }));
+}
+
+function abrirModalPausar(cluster_id) {
+  _cluster_actual = cluster_id;
+  const items   = _itemsDelCluster(cluster_id);
+  const sin_v   = items.filter(it => it.ventas === 0);
+  const con_v   = items.filter(it => it.ventas > 0);
+
+  let html = '';
+  if (!sin_v.length) {
+    html = '<div class="alert alert-info" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:.75rem;border-radius:7px;font-size:.86rem">Todas las publicaciones de este cluster tienen ventas en los últimos 30 días. No hay nada para pausar automáticamente.</div>';
+    document.getElementById('btn-confirmar-pausa').disabled = true;
+  } else {
+    document.getElementById('btn-confirmar-pausa').disabled = false;
+    html = '<div style="margin-bottom:.8rem">Se van a pausar las siguientes <strong>' + sin_v.length + ' publicación(es) sin ventas en 30 días</strong>:</div>';
+    html += '<ul style="font-size:.83rem;padding-left:1.2rem;margin-bottom:.8rem">';
+    sin_v.forEach(it => { html += '<li><code style="font-size:.78rem">' + it.mla + '</code> — ' + it.titulo + '</li>'; });
+    html += '</ul>';
+    if (con_v.length) {
+      html += '<div style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;padding:.65rem .9rem;border-radius:7px;font-size:.82rem;margin-bottom:.4rem">';
+      html += '<i class="bi bi-shield-check me-1"></i><strong>' + con_v.length + ' publicación(es) protegidas</strong> — tienen ventas en 30 días, no se tocan.</div>';
+    }
+  }
+  document.getElementById('modal-pausar-body').innerHTML = html;
+  abrirModal('modal-pausar');
+}
+
+async function ejecutarPausaBatch() {
+  if (!_cluster_actual) return;
+  const items = _itemsDelCluster(_cluster_actual).filter(it => it.ventas === 0);
+  if (!items.length) return;
+
+  const btn = document.getElementById('btn-confirmar-pausa');
+  btn.disabled = true; btn.textContent = 'Pausando...';
+
+  try {
+    const r = await fetch('/api/duplicados/pausar-batch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        alias:      ALIAS,
+        cluster_id: _cluster_actual,
+        mlas:       items.map(it => it.mla),
+      }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert('✓ Pausadas ' + d.pausadas + ' publicaciones.' + (d.errores ? '\nErrores: ' + d.errores : ''));
+      location.reload();
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+      btn.disabled = false; btn.textContent = 'Pausar seleccionadas';
+    }
+  } catch (e) {
+    alert('Error de conexión: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Pausar seleccionadas';
+  }
+}
+
+function abrirModalIgnorar(cluster_id) {
+  _cluster_actual = cluster_id;
+  document.getElementById('ignorar-razon').value = '';
+  abrirModal('modal-ignorar');
+}
+
+async function ejecutarIgnorar() {
+  if (!_cluster_actual) return;
+  const items = _itemsDelCluster(_cluster_actual);
+  if (items.length < 2) return;
+  const razon = document.getElementById('ignorar-razon').value.trim();
+
+  const btn = document.getElementById('btn-confirmar-ignorar');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+
+  try {
+    const r = await fetch('/api/duplicados/ignorar-cluster', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        alias: ALIAS,
+        mlas:  items.map(it => it.mla),
+        razon: razon,
+      }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      location.reload();
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+      btn.disabled = false; btn.textContent = 'Ignorar cluster';
+    }
+  } catch (e) {
+    alert('Error de conexión: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Ignorar cluster';
+  }
+}
+</script>
+{% endblock %}

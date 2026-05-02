@@ -222,6 +222,9 @@
     <a href="/salud/{{ acc.alias }}" class="{{ 'active' if request.path == '/salud/'~acc.alias else '' }}">
       <i class="bi bi-heart-pulse"></i> Salud del Catálogo
     </a>
+    <a href="/duplicados/{{ acc.alias }}" class="{{ 'active' if request.path == '/duplicados/'~acc.alias else '' }}">
+      <i class="bi bi-files"></i> Duplicados
+    </a>
     <a href="/posiciones/{{ acc.alias }}" class="{{ 'active' if request.path == '/posiciones/'~acc.alias else '' }}">
       <i class="bi bi-graph-up-arrow"></i> Posiciones
     </a>
