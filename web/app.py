@@ -6976,6 +6976,170 @@ def duplicados(alias):
                            accounts=get_accounts())
 
 
+@app.route('/api/duplicados/pausar-batch', methods=['POST'])
+def api_duplicados_pausar_batch():
+    """Pausa en ML las publicaciones del cluster que no tengan ventas en 30 días.
+
+    Protección dura: si una MLA tiene ventas_30d > 0, NO se pausa aunque venga
+    en la lista del request. Es un proxy conservador para "ventas en los últimos
+    7 días" (no tenemos ventas_7d en stock JSON; ventas_30d > 0 cubre el caso).
+    """
+    from modules.detector_duplicados import registrar_accion_automatica
+
+    body       = request.get_json(silent=True) or {}
+    alias      = (body.get('alias') or '').strip()
+    cluster_id = (body.get('cluster_id') or '').strip()
+    mlas_in    = body.get('mlas') or []
+
+    if not alias or not isinstance(mlas_in, list) or not mlas_in:
+        return jsonify({'ok': False, 'error': 'alias y mlas son requeridos'}), 400
+
+    # Cargar stock para validar protecciones
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    stock_idx   = {i.get('id'): i for i in stock_data.get('items', []) if i.get('id')}
+
+    # Identificar la "ganadora" del cluster — para el baseline post-pausa
+    cluster_items = [stock_idx.get(m, {}) for m in mlas_in if m in stock_idx]
+    # Buscar la ganadora entre todos los items que estaban en el cluster del request
+    # (la ganadora puede no estar en mlas_in si solo enviaron las que tienen 0 ventas)
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Auth: {e}'}), 401
+
+    pausadas: list = []
+    errores:  list = []
+    protegidas: list = []
+    heads_json = {**heads, 'Content-Type': 'application/json'}
+
+    for mla in mlas_in:
+        mla = (mla or '').strip().upper()
+        if not mla:
+            continue
+        item_info = stock_idx.get(mla, {})
+        ventas    = int(item_info.get('ventas_30d') or 0)
+
+        # Protección dura: ventas_30d > 0 ⇒ no pausar
+        if ventas > 0:
+            protegidas.append({'mla': mla, 'ventas_30d': ventas})
+            continue
+
+        try:
+            r = req_lib.put(
+                f'https://api.mercadolibre.com/items/{mla}',
+                headers=heads_json,
+                json={'status': 'paused'},
+                timeout=10,
+            )
+            if r.ok:
+                pausadas.append(mla)
+                # Registrar trazabilidad
+                registrar_accion_automatica(alias, DATA_DIR, 'pausar_duplicado', {
+                    'mla':         mla,
+                    'cluster_id':  cluster_id,
+                    'ventas_30d':  ventas,
+                    'visitas_30d': int(item_info.get('visitas_30d') or 0),
+                    'titulo':      (item_info.get('titulo') or '')[:120],
+                    'razon':       'sin_ventas_30d_en_cluster_canibal',
+                    'ejecutado_por': 'ui:/duplicados',
+                })
+            else:
+                errores.append({'mla': mla, 'status': r.status_code,
+                                'msg': (r.text or '')[:200]})
+        except Exception as e:
+            errores.append({'mla': mla, 'error': str(e)})
+        _time_module.sleep(0.15)
+
+    # Capturar baseline de la ganadora del cluster en monitor_evolucion (si la
+    # encontramos en stock) — permite medir si la pausa beneficia su tracking.
+    try:
+        ganadora = max(
+            (it for it in stock_data.get('items', []) if it.get('id') and int(it.get('ventas_30d') or 0) > 0),
+            key=lambda x: (int(x.get('ventas_30d') or 0), int(x.get('visitas_30d') or 0)),
+            default=None,
+        )
+        if ganadora and pausadas:
+            _now_mon  = datetime.now().strftime('%Y-%m-%d %H:%M')
+            _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+            _mon = load_json(_mon_path) or {'items': []}
+            if not isinstance(_mon, dict):
+                _mon = {'items': []}
+            _baseline = {
+                'fecha':       _now_mon,
+                'visitas_7d':  0,
+                'ventas_30d':  int(ganadora.get('ventas_30d') or 0),
+                'ventas_total': 0,
+                'conv_pct':    float(ganadora.get('conversion_pct') or 0),
+                'posicion':    None,
+                'posicion_kw': None,
+            }
+            gana_id = ganadora['id']
+            existing = next((x for x in _mon.get('items', [])
+                             if x.get('item_id') == gana_id and x.get('alias') == alias), None)
+            entry_data = {
+                'fecha_opt':       _now_mon,
+                'titulo_antes':    ganadora.get('titulo', '')[:120],
+                'titulo_despues':  ganadora.get('titulo', '')[:120],
+                'baseline':        _baseline,
+                'snapshots':       [],
+                'ultimo_snapshot': None,
+                'applied':         [f'pausa_duplicado_cluster_{cluster_id}'],
+                'origen':          'pausa_duplicado',
+                'cluster_id':      cluster_id,
+                'mlas_pausadas':   pausadas,
+            }
+            if existing:
+                existing.update(entry_data)
+            else:
+                _mon['items'].append({
+                    'item_id':         gana_id,
+                    'alias':           alias,
+                    'titulo_producto': ganadora.get('titulo', '')[:120],
+                    **entry_data,
+                })
+            save_json(_mon_path, _mon)
+    except Exception:
+        pass
+
+    return jsonify({
+        'ok':         True,
+        'pausadas':   len(pausadas),
+        'protegidas': len(protegidas),
+        'errores':    len(errores),
+        'detalle': {
+            'pausadas':   pausadas,
+            'protegidas': protegidas,
+            'errores':    errores,
+        },
+    })
+
+
+@app.route('/api/duplicados/ignorar-cluster', methods=['POST'])
+def api_duplicados_ignorar_cluster():
+    """Marca todos los pares del cluster como 'ignorados' por el usuario.
+
+    Granularidad por par (no por cluster): si aparece un MLA nuevo en una
+    futura corrida, sigue evaluándose contra los demás.
+    """
+    from modules.detector_duplicados import marcar_par_ignorado
+    body  = request.get_json(silent=True) or {}
+    alias = (body.get('alias') or '').strip()
+    mlas  = body.get('mlas') or []
+    razon = (body.get('razon') or '').strip()
+
+    if not alias or not isinstance(mlas, list) or len(mlas) < 2:
+        return jsonify({'ok': False, 'error': 'alias y al menos 2 mlas requeridos'}), 400
+
+    pares_marcados = 0
+    for i in range(len(mlas)):
+        for j in range(i + 1, len(mlas)):
+            if marcar_par_ignorado(alias, DATA_DIR, mlas[i], mlas[j], razon):
+                pares_marcados += 1
+
+    return jsonify({'ok': True, 'pares_marcados': pares_marcados})
+
+
 @app.route('/api/alertas')
 def api_alertas():
     """Construye todas las alertas de todas las cuentas.
