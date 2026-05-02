@@ -4726,6 +4726,11 @@ def api_monitor_evolucion(alias):
             'snapshots':        snapshots,
             'snapshots_n':      len(snapshots),
             'visitas_ayer':     ultimo.get('visitas_ayer'),
+            # ── Sprint 3.1: flags + datos de captura completa ──
+            '_capturing':       it.get('_capturing', False),
+            '_capture_error':   it.get('_capture_error'),
+            'baseline_version': baseline.get('version', 1),
+            'publicacion_original': it.get('publicacion_original'),
             'deltas': {
                 'visitas_7d':    _delta('visitas_7d'),
                 'visitas_pct':   _delta_pct('visitas_7d'),

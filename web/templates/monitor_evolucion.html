@@ -137,6 +137,63 @@
 .timeline-pos-down { color: #dc2626; font-weight: 700; }
 .timeline-pos-flat { color: #64748b; }
 
+/* ── Sprint 3.1 — vista expandible de baseline completo ── */
+.capturing-banner {
+  background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8;
+  padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
+  font-size: .82rem; display: flex; align-items: center; gap: .5rem;
+}
+.capturing-banner .pulse {
+  width: 10px; height: 10px; border-radius: 50%; background: #3b82f6;
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: .4; transform: scale(.9); }
+  50%      { opacity: 1; transform: scale(1.1); }
+}
+
+.expand-toggle {
+  font-size: .76rem; color: #3b82f6; cursor: pointer; border: none;
+  background: none; padding: .35rem 0; display: inline-flex;
+  align-items: center; gap: .3rem; margin-top: .3rem;
+}
+.expand-toggle:hover { text-decoration: underline; }
+
+.detail-sections { margin-top: .75rem; display: none; }
+.detail-sections.open { display: block; }
+
+.detail-section {
+  border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: .75rem .95rem; margin-bottom: .65rem; background: #fafafa;
+}
+.detail-section-title {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .05em; color: #475569; margin-bottom: .55rem;
+  display: flex; align-items: center; gap: .4rem;
+}
+.detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: .55rem .8rem;
+}
+.detail-cell {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: .35rem .55rem; background: #fff; border-radius: 6px;
+  border: 1px solid #f1f5f9;
+}
+.detail-cell .lbl { font-size: .62rem; font-weight: 600; color: #94a3b8;
+                     text-transform: uppercase; letter-spacing: .03em; }
+.detail-cell .val { font-size: .88rem; font-weight: 700; color: #0f172a; }
+.detail-cell.unavailable .val { color: #cbd5e1; font-style: italic; font-weight: 500; }
+.detail-cell.unavailable .lbl { color: #cbd5e1; }
+
+.kw-list { font-size: .77rem; line-height: 1.55; }
+.kw-list .kw-item { display: flex; justify-content: space-between;
+                     padding: .15rem .4rem; border-radius: 4px; }
+.kw-list .kw-item:nth-child(even) { background: rgba(241, 245, 249, .6); }
+
+.capture-meta { font-size: .66rem; color: #94a3b8; margin-top: .55rem;
+                 padding-top: .55rem; border-top: 1px dashed #e2e8f0; }
+
 .alerta-banner {
   display: flex; align-items: flex-start; gap: .6rem;
   padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
@@ -354,6 +411,23 @@ function renderItem(it) {
   const appliedBadges = (it.applied || []).map(a =>
     `<span class="badge-applied">${a}</span>`).join('');
 
+  // Capturing placeholder — se muestra mientras corre la captura async
+  let capturingBlock = '';
+  if (it._capturing) {
+    capturingBlock = `<div class="capturing-banner">
+      <span class="pulse"></span>
+      <span><strong>Capturando baseline completo…</strong> recargá en 10-15 segundos para ver las 14 métricas.</span>
+    </div>`;
+  } else if (it._capture_error) {
+    capturingBlock = `<div class="alerta-banner warning" style="font-size:.78rem">
+      <span class="alerta-icon">⚠</span>
+      <span>Error capturando baseline: ${it._capture_error}</span>
+    </div>`;
+  }
+
+  // Vista expandible con las 5 secciones nuevas (solo si baseline tiene v2)
+  const detailBlock = renderDetalleExpansible(it);
+
   return `<div class="item-card" id="card-${it.item_id}">
     <div class="item-card-header">
       <div>
@@ -377,12 +451,140 @@ function renderItem(it) {
       </div>
     </div>
     <div class="item-card-body">
+      ${capturingBlock}
       ${alertasBlock}
       ${tituloBlock}
       ${metricsBlock}
+      ${detailBlock}
       ${it.snapshots_n > 0 ? renderTimeline(it) : ''}
     </div>
   </div>`;
+}
+
+// ── Sprint 3.1 — render de secciones expandibles del baseline v2 ─────────────
+function fmtVal(v, suffix = '') {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'boolean') return v ? '✓ Sí' : '✗ No';
+  if (typeof v === 'number')  return Number.isInteger(v) ? v.toLocaleString('es-AR') + suffix : v.toLocaleString('es-AR', {maximumFractionDigits: 2}) + suffix;
+  return String(v) + suffix;
+}
+
+function detailCell(label, value, suffix = '') {
+  const fmt = fmtVal(value, suffix);
+  if (fmt === null) {
+    return `<div class="detail-cell unavailable">
+      <div class="lbl">${label}</div>
+      <div class="val">no disponible</div>
+    </div>`;
+  }
+  return `<div class="detail-cell">
+    <div class="lbl">${label}</div>
+    <div class="val">${fmt}</div>
+  </div>`;
+}
+
+function renderDetalleExpansible(it) {
+  const b = it.baseline || {};
+  const ver = it.baseline_version || b.version || 1;
+  // Si el baseline NO es v2, mostrar nota y badge "parcial" (parte del commit 4)
+  if (ver < 2) return '';
+
+  const vis = b.visibilidad || {};
+  const traf = b.trafico || {};
+  const ven = b.ventas || {};
+  const eng = b.engagement || {};
+  const sal = b.salud || {};
+  const meta = b._capture_metrics || {};
+
+  // Lista de top keywords
+  const kwsHtml = (vis.posicion_top_keywords || []).map(k => `
+    <div class="kw-item">
+      <span style="color:#475569">${k.kw}</span>
+      <span style="font-weight:700;color:${k.posicion ? '#0f172a' : '#cbd5e1'}">
+        ${k.posicion ? '#' + k.posicion : 'no rankea'}
+      </span>
+    </div>
+  `).join('') || '<div class="text-muted" style="font-size:.72rem">— no disponible —</div>';
+
+  const id = `detail-${it.item_id.replace(/[^a-z0-9]/gi, '_')}`;
+  const captureMeta = meta.duration_ms
+    ? `<div class="capture-meta">
+        Captura: ${(meta.duration_ms/1000).toFixed(1)}s · ${meta.ml_api_calls_count || 0} llamadas a ML API
+        ${meta.duration_breakdown
+          ? ' · ' + Object.entries(meta.duration_breakdown).map(([k,v]) => `${k}: ${(v/1000).toFixed(1)}s`).join(' · ')
+          : ''}
+      </div>`
+    : '';
+
+  return `<button class="expand-toggle" onclick="toggleDetail('${id}', this)">
+    <i class="bi bi-chevron-right"></i> Ver todas las métricas del baseline
+  </button>
+  <div id="${id}" class="detail-sections">
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-eye-fill" style="color:#7c3aed"></i>Visibilidad</div>
+      <div class="detail-grid">
+        ${detailCell('Score Calidad ML', vis.score_calidad_ml, '/100')}
+        ${detailCell('Nivel calidad', vis.score_calidad_nivel)}
+        ${detailCell('En catálogo', vis.esta_en_catalogo)}
+        ${detailCell('Tiene Buy Box', vis.tiene_buy_box)}
+      </div>
+      <div style="margin-top:.6rem">
+        <div class="lbl" style="font-size:.62rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.3rem">Posición top keywords</div>
+        <div class="kw-list">${kwsHtml}</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-bar-chart-fill" style="color:#3b82f6"></i>Tráfico</div>
+      <div class="detail-grid">
+        ${detailCell('Visitas 7d', traf.visitas_7d)}
+        ${detailCell('Visitas 30d', traf.visitas_30d)}
+        ${detailCell('Conversión 7d', traf.conversion_7d, '%')}
+        ${detailCell('Conversión 30d', traf.conversion_30d, '%')}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-cart-fill" style="color:#16a34a"></i>Ventas</div>
+      <div class="detail-grid">
+        ${detailCell('Unidades 7d', ven.unidades_7d)}
+        ${detailCell('Unidades 30d', ven.unidades_30d)}
+        ${detailCell('Facturación 7d', ven.facturacion_7d ? '$' + ven.facturacion_7d.toLocaleString('es-AR') : null)}
+        ${detailCell('Facturación 30d', ven.facturacion_30d ? '$' + ven.facturacion_30d.toLocaleString('es-AR') : null)}
+        ${detailCell('Ticket promedio', ven.ticket_promedio ? '$' + ven.ticket_promedio.toLocaleString('es-AR') : null)}
+        ${detailCell('Ventas histórico', ven.ventas_total_historica)}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-chat-dots-fill" style="color:#d97706"></i>Engagement</div>
+      <div class="detail-grid">
+        ${detailCell('Preguntas pendientes', eng.preguntas_pendientes)}
+        ${detailCell('Preguntas 30d', eng.preguntas_total_30d)}
+        ${detailCell('Reseñas', eng.resenas_cantidad)}
+        ${detailCell('Promedio estrellas', eng.resenas_promedio_estrellas, ' ★')}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-shield-check" style="color:#dc2626"></i>Salud</div>
+      <div class="detail-grid">
+        ${detailCell('Reclamos 30d', sal.reclamos_30d)}
+        ${detailCell('Cancelaciones 30d', sal.cancelaciones_30d)}
+        ${detailCell('Mediaciones 30d', sal.mediaciones_30d)}
+      </div>
+    </div>
+    ${captureMeta}
+  </div>`;
+}
+
+function toggleDetail(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.classList.toggle('open');
+  btn.innerHTML = open
+    ? '<i class="bi bi-chevron-down"></i> Ocultar métricas detalladas'
+    : '<i class="bi bi-chevron-right"></i> Ver todas las métricas del baseline';
 }
 
 async function loadMonitor() {
