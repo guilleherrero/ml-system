@@ -194,6 +194,31 @@
 .capture-meta { font-size: .66rem; color: #94a3b8; margin-top: .55rem;
                  padding-top: .55rem; border-top: 1px dashed #e2e8f0; }
 
+.badge-parcial {
+  font-size: .62rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  background: #fef3c7; color: #b45309; border: 1px solid #fde68a;
+  margin-left: .3rem; cursor: help;
+}
+.recapture-banner {
+  background: #fefce8; border: 1px solid #fde68a; color: #92400e;
+  padding: .65rem .9rem; border-radius: 8px; margin-top: .75rem;
+  font-size: .8rem; display: flex; gap: .5rem; align-items: flex-start;
+}
+.recapture-banner .desc { flex: 1; line-height: 1.45; }
+.btn-recapturar {
+  background: #d97706; color: #fff; border: none; padding: .35rem .85rem;
+  border-radius: 6px; font-size: .76rem; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.btn-recapturar:hover { background: #b45309; }
+.btn-recapturar:disabled { opacity: .5; cursor: not-allowed; }
+
+.modal-warn {
+  background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c;
+  padding: .8rem; border-radius: 7px; font-size: .8rem;
+  margin: .75rem 0; line-height: 1.5;
+}
+
 .alerta-banner {
   display: flex; align-items: flex-start; gap: .6rem;
   padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
@@ -428,10 +453,34 @@ function renderItem(it) {
   // Vista expandible con las 5 secciones nuevas (solo si baseline tiene v2)
   const detailBlock = renderDetalleExpansible(it);
 
+  // Banner "Baseline parcial" — aparece SOLO si baseline está en v1 (legacy)
+  // y la captura no está en curso
+  const baselineVer = it.baseline_version || (it.baseline && it.baseline.version) || 1;
+  let parcialBlock = '';
+  if (baselineVer < 2 && !it._capturing) {
+    parcialBlock = `<div class="recapture-banner">
+      <i class="bi bi-info-circle-fill" style="color:#d97706;flex-shrink:0;margin-top:.1rem"></i>
+      <div class="desc">
+        <strong>Baseline parcial</strong> — esta optimización se aplicó antes del Sprint 3
+        y solo tiene métricas básicas (visitas, ventas, conversión, posición).
+        Podés re-capturar para tener las 14 métricas completas, pero el snapshot va a ser del
+        <strong>estado de hoy</strong>, no del momento original de la optimización.
+      </div>
+      <button class="btn-recapturar" onclick="abrirModalRecapturar('${it.item_id}', ${JSON.stringify(it.titulo_producto.replace(/'/g, "\\'"))}, '${it.fecha_opt}')">
+        <i class="bi bi-arrow-clockwise me-1"></i>Re-capturar baseline
+      </button>
+    </div>`;
+  }
+
+  // Badge "parcial" en el header del card si baseline es v1 legacy
+  const partialBadge = (baselineVer < 2 && !it._capturing)
+    ? `<span class="badge-parcial" title="Baseline capturado antes del Sprint 3 — métricas básicas">⚠ Parcial</span>`
+    : '';
+
   return `<div class="item-card" id="card-${it.item_id}">
     <div class="item-card-header">
       <div>
-        <div class="item-name">${it.titulo_producto}</div>
+        <div class="item-name">${it.titulo_producto}${partialBadge}</div>
         <div class="item-meta">
           ${it.item_id}
           ${appliedBadges}
@@ -456,9 +505,86 @@ function renderItem(it) {
       ${tituloBlock}
       ${metricsBlock}
       ${detailBlock}
+      ${parcialBlock}
       ${it.snapshots_n > 0 ? renderTimeline(it) : ''}
     </div>
   </div>`;
+}
+
+// ── Modal recapturar baseline (Sprint 3.1 — items legacy) ────────────────────
+let _recap_target = null;
+
+function abrirModalRecapturar(itemId, titulo, fechaOpt) {
+  _recap_target = itemId;
+  const html = `
+    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+      <i class="bi bi-arrow-clockwise text-warning me-1"></i>Re-capturar baseline
+    </h5>
+    <p style="font-size:.86rem;color:#475569;margin-bottom:.55rem">
+      Item: <strong>${itemId}</strong><br>${titulo}
+    </p>
+    <p style="font-size:.82rem;color:#64748b;margin-bottom:.4rem">
+      Optimización aplicada el: <strong>${fechaOpt || 'fecha desconocida'}</strong>
+    </p>
+    <div class="modal-warn">
+      <strong>⚠ Importante:</strong> el baseline se va a capturar con el estado <strong>de HOY</strong>.
+      Si la optimización fue aplicada hace tiempo, este snapshot <strong>NO refleja</strong> el estado real
+      al momento de la optimización. Va a quedar marcado como <em>retroactivo</em> para que sepas
+      que es referencial, no histórico.
+    </div>
+    <p style="font-size:.78rem;color:#64748b">
+      La captura toma 10-15 segundos. Mientras corre, vas a ver "Capturando baseline…" en el card.
+    </p>
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
+      <button onclick="cerrarModalRecap()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
+      <button id="btn-confirmar-recap" onclick="ejecutarRecapturar()" style="padding:.5rem 1.2rem;background:#d97706;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
+        Re-capturar ahora
+      </button>
+    </div>`;
+  // Reuso el modal genérico — si no existe, lo creo
+  let modal = document.getElementById('modal-recap');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-recap';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center';
+    modal.innerHTML = '<div id="modal-recap-content" style="background:#fff;border-radius:12px;max-width:520px;width:92%;padding:1.5rem"></div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('modal-recap-content').innerHTML = html;
+  modal.style.display = 'flex';
+}
+
+function cerrarModalRecap() {
+  const modal = document.getElementById('modal-recap');
+  if (modal) modal.style.display = 'none';
+  _recap_target = null;
+}
+
+async function ejecutarRecapturar() {
+  if (!_recap_target) return;
+  const btn = document.getElementById('btn-confirmar-recap');
+  btn.disabled = true;
+  btn.textContent = 'Capturando…';
+  try {
+    const r = await fetch(`/api/baseline-recapturar/${encodeURIComponent(ALIAS)}/${encodeURIComponent(_recap_target)}`,
+                          {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      cerrarModalRecap();
+      // Recargar el monitor en 12 segundos para ver el resultado
+      setTimeout(() => loadMonitor(), 12000);
+      // Mostrar feedback inmediato
+      await loadMonitor();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Re-capturar ahora';
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Re-capturar ahora';
+    alert('Error: ' + e.message);
+  }
 }
 
 // ── Sprint 3.1 — render de secciones expandibles del baseline v2 ─────────────
