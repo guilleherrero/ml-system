@@ -4,6 +4,17 @@ Corré con: python3 web/app.py
 Abrí en el navegador: http://localhost:8080
 """
 
+# Timezone Argentina — debe setearse ANTES de los imports de datetime/time
+# para que datetime.now() y time.localtime() devuelvan hora local ART.
+# Render corre por defecto en UTC; sin esto las pantallas muestran +3h.
+import os as _tz_os
+_tz_os.environ['TZ'] = 'America/Argentina/Buenos_Aires'
+import time as _tz_time
+try:
+    _tz_time.tzset()  # Unix/Mac/Linux — aplica el cambio al proceso actual
+except AttributeError:
+    pass  # Windows no tiene tzset (no usado en producción)
+
 import json
 import logging
 import os

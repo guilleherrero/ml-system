@@ -18,6 +18,17 @@ Módulos:
   python main.py todo                 Corre módulo 1 y 2 en todas las cuentas
 """
 
+# Timezone Argentina — debe setearse ANTES de cualquier import de datetime/time
+# para que datetime.now() y time.localtime() devuelvan hora local de ART.
+# Render corre por defecto en UTC; sin esto las pantallas muestran +3h.
+import os
+os.environ['TZ'] = 'America/Argentina/Buenos_Aires'
+import time as _tz_time
+try:
+    _tz_time.tzset()  # Unix/Mac/Linux — aplica el cambio al proceso actual
+except AttributeError:
+    pass  # Windows no tiene tzset (no usado en producción)
+
 import sys
 from rich.console import Console
 from rich.table import Table
