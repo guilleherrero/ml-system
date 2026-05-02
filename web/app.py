@@ -12591,11 +12591,128 @@ def api_scheduler_status():
 
 @app.route('/api/scheduler-run-now', methods=['POST'])
 def api_scheduler_run_now():
-    """Fuerza una actualización inmediata (manual)."""
+    """Fuerza una actualización inmediata (manual). Mantenido para retrocompat."""
     import threading
     t = threading.Thread(target=_scheduler_run_all, daemon=True)
     t.start()
     return jsonify({'ok': True, 'mensaje': 'Actualización iniciada en background.'})
+
+
+# ── Cron Jobs — gestión vía JobManager ──────────────────────────────────────
+
+@app.route('/api/scheduler-jobs')
+def api_scheduler_jobs():
+    """Lista de jobs registrados con metadata + estado (next_run, last_run, etc.)."""
+    if _job_manager is None:
+        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
+    return jsonify({'ok': True, 'jobs': _job_manager.list_jobs()})
+
+
+@app.route('/api/scheduler-toggle/<job_id>', methods=['POST'])
+def api_scheduler_toggle(job_id):
+    """Pausa o reanuda un job. Body: {action: 'pause'|'resume'}."""
+    if _job_manager is None:
+        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
+    body = request.get_json(silent=True) or {}
+    action = (body.get('action') or '').strip().lower()
+    if action == 'pause':
+        _job_manager.pause_job(job_id)
+        return jsonify({'ok': True, 'job_id': job_id, 'paused': True})
+    if action == 'resume':
+        _job_manager.resume_job(job_id)
+        return jsonify({'ok': True, 'job_id': job_id, 'paused': False})
+    return jsonify({'ok': False, 'error': "action debe ser 'pause' o 'resume'"}), 400
+
+
+@app.route('/api/scheduler-history/<job_id>')
+def api_scheduler_history(job_id):
+    """Últimas N corridas del job (más reciente primero). Default: 20."""
+    if _job_manager is None:
+        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
+    try:
+        limit = int(request.args.get('limit', 20))
+    except (TypeError, ValueError):
+        limit = 20
+    return jsonify({
+        'ok':      True,
+        'job_id':  job_id,
+        'history': _job_manager.get_history(job_id, limit=limit),
+    })
+
+
+@app.route('/api/scheduler-run-job/<job_id>', methods=['POST'])
+def api_scheduler_run_job(job_id):
+    """Dispara un job específico manualmente (incluido los reservados)."""
+    if _job_manager is None:
+        return jsonify({'ok': False, 'error': 'Scheduler no inicializado'}), 503
+    ok = _job_manager.run_now(job_id)
+    if not ok:
+        return jsonify({'ok': False, 'error': f'Job no encontrado: {job_id}'}), 404
+    return jsonify({'ok': True, 'mensaje': f'Job {job_id} disparado en background.'})
+
+
+@app.route('/api/reporte-semanal-download')
+def api_reporte_semanal_download():
+    """Genera reporte semanal como JSON descargable.
+
+    Cuando se configure SMTP, el envío automático por email se va a
+    apoyar en este mismo generador. Por ahora solo descarga.
+    """
+    from core.account_manager import AccountManager
+    from datetime import datetime as _dt, timedelta as _td
+
+    mgr = AccountManager()
+    accounts = [a for a in mgr.list_accounts() if a.active]
+    fecha_desde = (_dt.now() - _td(days=7)).strftime('%Y-%m-%d')
+    fecha_hasta = _dt.now().strftime('%Y-%m-%d')
+
+    reporte: dict = {
+        'fecha_generado':  _dt.now().strftime('%Y-%m-%d %H:%M (ART)'),
+        'periodo':         f'{fecha_desde} al {fecha_hasta}',
+        'cuentas':         [],
+    }
+
+    for acc in accounts:
+        s = safe(acc.alias)
+        stock_data = load_json(os.path.join(DATA_DIR, f'stock_{s}.json')) or {}
+        rep_data   = load_json(os.path.join(DATA_DIR, f'reputacion_{s}.json')) or []
+        items      = stock_data.get('items', [])
+
+        ventas_30d_total = sum(int(i.get('ventas_30d') or 0) for i in items)
+        visitas_30d_tot  = sum(int(i.get('visitas_30d') or 0) for i in items)
+        rep_latest       = rep_data[-1] if rep_data else {}
+
+        sin_stock  = [i for i in items if i.get('alerta_stock') == 'SIN_STOCK']
+        margen_neg = [i for i in items if i.get('alerta_margen') == 'NEGATIVO']
+
+        reporte['cuentas'].append({
+            'alias':            acc.alias,
+            'publicaciones':    len(items),
+            'ventas_30d_total': ventas_30d_total,
+            'visitas_30d_tot':  visitas_30d_tot,
+            'reputacion':       {
+                'reclamos_pct':      rep_latest.get('reclamos_pct'),
+                'demoras_pct':       rep_latest.get('demoras_pct'),
+                'cancelaciones_pct': rep_latest.get('cancelaciones_pct'),
+            },
+            'alertas': {
+                'sin_stock':       len(sin_stock),
+                'margen_negativo': len(margen_neg),
+            },
+        })
+
+    # Histórico del scheduler para incluir en el reporte
+    if _job_manager is not None:
+        reporte['scheduler'] = {
+            'jobs':            _job_manager.list_jobs(),
+        }
+
+    fname = f'reporte_semanal_{_dt.now().strftime("%Y%m%d_%H%M")}.json'
+    body  = json.dumps(reporte, ensure_ascii=False, indent=2)
+    resp  = make_response(body)
+    resp.headers['Content-Type']        = 'application/json; charset=utf-8'
+    resp.headers['Content-Disposition'] = f'attachment; filename="{fname}"'
+    return resp
 
 
 # ── Mercado Envíos Full ───────────────────────────────────────────────────────
