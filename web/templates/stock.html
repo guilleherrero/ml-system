@@ -151,7 +151,7 @@
         <i class="bi bi-award-fill text-primary me-1"></i>Experiencia de compra de tu cuenta ({{ sm.period }}):
       </span>
       <span class="d-flex align-items-center gap-1 small">
-        🔴 Reclamos:
+        {{ '🔴' if sm.claims_rate > 2 else ('🟡' if sm.claims_rate > 1 else '🟢') }} Reclamos:
         <strong class="{{ 'text-danger' if sm.claims_rate > 2 else ('text-warning' if sm.claims_rate > 1 else 'text-success') }}">
           {{ sm.claims_rate }}%
         </strong>
@@ -159,7 +159,7 @@
       </span>
       <span class="text-muted">·</span>
       <span class="d-flex align-items-center gap-1 small">
-        ⏱ Demoras:
+        {{ '🔴' if sm.delays_rate > 5 else ('🟡' if sm.delays_rate > 2 else '🟢') }} Demoras:
         <strong class="{{ 'text-danger' if sm.delays_rate > 5 else ('text-warning' if sm.delays_rate > 2 else 'text-success') }}">
           {{ sm.delays_rate }}%
         </strong>
@@ -167,7 +167,7 @@
       </span>
       <span class="text-muted">·</span>
       <span class="d-flex align-items-center gap-1 small">
-        ❌ Cancelaciones:
+        {{ '🔴' if sm.cancel_rate > 2 else ('🟡' if sm.cancel_rate > 0.5 else '🟢') }} Cancelaciones:
         <strong class="{{ 'text-danger' if sm.cancel_rate > 2 else ('text-warning' if sm.cancel_rate > 0.5 else 'text-success') }}">
           {{ sm.cancel_rate }}%
         </strong>
