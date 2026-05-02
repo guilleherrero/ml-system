@@ -4554,6 +4554,33 @@ def api_aplicar_optimizacion():
             })
         save_json(_mon_path, _mon)
 
+        # ── Sprint 3.1: lanzar captura async del baseline COMPLETO ──────────
+        # El baseline plano de arriba (visitas_antes, ventas, etc.) queda como
+        # placeholder mientras el thread corre. Cuando termine reemplaza la
+        # entry con la estructura v2 de 14 métricas en 5 secciones.
+        try:
+            from modules.baseline_capture import (
+                capturar_baseline_async, marcar_capturing,
+            )
+            # Top 3 keywords desde la optimización para tracking de posiciones
+            _top_kws = []
+            try:
+                _opt_d = load_json(os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')) or {}
+                _opt_match = next((o for o in _opt_d.get('optimizaciones', [])
+                                   if o.get('item_id') == item_id), None)
+                if _opt_match and _opt_match.get('keywords_faltantes'):
+                    _top_kws = [k.strip() for k in
+                                (_opt_match.get('keywords_faltantes') or '').split(',')
+                                if k.strip()][:3]
+            except Exception:
+                pass
+
+            marcar_capturing(DATA_DIR, item_id, alias)
+            capturar_baseline_async(item_id, alias, client, DATA_DIR,
+                                    top_keywords=_top_kws or None)
+        except Exception as e:
+            app.logger.warning('[baseline_capture] no se pudo lanzar async: %s', e)
+
     if applied:
         _audit('APLICAR_ML', alias=alias, item_id=item_id, campos=','.join(applied))
 
@@ -4563,6 +4590,62 @@ def api_aplicar_optimizacion():
     if errors:
         return jsonify({'ok': False, 'error': '; '.join(errors), **result})
     return jsonify(result)
+
+
+@app.route('/api/baseline-recapturar/<alias>/<item_id>', methods=['POST'])
+def api_baseline_recapturar(alias, item_id):
+    """Recaptura el baseline completo de un item ya monitoreado.
+
+    Útil para baselines viejos (version != 2) que solo tienen 5-6 campos planos.
+    El usuario clickea "Re-capturar baseline ahora" en una card del Monitor.
+
+    ⚠️ La captura es del estado ACTUAL del item, no del momento original de la
+    optimización. La UI debe avisar al usuario antes de confirmar.
+    """
+    item_id = (item_id or '').strip().upper()
+    alias   = (alias or '').strip()
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias o item_id'}), 400
+
+    try:
+        from core.account_manager import AccountManager as _AM_rec
+        _client_rec = _AM_rec().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Auth: {e}'}), 401
+
+    # Verificar que la entry existe en monitor
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon = load_json(_mon_path) or {'items': []}
+    entry = next((it for it in _mon.get('items', [])
+                  if it.get('item_id') == item_id and it.get('alias') == alias), None)
+    if not entry:
+        return jsonify({'ok': False, 'error': 'Item no está en el monitor'}), 404
+
+    # Top keywords desde la optimización original si existe
+    top_kws = []
+    try:
+        opt_d = load_json(os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')) or {}
+        opt_match = next((o for o in opt_d.get('optimizaciones', [])
+                          if o.get('item_id') == item_id), None)
+        if opt_match and opt_match.get('keywords_faltantes'):
+            top_kws = [k.strip() for k in
+                       (opt_match.get('keywords_faltantes') or '').split(',')
+                       if k.strip()][:3]
+    except Exception:
+        pass
+
+    from modules.baseline_capture import (
+        capturar_baseline_async, marcar_capturing,
+    )
+    marcar_capturing(DATA_DIR, item_id, alias)
+    capturar_baseline_async(item_id, alias, _client_rec, DATA_DIR,
+                            top_keywords=top_kws or None)
+
+    return jsonify({
+        'ok':       True,
+        'mensaje':  'Captura iniciada en background. Recargá en 10-15 segundos.',
+        'item_id':  item_id,
+    })
 
 
 @app.route('/api/test-claude')
@@ -4993,6 +5076,24 @@ def api_opt_marcar_aplicado():
             'applied':         ['manual'],
         })
     save_json(_mon_path, _mon)
+
+    # ── Sprint 3.1: lanzar captura async del baseline COMPLETO ──────────
+    try:
+        from modules.baseline_capture import (
+            capturar_baseline_async, marcar_capturing,
+        )
+        from core.account_manager import AccountManager as _AM_bc
+        _client_bc = _AM_bc().get_client(alias)
+        _top_kws_bc = []
+        if opt_item.get('keywords_faltantes'):
+            _top_kws_bc = [k.strip() for k in
+                           (opt_item.get('keywords_faltantes') or '').split(',')
+                           if k.strip()][:3]
+        marcar_capturing(DATA_DIR, item_id, alias)
+        capturar_baseline_async(item_id, alias, _client_bc, DATA_DIR,
+                                top_keywords=_top_kws_bc or None)
+    except Exception as e:
+        app.logger.warning('[baseline_capture] async marcar_aplicado falló: %s', e)
 
     return jsonify({'ok': True, 'baseline': baseline})
 
