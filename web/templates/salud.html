@@ -52,31 +52,44 @@
 {% else %}
 
 <!-- ══ RESUMEN ═══════════════════════════════════════════════════════ -->
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #6366f1">
+<!-- 5 KPIs: los primeros 4 son disjuntos (EN CATÁLOGO = GANANDO + PERDIENDO + SIN DATOS).
+     CON RANGO es ortogonal — métrica de configuración, no parte de la suma. -->
+<div class="row row-cols-2 row-cols-md-5 g-3 mb-4">
+  <div>
+    <div class="card text-center p-3 h-100" style="border-top:3px solid #6366f1">
       <div style="font-size:2rem;font-weight:800;color:#6366f1">{{ resumen.total }}</div>
       <div style="font-size:.75rem;color:#64748b;font-weight:600">EN CATÁLOGO</div>
       <div style="font-size:.68rem;color:#94a3b8">publicaciones activas</div>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #10b981">
+  <div>
+    <div class="card text-center p-3 h-100" style="border-top:3px solid #10b981">
       <div style="font-size:2rem;font-weight:800;color:#059669">{{ resumen.ganando }}</div>
       <div style="font-size:.75rem;color:#64748b;font-weight:600">GANANDO</div>
       <div style="font-size:.68rem;color:#94a3b8">buy box activo</div>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #ef4444">
+  <div>
+    <div class="card text-center p-3 h-100" style="border-top:3px solid #ef4444">
       <div style="font-size:2rem;font-weight:800;color:#dc2626">{{ resumen.perdiendo }}</div>
       <div style="font-size:.75rem;color:#64748b;font-weight:600">PERDIENDO</div>
       <div style="font-size:.68rem;color:#94a3b8">otro gana el buy box</div>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #f59e0b">
-      <div style="font-size:2rem;font-weight:800;color:#d97706">{{ resumen.configurados }}</div>
+  <div>
+    <div class="card text-center p-3 h-100" style="border-top:3px solid #94a3b8">
+      <div style="font-size:2rem;font-weight:800;color:#64748b">{{ resumen.sin_datos or 0 }}</div>
+      <div style="font-size:.75rem;color:#64748b;font-weight:600">SIN DATOS</div>
+      <div style="font-size:.68rem;color:#94a3b8">publicaciones sin info de Buy Box</div>
+    </div>
+  </div>
+  <div>
+    <div class="card text-center p-3 h-100" style="border-top:3px solid #f59e0b;cursor:help"
+         title="Métrica de configuración (ortogonal). Indica cuántas publicaciones tienen rango de precio para repricing automático. No suma con las otras categorías.">
+      <div style="font-size:2rem;font-weight:800;color:#d97706">
+        {{ resumen.configurados }}
+        <i class="bi bi-info-circle" style="font-size:.75rem;color:#94a3b8;vertical-align:super;margin-left:2px"></i>
+      </div>
       <div style="font-size:.75rem;color:#64748b;font-weight:600">CON RANGO</div>
       <div style="font-size:.68rem;color:#94a3b8">repricing automático</div>
     </div>
