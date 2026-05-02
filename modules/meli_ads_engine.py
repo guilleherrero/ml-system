@@ -1731,12 +1731,15 @@ def get_metrics(token: str, advertiser_id: int,
         spend       = _float(body.get('cost', 0.0))
         revenue_ads = _float(body.get('amount_total', 0.0))
         conversions = _int(body.get('sold_quantity_total', 0))
-        ctr         = _float(body.get('ctr', 0.0))
         cpc         = _float(body.get('cpc', 0.0))
         tacos       = _float(body.get('tacos', 0.0))
 
-        if not ctr and impressions > 0:
-            ctr = round(clicks / impressions, 4)
+        # CTR siempre se recalcula desde clicks/impressions (datos primarios).
+        # La API ML expone 'ctr' en unidad de porcentaje (0.244 = 0.244%) que
+        # conflicta con la convención interna decimal pura (0.00244 = 0.244%).
+        # Usar el campo de la API directamente generaba CTRs de 24-84% donde el
+        # real era 0.24-0.84%. Recalcular evita ese factor 100 espurio.
+        ctr = round(clicks / impressions, 4) if impressions > 0 else 0.0
         if not cpc and clicks > 0:
             cpc = round(spend / clicks, 2)
 
@@ -1993,12 +1996,13 @@ def build_skus_from_api(token: str, date_from: str, date_to: str,
             spend       = _float(body.get('cost', 0.0))
             revenue_ads = _float(body.get('amount_total', 0.0))
             conversions = _int(body.get('sold_quantity_total', 0))
-            ctr         = _float(body.get('ctr', 0.0))
             cpc         = _float(body.get('cpc', 0.0))
             tacos       = _float(body.get('tacos', 0.0))
 
-            if not ctr and impressions > 0:
-                ctr = round(clicks / impressions, 4)
+            # CTR siempre se recalcula desde clicks/impressions (ver nota en
+            # get_metrics más arriba). La API ML lo expone en unidad de
+            # porcentaje y rompe la convención interna decimal pura.
+            ctr = round(clicks / impressions, 4) if impressions > 0 else 0.0
             if not cpc and clicks > 0:
                 cpc = round(spend / clicks, 2)
 
@@ -2299,11 +2303,11 @@ def build_campaigns_from_api(token: str, date_from: str, date_to: str) -> tuple[
             spend       = _float(body.get('cost', 0.0))
             revenue_ads = _float(body.get('amount_total', 0.0))
             conversions = _int(body.get('sold_quantity_total', 0))
-            ctr         = _float(body.get('ctr', 0.0))
             cpc         = _float(body.get('cpc', 0.0))
 
-            if not ctr and impressions > 0:
-                ctr = round(clicks / impressions, 4)
+            # CTR siempre se recalcula desde clicks/impressions (ver nota en
+            # get_metrics). La API ML lo expone en unidad de porcentaje.
+            ctr = round(clicks / impressions, 4) if impressions > 0 else 0.0
             if not cpc and clicks > 0:
                 cpc = round(spend / clicks, 2)
 
