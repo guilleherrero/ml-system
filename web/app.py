@@ -2801,10 +2801,18 @@ def posiciones(alias):
                 ],
             }
 
+    # Total de ventas 30d de TODA la cuenta (incluye publicaciones activas
+    # aunque no estén en seguimiento de posiciones). Permite mostrar el KPI
+    # como "rastreadas / total" y detectar gap de tracking.
+    ventas_total_cuenta = sum(
+        int(i.get('ventas_30d') or 0) for i in stock_data.get('items', [])
+    )
+
     return render_template('posiciones.html', alias=alias, items=items,
                            dates=[d[5:] for d in dates],
                            all_search_blocked=all_search_blocked,
                            chart_data=chart_data,
+                           ventas_total_cuenta=ventas_total_cuenta,
                            accounts=get_accounts())
 
 
