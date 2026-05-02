@@ -18,20 +18,120 @@
   </div>
 </div>
 
-<!-- ══ SCHEDULER ════════════════════════════════════════════════ -->
+<!-- ══ CRON JOBS ════════════════════════════════════════════════ -->
+<style>
+.jobs-table { width:100%; border-collapse:collapse; font-size:.84rem; }
+.jobs-table th {
+  text-align:left; font-size:.66rem; font-weight:700; color:#94a3b8;
+  text-transform:uppercase; letter-spacing:.04em;
+  padding:.5rem .8rem; background:#fafafa; border-bottom:1px solid #e2e8f0;
+}
+.jobs-table td { padding:.7rem .8rem; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+.jobs-table tr.reserved td { background:#f1f5f9; opacity:.85; }
+.jobs-table tr.paused-row td { background:#fef3c7; }
+
+.job-name  { font-weight:600; color:#0f172a; }
+.job-desc  { font-size:.73rem; color:#64748b; margin-top:2px; line-height:1.4; }
+.job-trigger { font-size:.7rem; color:#94a3b8; font-family:monospace; }
+
+.status-pill {
+  font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:10px;
+  text-transform:uppercase; letter-spacing:.03em;
+}
+.status-pill.ok       { background:#dcfce7; color:#15803d; }
+.status-pill.error    { background:#fee2e2; color:#b91c1c; }
+.status-pill.skipped  { background:#fef3c7; color:#b45309; }
+.status-pill.missed   { background:#e9d5ff; color:#6b21a8; }
+.status-pill.reserved { background:#e2e8f0; color:#475569; }
+.status-pill.paused   { background:#fde68a; color:#92400e; }
+.status-pill.never    { background:#f1f5f9; color:#94a3b8; }
+
+.job-actions { display:flex; gap:.35rem; flex-wrap:wrap; }
+.job-actions button, .job-actions a {
+  font-size:.7rem; padding:.25rem .55rem; border-radius:6px;
+  border:1px solid #cbd5e1; background:#fff; color:#475569; cursor:pointer;
+  text-decoration:none;
+}
+.job-actions .btn-run    { border-color:#3b82f6; color:#3b82f6; }
+.job-actions .btn-run:hover { background:#3b82f6; color:#fff; }
+.job-actions .btn-pause  { border-color:#f59e0b; color:#b45309; }
+.job-actions .btn-pause:hover { background:#fef3c7; }
+.job-actions .btn-resume { border-color:#16a34a; color:#15803d; }
+.job-actions .btn-hist   { color:#64748b; }
+.job-actions .btn-hist:hover { background:#f1f5f9; }
+
+.special-action {
+  background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px;
+  padding:.85rem 1.05rem; margin-top:1rem; display:flex; gap:.7rem;
+  align-items:center; flex-wrap:wrap;
+}
+.special-action .desc { font-size:.78rem; color:#1e40af; flex:1; min-width:240px; line-height:1.45; }
+.btn-special { background:#7c3aed; color:#fff; border:none; padding:.45rem 1rem;
+  border-radius:7px; font-size:.78rem; font-weight:600; cursor:pointer; }
+.btn-special:hover { background:#6d28d9; }
+.btn-special:disabled { opacity:.6; cursor:not-allowed; }
+</style>
+
 <div class="settings-section">
   <div class="settings-title">
-    <i class="bi bi-clock-history text-primary"></i>Actualización automática
-    <span id="sched-badge" class="badge-inactive ms-auto">Cargando…</span>
+    <i class="bi bi-clock-history text-primary"></i>Cron Jobs — actualización automática
   </div>
   <p class="text-muted small mb-3">
-    El sistema actualiza automáticamente reputación, stock y posiciones todos los días a las <strong>7:00 AM</strong>.
-    No necesitás hacer nada — los datos siempre están frescos cuando abrís el dashboard.
+    El sistema corre 5 jobs programados que mantienen los datos frescos sin tu intervención.
+    Acá podés ver el estado de cada uno, pausarlos individualmente, o disparar una corrida manual.
   </p>
-  <div id="sched-info" class="alert alert-info py-2" style="font-size:.82rem">Cargando estado del scheduler…</div>
-  <button class="btn btn-sm btn-outline-primary" onclick="forzarActualizacion()">
-    <i class="bi bi-arrow-repeat me-1"></i>Forzar actualización ahora
-  </button>
+
+  <div class="d-flex gap-2 mb-3 flex-wrap">
+    <button class="btn btn-sm btn-outline-primary" onclick="cargarJobs()">
+      <i class="bi bi-arrow-clockwise me-1"></i>Refrescar
+    </button>
+    <a href="/api/reporte-semanal-download" class="btn btn-sm btn-outline-success">
+      <i class="bi bi-download me-1"></i>Descargar reporte semanal (JSON)
+    </a>
+    <span class="ms-auto small text-muted align-self-center" id="jobs-summary"></span>
+  </div>
+
+  <table class="jobs-table" id="jobs-table">
+    <thead>
+      <tr>
+        <th>Job</th>
+        <th>Trigger</th>
+        <th>Próxima</th>
+        <th>Última</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="jobs-tbody">
+      <tr><td colspan="6" class="text-center text-muted py-3">Cargando…</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Acción especial: Job 4 reservado, disparable manual -->
+  <div class="special-action">
+    <i class="bi bi-stars" style="color:#7c3aed;font-size:1.2rem"></i>
+    <div class="desc">
+      <strong>Re-optimización IA semanal (slot reservado)</strong><br>
+      Identifica publicaciones que perdieron <strong>&gt;5 posiciones esta semana</strong> y las re-optimiza con IA.
+      Filtra inteligentemente — no es Top X ciego. Cap a 5 por cuenta para limitar el costo de Claude.
+    </div>
+    <button class="btn-special" onclick="dispararWeeklyReopt()">
+      <i class="bi bi-play-fill me-1"></i>Re-optimizar las que perdieron posiciones
+    </button>
+  </div>
+</div>
+
+<!-- Modal de histórico -->
+<div id="modal-historico" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;max-width:760px;width:94%;padding:1.5rem;max-height:80vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h5 style="font-weight:700;color:#1e293b;margin:0">
+        <i class="bi bi-clock-history me-1"></i>Histórico — <span id="hist-job-name"></span>
+      </h5>
+      <button onclick="cerrarHistorico()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#94a3b8">&times;</button>
+    </div>
+    <div id="hist-body" style="font-size:.85rem">Cargando…</div>
+  </div>
 </div>
 
 <!-- ══ NOTIFICACIONES EMAIL ═══════════════════════════════════ -->
@@ -178,38 +278,145 @@
 
 {% block scripts %}
 <script>
-// ── Cargar estado del scheduler ───────────────────────────────
-fetch('/api/scheduler-status').then(r => r.json()).then(d => {
-  const badge = document.getElementById('sched-badge');
-  const info  = document.getElementById('sched-info');
-  if (d.scheduler_active) {
-    badge.className = 'badge-active ms-auto';
-    badge.textContent = 'Activo';
-    const next = d.next_run ? new Date(d.next_run).toLocaleString('es-AR',{weekday:'long',hour:'2-digit',minute:'2-digit'}) : '?';
-    info.className = 'alert alert-success py-2';
-    info.style.fontSize = '.82rem';
-    info.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i>Scheduler activo — próxima actualización automática: <strong>${next}</strong>`;
-  } else {
-    badge.className = 'badge-inactive ms-auto';
-    badge.textContent = 'Inactivo';
-    info.className = 'alert alert-warning py-2';
-    info.style.fontSize = '.82rem';
-    info.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>El scheduler no está corriendo. Reiniciá el servidor para activarlo.';
+// ── Cargar lista de jobs y renderizar tabla ──────────────────
+async function cargarJobs() {
+  try {
+    const r = await fetch('/api/scheduler-jobs');
+    const d = await r.json();
+    if (!d.ok) {
+      document.getElementById('jobs-tbody').innerHTML =
+        '<tr><td colspan="6" class="text-center text-danger py-3">Scheduler no inicializado</td></tr>';
+      return;
+    }
+    renderJobs(d.jobs);
+  } catch (e) {
+    document.getElementById('jobs-tbody').innerHTML =
+      `<tr><td colspan="6" class="text-center text-danger py-3">Error: ${e.message}</td></tr>`;
   }
-}).catch(() => {
-  document.getElementById('sched-info').textContent = 'No se pudo obtener el estado.';
-});
-
-// ── Forzar actualización ──────────────────────────────────────
-function forzarActualizacion() {
-  fetch('/api/scheduler-run-now', {method:'POST'})
-    .then(r => r.json())
-    .then(d => {
-      if (d.ok) {
-        alert('Actualización iniciada. Puede tardar 2-3 minutos. Recargá el dashboard después.');
-      }
-    });
 }
+
+function renderJobs(jobs) {
+  const tbody = document.getElementById('jobs-tbody');
+  const summary = document.getElementById('jobs-summary');
+  const activos = jobs.filter(j => !j.reserved && !j.paused).length;
+  const reserv  = jobs.filter(j => j.reserved).length;
+  const paus    = jobs.filter(j => j.paused).length;
+  summary.textContent = `${activos} activos · ${paus} pausados · ${reserv} reservados`;
+
+  tbody.innerHTML = jobs.map(j => {
+    const trClass = j.reserved ? 'reserved' : (j.paused ? 'paused-row' : '');
+    let estadoPill;
+    if (j.reserved)        estadoPill = '<span class="status-pill reserved">Reservado</span>';
+    else if (j.paused)     estadoPill = '<span class="status-pill paused">Pausado</span>';
+    else if (j.last_status) estadoPill = `<span class="status-pill ${j.last_status}">${j.last_status}</span>`;
+    else                    estadoPill = '<span class="status-pill never">Nunca</span>';
+
+    const lastRun = j.last_run
+      ? `${j.last_run}${j.last_duration_sec ? ` <span style="color:#94a3b8">(${j.last_duration_sec.toFixed(0)}s)</span>` : ''}`
+      : '<span class="text-muted">—</span>';
+
+    const nextRun = j.next_run || (j.reserved ? '<span class="text-muted">solo manual</span>' : '<span class="text-muted">—</span>');
+
+    let actions = `<button class="btn-run" onclick="runJob('${j.id}')"><i class="bi bi-play-fill"></i> Run</button>`;
+    if (!j.reserved) {
+      if (j.paused) {
+        actions += ` <button class="btn-resume" onclick="toggleJob('${j.id}','resume')"><i class="bi bi-play-circle"></i> Reanudar</button>`;
+      } else {
+        actions += ` <button class="btn-pause" onclick="toggleJob('${j.id}','pause')"><i class="bi bi-pause-circle"></i> Pausar</button>`;
+      }
+    }
+    actions += ` <button class="btn-hist" onclick="verHistorico('${j.id}','${j.name.replace(/'/g, "\\'")}')"><i class="bi bi-clock-history"></i> Histórico</button>`;
+
+    return `
+      <tr class="${trClass}">
+        <td>
+          <div class="job-name">${j.name}</div>
+          <div class="job-desc">${j.description || ''}</div>
+        </td>
+        <td><div class="job-trigger">${j.trigger_desc || '—'}</div></td>
+        <td style="font-size:.78rem">${nextRun}</td>
+        <td style="font-size:.78rem">${lastRun}</td>
+        <td>${estadoPill}</td>
+        <td><div class="job-actions">${actions}</div></td>
+      </tr>`;
+  }).join('');
+}
+
+async function runJob(jobId) {
+  if (!confirm(`¿Disparar el job '${jobId}' ahora?`)) return;
+  const r = await fetch('/api/scheduler-run-job/' + encodeURIComponent(jobId), {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    alert(`Job ${jobId} disparado en background. Refrescá la tabla en unos segundos para ver el resultado.`);
+    setTimeout(cargarJobs, 2000);
+  } else {
+    alert('Error: ' + (d.error || 'desconocido'));
+  }
+}
+
+async function toggleJob(jobId, action) {
+  const r = await fetch('/api/scheduler-toggle/' + encodeURIComponent(jobId), {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({action}),
+  });
+  const d = await r.json();
+  if (d.ok) cargarJobs();
+}
+
+async function verHistorico(jobId, jobName) {
+  document.getElementById('hist-job-name').textContent = jobName;
+  document.getElementById('hist-body').innerHTML = 'Cargando…';
+  document.getElementById('modal-historico').style.display = 'flex';
+  try {
+    const r = await fetch('/api/scheduler-history/' + encodeURIComponent(jobId) + '?limit=20');
+    const d = await r.json();
+    if (!d.ok || !d.history.length) {
+      document.getElementById('hist-body').innerHTML =
+        '<div class="text-muted text-center py-3">Sin corridas registradas todavía.</div>';
+      return;
+    }
+    const rows = d.history.map(h => {
+      const cls = h.status;
+      const err = h.error ? `<div style="font-size:.7rem;color:#94a3b8;margin-top:2px">⚠ ${h.error.slice(0,200)}</div>` : '';
+      return `<tr>
+        <td style="font-family:monospace;font-size:.78rem">${h.started_at}</td>
+        <td><span class="status-pill ${cls}">${h.status}</span></td>
+        <td>${h.duration_sec.toFixed(1)}s</td>
+        <td>${h.retries > 0 ? `<span style="color:#b45309">${h.retries} retries</span>` : '—'}</td>
+        <td>${err}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('hist-body').innerHTML = `
+      <table class="jobs-table">
+        <thead><tr><th>Inicio</th><th>Estado</th><th>Duración</th><th>Retries</th><th>Detalle</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (e) {
+    document.getElementById('hist-body').innerHTML = `<div class="text-danger">Error: ${e.message}</div>`;
+  }
+}
+
+function cerrarHistorico() {
+  document.getElementById('modal-historico').style.display = 'none';
+}
+
+async function dispararWeeklyReopt() {
+  if (!confirm('Esto va a re-optimizar publicaciones que perdieron >5 posiciones esta semana (cap 5 por cuenta).\n\n' +
+               'Cada re-optimización gasta ~$0.50-1.50 USD en Claude API.\n\n¿Confirmás?')) return;
+  const r = await fetch('/api/scheduler-run-job/weekly_reopt', {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    alert('Re-optimización iniciada en background. Puede tardar varios minutos por cuenta.\nMirá el histórico de "weekly_reopt" para ver el progreso.');
+  } else {
+    alert('Error: ' + (d.error || 'desconocido'));
+  }
+}
+
+// Cargar al iniciar
+cargarJobs();
+// Refresh automático cada 30s
+setInterval(cargarJobs, 30000);
 
 // ── Cargar config de notificaciones ──────────────────────────
 fetch('/api/notificaciones-config').then(r => r.json()).then(d => {
