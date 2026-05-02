@@ -277,6 +277,16 @@
 <script>
 const ALIAS = {{ alias | tojson }};
 
+// Helper para escapar valores que se usan como atributos HTML.
+// Sin esto, títulos con comillas dobles rompen los data-attributes.
+function escAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function deltaClass(val, lowerIsBetter) {
   if (val === null || val === undefined) return 'flat';
   if (lowerIsBetter) return val < 0 ? 'up' : val > 0 ? 'down' : 'flat';
@@ -495,7 +505,7 @@ function renderItem(it) {
         Podés re-capturar para tener las 14 métricas completas, pero el snapshot va a ser del
         <strong>estado de hoy</strong>, no del momento original de la optimización.
       </div>
-      <button class="btn-recapturar" onclick="abrirModalRecapturar('${it.item_id}', ${JSON.stringify(it.titulo_producto.replace(/'/g, "\\'"))}, '${it.fecha_opt}')">
+      <button class="btn-recapturar" onclick="abrirModalRecapturar('${it.item_id}')">
         <i class="bi bi-arrow-clockwise me-1"></i>Re-capturar baseline
       </button>
     </div>`;
@@ -506,7 +516,10 @@ function renderItem(it) {
     ? `<span class="badge-parcial" title="Baseline capturado antes del Sprint 3 — métricas básicas">⚠ Parcial</span>`
     : '';
 
-  return `<div class="item-card" id="card-${it.item_id}">
+  return `<div class="item-card" id="card-${it.item_id}"
+       data-item-name="${escAttr(it.titulo_producto)}"
+       data-fecha-opt="${escAttr(it.fecha_opt)}"
+       data-item-id-original="${escAttr(it.item_id_original)}">
     <div class="item-card-header">
       <div>
         <div class="item-name">${it.titulo_producto}${partialBadge}</div>
@@ -563,7 +576,7 @@ function renderInfoOriginal(it) {
       <span class="label">📌 Original</span>
       <code>${it.item_id_original}</code>
       <span class="text-muted" style="font-size:.72rem">sin snapshot referencial — capturar para comparativa A/B</span>
-      <button class="btn-revincular" onclick="abrirModalRevincular('${it.item_id}', '${it.item_id_original}', '${it.fecha_opt || ''}')">
+      <button class="btn-revincular" onclick="abrirModalRevincular('${it.item_id}')">
         <i class="bi bi-link-45deg me-1"></i>Re-vincular y capturar
       </button>
     </div>`;
@@ -581,8 +594,11 @@ function renderInfoOriginal(it) {
 // ── Modal "Re-vincular y capturar snapshot retroactivo" ─────────────────────
 let _revinc_target = null;
 
-function abrirModalRevincular(itemIdNuevo, mlaOrig, fechaOpt) {
+function abrirModalRevincular(itemIdNuevo) {
   _revinc_target = itemIdNuevo;
+  const card = document.getElementById('card-' + itemIdNuevo);
+  const mlaOrig  = (card && card.dataset.itemIdOriginal) || '—';
+  const fechaOpt = (card && card.dataset.fechaOpt) || '';
   const html = `
     <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
       <i class="bi bi-link-45deg text-warning me-1"></i>Re-vincular y capturar snapshot
@@ -655,8 +671,11 @@ async function ejecutarRevincular() {
 // ── Modal recapturar baseline (Sprint 3.1 — items legacy) ────────────────────
 let _recap_target = null;
 
-function abrirModalRecapturar(itemId, titulo, fechaOpt) {
+function abrirModalRecapturar(itemId) {
   _recap_target = itemId;
+  const card = document.getElementById('card-' + itemId);
+  const titulo   = (card && card.dataset.itemName) || '';
+  const fechaOpt = (card && card.dataset.fechaOpt) || '';
   const html = `
     <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
       <i class="bi bi-arrow-clockwise text-warning me-1"></i>Re-capturar baseline
