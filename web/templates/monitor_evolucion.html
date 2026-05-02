@@ -219,6 +219,35 @@
   margin: .75rem 0; line-height: 1.5;
 }
 
+/* ── Sprint 3.1 ext republicación — info compacta de MLA-X ── */
+.original-info {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: .55rem .85rem; margin-top: .65rem;
+  font-size: .77rem; display: flex; gap: .8rem; align-items: center;
+  flex-wrap: wrap;
+}
+.original-info .label  { font-size: .62rem; font-weight: 700; text-transform: uppercase;
+                          letter-spacing: .04em; color: #64748b; }
+.original-info code    { background: #fff; padding: 1px 6px; border-radius: 4px;
+                          border: 1px solid #e2e8f0; font-size: .75rem; }
+.original-info .estado-pill {
+  font-size: .65rem; font-weight: 700; padding: 1px 8px; border-radius: 10px;
+}
+.original-info .estado-pill.active  { background: #dcfce7; color: #15803d; }
+.original-info .estado-pill.paused  { background: #fef3c7; color: #b45309; }
+.original-info .estado-pill.closed  { background: #fee2e2; color: #b91c1c; }
+.original-info .estado-pill.unknown { background: #f1f5f9; color: #94a3b8; }
+.original-info .retroactivo {
+  font-size: .65rem; background: #fef3c7; color: #92400e;
+  padding: 1px 7px; border-radius: 8px; cursor: help;
+}
+.btn-revincular {
+  font-size: .7rem; padding: .25rem .65rem; border-radius: 6px;
+  background: transparent; color: #d97706; border: 1px solid #fde68a;
+  cursor: pointer; margin-left: auto;
+}
+.btn-revincular:hover { background: #fef3c7; }
+
 .alerta-banner {
   display: flex; align-items: flex-start; gap: .6rem;
   padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
@@ -503,12 +532,124 @@ function renderItem(it) {
       ${capturingBlock}
       ${alertasBlock}
       ${tituloBlock}
+      ${renderInfoOriginal(it)}
       ${metricsBlock}
       ${detailBlock}
       ${parcialBlock}
       ${it.snapshots_n > 0 ? renderTimeline(it) : ''}
     </div>
   </div>`;
+}
+
+// ── Sprint 3.1 ext republicación — info compacta de la pub original ─────────
+function renderInfoOriginal(it) {
+  if (it.origen !== 'nueva' || !it.item_id_original) return '';
+
+  const po = it.publicacion_original || {};
+  const tieneSnapshot = !!(po.snapshot_al_republicar);
+  const esRetroactivo = !!po.snapshot_al_republicar_es_retroactivo;
+  const estado        = po.estado_ml || 'unknown';
+  const ultimaAct     = po.ultimo_snapshot && po.ultimo_snapshot.fecha
+                          ? po.ultimo_snapshot.fecha
+                          : (po.fecha_estado || '—');
+
+  const retroBadge = esRetroactivo
+    ? `<span class="retroactivo" title="Snapshot capturado el ${po.fecha_snapshot_capturado || '?'}, no refleja el estado al momento de la republicación">⚠ retroactivo</span>`
+    : '';
+
+  // Si no tiene snapshot del original, mostrar botón para revincular
+  if (!tieneSnapshot) {
+    return `<div class="original-info">
+      <span class="label">📌 Original</span>
+      <code>${it.item_id_original}</code>
+      <span class="text-muted" style="font-size:.72rem">sin snapshot referencial — capturar para comparativa A/B</span>
+      <button class="btn-revincular" onclick="abrirModalRevincular('${it.item_id}', '${it.item_id_original}', '${it.fecha_opt || ''}')">
+        <i class="bi bi-link-45deg me-1"></i>Re-vincular y capturar
+      </button>
+    </div>`;
+  }
+
+  return `<div class="original-info">
+    <span class="label">📌 Original</span>
+    <code>${it.item_id_original}</code>
+    <span class="estado-pill ${estado}">${estado}</span>
+    ${retroBadge}
+    <span style="color:#64748b;font-size:.72rem">últ. snapshot: ${ultimaAct}</span>
+  </div>`;
+}
+
+// ── Modal "Re-vincular y capturar snapshot retroactivo" ─────────────────────
+let _revinc_target = null;
+
+function abrirModalRevincular(itemIdNuevo, mlaOrig, fechaOpt) {
+  _revinc_target = itemIdNuevo;
+  const html = `
+    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+      <i class="bi bi-link-45deg text-warning me-1"></i>Re-vincular y capturar snapshot
+    </h5>
+    <p style="font-size:.86rem;color:#475569;margin-bottom:.55rem">
+      Publicación nueva: <strong>${itemIdNuevo}</strong><br>
+      Publicación original: <strong>${mlaOrig}</strong>
+    </p>
+    <p style="font-size:.82rem;color:#64748b;margin-bottom:.4rem">
+      Republicación vinculada el: <strong>${fechaOpt || 'fecha desconocida'}</strong>
+    </p>
+    <div class="modal-warn">
+      <strong>⚠ Importante:</strong> el snapshot de <code>${mlaOrig}</code> se va a capturar con
+      el estado <strong>de HOY</strong>. Como la republicación ya ocurrió, este snapshot
+      <strong>NO refleja</strong> el estado real de la original al momento del cambio.
+      Va a quedar marcado como <em>retroactivo</em> en el JSON.
+    </div>
+    <p style="font-size:.78rem;color:#64748b">
+      A partir de ahora, el cron del Monitor refresca AMBAS publicaciones (la nueva y la original)
+      para poder hacer comparativa A/B en Sprint 3.2.
+    </p>
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
+      <button onclick="cerrarModalRevinc()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
+      <button id="btn-confirmar-revinc" onclick="ejecutarRevincular()" style="padding:.5rem 1.2rem;background:#d97706;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
+        Capturar snapshot retroactivo
+      </button>
+    </div>`;
+  let modal = document.getElementById('modal-revinc');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-revinc';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center';
+    modal.innerHTML = '<div id="modal-revinc-content" style="background:#fff;border-radius:12px;max-width:560px;width:92%;padding:1.5rem"></div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('modal-revinc-content').innerHTML = html;
+  modal.style.display = 'flex';
+}
+
+function cerrarModalRevinc() {
+  const modal = document.getElementById('modal-revinc');
+  if (modal) modal.style.display = 'none';
+  _revinc_target = null;
+}
+
+async function ejecutarRevincular() {
+  if (!_revinc_target) return;
+  const btn = document.getElementById('btn-confirmar-revinc');
+  btn.disabled = true;
+  btn.textContent = 'Capturando…';
+  try {
+    const r = await fetch(`/api/republicacion-revincular/${encodeURIComponent(ALIAS)}/${encodeURIComponent(_revinc_target)}`,
+                          {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      cerrarModalRevinc();
+      await loadMonitor();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Capturar snapshot retroactivo';
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Capturar snapshot retroactivo';
+    alert('Error: ' + e.message);
+  }
 }
 
 // ── Modal recapturar baseline (Sprint 3.1 — items legacy) ────────────────────
