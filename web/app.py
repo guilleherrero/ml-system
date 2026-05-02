@@ -4935,14 +4935,35 @@ def api_opt_marcar_aplicado():
     _mon      = load_json(_mon_path) or {'items': []}
     if not isinstance(_mon, dict):
         _mon = {'items': []}
+
+    # Leer ventas_30d, conv_pct y ventas_total del stock JSON (mismo flujo que
+    # api_aplicar_optimizacion). Antes estaban hardcodeados en cero, lo que
+    # generaba "Antes: —" en Monitor de Evolución.
+    _ventas_30d_b   = 0
+    _conv_pct_b     = 0.0
+    _ventas_total_b = 0
+    try:
+        _stock_data_b = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+        for _si_b in (_stock_data_b.get('items') or []):
+            if _si_b.get('id') == item_id:
+                _ventas_30d_b = int(_si_b.get('ventas_30d') or 0)
+                _conv_pct_b   = float(_si_b.get('conversion_pct') or 0.0)
+                break
+        _ir_b = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}',
+                            headers=heads, timeout=6)
+        if _ir_b.ok:
+            _ventas_total_b = int(_ir_b.json().get('sold_quantity') or 0)
+    except Exception:
+        pass
+
     _mon_baseline = {
-        'fecha':       _now_mon,
-        'visitas_7d':  baseline.get('visitas_antes', 0),
-        'ventas_30d':  0,
-        'ventas_total': 0,
-        'conv_pct':    0.0,
-        'posicion':    baseline.get('posicion_antes'),
-        'posicion_kw': None,
+        'fecha':        _now_mon,
+        'visitas_7d':   baseline.get('visitas_antes', 0),
+        'ventas_30d':   _ventas_30d_b,
+        'ventas_total': _ventas_total_b,
+        'conv_pct':     _conv_pct_b,
+        'posicion':     baseline.get('posicion_antes'),
+        'posicion_kw':  None,
     }
     _titulo_prod   = opt_item.get('titulo_actual', item_id)
     _titulo_nuevo  = opt_item.get('titulo_nuevo', '')
