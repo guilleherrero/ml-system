@@ -6936,6 +6936,46 @@ def alertas():
     return render_template('alertas.html', accounts=get_accounts())
 
 
+@app.route('/duplicados/<alias>')
+def duplicados(alias):
+    """Detector de publicaciones duplicadas / canibalización por cuenta."""
+    from modules.detector_duplicados import (
+        detectar_duplicados, resumen_para_alertas,
+    )
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    stock_items = stock_data.get('items', [])
+
+    clusters_obj = detectar_duplicados(stock_items, alias, DATA_DIR)
+
+    # Convertir dataclasses a dicts simples para Jinja
+    clusters = [{
+        'cluster_id':  c.cluster_id,
+        'severidad':   c.severidad,
+        'titulo_corto': c.titulo_corto,
+        'visitas_perdidas_30d':       c.visitas_perdidas_30d,
+        'impacto_monetario_estimado': c.impacto_monetario_estimado,
+        'items': [{
+            'id':             it.id,
+            'titulo':         it.titulo,
+            'precio':         it.precio,
+            'ventas_30d':     it.ventas_30d,
+            'visitas_30d':    it.visitas_30d,
+            'conversion_pct': it.conversion_pct,
+            'es_ganadora':    it.es_ganadora,
+        } for it in c.items],
+    } for c in clusters_obj]
+
+    resumen = resumen_para_alertas(clusters_obj)
+    fecha_stock = (stock_data or {}).get('fecha', '')
+
+    return render_template('duplicados.html',
+                           alias=alias,
+                           clusters=clusters,
+                           resumen=resumen,
+                           fecha_stock=fecha_stock,
+                           accounts=get_accounts())
+
+
 @app.route('/api/alertas')
 def api_alertas():
     """Construye todas las alertas de todas las cuentas.
@@ -7183,6 +7223,25 @@ def api_alertas():
                             f'{len(_paused_ids) - 10} publicaciones pausadas más',
                             'Revisá todas en Mis publicaciones de ML.',
                             'https://www.mercadolibre.com.ar/vendedores/publicaciones', 'Ver todas')
+        except Exception:
+            pass
+
+        # ── Detector de duplicados / canibalización ───────────────────
+        try:
+            from modules.detector_duplicados import detectar_duplicados
+            _dup_clusters = detectar_duplicados(stock_items, alias, DATA_DIR)
+            for _c in _dup_clusters:
+                _nivel = U if _c.severidad == 'puro' else I
+                _icono = 'bi-files' if _c.severidad == 'puro' else 'bi-shuffle'
+                _impacto_txt = (
+                    f' ≈ ${_c.impacto_monetario_estimado:,.0f}/mes en ventas potencialmente perdidas'
+                    if _c.impacto_monetario_estimado > 0 else ''
+                )
+                add(_nivel, alias, 'Canibalización', _icono,
+                    f"Cluster '{_c.titulo_corto[:60]}' canibalizando {_c.visitas_perdidas_30d} visitas/mes{_impacto_txt}",
+                    f"{len(_c.items)} publicaciones del mismo producto compitiendo entre sí. "
+                    f"Severidad: {_c.severidad}. Ver detalle para pausar las que no venden.",
+                    f'/duplicados/{alias}#cluster-{_c.cluster_id}', 'Ver detalle')
         except Exception:
             pass
 
