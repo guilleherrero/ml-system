@@ -4554,6 +4554,33 @@ def api_aplicar_optimizacion():
             })
         save_json(_mon_path, _mon)
 
+        # ── Sprint 3.1: lanzar captura async del baseline COMPLETO ──────────
+        # El baseline plano de arriba (visitas_antes, ventas, etc.) queda como
+        # placeholder mientras el thread corre. Cuando termine reemplaza la
+        # entry con la estructura v2 de 14 métricas en 5 secciones.
+        try:
+            from modules.baseline_capture import (
+                capturar_baseline_async, marcar_capturing,
+            )
+            # Top 3 keywords desde la optimización para tracking de posiciones
+            _top_kws = []
+            try:
+                _opt_d = load_json(os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')) or {}
+                _opt_match = next((o for o in _opt_d.get('optimizaciones', [])
+                                   if o.get('item_id') == item_id), None)
+                if _opt_match and _opt_match.get('keywords_faltantes'):
+                    _top_kws = [k.strip() for k in
+                                (_opt_match.get('keywords_faltantes') or '').split(',')
+                                if k.strip()][:3]
+            except Exception:
+                pass
+
+            marcar_capturing(DATA_DIR, item_id, alias)
+            capturar_baseline_async(item_id, alias, client, DATA_DIR,
+                                    top_keywords=_top_kws or None)
+        except Exception as e:
+            app.logger.warning('[baseline_capture] no se pudo lanzar async: %s', e)
+
     if applied:
         _audit('APLICAR_ML', alias=alias, item_id=item_id, campos=','.join(applied))
 
@@ -4563,6 +4590,128 @@ def api_aplicar_optimizacion():
     if errors:
         return jsonify({'ok': False, 'error': '; '.join(errors), **result})
     return jsonify(result)
+
+
+@app.route('/api/baseline-recapturar/<alias>/<item_id>', methods=['POST'])
+def api_baseline_recapturar(alias, item_id):
+    """Recaptura el baseline completo de un item ya monitoreado.
+
+    Útil para baselines viejos (version != 2) que solo tienen 5-6 campos planos.
+    El usuario clickea "Re-capturar baseline ahora" en una card del Monitor.
+
+    ⚠️ La captura es del estado ACTUAL del item, no del momento original de la
+    optimización. La UI debe avisar al usuario antes de confirmar.
+    """
+    item_id = (item_id or '').strip().upper()
+    alias   = (alias or '').strip()
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias o item_id'}), 400
+
+    try:
+        from core.account_manager import AccountManager as _AM_rec
+        _client_rec = _AM_rec().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Auth: {e}'}), 401
+
+    # Verificar que la entry existe en monitor
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon = load_json(_mon_path) or {'items': []}
+    entry = next((it for it in _mon.get('items', [])
+                  if it.get('item_id') == item_id and it.get('alias') == alias), None)
+    if not entry:
+        return jsonify({'ok': False, 'error': 'Item no está en el monitor'}), 404
+
+    # Top keywords desde la optimización original si existe
+    top_kws = []
+    try:
+        opt_d = load_json(os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')) or {}
+        opt_match = next((o for o in opt_d.get('optimizaciones', [])
+                          if o.get('item_id') == item_id), None)
+        if opt_match and opt_match.get('keywords_faltantes'):
+            top_kws = [k.strip() for k in
+                       (opt_match.get('keywords_faltantes') or '').split(',')
+                       if k.strip()][:3]
+    except Exception:
+        pass
+
+    from modules.baseline_capture import (
+        capturar_baseline_async, marcar_capturing,
+    )
+    marcar_capturing(DATA_DIR, item_id, alias)
+    capturar_baseline_async(item_id, alias, _client_rec, DATA_DIR,
+                            top_keywords=top_kws or None)
+
+    return jsonify({
+        'ok':       True,
+        'mensaje':  'Captura iniciada en background. Recargá en 10-15 segundos.',
+        'item_id':  item_id,
+    })
+
+
+@app.route('/api/republicacion-revincular/<alias>/<item_id>', methods=['POST'])
+def api_republicacion_revincular(alias, item_id):
+    """Re-vincula una republicación existente capturando snapshot retroactivo
+    de MLA-X (la original).
+
+    Útil cuando una entry tiene origen='nueva' pero NO tiene
+    publicacion_original.snapshot_al_republicar (porque la vinculación se
+    hizo antes del Sprint 3).
+
+    El snapshot que se captura es del estado ACTUAL de MLA-X — la UI debe
+    avisar que NO refleja el momento real de la republicación.
+    """
+    item_id = (item_id or '').strip().upper()
+    alias   = (alias or '').strip()
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias o item_id'}), 400
+
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon = load_json(_mon_path) or {'items': []}
+    entry = next((it for it in _mon.get('items', [])
+                  if it.get('item_id') == item_id and it.get('alias') == alias), None)
+    if not entry:
+        return jsonify({'ok': False, 'error': 'Item no está en el monitor'}), 404
+
+    mla_orig = entry.get('item_id_original')
+    if not mla_orig:
+        return jsonify({'ok': False, 'error': 'Esta entry no es una republicación'}), 400
+
+    # Capturar baseline completo de la original
+    try:
+        from core.account_manager import AccountManager as _AM_rev
+        from modules.baseline_capture import capturar_baseline_completo
+        _client_rev = _AM_rev().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Auth: {e}'}), 401
+
+    try:
+        snap_orig = capturar_baseline_completo(mla_orig, alias, _client_rev,
+                                                top_keywords=None, data_dir=DATA_DIR)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Captura falló: {e}'}), 500
+
+    # Marcar como retroactivo + guardar contexto temporal
+    fecha_revinc = datetime.now().strftime('%Y-%m-%d %H:%M')
+    entry['publicacion_original'] = {
+        'mla':                              mla_orig,
+        'snapshot_al_republicar':           snap_orig,
+        'snapshot_al_republicar_es_retroactivo': True,
+        'fecha_snapshot_capturado':         fecha_revinc,
+        'fecha_republicacion_original':     entry.get('fecha_opt', 'desconocida'),
+        'advertencia':                      'Snapshot capturado a posteriori — NO refleja el estado al momento de la republicación',
+        'snapshots':                        [],
+        'ultimo_snapshot':                  None,
+        'estado_ml':                        'active',
+        'fecha_estado':                     fecha_revinc,
+    }
+    save_json(_mon_path, _mon)
+
+    return jsonify({
+        'ok':         True,
+        'mensaje':    'Snapshot retroactivo de la publicación original capturado.',
+        'mla_orig':   mla_orig,
+        'es_retroactivo': True,
+    })
 
 
 @app.route('/api/test-claude')
@@ -4643,6 +4792,11 @@ def api_monitor_evolucion(alias):
             'snapshots':        snapshots,
             'snapshots_n':      len(snapshots),
             'visitas_ayer':     ultimo.get('visitas_ayer'),
+            # ── Sprint 3.1: flags + datos de captura completa ──
+            '_capturing':       it.get('_capturing', False),
+            '_capture_error':   it.get('_capture_error'),
+            'baseline_version': baseline.get('version', 1),
+            'publicacion_original': it.get('publicacion_original'),
             'deltas': {
                 'visitas_7d':    _delta('visitas_7d'),
                 'visitas_pct':   _delta_pct('visitas_7d'),
@@ -4723,14 +4877,78 @@ def api_monitor_refresh():
     # Guardar snapshot
     _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
     _mon      = load_json(_mon_path) or {'items': []}
+    snap_orig = None   # snapshot de la publicación original si hay republicación
     for it in _mon.get('items', []):
         if it.get('item_id') == item_id and it.get('alias') == alias:
             it.setdefault('snapshots', []).append(snap)
             it['snapshots']      = it['snapshots'][-30:]   # máx 30 snapshots
             it['ultimo_snapshot'] = snap
+
+            # ── Sprint 3.1 ext: refrescar también la publicación original ──
+            # Si esta entry tiene publicacion_original (caso republicación),
+            # capturar también snapshot de MLA-X y verificar su status.
+            pub_orig = it.get('publicacion_original') or {}
+            mla_orig = pub_orig.get('mla')
+            if mla_orig:
+                snap_orig = _capturar_snapshot_simple(mla_orig, _h, alias)
+                pub_orig.setdefault('snapshots', []).append(snap_orig)
+                pub_orig['snapshots']       = pub_orig['snapshots'][-30:]
+                pub_orig['ultimo_snapshot'] = snap_orig
+                # Actualizar estado_ml si cambió (active/paused/closed)
+                try:
+                    _r_st = req_lib.get(
+                        f'https://api.mercadolibre.com/items/{mla_orig}',
+                        headers=_h, params={'attributes': 'status'}, timeout=6)
+                    if _r_st.ok:
+                        nuevo_estado = _r_st.json().get('status', 'unknown')
+                        if nuevo_estado != pub_orig.get('estado_ml'):
+                            pub_orig['estado_ml']    = nuevo_estado
+                            pub_orig['fecha_estado'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                except Exception:
+                    pass
+                it['publicacion_original'] = pub_orig
             break
     save_json(_mon_path, _mon)
-    return jsonify({'ok': True, 'snapshot': snap})
+    return jsonify({'ok': True, 'snapshot': snap, 'snapshot_original': snap_orig})
+
+
+def _capturar_snapshot_simple(item_id: str, headers: dict, alias: str) -> dict:
+    """Snapshot ligero de un item — usado para refrescar la publicación original
+    en caso de republicación. Reusa la misma estructura que el snapshot de la
+    nueva (visitas_7d, ventas_total, posición, conv_pct).
+    """
+    snap = {'fecha': datetime.now().strftime('%Y-%m-%d %H:%M')}
+    try:
+        r = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}/visits/time_window',
+                        headers=headers, params={'last': 7, 'unit': 'day'}, timeout=6)
+        if r.ok:
+            snap['visitas_7d'] = r.json().get('total_visits', 0)
+    except Exception:
+        pass
+    try:
+        r = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}', headers=headers, timeout=6)
+        if r.ok:
+            snap['ventas_total'] = r.json().get('sold_quantity', 0)
+    except Exception:
+        pass
+    # Posición + ventas_30d desde JSON local (ya cargado por el cron diario)
+    try:
+        _pos = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(alias)}.json')) or {}
+        if item_id in _pos:
+            _ph = _pos[item_id].get('history', {})
+            if _ph:
+                _pv = _ph[max(_ph.keys())]
+                if _pv != 999:
+                    snap['posicion'] = _pv
+        _stk = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+        for _si in (_stk.get('items') or []):
+            if _si.get('id') == item_id:
+                snap['ventas_30d'] = _si.get('ventas_30d') or 0
+                snap['conv_pct']   = _si.get('conversion_pct') or 0.0
+                break
+    except Exception:
+        pass
+    return snap
 
 
 @app.route('/api/monitor-alertas-count/<alias>')
@@ -4935,14 +5153,35 @@ def api_opt_marcar_aplicado():
     _mon      = load_json(_mon_path) or {'items': []}
     if not isinstance(_mon, dict):
         _mon = {'items': []}
+
+    # Leer ventas_30d, conv_pct y ventas_total del stock JSON (mismo flujo que
+    # api_aplicar_optimizacion). Antes estaban hardcodeados en cero, lo que
+    # generaba "Antes: —" en Monitor de Evolución.
+    _ventas_30d_b   = 0
+    _conv_pct_b     = 0.0
+    _ventas_total_b = 0
+    try:
+        _stock_data_b = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+        for _si_b in (_stock_data_b.get('items') or []):
+            if _si_b.get('id') == item_id:
+                _ventas_30d_b = int(_si_b.get('ventas_30d') or 0)
+                _conv_pct_b   = float(_si_b.get('conversion_pct') or 0.0)
+                break
+        _ir_b = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}',
+                            headers=heads, timeout=6)
+        if _ir_b.ok:
+            _ventas_total_b = int(_ir_b.json().get('sold_quantity') or 0)
+    except Exception:
+        pass
+
     _mon_baseline = {
-        'fecha':       _now_mon,
-        'visitas_7d':  baseline.get('visitas_antes', 0),
-        'ventas_30d':  0,
-        'ventas_total': 0,
-        'conv_pct':    0.0,
-        'posicion':    baseline.get('posicion_antes'),
-        'posicion_kw': None,
+        'fecha':        _now_mon,
+        'visitas_7d':   baseline.get('visitas_antes', 0),
+        'ventas_30d':   _ventas_30d_b,
+        'ventas_total': _ventas_total_b,
+        'conv_pct':     _conv_pct_b,
+        'posicion':     baseline.get('posicion_antes'),
+        'posicion_kw':  None,
     }
     _titulo_prod   = opt_item.get('titulo_actual', item_id)
     _titulo_nuevo  = opt_item.get('titulo_nuevo', '')
@@ -4972,6 +5211,24 @@ def api_opt_marcar_aplicado():
             'applied':         ['manual'],
         })
     save_json(_mon_path, _mon)
+
+    # ── Sprint 3.1: lanzar captura async del baseline COMPLETO ──────────
+    try:
+        from modules.baseline_capture import (
+            capturar_baseline_async, marcar_capturing,
+        )
+        from core.account_manager import AccountManager as _AM_bc
+        _client_bc = _AM_bc().get_client(alias)
+        _top_kws_bc = []
+        if opt_item.get('keywords_faltantes'):
+            _top_kws_bc = [k.strip() for k in
+                           (opt_item.get('keywords_faltantes') or '').split(',')
+                           if k.strip()][:3]
+        marcar_capturing(DATA_DIR, item_id, alias)
+        capturar_baseline_async(item_id, alias, _client_bc, DATA_DIR,
+                                top_keywords=_top_kws_bc or None)
+    except Exception as e:
+        app.logger.warning('[baseline_capture] async marcar_aplicado falló: %s', e)
 
     return jsonify({'ok': True, 'baseline': baseline})
 
@@ -5057,6 +5314,42 @@ def api_monitor_nueva_publicacion():
         _mon['items'].append(entry)
 
     save_json(_mon_path, _mon)
+
+    # ── Sprint 3.1 ext republicación: capturar baseline DUAL ────────────────
+    # Captura async del baseline completo de MLA-Y (la nueva) Y de MLA-X (la
+    # original) en el mismo thread. La función baseline_capture toma
+    # publicacion_original_mla y guarda automáticamente en
+    # entry.publicacion_original.snapshot_al_republicar.
+    try:
+        from modules.baseline_capture import (
+            capturar_baseline_async, marcar_capturing,
+        )
+        from core.account_manager import AccountManager as _AM_rep
+        _client_rep = _AM_rep().get_client(alias)
+
+        # Top 3 keywords del análisis original (de MLA-X) si existe
+        _top_kws_rep = []
+        if item_id_orig:
+            try:
+                _opt_d_rep = load_json(os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')) or {}
+                _opt_match_rep = next((o for o in _opt_d_rep.get('optimizaciones', [])
+                                       if o.get('item_id') == item_id_orig), None)
+                if _opt_match_rep and _opt_match_rep.get('keywords_faltantes'):
+                    _top_kws_rep = [k.strip() for k in
+                                    (_opt_match_rep.get('keywords_faltantes') or '').split(',')
+                                    if k.strip()][:3]
+            except Exception:
+                pass
+
+        marcar_capturing(DATA_DIR, item_id_nuevo, alias)
+        capturar_baseline_async(
+            item_id_nuevo, alias, _client_rep, DATA_DIR,
+            top_keywords=_top_kws_rep or None,
+            publicacion_original_mla=item_id_orig or None,
+        )
+    except Exception as e:
+        app.logger.warning('[baseline_capture] async republicación falló: %s', e)
+
     return jsonify({
         'ok':            True,
         'titulo':        titulo_nuevo,

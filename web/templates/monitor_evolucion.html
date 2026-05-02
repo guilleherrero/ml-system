@@ -137,6 +137,117 @@
 .timeline-pos-down { color: #dc2626; font-weight: 700; }
 .timeline-pos-flat { color: #64748b; }
 
+/* ── Sprint 3.1 — vista expandible de baseline completo ── */
+.capturing-banner {
+  background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8;
+  padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
+  font-size: .82rem; display: flex; align-items: center; gap: .5rem;
+}
+.capturing-banner .pulse {
+  width: 10px; height: 10px; border-radius: 50%; background: #3b82f6;
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: .4; transform: scale(.9); }
+  50%      { opacity: 1; transform: scale(1.1); }
+}
+
+.expand-toggle {
+  font-size: .76rem; color: #3b82f6; cursor: pointer; border: none;
+  background: none; padding: .35rem 0; display: inline-flex;
+  align-items: center; gap: .3rem; margin-top: .3rem;
+}
+.expand-toggle:hover { text-decoration: underline; }
+
+.detail-sections { margin-top: .75rem; display: none; }
+.detail-sections.open { display: block; }
+
+.detail-section {
+  border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: .75rem .95rem; margin-bottom: .65rem; background: #fafafa;
+}
+.detail-section-title {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .05em; color: #475569; margin-bottom: .55rem;
+  display: flex; align-items: center; gap: .4rem;
+}
+.detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: .55rem .8rem;
+}
+.detail-cell {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: .35rem .55rem; background: #fff; border-radius: 6px;
+  border: 1px solid #f1f5f9;
+}
+.detail-cell .lbl { font-size: .62rem; font-weight: 600; color: #94a3b8;
+                     text-transform: uppercase; letter-spacing: .03em; }
+.detail-cell .val { font-size: .88rem; font-weight: 700; color: #0f172a; }
+.detail-cell.unavailable .val { color: #cbd5e1; font-style: italic; font-weight: 500; }
+.detail-cell.unavailable .lbl { color: #cbd5e1; }
+
+.kw-list { font-size: .77rem; line-height: 1.55; }
+.kw-list .kw-item { display: flex; justify-content: space-between;
+                     padding: .15rem .4rem; border-radius: 4px; }
+.kw-list .kw-item:nth-child(even) { background: rgba(241, 245, 249, .6); }
+
+.capture-meta { font-size: .66rem; color: #94a3b8; margin-top: .55rem;
+                 padding-top: .55rem; border-top: 1px dashed #e2e8f0; }
+
+.badge-parcial {
+  font-size: .62rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  background: #fef3c7; color: #b45309; border: 1px solid #fde68a;
+  margin-left: .3rem; cursor: help;
+}
+.recapture-banner {
+  background: #fefce8; border: 1px solid #fde68a; color: #92400e;
+  padding: .65rem .9rem; border-radius: 8px; margin-top: .75rem;
+  font-size: .8rem; display: flex; gap: .5rem; align-items: flex-start;
+}
+.recapture-banner .desc { flex: 1; line-height: 1.45; }
+.btn-recapturar {
+  background: #d97706; color: #fff; border: none; padding: .35rem .85rem;
+  border-radius: 6px; font-size: .76rem; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.btn-recapturar:hover { background: #b45309; }
+.btn-recapturar:disabled { opacity: .5; cursor: not-allowed; }
+
+.modal-warn {
+  background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c;
+  padding: .8rem; border-radius: 7px; font-size: .8rem;
+  margin: .75rem 0; line-height: 1.5;
+}
+
+/* ── Sprint 3.1 ext republicación — info compacta de MLA-X ── */
+.original-info {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: .55rem .85rem; margin-top: .65rem;
+  font-size: .77rem; display: flex; gap: .8rem; align-items: center;
+  flex-wrap: wrap;
+}
+.original-info .label  { font-size: .62rem; font-weight: 700; text-transform: uppercase;
+                          letter-spacing: .04em; color: #64748b; }
+.original-info code    { background: #fff; padding: 1px 6px; border-radius: 4px;
+                          border: 1px solid #e2e8f0; font-size: .75rem; }
+.original-info .estado-pill {
+  font-size: .65rem; font-weight: 700; padding: 1px 8px; border-radius: 10px;
+}
+.original-info .estado-pill.active  { background: #dcfce7; color: #15803d; }
+.original-info .estado-pill.paused  { background: #fef3c7; color: #b45309; }
+.original-info .estado-pill.closed  { background: #fee2e2; color: #b91c1c; }
+.original-info .estado-pill.unknown { background: #f1f5f9; color: #94a3b8; }
+.original-info .retroactivo {
+  font-size: .65rem; background: #fef3c7; color: #92400e;
+  padding: 1px 7px; border-radius: 8px; cursor: help;
+}
+.btn-revincular {
+  font-size: .7rem; padding: .25rem .65rem; border-radius: 6px;
+  background: transparent; color: #d97706; border: 1px solid #fde68a;
+  cursor: pointer; margin-left: auto;
+}
+.btn-revincular:hover { background: #fef3c7; }
+
 .alerta-banner {
   display: flex; align-items: flex-start; gap: .6rem;
   padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
@@ -354,10 +465,51 @@ function renderItem(it) {
   const appliedBadges = (it.applied || []).map(a =>
     `<span class="badge-applied">${a}</span>`).join('');
 
+  // Capturing placeholder — se muestra mientras corre la captura async
+  let capturingBlock = '';
+  if (it._capturing) {
+    capturingBlock = `<div class="capturing-banner">
+      <span class="pulse"></span>
+      <span><strong>Capturando baseline completo…</strong> recargá en 10-15 segundos para ver las 14 métricas.</span>
+    </div>`;
+  } else if (it._capture_error) {
+    capturingBlock = `<div class="alerta-banner warning" style="font-size:.78rem">
+      <span class="alerta-icon">⚠</span>
+      <span>Error capturando baseline: ${it._capture_error}</span>
+    </div>`;
+  }
+
+  // Vista expandible con las 5 secciones nuevas (solo si baseline tiene v2)
+  const detailBlock = renderDetalleExpansible(it);
+
+  // Banner "Baseline parcial" — aparece SOLO si baseline está en v1 (legacy)
+  // y la captura no está en curso
+  const baselineVer = it.baseline_version || (it.baseline && it.baseline.version) || 1;
+  let parcialBlock = '';
+  if (baselineVer < 2 && !it._capturing) {
+    parcialBlock = `<div class="recapture-banner">
+      <i class="bi bi-info-circle-fill" style="color:#d97706;flex-shrink:0;margin-top:.1rem"></i>
+      <div class="desc">
+        <strong>Baseline parcial</strong> — esta optimización se aplicó antes del Sprint 3
+        y solo tiene métricas básicas (visitas, ventas, conversión, posición).
+        Podés re-capturar para tener las 14 métricas completas, pero el snapshot va a ser del
+        <strong>estado de hoy</strong>, no del momento original de la optimización.
+      </div>
+      <button class="btn-recapturar" onclick="abrirModalRecapturar('${it.item_id}', ${JSON.stringify(it.titulo_producto.replace(/'/g, "\\'"))}, '${it.fecha_opt}')">
+        <i class="bi bi-arrow-clockwise me-1"></i>Re-capturar baseline
+      </button>
+    </div>`;
+  }
+
+  // Badge "parcial" en el header del card si baseline es v1 legacy
+  const partialBadge = (baselineVer < 2 && !it._capturing)
+    ? `<span class="badge-parcial" title="Baseline capturado antes del Sprint 3 — métricas básicas">⚠ Parcial</span>`
+    : '';
+
   return `<div class="item-card" id="card-${it.item_id}">
     <div class="item-card-header">
       <div>
-        <div class="item-name">${it.titulo_producto}</div>
+        <div class="item-name">${it.titulo_producto}${partialBadge}</div>
         <div class="item-meta">
           ${it.item_id}
           ${appliedBadges}
@@ -377,12 +529,329 @@ function renderItem(it) {
       </div>
     </div>
     <div class="item-card-body">
+      ${capturingBlock}
       ${alertasBlock}
       ${tituloBlock}
+      ${renderInfoOriginal(it)}
       ${metricsBlock}
+      ${detailBlock}
+      ${parcialBlock}
       ${it.snapshots_n > 0 ? renderTimeline(it) : ''}
     </div>
   </div>`;
+}
+
+// ── Sprint 3.1 ext republicación — info compacta de la pub original ─────────
+function renderInfoOriginal(it) {
+  if (it.origen !== 'nueva' || !it.item_id_original) return '';
+
+  const po = it.publicacion_original || {};
+  const tieneSnapshot = !!(po.snapshot_al_republicar);
+  const esRetroactivo = !!po.snapshot_al_republicar_es_retroactivo;
+  const estado        = po.estado_ml || 'unknown';
+  const ultimaAct     = po.ultimo_snapshot && po.ultimo_snapshot.fecha
+                          ? po.ultimo_snapshot.fecha
+                          : (po.fecha_estado || '—');
+
+  const retroBadge = esRetroactivo
+    ? `<span class="retroactivo" title="Snapshot capturado el ${po.fecha_snapshot_capturado || '?'}, no refleja el estado al momento de la republicación">⚠ retroactivo</span>`
+    : '';
+
+  // Si no tiene snapshot del original, mostrar botón para revincular
+  if (!tieneSnapshot) {
+    return `<div class="original-info">
+      <span class="label">📌 Original</span>
+      <code>${it.item_id_original}</code>
+      <span class="text-muted" style="font-size:.72rem">sin snapshot referencial — capturar para comparativa A/B</span>
+      <button class="btn-revincular" onclick="abrirModalRevincular('${it.item_id}', '${it.item_id_original}', '${it.fecha_opt || ''}')">
+        <i class="bi bi-link-45deg me-1"></i>Re-vincular y capturar
+      </button>
+    </div>`;
+  }
+
+  return `<div class="original-info">
+    <span class="label">📌 Original</span>
+    <code>${it.item_id_original}</code>
+    <span class="estado-pill ${estado}">${estado}</span>
+    ${retroBadge}
+    <span style="color:#64748b;font-size:.72rem">últ. snapshot: ${ultimaAct}</span>
+  </div>`;
+}
+
+// ── Modal "Re-vincular y capturar snapshot retroactivo" ─────────────────────
+let _revinc_target = null;
+
+function abrirModalRevincular(itemIdNuevo, mlaOrig, fechaOpt) {
+  _revinc_target = itemIdNuevo;
+  const html = `
+    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+      <i class="bi bi-link-45deg text-warning me-1"></i>Re-vincular y capturar snapshot
+    </h5>
+    <p style="font-size:.86rem;color:#475569;margin-bottom:.55rem">
+      Publicación nueva: <strong>${itemIdNuevo}</strong><br>
+      Publicación original: <strong>${mlaOrig}</strong>
+    </p>
+    <p style="font-size:.82rem;color:#64748b;margin-bottom:.4rem">
+      Republicación vinculada el: <strong>${fechaOpt || 'fecha desconocida'}</strong>
+    </p>
+    <div class="modal-warn">
+      <strong>⚠ Importante:</strong> el snapshot de <code>${mlaOrig}</code> se va a capturar con
+      el estado <strong>de HOY</strong>. Como la republicación ya ocurrió, este snapshot
+      <strong>NO refleja</strong> el estado real de la original al momento del cambio.
+      Va a quedar marcado como <em>retroactivo</em> en el JSON.
+    </div>
+    <p style="font-size:.78rem;color:#64748b">
+      A partir de ahora, el cron del Monitor refresca AMBAS publicaciones (la nueva y la original)
+      para poder hacer comparativa A/B en Sprint 3.2.
+    </p>
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
+      <button onclick="cerrarModalRevinc()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
+      <button id="btn-confirmar-revinc" onclick="ejecutarRevincular()" style="padding:.5rem 1.2rem;background:#d97706;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
+        Capturar snapshot retroactivo
+      </button>
+    </div>`;
+  let modal = document.getElementById('modal-revinc');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-revinc';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center';
+    modal.innerHTML = '<div id="modal-revinc-content" style="background:#fff;border-radius:12px;max-width:560px;width:92%;padding:1.5rem"></div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('modal-revinc-content').innerHTML = html;
+  modal.style.display = 'flex';
+}
+
+function cerrarModalRevinc() {
+  const modal = document.getElementById('modal-revinc');
+  if (modal) modal.style.display = 'none';
+  _revinc_target = null;
+}
+
+async function ejecutarRevincular() {
+  if (!_revinc_target) return;
+  const btn = document.getElementById('btn-confirmar-revinc');
+  btn.disabled = true;
+  btn.textContent = 'Capturando…';
+  try {
+    const r = await fetch(`/api/republicacion-revincular/${encodeURIComponent(ALIAS)}/${encodeURIComponent(_revinc_target)}`,
+                          {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      cerrarModalRevinc();
+      await loadMonitor();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Capturar snapshot retroactivo';
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Capturar snapshot retroactivo';
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── Modal recapturar baseline (Sprint 3.1 — items legacy) ────────────────────
+let _recap_target = null;
+
+function abrirModalRecapturar(itemId, titulo, fechaOpt) {
+  _recap_target = itemId;
+  const html = `
+    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+      <i class="bi bi-arrow-clockwise text-warning me-1"></i>Re-capturar baseline
+    </h5>
+    <p style="font-size:.86rem;color:#475569;margin-bottom:.55rem">
+      Item: <strong>${itemId}</strong><br>${titulo}
+    </p>
+    <p style="font-size:.82rem;color:#64748b;margin-bottom:.4rem">
+      Optimización aplicada el: <strong>${fechaOpt || 'fecha desconocida'}</strong>
+    </p>
+    <div class="modal-warn">
+      <strong>⚠ Importante:</strong> el baseline se va a capturar con el estado <strong>de HOY</strong>.
+      Si la optimización fue aplicada hace tiempo, este snapshot <strong>NO refleja</strong> el estado real
+      al momento de la optimización. Va a quedar marcado como <em>retroactivo</em> para que sepas
+      que es referencial, no histórico.
+    </div>
+    <p style="font-size:.78rem;color:#64748b">
+      La captura toma 10-15 segundos. Mientras corre, vas a ver "Capturando baseline…" en el card.
+    </p>
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
+      <button onclick="cerrarModalRecap()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
+      <button id="btn-confirmar-recap" onclick="ejecutarRecapturar()" style="padding:.5rem 1.2rem;background:#d97706;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
+        Re-capturar ahora
+      </button>
+    </div>`;
+  // Reuso el modal genérico — si no existe, lo creo
+  let modal = document.getElementById('modal-recap');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-recap';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center';
+    modal.innerHTML = '<div id="modal-recap-content" style="background:#fff;border-radius:12px;max-width:520px;width:92%;padding:1.5rem"></div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('modal-recap-content').innerHTML = html;
+  modal.style.display = 'flex';
+}
+
+function cerrarModalRecap() {
+  const modal = document.getElementById('modal-recap');
+  if (modal) modal.style.display = 'none';
+  _recap_target = null;
+}
+
+async function ejecutarRecapturar() {
+  if (!_recap_target) return;
+  const btn = document.getElementById('btn-confirmar-recap');
+  btn.disabled = true;
+  btn.textContent = 'Capturando…';
+  try {
+    const r = await fetch(`/api/baseline-recapturar/${encodeURIComponent(ALIAS)}/${encodeURIComponent(_recap_target)}`,
+                          {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      cerrarModalRecap();
+      // Recargar el monitor en 12 segundos para ver el resultado
+      setTimeout(() => loadMonitor(), 12000);
+      // Mostrar feedback inmediato
+      await loadMonitor();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Re-capturar ahora';
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Re-capturar ahora';
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── Sprint 3.1 — render de secciones expandibles del baseline v2 ─────────────
+function fmtVal(v, suffix = '') {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'boolean') return v ? '✓ Sí' : '✗ No';
+  if (typeof v === 'number')  return Number.isInteger(v) ? v.toLocaleString('es-AR') + suffix : v.toLocaleString('es-AR', {maximumFractionDigits: 2}) + suffix;
+  return String(v) + suffix;
+}
+
+function detailCell(label, value, suffix = '') {
+  const fmt = fmtVal(value, suffix);
+  if (fmt === null) {
+    return `<div class="detail-cell unavailable">
+      <div class="lbl">${label}</div>
+      <div class="val">no disponible</div>
+    </div>`;
+  }
+  return `<div class="detail-cell">
+    <div class="lbl">${label}</div>
+    <div class="val">${fmt}</div>
+  </div>`;
+}
+
+function renderDetalleExpansible(it) {
+  const b = it.baseline || {};
+  const ver = it.baseline_version || b.version || 1;
+  // Si el baseline NO es v2, mostrar nota y badge "parcial" (parte del commit 4)
+  if (ver < 2) return '';
+
+  const vis = b.visibilidad || {};
+  const traf = b.trafico || {};
+  const ven = b.ventas || {};
+  const eng = b.engagement || {};
+  const sal = b.salud || {};
+  const meta = b._capture_metrics || {};
+
+  // Lista de top keywords
+  const kwsHtml = (vis.posicion_top_keywords || []).map(k => `
+    <div class="kw-item">
+      <span style="color:#475569">${k.kw}</span>
+      <span style="font-weight:700;color:${k.posicion ? '#0f172a' : '#cbd5e1'}">
+        ${k.posicion ? '#' + k.posicion : 'no rankea'}
+      </span>
+    </div>
+  `).join('') || '<div class="text-muted" style="font-size:.72rem">— no disponible —</div>';
+
+  const id = `detail-${it.item_id.replace(/[^a-z0-9]/gi, '_')}`;
+  const captureMeta = meta.duration_ms
+    ? `<div class="capture-meta">
+        Captura: ${(meta.duration_ms/1000).toFixed(1)}s · ${meta.ml_api_calls_count || 0} llamadas a ML API
+        ${meta.duration_breakdown
+          ? ' · ' + Object.entries(meta.duration_breakdown).map(([k,v]) => `${k}: ${(v/1000).toFixed(1)}s`).join(' · ')
+          : ''}
+      </div>`
+    : '';
+
+  return `<button class="expand-toggle" onclick="toggleDetail('${id}', this)">
+    <i class="bi bi-chevron-right"></i> Ver todas las métricas del baseline
+  </button>
+  <div id="${id}" class="detail-sections">
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-eye-fill" style="color:#7c3aed"></i>Visibilidad</div>
+      <div class="detail-grid">
+        ${detailCell('Score Calidad ML', vis.score_calidad_ml, '/100')}
+        ${detailCell('Nivel calidad', vis.score_calidad_nivel)}
+        ${detailCell('En catálogo', vis.esta_en_catalogo)}
+        ${detailCell('Tiene Buy Box', vis.tiene_buy_box)}
+      </div>
+      <div style="margin-top:.6rem">
+        <div class="lbl" style="font-size:.62rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.3rem">Posición top keywords</div>
+        <div class="kw-list">${kwsHtml}</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-bar-chart-fill" style="color:#3b82f6"></i>Tráfico</div>
+      <div class="detail-grid">
+        ${detailCell('Visitas 7d', traf.visitas_7d)}
+        ${detailCell('Visitas 30d', traf.visitas_30d)}
+        ${detailCell('Conversión 7d', traf.conversion_7d, '%')}
+        ${detailCell('Conversión 30d', traf.conversion_30d, '%')}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-cart-fill" style="color:#16a34a"></i>Ventas</div>
+      <div class="detail-grid">
+        ${detailCell('Unidades 7d', ven.unidades_7d)}
+        ${detailCell('Unidades 30d', ven.unidades_30d)}
+        ${detailCell('Facturación 7d', ven.facturacion_7d ? '$' + ven.facturacion_7d.toLocaleString('es-AR') : null)}
+        ${detailCell('Facturación 30d', ven.facturacion_30d ? '$' + ven.facturacion_30d.toLocaleString('es-AR') : null)}
+        ${detailCell('Ticket promedio', ven.ticket_promedio ? '$' + ven.ticket_promedio.toLocaleString('es-AR') : null)}
+        ${detailCell('Ventas histórico', ven.ventas_total_historica)}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-chat-dots-fill" style="color:#d97706"></i>Engagement</div>
+      <div class="detail-grid">
+        ${detailCell('Preguntas pendientes', eng.preguntas_pendientes)}
+        ${detailCell('Preguntas 30d', eng.preguntas_total_30d)}
+        ${detailCell('Reseñas', eng.resenas_cantidad)}
+        ${detailCell('Promedio estrellas', eng.resenas_promedio_estrellas, ' ★')}
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title"><i class="bi bi-shield-check" style="color:#dc2626"></i>Salud</div>
+      <div class="detail-grid">
+        ${detailCell('Reclamos 30d', sal.reclamos_30d)}
+        ${detailCell('Cancelaciones 30d', sal.cancelaciones_30d)}
+        ${detailCell('Mediaciones 30d', sal.mediaciones_30d)}
+      </div>
+    </div>
+    ${captureMeta}
+  </div>`;
+}
+
+function toggleDetail(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const open = el.classList.toggle('open');
+  btn.innerHTML = open
+    ? '<i class="bi bi-chevron-down"></i> Ocultar métricas detalladas'
+    : '<i class="bi bi-chevron-right"></i> Ver todas las métricas del baseline';
 }
 
 async function loadMonitor() {
