@@ -173,7 +173,10 @@
     <span class="text-muted small">Mientras tanto, podés ver el estado de tus publicaciones abajo.</span>
   </div>
 </div>
-{% set con_ventas = items | selectattr('ventas_30d', 'gt', 0) | list %}
+{% set con_ventas      = items | selectattr('ventas_30d', 'gt', 0) | list %}
+{% set ventas_rastread = con_ventas | sum(attribute='ventas_30d') %}
+{% set ventas_total    = ventas_total_cuenta or ventas_rastread %}
+{% set ventas_gap      = ventas_total - ventas_rastread %}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="mon-stat"><div class="num">{{ items|length }}</div><div class="lbl">Publicaciones</div></div>
@@ -185,9 +188,26 @@
     <div class="mon-stat cae"><div class="num">{{ items | selectattr('alerta','eq','SIN_STOCK') | list | length }}</div><div class="lbl">Sin stock</div></div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="mon-stat top"><div class="num">{{ con_ventas | sum(attribute='ventas_30d') }}</div><div class="lbl">Ventas totales 30d</div></div>
+    <div class="mon-stat top"
+         title="{{ ventas_rastread }} son las ventas de las publicaciones que tenés en seguimiento de posiciones. {{ ventas_total }} es el total de tu cuenta. La diferencia ({{ ventas_gap }}) son ventas de publicaciones que no están en el monitor de posiciones (pueden ser items pausados, sin tracking, etc.).">
+      <div class="num" style="white-space:nowrap">
+        {{ ventas_rastread }}<span style="color:#cbd5e1;font-weight:300;margin:0 .15em">/</span>{{ ventas_total }}
+        <i class="bi bi-info-circle" style="font-size:.6em;color:#94a3b8;vertical-align:super;margin-left:2px"></i>
+      </div>
+      <div class="lbl">Ventas 30d (rastreadas / total cuenta)</div>
+    </div>
   </div>
 </div>
+{% if ventas_gap > 50 %}
+<div class="alert d-flex align-items-center gap-2 py-2 px-3 mb-4"
+     style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:.85rem">
+  <span style="font-size:1rem">💡</span>
+  <span><strong>{{ ventas_gap }} ventas en publicaciones sin rastreo de posición.</strong></span>
+  <a href="/stock/{{ alias }}" class="ms-auto" style="color:#1d4ed8;font-weight:600;font-size:.82rem;text-decoration:none">
+    Ver cuáles <i class="bi bi-arrow-right ms-1"></i>
+  </a>
+</div>
+{% endif %}
 <div class="card"><div class="card-body p-0">
   <table class="table table-sm table-hover mb-0">
     <thead><tr>
