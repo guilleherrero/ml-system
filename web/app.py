@@ -6945,27 +6945,11 @@ def duplicados(alias):
     stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_items = stock_data.get('items', [])
 
-    clusters_obj = detectar_duplicados(stock_items, alias, DATA_DIR)
+    clusters = detectar_duplicados(stock_items, alias, DATA_DIR)
+    # Las dataclasses se pasan directo al template — Jinja accede por atributo.
+    # NO convertir a dict porque c.items chocaría con el método dict.items() de Jinja.
 
-    # Convertir dataclasses a dicts simples para Jinja
-    clusters = [{
-        'cluster_id':  c.cluster_id,
-        'severidad':   c.severidad,
-        'titulo_corto': c.titulo_corto,
-        'visitas_perdidas_30d':       c.visitas_perdidas_30d,
-        'impacto_monetario_estimado': c.impacto_monetario_estimado,
-        'items': [{
-            'id':             it.id,
-            'titulo':         it.titulo,
-            'precio':         it.precio,
-            'ventas_30d':     it.ventas_30d,
-            'visitas_30d':    it.visitas_30d,
-            'conversion_pct': it.conversion_pct,
-            'es_ganadora':    it.es_ganadora,
-        } for it in c.items],
-    } for c in clusters_obj]
-
-    resumen = resumen_para_alertas(clusters_obj)
+    resumen = resumen_para_alertas(clusters)
     fecha_stock = (stock_data or {}).get('fecha', '')
 
     return render_template('duplicados.html',
@@ -6998,10 +6982,9 @@ def api_duplicados_pausar_batch():
     stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_idx   = {i.get('id'): i for i in stock_data.get('items', []) if i.get('id')}
 
-    # Identificar la "ganadora" del cluster — para el baseline post-pausa
-    cluster_items = [stock_idx.get(m, {}) for m in mlas_in if m in stock_idx]
-    # Buscar la ganadora entre todos los items que estaban en el cluster del request
-    # (la ganadora puede no estar en mlas_in si solo enviaron las que tienen 0 ventas)
+    # La "ganadora" del cluster se calcula más abajo sobre stock_data completo,
+    # no solo sobre mlas_in (las del request son las candidatas a pausar, no
+    # necesariamente incluyen la ganadora).
 
     try:
         token, user_id, heads = _ml_auth(alias)
