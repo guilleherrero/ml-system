@@ -77,6 +77,21 @@ class ItemCluster:
 
 
 @dataclass
+class Recomendacion:
+    """Recomendación heurística por item dentro de un cluster.
+
+    accion:
+      'mantener'        — la ganadora o un item que vende bien
+      'pausar_traf'     — sin ventas pero con visitas (recuperar tráfico)
+      'pausar_sin_traf' — sin ventas y sin visitas (limpieza)
+      'revisar'         — vende algo pero conversión muy baja
+    """
+    accion: str
+    motivo: str
+    pre_seleccionar: bool   # True → aparece marcado por defecto en checkbox de pausa
+
+
+@dataclass
 class Cluster:
     """Un cluster de publicaciones potencialmente duplicadas."""
     cluster_id: str
@@ -85,6 +100,8 @@ class Cluster:
     titulo_corto: str = ''
     visitas_perdidas_30d: int = 0
     impacto_monetario_estimado: float = 0.0
+    recomendaciones: dict = field(default_factory=dict)   # {mla_id: Recomendacion}
+    resumen_recomendacion: str = ''
 
 
 # ── Helpers de normalización ────────────────────────────────────────────────
@@ -344,6 +361,82 @@ def _calcular_impacto_monetario(cluster_items: list[dict], ganadora_id: str) -> 
     return visitas_perdidas, round(impacto, 0)
 
 
+def _generar_recomendaciones(cluster_items: list[dict],
+                             ganadora_id: str) -> tuple[dict, str]:
+    """Heurística determinística que sugiere qué hacer con cada item del cluster.
+
+    Returns:
+      (recomendaciones_por_mla, resumen_textual)
+    """
+    recs: dict = {}
+    n_pausar    = 0
+    n_revisar   = 0
+    n_sin_traf  = 0
+
+    # Conversión histórica de la ganadora — referencia
+    ganadora = next((it for it in cluster_items if it.get('id') == ganadora_id), None)
+    conv_ganadora = float((ganadora or {}).get('conversion_pct') or 0)
+
+    for it in cluster_items:
+        mla = it.get('id', '')
+        ventas  = int(it.get('ventas_30d') or 0)
+        visitas = int(it.get('visitas_30d') or 0)
+        conv    = float(it.get('conversion_pct') or 0)
+
+        if mla == ganadora_id:
+            recs[mla] = Recomendacion(
+                accion='mantener',
+                motivo='Ganadora del cluster — vende mejor que el resto',
+                pre_seleccionar=False,
+            )
+            continue
+
+        if ventas == 0 and visitas >= 10:
+            recs[mla] = Recomendacion(
+                accion='pausar_traf',
+                motivo=f'Sin ventas en 30d pero recibe {visitas} visitas — pausar para que ese tráfico vaya a la ganadora',
+                pre_seleccionar=True,
+            )
+            n_pausar += 1
+        elif ventas == 0 and visitas < 10:
+            recs[mla] = Recomendacion(
+                accion='pausar_sin_traf',
+                motivo=f'Sin ventas y casi sin visitas ({visitas}) — limpieza recomendada',
+                pre_seleccionar=True,
+            )
+            n_pausar += 1
+            n_sin_traf += 1
+        elif ventas > 0 and conv_ganadora > 0 and conv < (conv_ganadora * 0.5):
+            recs[mla] = Recomendacion(
+                accion='revisar',
+                motivo=f'Vende {ventas} con {conv:.2f}% conversión (la ganadora convierte {conv_ganadora:.2f}%) — revisar pricing/foto antes de pausar',
+                pre_seleccionar=False,
+            )
+            n_revisar += 1
+        else:
+            recs[mla] = Recomendacion(
+                accion='mantener',
+                motivo=f'Vende {ventas} unid/mes con conversión sana — mantener',
+                pre_seleccionar=False,
+            )
+
+    # Construir resumen accionable
+    parts = []
+    if ganadora:
+        parts.append(
+            f"Mantener {ganadora_id} (vende {int(ganadora.get('ventas_30d') or 0)} unid/mes "
+            f"con {conv_ganadora:.2f}% de conversión — ganadora del cluster)"
+        )
+    if n_pausar:
+        sin_traf_extra = f" ({n_sin_traf} sin tráfico, candidatas a cierre manual desde ML si querés limpiar)" if n_sin_traf else ''
+        parts.append(f"Pausar {n_pausar} sin ventas en 30d{sin_traf_extra}")
+    if n_revisar:
+        parts.append(f"Revisar {n_revisar} con conversión muy baja vs la ganadora antes de decidir")
+
+    resumen = ' · '.join(parts) if parts else 'Sin acciones recomendadas para este cluster.'
+    return recs, resumen
+
+
 def _titulo_corto(cluster_items: list[dict]) -> str:
     """Tokens en común entre todos los títulos del cluster — qué representa el cluster."""
     if not cluster_items:
@@ -407,6 +500,7 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
         items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
 
         cluster_id = _generar_cluster_id(it.id for it in items_cluster)
+        recomendaciones, resumen_rec = _generar_recomendaciones(grupo, ganadora_id)
         clusters.append(Cluster(
             cluster_id=cluster_id,
             severidad=severidad,
@@ -414,6 +508,8 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
             titulo_corto=_titulo_corto(grupo),
             visitas_perdidas_30d=visitas_perdidas,
             impacto_monetario_estimado=impacto,
+            recomendaciones=recomendaciones,
+            resumen_recomendacion=resumen_rec,
         ))
 
     # Ordenar: puro primero, luego subperformante, dentro de cada nivel por impacto desc
