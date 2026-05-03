@@ -337,9 +337,9 @@ function handleEvent(ev) {
     if (ev.data_source === 'search_real') {
       qualityBadge = '<span class="badge bg-success mb-1">✓ Datos reales de ML</span>';
     } else if (ev.data_source === 'cache_catalogo') {
-      qualityBadge = '<span class="badge bg-warning text-dark mb-1">⚠️ Datos del catálogo (sin precios reales) — activar permiso "Ítems y búsqueda"</span>';
+      qualityBadge = '<span class="badge bg-warning text-dark mb-1">⚠️ Datos del catálogo — falta permiso <a href="/settings/permisos">Ítems y búsqueda</a></span>';
     } else {
-      qualityBadge = '<div class="alert alert-danger py-2 px-2 mb-1 small"><strong>⛔ Sin datos de competencia.</strong> Activá el permiso "Ítems y búsqueda" en tu app de ML Developers y generá nuevos tokens. El análisis de keywords y título sí funciona, pero sin precios ni ventas reales.</div>';
+      qualityBadge = '<div class="alert alert-danger py-2 px-2 mb-1 small"><strong>⛔ Sin datos de competencia.</strong> Falta el permiso <strong>Ítems y búsqueda</strong> — <a href="/settings/permisos">activalo en Permisos API</a>.</div>';
     }
     const compsHtml = (ev.comps || []).map(c =>
       `<div class="d-flex justify-content-between small border-bottom pb-1 mb-1">

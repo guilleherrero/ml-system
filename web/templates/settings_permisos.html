@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %} — Permisos API{% endblock %}
+
+{% block content %}
+<style>
+.perm-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1.25rem 1.5rem; margin-bottom:1.25rem;
+}
+.perm-card-header {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:.75rem; margin-bottom:1rem; flex-wrap:wrap;
+}
+.perm-card-title {
+  font-weight:700; font-size:1rem; color:#0f172a;
+  display:flex; align-items:center; gap:.5rem;
+}
+.perm-checked-at {
+  font-size:.72rem; color:#94a3b8;
+}
+.perm-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+.perm-table th {
+  text-align:left; font-size:.66rem; font-weight:700; color:#94a3b8;
+  text-transform:uppercase; letter-spacing:.04em;
+  padding:.5rem .75rem; background:#fafafa; border-bottom:1px solid #e2e8f0;
+}
+.perm-table td {
+  padding:.85rem .75rem; border-bottom:1px solid #f1f5f9; vertical-align:top;
+}
+.perm-name { font-weight:600; color:#0f172a; }
+.perm-desc { font-size:.76rem; color:#64748b; margin-top:.2rem; line-height:1.5; }
+.perm-section-tags { margin-top:.35rem; display:flex; flex-wrap:wrap; gap:.25rem; }
+.perm-section-tag {
+  display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0;
+  border-radius:4px; padding:.1rem .4rem; font-size:.66rem; color:#64748b;
+  font-family:monospace;
+}
+.perm-state {
+  display:inline-flex; align-items:center; gap:.35rem;
+  font-weight:700; font-size:.78rem; padding:.25rem .65rem;
+  border-radius:20px; white-space:nowrap;
+}
+.perm-state.activo      { background:#dcfce7; color:#15803d; }
+.perm-state.faltante    { background:#fee2e2; color:#b91c1c; }
+.perm-state.parcial     { background:#fef3c7; color:#92400e; }
+.perm-state.desconocido { background:#f1f5f9; color:#64748b; }
+.perm-state.error       { background:#ede9fe; color:#6d28d9; }
+
+.perm-state.faltante.critico {
+  background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5;
+}
+
+.perm-checked { font-size:.7rem; color:#94a3b8; margin-top:.25rem; }
+.perm-message {
+  font-size:.74rem; color:#64748b; margin-top:.5rem; line-height:1.5;
+  background:#f8fafc; border-left:3px solid #e2e8f0;
+  padding:.45rem .65rem; border-radius:0 6px 6px 0;
+}
+.perm-message.faltante { border-left-color:#fca5a5; color:#7f1d1d; }
+.perm-message.error    { border-left-color:#c4b5fd; color:#5b21b6; }
+
+.perm-action {
+  display:inline-flex; align-items:center; gap:.35rem;
+  background:#2563eb; color:#fff; border:none; border-radius:7px;
+  padding:.45rem .85rem; font-size:.78rem; font-weight:600;
+  text-decoration:none; white-space:nowrap;
+}
+.perm-action:hover { background:#1d4ed8; color:#fff; text-decoration:none; }
+.perm-action.secondary { background:#fff; color:#374151; border:1px solid #cbd5e1; }
+.perm-action.secondary:hover { background:#f8fafc; color:#0f172a; }
+
+.summary-row {
+  display:flex; gap:.7rem; flex-wrap:wrap; margin-bottom:1rem;
+}
+.summary-pill {
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.4rem .85rem; border-radius:20px; font-size:.78rem; font-weight:600;
+  border:1px solid #e2e8f0; background:#fff;
+}
+.summary-pill .num { font-weight:800; font-size:.95rem; }
+.summary-pill.activo .num    { color:#15803d; }
+.summary-pill.faltante .num  { color:#b91c1c; }
+.summary-pill.desconocido .num { color:#64748b; }
+
+.empty-state {
+  text-align:center; padding:2rem 1rem; color:#94a3b8; font-size:.9rem;
+}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-key me-2 text-primary"></i>Permisos API</h1>
+    <div class="sub">Estado de los permisos de la API de MercadoLibre por cuenta</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/settings" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Volver a Configuración
+    </a>
+  </div>
+</div>
+
+<div class="alert alert-info py-2 small mb-3">
+  <i class="bi bi-info-circle me-1"></i>
+  El sistema consulta la API de ML cada 6 horas para conocer el estado de cada permiso.
+  El permiso <strong>Publicidad (escritura)</strong> no se puede testear directamente — se infiere del resultado de la última acción de escritura que intentaste.
+</div>
+
+{% if not accounts %}
+<div class="empty-state">
+  <i class="bi bi-info-circle" style="font-size:1.5rem;display:block;margin-bottom:.5rem"></i>
+  No hay cuentas configuradas. <a href="/multicuenta">Conectar una cuenta →</a>
+</div>
+{% else %}
+
+{% for acc in accounts %}
+<div class="perm-card" data-alias="{{ acc.alias }}">
+  <div class="perm-card-header">
+    <div class="perm-card-title">
+      <i class="bi bi-shop"></i> {{ acc.alias }}
+      {% if acc.nickname %}<span class="text-muted fw-normal small">@{{ acc.nickname }}</span>{% endif %}
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="perm-checked-at" id="perm-checked-{{ acc.alias|replace(' ','_') }}">Cargando…</span>
+      <button class="perm-action secondary" onclick="recheckPermisos('{{ acc.alias }}')">
+        <i class="bi bi-arrow-clockwise"></i> Re-chequear ahora
+      </button>
+    </div>
+  </div>
+
+  <div class="summary-row" id="perm-summary-{{ acc.alias|replace(' ','_') }}">
+    <div class="text-muted small"><i class="bi bi-hourglass-split me-1"></i>Cargando estado…</div>
+  </div>
+
+  <table class="perm-table">
+    <thead>
+      <tr>
+        <th style="width:32%">Permiso</th>
+        <th style="width:20%">Estado</th>
+        <th style="width:34%">Detalle</th>
+        <th style="width:14%">Acción</th>
+      </tr>
+    </thead>
+    <tbody id="perm-body-{{ acc.alias|replace(' ','_') }}">
+      <tr><td colspan="4" class="text-muted text-center py-3">Cargando permisos…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ACCOUNTS = [{% for acc in accounts %}{{ acc.alias|tojson }}{% if not loop.last %},{% endif %}{% endfor %}];
+
+const ESTADO_LABELS = {
+  activo:      { ico:'bi-check-circle-fill', txt:'Activo' },
+  faltante:    { ico:'bi-x-circle-fill',     txt:'Faltante' },
+  parcial:     { ico:'bi-exclamation-triangle-fill', txt:'Parcial' },
+  desconocido: { ico:'bi-question-circle-fill',      txt:'Desconocido' },
+  error:       { ico:'bi-exclamation-octagon-fill',  txt:'Error' },
+};
+
+function fmtAge(checkedAt) {
+  if (!checkedAt) return '';
+  const dt = new Date(checkedAt);
+  const diffMs = Date.now() - dt.getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1)   return 'recién ahora';
+  if (min < 60)  return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24)    return `hace ${h}h`;
+  const d = Math.floor(h / 24);
+  return `hace ${d}d`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderPermisos(alias, data) {
+  const k = alias.replace(/\s+/g,'_');
+  const checkedEl = document.getElementById(`perm-checked-${k}`);
+  const sumEl     = document.getElementById(`perm-summary-${k}`);
+  const bodyEl    = document.getElementById(`perm-body-${k}`);
+
+  // Header: hace cuánto se chequeó
+  const age = fmtAge(data.checked_at);
+  const cacheLabel = data.from_cache ? ' · cache' : ' · fresco';
+  checkedEl.textContent = age ? `chequeado ${age}${cacheLabel}` : '—';
+
+  // Summary pills
+  const r = data.resumen || {};
+  const pills = [];
+  if (r.activos)      pills.push(`<div class="summary-pill activo"><span class="num">${r.activos}</span> activo${r.activos>1?'s':''}</div>`);
+  if (r.faltantes)    pills.push(`<div class="summary-pill faltante"><span class="num">${r.faltantes}</span> faltante${r.faltantes>1?'s':''}</div>`);
+  if (r.desconocidos) pills.push(`<div class="summary-pill desconocido"><span class="num">${r.desconocidos}</span> desconocido${r.desconocidos>1?'s':''}</div>`);
+  if (r.errores)      pills.push(`<div class="summary-pill desconocido"><span class="num">${r.errores}</span> error${r.errores>1?'es':''}</div>`);
+  sumEl.innerHTML = pills.join('') || '<div class="text-muted small">—</div>';
+
+  // Tabla de permisos
+  bodyEl.innerHTML = (data.permisos || []).map(p => {
+    const lbl = ESTADO_LABELS[p.estado] || ESTADO_LABELS.error;
+    const stateClass = `perm-state ${p.estado}` + (p.estado === 'faltante' && p.critico ? ' critico' : '');
+    const tags = (p.afecta_secciones || []).map(s => `<span class="perm-section-tag">${escapeHtml(s)}</span>`).join('');
+    const message = p.mensaje
+      ? `<div class="perm-message ${p.estado}">${escapeHtml(p.mensaje)}</div>`
+      : '';
+    let action = '';
+    if (p.estado === 'faltante' || p.estado === 'parcial') {
+      action = `<a href="/oauth/connect/${encodeURIComponent(alias)}" class="perm-action">
+                  <i class="bi bi-arrow-right-circle-fill"></i> Activar
+                </a>`;
+    } else if (p.estado === 'desconocido' && p.id === 'publicidad_write') {
+      action = `<span class="text-muted small">—</span>`;
+    } else if (p.estado === 'activo') {
+      action = `<span class="text-success small"><i class="bi bi-check2"></i></span>`;
+    } else {
+      action = `<span class="text-muted small">—</span>`;
+    }
+
+    return `<tr>
+      <td>
+        <div class="perm-name">${escapeHtml(p.nombre)}${p.critico ? ' <span class="badge bg-danger" style="font-size:.6rem">CRÍTICO</span>' : ''}</div>
+        <div class="perm-desc">${escapeHtml(p.que_desbloquea)}</div>
+        <div class="perm-section-tags">${tags}</div>
+      </td>
+      <td>
+        <span class="${stateClass}"><i class="bi ${lbl.ico}"></i> ${lbl.txt}</span>
+        ${p.http_code ? `<div class="perm-checked">HTTP ${p.http_code}</div>` : ''}
+      </td>
+      <td>${message || '<span class="text-muted small">—</span>'}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="text-muted text-center py-3">Sin datos</td></tr>';
+}
+
+function loadPermisos(alias, force) {
+  const k = alias.replace(/\s+/g,'_');
+  const url = `/api/check-permisos/${encodeURIComponent(alias)}${force ? '?refresh=1' : ''}`;
+  fetch(url, { cache: 'no-store' })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) {
+        document.getElementById(`perm-body-${k}`).innerHTML =
+          `<tr><td colspan="4" class="text-danger small">Error: ${escapeHtml(d.error || 'desconocido')}</td></tr>`;
+        return;
+      }
+      renderPermisos(alias, d);
+    })
+    .catch(err => {
+      document.getElementById(`perm-body-${k}`).innerHTML =
+        `<tr><td colspan="4" class="text-danger small">Error de red: ${escapeHtml(String(err))}</td></tr>`;
+    });
+}
+
+function recheckPermisos(alias) {
+  const k = alias.replace(/\s+/g,'_');
+  document.getElementById(`perm-body-${k}`).innerHTML =
+    '<tr><td colspan="4" class="text-muted text-center py-3"><i class="bi bi-hourglass-split me-1"></i>Re-chequeando contra la API de ML…</td></tr>';
+  loadPermisos(alias, true);
+}
+
+ACCOUNTS.forEach(a => loadPermisos(a, false));
+</script>
+{% endblock %}

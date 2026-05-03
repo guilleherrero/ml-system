@@ -297,6 +297,9 @@
     <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
       <i class="bi bi-gear"></i> Configuración
     </a>
+    <a href="/settings/permisos" class="{{ 'active' if request.path == '/settings/permisos' else '' }}">
+      <i class="bi bi-key"></i> Permisos API
+    </a>
     {% if session.get('is_admin') %}
     <a href="/settings/usuarios" class="{{ 'active' if request.path == '/settings/usuarios' else '' }}">
       <i class="bi bi-people"></i> Usuarios
@@ -337,8 +340,33 @@
       {% endfor %}
     {% endif %}
   {% endwith %}
+
+  {# ── Banner global de permisos faltantes (Sprint 4.5) ──────── #}
+  <div id="permisos-global-banner" style="display:none"></div>
+
   {% block content %}{% endblock %}
 </div>
+
+<style>
+.permisos-banner {
+  background:linear-gradient(135deg,#fef3c7 0%,#fff7ed 100%);
+  border:1px solid #fcd34d; border-radius:10px;
+  padding:.7rem 1rem; margin-bottom:1rem;
+  display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
+  font-size:.84rem;
+}
+.permisos-banner i.bi-key-fill { color:#c2410c; font-size:1.05rem; flex-shrink:0; }
+.permisos-banner .perm-msg { flex:1; color:#92400e; line-height:1.5; min-width:200px; }
+.permisos-banner .perm-msg strong { color:#7c2d12; }
+.permisos-banner a {
+  background:#c2410c; color:#fff; border-radius:7px;
+  padding:.4rem .85rem; font-size:.78rem; font-weight:700;
+  text-decoration:none; white-space:nowrap;
+}
+.permisos-banner a:hover { background:#9a3412; color:#fff; }
+.permisos-banner .perm-banner-critico { background:#fee2e2; border-color:#fca5a5; }
+.permisos-banner .perm-banner-critico .perm-msg { color:#991b1b; }
+</style>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -524,6 +552,44 @@ function actualizarDatos() {
       btn._running = false;
     });
 }
+
+// ── Banner global de permisos faltantes (Sprint 4.5) ──────────────────────────
+// Lee SOLO del cache del backend (endpoint summary) — sin penalizar carga.
+// Si la página actual ya es /settings/permisos, no se muestra (sería redundante).
+(function loadPermisosBanner() {
+  if (location.pathname === '/settings/permisos') return;
+  const aliases = [{% for acc in accounts %}{{ acc.alias | tojson }}{% if not loop.last %},{% endif %}{% endfor %}];
+  if (!aliases.length) return;
+  const cont = document.getElementById('permisos-global-banner');
+  if (!cont) return;
+
+  Promise.all(aliases.map(alias =>
+    fetch(`/api/check-permisos/${encodeURIComponent(alias)}/summary`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => ({ alias, resumen: d.resumen || {} }))
+      .catch(() => ({ alias, resumen: {} }))
+  )).then(results => {
+    const banners = results
+      .filter(r => (r.resumen.faltantes || 0) > 0 || (r.resumen.criticos_faltantes || 0) > 0)
+      .map(r => {
+        const f = r.resumen.faltantes || 0;
+        const c = r.resumen.criticos_faltantes || 0;
+        const cls = c > 0 ? 'permisos-banner perm-banner-critico' : 'permisos-banner';
+        const txt = c > 0
+          ? `<strong>${r.alias}</strong> · ${c} permiso${c>1?'s':''} crítico${c>1?'s':''} faltante${c>1?'s':''} bloquea${c>1?'n':''} acciones reales.`
+          : `<strong>${r.alias}</strong> · ${f} permiso${f>1?'s':''} faltante${f>1?'s':''} — algunas funciones están limitadas.`;
+        return `<div class="${cls}">
+                  <i class="bi bi-key-fill"></i>
+                  <div class="perm-msg">${txt}</div>
+                  <a href="/settings/permisos">Gestionar →</a>
+                </div>`;
+      });
+    if (banners.length) {
+      cont.innerHTML = banners.join('');
+      cont.style.display = 'block';
+    }
+  });
+})();
 
 function reiniciarServidor() {
   if (!confirm('¿Reiniciar el servidor para aplicar los últimos cambios?\nLa página se va a recargar automáticamente.')) return;
