@@ -714,15 +714,95 @@ function renderTopAccion(alias, opp, rank) {
     </div>`;
 }
 
-function renderTopAccionesEmpty() {
-  return `
+function renderTopAccionesEmpty(sugerencias) {
+  const intro = `
     <div class="top-accion-empty">
       <i class="bi bi-check-circle-fill" style="font-size:1.1rem"></i>
       <div>
-        <strong>Todo en orden</strong> — no hay oportunidades urgentes hoy.
-        Seguí monitoreando ventas y stock para mantener el ritmo.
+        <strong>Todo en orden</strong> — no hay oportunidades urgentes con impacto $ cuantificable hoy.
       </div>
     </div>`;
+  if (!sugerencias || !sugerencias.length) return intro;
+
+  const items = sugerencias.map(s => `
+    <div class="top-accion" style="background:#f8fafc;border-color:#e2e8f0">
+      <div class="top-accion-rank med" style="background:#6366f1">
+        <i class="${escapeHtml(s.icon || 'bi-lightbulb')}"></i>
+      </div>
+      <div class="top-accion-body">
+        <div class="top-accion-desc">${escapeHtml(s.titulo)}</div>
+        <div class="top-accion-meta">${escapeHtml(s.descripcion || '')}</div>
+      </div>
+      <a href="${escapeHtml(s.cta_url)}" class="btn btn-sm btn-outline-primary">
+        ${escapeHtml(s.cta_label || 'Ir →')}
+      </a>
+    </div>`).join('');
+  return intro + items;
+}
+
+function renderTopAccionesFooter(alias, ds) {
+  ds = ds || {count:0, impacto_total:0, ventana_dias:7};
+  const left = ds.count > 0
+    ? `<span><i class="bi bi-trophy me-1"></i>Esta semana resolviste <strong>${ds.count}</strong> ${ds.count===1?'acción':'acciones'} por <strong>+${fmt(ds.impacto_total)}</strong> de impacto</span>`
+    : `<span><i class="bi bi-info-circle me-1"></i>Marcá acciones como hechas para trackear tu progreso semanal</span>`;
+  const right = ds.count > 0
+    ? `<button class="show-all" onclick='openTopAccionesHistorial(${JSON.stringify(alias)})'>Ver detalle →</button>`
+    : '';
+  return left + right;
+}
+
+function openTopAccionesHistorial(alias) {
+  fetch(`/api/top-acciones/${encodeURIComponent(alias)}/historial?days=7`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) { alert('No se pudo cargar el histórico'); return; }
+      let html = `<div class="modal fade" id="modalHistTop" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">
+                <i class="bi bi-trophy me-1 text-warning"></i>Acciones hechas — ${escapeHtml(alias)} (últimos 7 días)
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-success" style="font-size:.85rem">
+                <strong>${d.resumen.count}</strong> ${d.resumen.count===1?'acción':'acciones'} ·
+                impacto reportado total <strong>+${fmt(d.resumen.impacto_total)}/mes</strong>
+              </div>`;
+      if (!d.historial.length) {
+        html += `<p class="text-muted">Sin acciones hechas en la ventana.</p>`;
+      } else {
+        html += `<table class="table table-sm">
+          <thead><tr>
+            <th>Fecha</th><th>Tipo</th><th>Descripción</th><th class="text-end">Impacto/mes</th>
+          </tr></thead><tbody>`;
+        d.historial.forEach(h => {
+          const ts = new Date(h.marcado_hecho_en).toLocaleString('es-AR',
+            {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+          html += `<tr>
+            <td style="font-size:.78rem;color:#64748b">${ts}</td>
+            <td><span class="badge bg-secondary">${escapeHtml(h.tipo)}</span></td>
+            <td style="font-size:.85rem">${escapeHtml(h.descripcion_humana)}</td>
+            <td class="text-end" style="color:#16a34a;font-weight:700">+${fmt(h.impacto_reportado_ars)}</td>
+          </tr>`;
+        });
+        html += `</tbody></table>
+          <p class="text-muted small mt-2">
+            <i class="bi bi-info-circle me-1"></i>Cada acción guarda un snapshot del estado al momento del marcado
+            para poder calcular el impacto real comparando antes vs después.
+          </p>`;
+      }
+      html += `</div></div></div></div>`;
+
+      // Remover modal previo si quedó pegado
+      const old = document.getElementById('modalHistTop');
+      if (old) old.remove();
+      document.body.insertAdjacentHTML('beforeend', html);
+      const m = new bootstrap.Modal(document.getElementById('modalHistTop'));
+      m.show();
+    })
+    .catch(() => alert('Error cargando histórico'));
 }
 
 function loadTopAcciones(alias) {
@@ -740,21 +820,19 @@ function loadTopAcciones(alias) {
 
       const top = d.top_3 || [];
       if (top.length === 0) {
-        list.innerHTML = renderTopAccionesEmpty();
-        foot.innerHTML = '';
+        // Cargar sugerencias proactivas para no dejar el bloque vacío
+        fetch(`/api/top-acciones/${encodeURIComponent(alias)}/sugerencias-proactivas`)
+          .then(r => r.json())
+          .then(s => {
+            list.innerHTML = renderTopAccionesEmpty(s.ok ? s.sugerencias : []);
+          })
+          .catch(() => { list.innerHTML = renderTopAccionesEmpty([]); });
+        foot.innerHTML = renderTopAccionesFooter(alias, d.done_summary);
         return;
       }
 
       list.innerHTML = top.map((opp, i) => renderTopAccion(alias, opp, i + 1)).join('');
-
-      const ds  = d.done_summary || {count:0, impacto_total:0, ventana_dias:7};
-      const partes = [];
-      if (ds.count > 0) {
-        partes.push(`<span><i class="bi bi-trophy me-1"></i>Esta semana resolviste <strong>${ds.count}</strong> ${ds.count===1?'acción':'acciones'} por <strong>+${fmt(ds.impacto_total)}</strong> de impacto</span>`);
-      } else {
-        partes.push('<span></span>');
-      }
-      foot.innerHTML = partes.join('');
+      foot.innerHTML = renderTopAccionesFooter(alias, d.done_summary);
     })
     .catch(() => { box.style.display = 'none'; });
 }
