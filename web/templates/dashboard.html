@@ -66,6 +66,59 @@
 .mod-pill.primary { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
 .mod-pill.primary:hover { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
 
+/* ── Top 3 acciones del día (Sprint 4.1) ──────────────────── */
+.top-acciones-box {
+  background:linear-gradient(135deg,#fef3c7 0%,#fef9e7 50%,#fff7ed 100%);
+  border:1px solid #fcd34d; border-radius:12px;
+  padding:.85rem 1rem; margin-bottom:1rem;
+}
+.top-acciones-header {
+  display:flex; align-items:center; gap:.4rem;
+  font-weight:700; color:#92400e; font-size:.92rem; margin-bottom:.7rem;
+}
+.top-acciones-header i { color:#d97706; font-size:1.1rem; }
+.top-acciones-list { display:flex; flex-direction:column; gap:.55rem; }
+.top-accion {
+  display:flex; align-items:center; gap:.7rem;
+  background:#fff; border:1px solid #fde68a; border-radius:9px;
+  padding:.55rem .75rem;
+}
+.top-accion-rank {
+  flex-shrink:0; width:26px; height:26px; border-radius:50%;
+  background:#d97706; color:#fff; font-weight:700; font-size:.8rem;
+  display:flex; align-items:center; justify-content:center;
+}
+.top-accion-rank.crit { background:#dc2626; }
+.top-accion-rank.alta { background:#d97706; }
+.top-accion-rank.med  { background:#2563eb; }
+.top-accion-body { flex:1; min-width:0; }
+.top-accion-desc {
+  font-weight:600; color:#1f2937; font-size:.85rem; line-height:1.3;
+}
+.top-accion-meta { font-size:.72rem; color:#6b7280; margin-top:.1rem; }
+.top-accion-impacto {
+  font-weight:800; color:#16a34a; white-space:nowrap; font-size:.92rem;
+  margin-left:auto;
+}
+.top-accion-actions { display:flex; gap:.3rem; flex-shrink:0; }
+.top-accion-actions .btn {
+  font-size:.7rem; padding:.25rem .55rem; white-space:nowrap;
+}
+.top-accion-empty {
+  background:#fff; border:1px dashed #bbf7d0; border-radius:9px;
+  padding:.75rem 1rem; color:#15803d; font-size:.85rem;
+  display:flex; align-items:center; gap:.5rem;
+}
+.top-acciones-footer {
+  font-size:.72rem; color:#92400e; margin-top:.6rem;
+  display:flex; justify-content:space-between; align-items:center; gap:.5rem;
+}
+.top-acciones-footer .show-all {
+  background:transparent; border:none; color:#1d4ed8; font-size:.72rem;
+  font-weight:600; cursor:pointer; padding:0;
+}
+.top-acciones-footer .show-all:hover { text-decoration:underline; }
+
 /* ── Account card ─────────────────────────────────────────── */
 .acc-card { border-radius:14px; overflow:hidden; margin-bottom:1.25rem; }
 .acc-card .card-header {
@@ -216,6 +269,15 @@
   </div>
 
   <div class="card-body">
+
+    <!-- ── TOP 3 ACCIONES DEL DÍA (Sprint 4.1) ───────────────── -->
+    <div id="top-acciones-{{ rk }}" class="top-acciones-box" style="display:none">
+      <div class="top-acciones-header">
+        <i class="bi bi-bullseye"></i>Top 3 acciones de mayor impacto hoy
+      </div>
+      <div class="top-acciones-list" id="top-acciones-list-{{ rk }}"></div>
+      <div class="top-acciones-footer" id="top-acciones-footer-{{ rk }}"></div>
+    </div>
 
     <!-- ── URGENTE HOY ───────────────────────────────────────── -->
     <div id="urgente-{{ rk }}" class="urgente-box">
@@ -611,6 +673,121 @@ aliases.forEach(alias => {
     })
     .catch(() => { box.style.display = 'none'; });
 });
+
+// ── Sprint 4.1 — Top 3 acciones del día ───────────────────────
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function renderTopAccion(alias, opp, rank) {
+  const urgenciaClass = opp.urgencia === 'critica' ? 'crit'
+                      : opp.urgencia === 'alta'    ? 'alta' : 'med';
+  const ctaUrl = opp.cta_url || '#';
+  return `
+    <div class="top-accion" data-fp="${escapeHtml(opp.fingerprint)}">
+      <div class="top-accion-rank ${urgenciaClass}">${rank}</div>
+      <div class="top-accion-body">
+        <div class="top-accion-desc">${escapeHtml(opp.descripcion)}</div>
+        <div class="top-accion-meta">
+          <i class="bi bi-tag me-1"></i>${escapeHtml(opp.fuente)}
+          ${opp.urgencia === 'critica' ? ' · <span style="color:#dc2626;font-weight:700">CRÍTICA</span>' : ''}
+        </div>
+      </div>
+      <div class="top-accion-impacto">+${fmt(opp.impacto_mensual_ars)}/mes</div>
+      <div class="top-accion-actions">
+        <a href="${escapeHtml(ctaUrl)}" class="btn btn-sm btn-primary">
+          ${escapeHtml(opp.cta_label || 'Ir →')}
+        </a>
+        <button class="btn btn-sm btn-outline-success"
+                onclick='topAccionDone(${JSON.stringify(alias)}, ${JSON.stringify(opp)})'
+                title="Marcar como hecha">
+          <i class="bi bi-check-lg"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-secondary"
+                onclick='topAccionDismiss(${JSON.stringify(alias)}, ${JSON.stringify(opp.fingerprint)}, ${JSON.stringify(opp.tipo)}, ${JSON.stringify(opp.descripcion)})'
+                title="No mostrar por 30 días">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </div>`;
+}
+
+function renderTopAccionesEmpty() {
+  return `
+    <div class="top-accion-empty">
+      <i class="bi bi-check-circle-fill" style="font-size:1.1rem"></i>
+      <div>
+        <strong>Todo en orden</strong> — no hay oportunidades urgentes hoy.
+        Seguí monitoreando ventas y stock para mantener el ritmo.
+      </div>
+    </div>`;
+}
+
+function loadTopAcciones(alias) {
+  const k    = alias.replace(/\s+/g,'_');
+  const box  = document.getElementById(`top-acciones-${k}`);
+  const list = document.getElementById(`top-acciones-list-${k}`);
+  const foot = document.getElementById(`top-acciones-footer-${k}`);
+  if (!box || !list) return;
+
+  fetch(`/api/top-acciones/${encodeURIComponent(alias)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) { box.style.display = 'none'; return; }
+      box.style.display = 'block';
+
+      const top = d.top_3 || [];
+      if (top.length === 0) {
+        list.innerHTML = renderTopAccionesEmpty();
+        foot.innerHTML = '';
+        return;
+      }
+
+      list.innerHTML = top.map((opp, i) => renderTopAccion(alias, opp, i + 1)).join('');
+
+      const ds  = d.done_summary || {count:0, impacto_total:0, ventana_dias:7};
+      const partes = [];
+      if (ds.count > 0) {
+        partes.push(`<span><i class="bi bi-trophy me-1"></i>Esta semana resolviste <strong>${ds.count}</strong> ${ds.count===1?'acción':'acciones'} por <strong>+${fmt(ds.impacto_total)}</strong> de impacto</span>`);
+      } else {
+        partes.push('<span></span>');
+      }
+      foot.innerHTML = partes.join('');
+    })
+    .catch(() => { box.style.display = 'none'; });
+}
+
+function topAccionDismiss(alias, fp, tipo, descripcion) {
+  if (!confirm('¿Ocultar esta sugerencia por 30 días?')) return;
+  fetch(`/api/top-acciones/${encodeURIComponent(alias)}/dismiss`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({fingerprint: fp, tipo, descripcion, razon: 'manual desde dashboard'}),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) loadTopAcciones(alias);
+  });
+}
+
+function topAccionDone(alias, opp) {
+  if (!confirm(`¿Marcar como hecha la acción "${opp.descripcion}"?\n\nEsto registrará el impacto reportado de +${fmt(opp.impacto_mensual_ars)}/mes para análisis posterior.`)) return;
+  fetch(`/api/top-acciones/${encodeURIComponent(alias)}/done`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      fingerprint: opp.fingerprint,
+      tipo: opp.tipo,
+      descripcion: opp.descripcion,
+      impacto_reportado_ars: opp.impacto_mensual_ars,
+      snapshot: opp.snapshot || {},
+    }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) loadTopAcciones(alias);
+  });
+}
+
+aliases.forEach(alias => loadTopAcciones(alias));
 
 // Auto-refresh cada 5 minutos
 setTimeout(() => location.reload(), 300000);
