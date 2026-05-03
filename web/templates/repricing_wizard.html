@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+{% block title %} — Wizard de repricing · {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+  .wiz-header { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+                padding:1.4rem 1.6rem; margin-bottom:1.2rem; }
+  .wiz-header h1 { font-size:1.2rem; font-weight:700; margin:0 0 .3rem; }
+  .wiz-header .sub { font-size:.84rem; color:#64748b; }
+  .breadcrumb-steps { display:flex; gap:.4rem; margin-top:.9rem; }
+  .step-pill { padding:.3rem .85rem; border-radius:14px; font-size:.74rem;
+               background:#f1f5f9; color:#94a3b8; font-weight:600; }
+  .step-pill.active { background:#dc2626; color:#fff; }
+  .step-pill.done   { background:#dcfce7; color:#15803d; }
+
+  .wiz-section { display:none; }
+  .wiz-section.active { display:block; }
+
+  .danger-banner {
+    background:#fef2f2; border:1px solid #fca5a5; color:#b91c1c;
+    border-radius:10px; padding:.85rem 1.05rem; margin-bottom:1.2rem;
+    font-size:.86rem; line-height:1.5;
+  }
+
+  /* Paso 1 — tabla candidatos */
+  .cand-table { width:100%; border-collapse:collapse; font-size:.85rem;
+                background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+                overflow:hidden; }
+  .cand-table th { background:#f8fafc; font-size:.66rem; font-weight:700;
+                   text-transform:uppercase; letter-spacing:.04em; color:#64748b;
+                   padding:.65rem .8rem; text-align:left; border-bottom:1px solid #e2e8f0; }
+  .cand-table td { padding:.7rem .8rem; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+  .cand-table tr.viable    td { background:#f0fdf4; }
+  .cand-table tr.ajustado  td { background:#fffbeb; }
+  .cand-table tr.sin_margen td { background:#fef2f2; opacity:.7; }
+  .cat-pill { font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:10px; }
+  .cat-pill.viable    { background:#dcfce7; color:#15803d; }
+  .cat-pill.ajustado  { background:#fef3c7; color:#b45309; }
+  .cat-pill.sin_margen { background:#fee2e2; color:#b91c1c; }
+
+  .min-input { width:90px; padding:.25rem .45rem; font-size:.78rem;
+               border:1px solid #cbd5e1; border-radius:5px; }
+
+  /* Paso 2 — reglas */
+  .rule-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+               padding:1rem 1.2rem; margin-bottom:.85rem; }
+  .rule-card h6 { font-size:.85rem; font-weight:700; color:#0f172a;
+                  margin:0 0 .55rem; display:flex; align-items:center; gap:.4rem; }
+  .rule-card .opts { display:flex; gap:.5rem; flex-wrap:wrap; }
+  .opt-radio { display:flex; align-items:center; gap:.35rem; padding:.35rem .8rem;
+               border:1.5px solid #cbd5e1; border-radius:7px; cursor:pointer;
+               font-size:.8rem; font-weight:600; color:#475569; background:#fff; }
+  .opt-radio.selected { border-color:#dc2626; background:#fef2f2; color:#b91c1c; }
+  .opt-radio input { display:none; }
+  .breaker-row { display:flex; align-items:center; gap:.55rem; padding:.4rem 0;
+                 font-size:.82rem; color:#334155; }
+  .breaker-row code { background:#f1f5f9; padding:1px 5px; border-radius:4px;
+                      font-size:.74rem; color:#64748b; }
+
+  /* Paso 3 — simulación */
+  .sim-table { width:100%; border-collapse:collapse; font-size:.84rem;
+               background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+               overflow:hidden; }
+  .sim-table th, .sim-table td { padding:.6rem .8rem; border-bottom:1px solid #f1f5f9; }
+  .sim-table th { background:#f8fafc; font-size:.66rem; font-weight:700;
+                  text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .sim-table tr.alerta td { background:#fef2f2; }
+  .totals-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+                gap:.7rem; margin-bottom:1rem; }
+  .total-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+                padding:.95rem 1.1rem; }
+  .total-card .num { font-size:1.4rem; font-weight:800; }
+  .total-card .lbl { font-size:.7rem; color:#64748b; text-transform:uppercase;
+                     letter-spacing:.04em; font-weight:600; margin-top:.15rem; }
+
+  .nav-buttons { display:flex; gap:.6rem; justify-content:space-between;
+                 margin-top:1.4rem; padding-top:1.2rem; border-top:1px solid #e2e8f0; }
+  .btn-prev { background:transparent; color:#64748b; border:1px solid #cbd5e1;
+              padding:.55rem 1.2rem; border-radius:7px; cursor:pointer; }
+  .btn-next { background:#3b82f6; color:#fff; border:none;
+              padding:.55rem 1.5rem; border-radius:7px; font-weight:600; cursor:pointer; }
+  .btn-next:hover { background:#2563eb; }
+  .btn-next:disabled { background:#cbd5e1; cursor:not-allowed; }
+  .btn-final { background:#dc2626; }
+  .btn-final:hover { background:#b91c1c; }
+  .btn-final:disabled { background:#fca5a5; cursor:not-allowed; }
+</style>
+
+<div class="wiz-header">
+  <h1><i class="bi bi-currency-exchange me-2 text-danger"></i>Wizard de repricing automático</h1>
+  <div class="sub">{{ alias }} — Configurá repricing en bulk para tus publicaciones perdiendo Buy Box.</div>
+  <div class="breadcrumb-steps">
+    <div class="step-pill active" id="pill-1">1. Selección</div>
+    <div class="step-pill" id="pill-2">2. Reglas</div>
+    <div class="step-pill" id="pill-3">3. Simulación</div>
+    <div class="step-pill" id="pill-4">4. Confirmación</div>
+  </div>
+</div>
+
+<div class="danger-banner">
+  <strong>⚠ Este wizard activa cambios automáticos de PRECIO REAL en MercadoLibre.</strong>
+  El cron horario va a aplicar los cambios cada hora entre 8 y 22 ART. Podés pausar todo
+  desde <a href="/settings" style="color:#b91c1c;text-decoration:underline">Settings</a> en cualquier momento.
+</div>
+
+<div id="wiz-loading" style="text-align:center; padding:3rem; color:#94a3b8">
+  <i class="bi bi-hourglass-split"></i> Detectando publicaciones perdiendo Buy Box… (5-15 segundos)
+</div>
+
+<div id="wiz-content" style="display:none">
+
+  <!-- ── PASO 1 ─────────────────────────────────────────────── -->
+  <div class="wiz-section active" id="sec-1">
+    <h5 style="margin-bottom:.7rem">Candidatos detectados</h5>
+    <p style="font-size:.86rem; color:#64748b; margin-bottom:1rem">
+      Items perdiendo el Buy Box CON costo cargado. Las que aparecen en
+      <span class="cat-pill viable">viable</span> tienen margen sano al precio sugerido.
+      Las <span class="cat-pill ajustado">ajustadas</span> requieren confirmación manual.
+      Las <span class="cat-pill sin_margen">sin margen</span> NO se pueden activar — ajustar costo o desactivar.
+    </p>
+
+    <table class="cand-table">
+      <thead>
+        <tr>
+          <th style="width:40px">✓</th>
+          <th>Producto</th>
+          <th class="text-end">Precio actual</th>
+          <th class="text-end">Buy Box</th>
+          <th class="text-end">Margen actual</th>
+          <th class="text-end">Margen sugerido</th>
+          <th class="text-end">Min price</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody id="cand-tbody"></tbody>
+    </table>
+
+    <div id="sin-costo-section" style="display:none; margin-top:1.5rem">
+      <h6 style="font-weight:700; color:#b45309">⚠ Necesitan costo cargado para poder activarse</h6>
+      <p style="font-size:.82rem; color:#64748b; margin-bottom:.6rem">
+        Estos items están perdiendo Buy Box pero no podemos calcular margen sin su costo.
+      </p>
+      <div id="sin-costo-list"></div>
+      <a href="/costos/wizard?alias={{ alias | urlencode }}" class="btn btn-sm btn-outline-warning mt-2">
+        <i class="bi bi-cash-coin me-1"></i>Cargar costos primero
+      </a>
+    </div>
+
+    <div class="nav-buttons">
+      <a href="/salud/{{ alias | urlencode }}" class="btn-prev" style="text-decoration:none">
+        <i class="bi bi-arrow-left me-1"></i>Volver a Salud
+      </a>
+      <button class="btn-next" id="btn-go-2" onclick="goStep(2)" disabled>
+        Configurar reglas <i class="bi bi-arrow-right ms-1"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── PASO 2 ─────────────────────────────────────────────── -->
+  <div class="wiz-section" id="sec-2">
+    <h5 style="margin-bottom:.7rem">Reglas globales y circuit breakers</h5>
+
+    <div class="rule-card">
+      <h6><i class="bi bi-graph-down text-success"></i>Margen mínimo aceptable</h6>
+      <div class="opts" id="margen-opts">
+        <label class="opt-radio"><input type="radio" name="margen" value="10"> 10%</label>
+        <label class="opt-radio selected"><input type="radio" name="margen" value="15" checked> 15%</label>
+        <label class="opt-radio"><input type="radio" name="margen" value="20"> 20%</label>
+        <label class="opt-radio"><input type="radio" name="margen" value="25"> 25%</label>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <h6><i class="bi bi-bullseye text-primary"></i>Estrategia frente al competidor</h6>
+      <div class="opts" id="estrategia-opts">
+        <label class="opt-radio"><input type="radio" name="estrategia" value="conservadora"> Conservadora (-0.5%)</label>
+        <label class="opt-radio selected"><input type="radio" name="estrategia" value="balanceada" checked> Balanceada (-1%)</label>
+        <label class="opt-radio"><input type="radio" name="estrategia" value="agresiva"> Agresiva (-2%)</label>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <h6><i class="bi bi-shield-check text-warning"></i>Circuit breakers de seguridad</h6>
+      <div class="breaker-row">
+        <input type="checkbox" id="b-drop-iter" checked>
+        <label for="b-drop-iter">Cambio máximo por iteración: <strong>10%</strong> <code>max_drop_per_iter_pct</code></label>
+      </div>
+      <div class="breaker-row">
+        <input type="checkbox" id="b-drop-24h" checked>
+        <label for="b-drop-24h">Pausar item si bajé <strong>&gt;5% acumulado en 24h</strong> <code>max_drop_24h_pct</code></label>
+      </div>
+      <div class="breaker-row">
+        <input type="checkbox" id="b-min-rev" disabled title="Próximamente — requiere tracking de reseñas por seller">
+        <label style="color:#94a3b8">Solo competir contra vendedores con ≥5 reseñas <em>(próximamente)</em></label>
+      </div>
+      <div class="breaker-row">
+        <input type="checkbox" id="b-max-changes">
+        <label for="b-max-changes">Tope global: máximo <strong>30 cambios/hora</strong> <code>max_changes_per_hour</code></label>
+      </div>
+    </div>
+
+    <p style="font-size:.78rem; color:#64748b">
+      Frecuencia: <strong>cada 1 hora entre 8 y 22 ART</strong> (cron <code>repricing_hourly</code> del Sprint 2.3).
+    </p>
+
+    <div class="nav-buttons">
+      <button class="btn-prev" onclick="goStep(1)"><i class="bi bi-arrow-left me-1"></i>Volver</button>
+      <button class="btn-next" onclick="simular()">Simular impacto <i class="bi bi-arrow-right ms-1"></i></button>
+    </div>
+  </div>
+
+  <!-- ── PASO 3 ─────────────────────────────────────────────── -->
+  <div class="wiz-section" id="sec-3">
+    <h5 style="margin-bottom:.7rem">Simulación — qué haría el cron en su próxima corrida</h5>
+    <div id="sim-loading" style="text-align:center; padding:1.5rem; color:#94a3b8">
+      <i class="bi bi-hourglass-split"></i> Calculando…
+    </div>
+    <div id="sim-content" style="display:none">
+      <div class="totals-row" id="sim-totals"></div>
+      <table class="sim-table">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th class="text-end">Precio actual</th>
+            <th class="text-end">Precio nuevo</th>
+            <th class="text-end">Δ %</th>
+            <th class="text-end">Margen nuevo</th>
+            <th class="text-end">Impacto margen/mes</th>
+            <th>Alerta</th>
+          </tr>
+        </thead>
+        <tbody id="sim-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn-prev" onclick="goStep(2)"><i class="bi bi-arrow-left me-1"></i>Volver</button>
+      <button class="btn-next" onclick="goStep(4)" id="btn-go-4">Revisar y activar <i class="bi bi-arrow-right ms-1"></i></button>
+    </div>
+  </div>
+
+  <!-- ── PASO 4 ─────────────────────────────────────────────── -->
+  <div class="wiz-section" id="sec-4">
+    <h5 style="margin-bottom:.7rem">Confirmación final</h5>
+    <div style="background:#fef2f2; border:2px solid #dc2626; border-radius:10px;
+                padding:1.2rem 1.4rem; margin-bottom:1.2rem">
+      <p style="font-weight:600; color:#b91c1c; margin:0 0 .4rem">
+        Vas a ACTIVAR repricing automático en <span id="final-count">0</span> publicaciones.
+      </p>
+      <p style="font-size:.85rem; color:#7f1d1d; line-height:1.5; margin-bottom:.7rem">
+        Cada hora entre 8-22 ART, el sistema:<br>
+        1. Lee el precio del Buy Box de cada publicación<br>
+        2. Calcula el nuevo precio según la estrategia configurada<br>
+        3. Aplica circuit breakers<br>
+        4. <strong>CAMBIA el precio en MercadoLibre</strong>
+      </p>
+      <div>
+        <label style="display:flex; align-items:flex-start; gap:.5rem; font-size:.84rem">
+          <input type="checkbox" id="confirm-1" onchange="onConfirmChange()">
+          <span>Entiendo que el sistema cambiará precios automáticamente cada hora.</span>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:.5rem; font-size:.84rem; margin-top:.4rem">
+          <input type="checkbox" id="confirm-2" onchange="onConfirmChange()">
+          <span>Entiendo que puedo pausar todo desde <a href="/settings" style="color:#b91c1c">Settings</a> cuando quiera.</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn-prev" onclick="goStep(3)"><i class="bi bi-arrow-left me-1"></i>Volver</button>
+      <button class="btn-next btn-final" id="btn-activar" onclick="activar()" disabled>
+        <i class="bi bi-cloud-upload me-1"></i>Activar repricing
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const ALIAS = {{ alias | tojson }};
+let _candidatos = [];
+let _seleccion = new Set();
+let _simulacion = null;
+
+async function loadCandidates() {
+  try {
+    const r = await fetch('/api/repricing-wizard-candidates/' + encodeURIComponent(ALIAS));
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'sin datos');
+    _candidatos = d.candidatos || [];
+    document.getElementById('wiz-loading').style.display = 'none';
+    document.getElementById('wiz-content').style.display = 'block';
+    renderPaso1(d);
+  } catch (e) {
+    document.getElementById('wiz-loading').innerHTML = `<div style="color:#dc2626"><strong>Error:</strong> ${e.message}</div>`;
+  }
+}
+
+function renderPaso1(data) {
+  const tbody = document.getElementById('cand-tbody');
+  if (!_candidatos.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No hay items perdiendo Buy Box con costo cargado. Cargá más costos primero.</td></tr>';
+  } else {
+    tbody.innerHTML = _candidatos.map((c, i) => {
+      const disabled = c.categoria === 'sin_margen';
+      const checked  = c.pre_seleccionar && !disabled;
+      if (checked) _seleccion.add(c.id);
+      return `<tr class="${c.categoria}">
+        <td>
+          <input type="checkbox" class="cand-cb" data-id="${c.id}"
+                 ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+                 onchange="toggleSel('${c.id}', this.checked)">
+        </td>
+        <td>
+          <div style="font-weight:600">${escHTML(c.titulo)}</div>
+          <div style="font-size:.7rem; color:#94a3b8">${c.id} · stock ${c.stock} · v30d ${c.ventas_30d}</div>
+        </td>
+        <td class="text-end">$${c.precio_actual.toLocaleString('es-AR')}</td>
+        <td class="text-end" style="color:#dc2626;font-weight:600">
+          $${c.precio_buy_box.toLocaleString('es-AR')}
+          <div style="font-size:.7rem">${c.diferencia_pct}%</div>
+        </td>
+        <td class="text-end">${c.margen_actual_pct}%</td>
+        <td class="text-end" style="font-weight:700; color:${c.categoria === 'viable' ? '#15803d' : c.categoria === 'ajustado' ? '#b45309' : '#b91c1c'}">
+          ${c.margen_sugerido_pct}%
+        </td>
+        <td class="text-end">
+          <input type="number" class="min-input" data-id="${c.id}"
+                 value="${c.min_price_sugerido}" min="${c.min_price_antiperdida}"
+                 title="Mínimo antipérdida: $${c.min_price_antiperdida}">
+        </td>
+        <td><span class="cat-pill ${c.categoria}">${c.categoria}</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Sin costo
+  if ((data.sin_costo || []).length) {
+    document.getElementById('sin-costo-section').style.display = 'block';
+    document.getElementById('sin-costo-list').innerHTML = data.sin_costo.map(s =>
+      `<div style="font-size:.78rem; color:#64748b; padding:.2rem 0">
+        • <code>${s.id}</code> ${escHTML(s.titulo)}
+      </div>`
+    ).join('');
+  }
+
+  document.getElementById('btn-go-2').disabled = (_seleccion.size === 0);
+}
+
+function toggleSel(id, checked) {
+  if (checked) _seleccion.add(id); else _seleccion.delete(id);
+  document.getElementById('btn-go-2').disabled = (_seleccion.size === 0);
+}
+
+function goStep(n) {
+  document.querySelectorAll('.wiz-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + n).classList.add('active');
+  for (let i = 1; i <= 4; i++) {
+    const p = document.getElementById('pill-' + i);
+    p.classList.remove('active', 'done');
+    if (i < n) p.classList.add('done');
+    else if (i === n) p.classList.add('active');
+  }
+  if (n === 4) {
+    document.getElementById('final-count').textContent = _seleccion.size;
+  }
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// Reglas globales handlers
+document.addEventListener('DOMContentLoaded', () => {
+  ['margen-opts', 'estrategia-opts'].forEach(id => {
+    const grp = document.getElementById(id);
+    if (!grp) return;
+    grp.querySelectorAll('.opt-radio').forEach(lbl => {
+      lbl.addEventListener('click', () => {
+        grp.querySelectorAll('.opt-radio').forEach(l => l.classList.remove('selected'));
+        lbl.classList.add('selected');
+        lbl.querySelector('input').checked = true;
+      });
+    });
+  });
+});
+
+function getReglas() {
+  const margen   = parseInt(document.querySelector('input[name="margen"]:checked').value);
+  const estrategia = document.querySelector('input[name="estrategia"]:checked').value;
+  const breakers = {
+    max_drop_per_iter_pct:  document.getElementById('b-drop-iter').checked ? 10.0 : 999,
+    max_drop_24h_pct:       document.getElementById('b-drop-24h').checked ? 5.0 : 999,
+    max_changes_per_hour:   document.getElementById('b-max-changes').checked ? 30 : 9999,
+  };
+  return {margen, estrategia, breakers};
+}
+
+function getItemsConSeleccion() {
+  const reglas = getReglas();
+  return _candidatos.filter(c => _seleccion.has(c.id)).map(c => {
+    const minInput = document.querySelector(`.min-input[data-id="${c.id}"]`);
+    const min_price = minInput ? parseFloat(minInput.value) : c.min_price_sugerido;
+    return {
+      id:             c.id,
+      titulo:         c.titulo,
+      precio_actual:  c.precio_actual,
+      precio_buy_box: c.precio_buy_box,
+      costo:          c.costo,
+      fee_rate:       c.fee_rate,
+      ventas_30d:     c.ventas_30d,
+      min_price:      min_price,
+    };
+  });
+}
+
+async function simular() {
+  goStep(3);
+  document.getElementById('sim-loading').style.display = 'block';
+  document.getElementById('sim-content').style.display = 'none';
+  const reglas = getReglas();
+  const items  = getItemsConSeleccion();
+  try {
+    const r = await fetch('/api/repricing-wizard-simular', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({alias: ALIAS, items, estrategia: reglas.estrategia}),
+    });
+    const d = await r.json();
+    _simulacion = d;
+    renderSimulacion(d);
+  } catch (e) {
+    document.getElementById('sim-loading').innerHTML = `<div style="color:#dc2626">Error: ${e.message}</div>`;
+  }
+}
+
+function renderSimulacion(d) {
+  document.getElementById('sim-loading').style.display = 'none';
+  document.getElementById('sim-content').style.display = 'block';
+  const t = d.totales;
+  document.getElementById('sim-totals').innerHTML = `
+    <div class="total-card"><div class="num">${t.items_n}</div><div class="lbl">items</div></div>
+    <div class="total-card"><div class="num" style="color:${t.items_con_alerta ? '#b91c1c' : '#15803d'}">${t.items_con_alerta}</div><div class="lbl">con alerta</div></div>
+    <div class="total-card"><div class="num" style="color:#15803d">+$${(t.impacto_margen_pos||0).toLocaleString('es-AR')}</div><div class="lbl">impacto margen positivo/mes</div></div>
+    <div class="total-card"><div class="num" style="color:${t.impacto_neto < 0 ? '#b91c1c' : '#15803d'}">${t.impacto_neto >= 0 ? '+' : ''}$${t.impacto_neto.toLocaleString('es-AR')}</div><div class="lbl">impacto neto/mes</div></div>
+  `;
+  document.getElementById('sim-tbody').innerHTML = (d.simulacion || []).map(s => {
+    const cls = s.alerta ? 'alerta' : '';
+    const deltaCol = s.delta_pct < 0 ? '#dc2626' : (s.delta_pct > 0 ? '#15803d' : '#64748b');
+    return `<tr class="${cls}">
+      <td>${escHTML(s.titulo)}<div style="font-size:.7rem;color:#94a3b8">${s.id}</div></td>
+      <td class="text-end">$${s.precio_actual.toLocaleString('es-AR')}</td>
+      <td class="text-end" style="font-weight:700">$${s.precio_nuevo.toLocaleString('es-AR')}</td>
+      <td class="text-end" style="color:${deltaCol}">${s.delta_pct >= 0 ? '+' : ''}${s.delta_pct}%</td>
+      <td class="text-end" style="font-weight:600;color:${s.margen_nuevo < 0 ? '#b91c1c' : s.margen_nuevo < 15 ? '#b45309' : '#15803d'}">${s.margen_nuevo}%</td>
+      <td class="text-end">${s.impacto_margen >= 0 ? '+' : ''}$${(s.impacto_margen||0).toLocaleString('es-AR')}</td>
+      <td>${s.alerta ? `<span style="color:#b91c1c;font-size:.74rem">⚠ ${s.alerta}</span>` : ''}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="text-center text-muted py-3">Sin items seleccionados</td></tr>';
+}
+
+function onConfirmChange() {
+  const c1 = document.getElementById('confirm-1').checked;
+  const c2 = document.getElementById('confirm-2').checked;
+  document.getElementById('btn-activar').disabled = !(c1 && c2);
+}
+
+async function activar() {
+  const btn = document.getElementById('btn-activar');
+  btn.disabled = true;
+  btn.textContent = 'Activando...';
+  const reglas = getReglas();
+  const items  = getItemsConSeleccion().map(it => ({
+    ...it,
+    precio_min: it.min_price,
+    precio_max: it.precio_actual * 1.10,
+  }));
+  try {
+    const r = await fetch('/api/repricing-wizard-activar', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({alias: ALIAS, items, breakers: reglas.breakers, estrategia: reglas.estrategia}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(`✓ ${d.saved} reglas activadas.\n\nEl cron repricing_hourly del Sprint 2.3 las procesará en su próxima corrida (próxima hora entre 8-22 ART).`);
+      window.location.href = '/repricing/' + encodeURIComponent(ALIAS);
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Activar repricing';
+    }
+  } catch (e) {
+    alert('Error de red: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Activar repricing';
+  }
+}
+
+function escHTML(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+loadCandidates();
+</script>
+{% endblock %}

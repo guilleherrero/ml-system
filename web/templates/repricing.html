@@ -144,6 +144,11 @@
                     onclick="editItem('{{ item.id }}','{{ item.titulo|replace("'","\\'") }}',{{ item.precio }},{{ item.precio_min }},{{ item.precio_max }})">
               <i class="bi bi-pencil"></i>
             </button>
+            <button class="btn btn-xs btn-outline-info ms-1"
+                    onclick="verHistorialPrecios('{{ item.id }}')"
+                    title="Ver últimos cambios de precio aplicados">
+              <i class="bi bi-clock-history"></i>
+            </button>
           </td>
         </tr>
         {% endfor %}
@@ -756,6 +761,58 @@ async function saveConfig() {
     showToast('Error: ' + e.message, 'danger');
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-floppy me-1"></i>Guardar configuración';
+  }
+}
+
+// ── Sprint 4.3: Histórico de cambios de precio por item ─────────────────
+async function verHistorialPrecios(itemId) {
+  const ALIAS = {{ alias | tojson }};
+  let modal = document.getElementById('hist-precios-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'hist-precios-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = '<div id="hist-precios-content" style="background:#fff;border-radius:12px;max-width:680px;width:92%;padding:1.5rem;max-height:80vh;overflow-y:auto"></div>';
+    document.body.appendChild(modal);
+  }
+  const content = document.getElementById('hist-precios-content');
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+      <h5 style="font-weight:700;margin:0">
+        <i class="bi bi-clock-history me-1 text-info"></i>Histórico de precios — ${itemId}
+      </h5>
+      <button onclick="document.getElementById('hist-precios-modal').remove()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#94a3b8">&times;</button>
+    </div>
+    <div id="hist-body" style="font-size:.84rem">Cargando…</div>`;
+  modal.style.display = 'flex';
+  try {
+    const r = await fetch(`/api/repricing-historial/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemId)}?limit=20`);
+    const d = await r.json();
+    if (!d.ok || !d.historial.length) {
+      document.getElementById('hist-body').innerHTML =
+        '<div class="text-muted text-center py-3">Sin cambios de precio registrados todavía.<br>Aparecerán acá después de la próxima corrida del cron.</div>';
+      return;
+    }
+    const rows = d.historial.map(h => {
+      const cls = h.delta_pct < 0 ? 'text-danger' : (h.delta_pct > 0 ? 'text-success' : 'text-muted');
+      const breakers = (h.breakers_aplicados || []).length
+        ? `<div style="font-size:.7rem;color:#b45309;margin-top:2px">⚠ ${h.breakers_aplicados.join(' · ')}</div>`
+        : '';
+      return `<tr>
+        <td style="font-family:monospace;font-size:.78rem">${h.timestamp}</td>
+        <td class="text-end">$${(h.precio_antes||0).toLocaleString('es-AR')}</td>
+        <td class="text-end" style="font-weight:700">$${(h.precio_despues||0).toLocaleString('es-AR')}</td>
+        <td class="text-end ${cls}">${h.delta_pct >= 0 ? '+' : ''}${h.delta_pct}%</td>
+        <td><div style="font-size:.74rem">${h.razon || ''}</div>${breakers}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('hist-body').innerHTML = `
+      <table class="table table-sm">
+        <thead><tr><th>Fecha</th><th class="text-end">Antes</th><th class="text-end">Después</th><th class="text-end">Δ%</th><th>Razón</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (e) {
+    document.getElementById('hist-body').innerHTML = `<div class="text-danger">Error: ${e.message}</div>`;
   }
 }
 </script>

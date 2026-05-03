@@ -265,6 +265,10 @@
     <a href="/repricing/{{ acc.alias }}" class="{{ 'active' if request.path == '/repricing/'~acc.alias else '' }}">
       <i class="bi bi-tags"></i> Repricing
     </a>
+    <a href="/repricing/wizard?alias={{ acc.alias | urlencode }}"
+       class="{{ 'active' if request.path == '/repricing/wizard' and request.args.get('alias') == acc.alias else '' }}">
+      <i class="bi bi-magic"></i> Wizard de repricing
+    </a>
     <a href="/full/{{ acc.alias }}" class="{{ 'active' if request.path == '/full/'~acc.alias else '' }}">
       <i class="bi bi-box-seam"></i> Mercado Full
     </a>

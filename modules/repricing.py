@@ -10,9 +10,10 @@ Reglas:
 """
 
 import json
+import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from rich.console import Console
@@ -26,25 +27,196 @@ from core.fees import get_fee_rates, get_rate
 from modules.monitor_posicionamiento import _get_all_active_items
 
 console = Console()
+_logger = logging.getLogger(__name__)
 
 CONFIG_DIR  = os.path.join(os.path.dirname(__file__), "..", "config")
 DATA_DIR    = os.path.join(os.path.dirname(__file__), "..", "data")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "repricing.json")
+
+# Version actual del schema de repricing.json. Si el archivo en disco tiene una
+# version menor, _load_config() corre auto-migración. v2 introducido en Sprint 4.3
+# para forzar paused=true en primer arranque post-deploy.
+_REPRICING_CONFIG_VERSION = 2
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
-        return {"items": {}}
+        return {"items": {}, "version": _REPRICING_CONFIG_VERSION}
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+
+    # Auto-migración: solo corre cuando el archivo viene de una version anterior.
+    if cfg.get("version", 1) < _REPRICING_CONFIG_VERSION:
+        old_version = cfg.get("version", 1)
+        old_paused  = cfg.get("paused", False)
+
+        cfg["paused"]  = True   # safety en primer deploy del Sprint 4.3
+        cfg["version"] = _REPRICING_CONFIG_VERSION
+
+        cfg["_migration_history"] = cfg.get("_migration_history", [])
+        cfg["_migration_history"].append({
+            "from_version": old_version,
+            "to_version":   _REPRICING_CONFIG_VERSION,
+            "timestamp":    _now_iso(),
+            "changes":      f"forced paused=True (was {old_paused}) for Sprint 4.3 safety - "
+                            f"prevents accidental price changes until user explicitly disables "
+                            f"pause from /settings",
+        })
+
+        _save_config(cfg)
+        _logger.warning(
+            "Repricing config migrated to v%d: paused forced to True for safety. "
+            "See _migration_history in repricing.json.",
+            _REPRICING_CONFIG_VERSION,
+        )
+
+    return cfg
 
 
 def _save_config(cfg: dict):
     os.makedirs(CONFIG_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+
+# ── Sprint 4.3: Circuit breakers + audit log + pausa global ────────────────
+
+# Defaults de los breakers (se pueden override desde config global del wizard)
+DEFAULT_BREAKERS = {
+    "max_drop_per_iter_pct":  10.0,   # nuevo precio no puede ser <90% del actual
+    "max_drop_24h_pct":       5.0,    # pausar item si bajó >5% acumulado en 24h
+    "min_competitor_reviews": 5,      # ignorar competidores con <5 reseñas
+    "max_changes_per_hour":   30,     # tope de seguridad anti-bug
+}
+
+
+def is_globally_paused(cfg: dict | None = None) -> bool:
+    """Devuelve True si el flag 'paused' está activo en repricing.json.
+    El cron horario respeta este flag y skipea sin tocar precios.
+    """
+    if cfg is None:
+        cfg = _load_config()
+    return bool(cfg.get("paused", False))
+
+
+def set_globally_paused(paused: bool) -> None:
+    """Toggle del flag global. Se persiste en config/repricing.json."""
+    cfg = _load_config()
+    cfg["paused"] = bool(paused)
+    _save_config(cfg)
+
+
+def _safe_alias(alias: str) -> str:
+    return alias.replace(" ", "_").replace("/", "-")
+
+
+def _audit_log_path(alias: str) -> str:
+    return os.path.join(DATA_DIR, f"acciones_automaticas_{_safe_alias(alias)}.json")
+
+
+def _log_price_change(alias: str, item_id: str, precio_antes: float,
+                      precio_despues: float, competidor: float | None,
+                      razon: str, breakers_aplicados: list | None = None) -> None:
+    """Persiste un cambio de precio en data/acciones_automaticas_<alias>.json
+    siguiendo el mismo formato que otras acciones del Sprint 1/3.
+    """
+    path = _audit_log_path(alias)
+    log: list = []
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                log = json.load(f) or []
+                if not isinstance(log, list):
+                    log = []
+        except Exception:
+            log = []
+
+    delta_pct = ((precio_despues - precio_antes) / precio_antes * 100) if precio_antes else 0
+    log.append({
+        "timestamp":          datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "accion":             "precio_cambiado",
+        "mla":                item_id,
+        "precio_antes":       round(precio_antes, 2),
+        "precio_despues":     round(precio_despues, 2),
+        "delta_pct":          round(delta_pct, 2),
+        "competidor_precio":  competidor,
+        "razon":              razon,
+        "breakers_aplicados": breakers_aplicados or [],
+        "ejecutado_por":      "cron:repricing_hourly",
+    })
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(log, f, ensure_ascii=False, indent=2)
+
+
+def _calculate_24h_drop(alias: str, item_id: str) -> float:
+    """Suma todos los cambios de precio del item en las últimas 24h y devuelve
+    el % acumulado de bajada (0.0 si no bajó o no hay registros). Usado por el
+    breaker 'max_drop_24h_pct' para detectar guerra de precios.
+    """
+    from datetime import timedelta
+    path = _audit_log_path(alias)
+    if not os.path.exists(path):
+        return 0.0
+    try:
+        with open(path, encoding="utf-8") as f:
+            log = json.load(f) or []
+    except Exception:
+        return 0.0
+
+    cutoff = datetime.now() - timedelta(hours=24)
+    drops_pct = 0.0
+    for entry in log:
+        if entry.get("accion") != "precio_cambiado":
+            continue
+        if entry.get("mla") != item_id:
+            continue
+        try:
+            ts = datetime.strptime(entry.get("timestamp", ""), "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+        if ts < cutoff:
+            continue
+        delta = entry.get("delta_pct", 0)
+        if delta < 0:
+            drops_pct += abs(delta)
+    return round(drops_pct, 2)
+
+
+def _should_skip_item(alias: str, item_id: str,
+                      breakers: dict | None = None) -> tuple[bool, str]:
+    """Aplica circuit breakers que dependen de histórico (ej. drop 24h).
+    Returns (skip, razón). Si skip=True el item NO se toca esta iteración.
+    """
+    b = {**DEFAULT_BREAKERS, **(breakers or {})}
+    drop_24h = _calculate_24h_drop(alias, item_id)
+    if drop_24h >= b["max_drop_24h_pct"]:
+        return True, f"breaker 24h-drop: bajó {drop_24h}% acumulado (>{b['max_drop_24h_pct']}%) — pausa anti-guerra"
+    return False, ""
+
+
+def _enforce_max_drop_per_iter(current_price: float, new_price: float,
+                                breakers: dict | None = None) -> tuple[float, str | None]:
+    """Limita cuánto puede bajar el precio en UNA sola iteración del cron.
+    Si el cálculo sugiere bajar >max_drop_per_iter_pct, lo capa al límite.
+    Returns (precio_capped, breaker_razon|None).
+    """
+    b = {**DEFAULT_BREAKERS, **(breakers or {})}
+    if current_price <= 0:
+        return new_price, None
+    drop_pct = ((current_price - new_price) / current_price) * 100
+    max_drop = b["max_drop_per_iter_pct"]
+    if drop_pct > max_drop:
+        capped = round(current_price * (1 - max_drop / 100), 2)
+        return capped, f"breaker max-drop-iter: cap a -{max_drop}% (sugería -{drop_pct:.1f}%)"
+    return new_price, None
 
 
 def _get_item_config(cfg: dict, item_id: str) -> dict:
@@ -297,10 +469,20 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
     console.print(f"Fecha: {today} | Modo: {'[yellow]simulación[/yellow]' if dry_run else '[green]aplicando cambios[/green]'}\n")
 
     cfg = _load_config()
+
+    # Sprint 4.3 — Pausa global tiene prioridad absoluta
+    if is_globally_paused(cfg):
+        console.print("[yellow]⏸ Repricing PAUSADO globalmente (toggle en /settings).[/yellow]")
+        console.print("[dim]Reactivar desde la UI cuando quieras retomar los cambios automáticos.[/dim]")
+        return
+
     items_cfg = {k: v for k, v in cfg["items"].items() if v.get("alias") == alias}
 
     # Cargar tasas de comisión desde la API de ML (auto-refresca si tiene >7 días)
     fees = get_fee_rates(client)
+
+    # Breakers configurables — mergea defaults con override del cfg global
+    breakers = {**DEFAULT_BREAKERS, **(cfg.get("breakers") or {})}
 
     if not items_cfg:
         console.print(
@@ -323,6 +505,7 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
         min_p  = item_cfg.get("precio_min", 0)
         max_p  = item_cfg.get("precio_max", 999999)
         costo  = item_cfg.get("costo")
+        breakers_aplicados: list = []
 
         # Precio actual desde ML (puede haber cambiado)
         console.print(f"  {titulo[:50]}...", end="\r")
@@ -343,6 +526,23 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
         if item_status == "closed" and "deleted" in sub_status:
             item_status = "deleted_by_ml"
 
+        # ── Sprint 4.3: Circuit breaker pre-cálculo (drop 24h) ──
+        # Si el item ya bajó >5% acumulado en últimas 24h, skipear (anti-guerra).
+        skip, skip_reason = _should_skip_item(alias, item_id, breakers)
+        if skip:
+            results.append({
+                "id": item_id, "titulo": titulo,
+                "precio_actual": current_price, "precio_nuevo": current_price,
+                "precio_min": min_p, "precio_max": max_p,
+                "competidor": None,
+                "razon": skip_reason, "cambio": False,
+                "is_catalog": True, "we_win_buy_box": None,
+                "total_sellers": 0, "match_quality": "",
+                "status": item_status, "skipped_by_breaker": True,
+            })
+            time.sleep(0.2)
+            continue
+
         # Precio del competidor — usa catalog_product_id si está disponible
         competitor_info = _get_competitor_info({
             "id": item_id,
@@ -361,6 +561,13 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
         listing_type = item_data.get("listing_type_id", "gold_special")
         fee_rate = get_rate(listing_type, fees)
         new_price, reason = _calculate_new_price(current_price, competitor_price, min_p, max_p, costo, fee_rate)
+
+        # ── Sprint 4.3: Circuit breaker post-cálculo (max drop por iteración) ──
+        # Si el cálculo sugiere bajar más del cap (default -10%), capamos.
+        new_price, breaker_msg = _enforce_max_drop_per_iter(current_price, new_price, breakers)
+        if breaker_msg:
+            breakers_aplicados.append(breaker_msg)
+            reason = f"{reason} · {breaker_msg}"
 
         changed = abs(new_price - current_price) > 0.5
 
@@ -388,6 +595,11 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
                     client._put(f"/items/{item_id}", {"price": new_price})
                     # Actualizar config con nuevo precio actual
                     cfg["items"][item_id]["precio_actual"] = new_price
+                    # Sprint 4.3 — Audit log del cambio aplicado
+                    _log_price_change(
+                        alias, item_id, current_price, new_price,
+                        competitor_price, reason, breakers_aplicados,
+                    )
                 except Exception as e:
                     console.print(f"\n  [red]Error al actualizar {item_id}: {e}[/red]")
 
