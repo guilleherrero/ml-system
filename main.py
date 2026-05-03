@@ -241,14 +241,9 @@ def cmd_multicuenta():
     run(manager, modo=modo)
 
 
-def cmd_radar():
-    from modules.radar_oportunidades import run
-    alias_arg = sys.argv[2] if len(sys.argv) > 2 else None
-    modo = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] in ("radar", "calendario") else None
-    accounts = _resolve_accounts(alias_arg)
-    for acc in accounts:
-        client = manager.get_client(acc.alias)
-        run(client, acc.alias, modo=modo)
+def cmd_calendario():
+    from modules.calendario_comercial import run_calendario
+    run_calendario()
 
 
 def cmd_full():
@@ -366,7 +361,7 @@ COMMANDS = {
     "preguntas":        cmd_preguntas,
     "reputacion":       cmd_reputacion,
     "multicuenta":        cmd_multicuenta,
-    "radar":              cmd_radar,
+    "calendario":         cmd_calendario,
     "full":               cmd_full,
     "full-setup":         cmd_full_setup,
     "reposicion":         cmd_reposicion,
@@ -416,9 +411,7 @@ HELP = """
   [cyan]multicuenta[/cyan]              Módulo 11 — Resumen consolidado + inteligencia cruzada entre cuentas
   [cyan]multicuenta resumen[/cyan]      Módulo 11 — Solo vista consolidada de todas las cuentas
   [cyan]multicuenta cruzada[/cyan]      Módulo 11 — Solo auto-competencia y oportunidades cruzadas
-  [cyan]radar[/cyan]                    Módulo 8 — Radar de nichos + calendario de ventas
-  [cyan]radar "Cuenta 1" radar[/cyan]   Módulo 8 — Solo radar de nichos
-  [cyan]radar "Cuenta 1" calendario[/cyan] Módulo 8 — Solo calendario de fechas comerciales
+  [cyan]calendario[/cyan]               Calendario comercial — fechas clave de Argentina con conteo regresivo
   [cyan]full-setup[/cyan]               Módulo 9 — Configurar lead times Full por producto
   [cyan]full[/cyan]                     Módulo 9 — Gestión Mercado Envíos Full (alertas, muertos, escalar)
   [cyan]reposicion-setup[/cyan]         Módulo 10 — Configurar tránsito China y depósito propio
