@@ -297,6 +297,9 @@
     <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
       <i class="bi bi-gear"></i> Configuración
     </a>
+    <a href="/settings/permisos" class="{{ 'active' if request.path == '/settings/permisos' else '' }}">
+      <i class="bi bi-key"></i> Permisos API
+    </a>
     {% if session.get('is_admin') %}
     <a href="/settings/usuarios" class="{{ 'active' if request.path == '/settings/usuarios' else '' }}">
       <i class="bi bi-people"></i> Usuarios

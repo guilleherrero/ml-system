@@ -12354,6 +12354,13 @@ def settings():
     return render_template('settings.html', accounts=get_accounts())
 
 
+@app.route('/settings/permisos')
+def settings_permisos():
+    """Sección centralizada del estado de los 5 permisos de la API ML por cuenta."""
+    accounts = get_accounts()
+    return render_template('settings_permisos.html', accounts=accounts)
+
+
 @app.route('/api/notificaciones-config', methods=['GET', 'POST'])
 def api_notificaciones_config():
     """Obtiene o guarda la configuración de notificaciones."""
