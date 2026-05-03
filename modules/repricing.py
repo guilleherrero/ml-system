@@ -10,9 +10,10 @@ Reglas:
 """
 
 import json
+import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from rich.console import Console
@@ -26,19 +27,56 @@ from core.fees import get_fee_rates, get_rate
 from modules.monitor_posicionamiento import _get_all_active_items
 
 console = Console()
+_logger = logging.getLogger(__name__)
 
 CONFIG_DIR  = os.path.join(os.path.dirname(__file__), "..", "config")
 DATA_DIR    = os.path.join(os.path.dirname(__file__), "..", "data")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "repricing.json")
+
+# Version actual del schema de repricing.json. Si el archivo en disco tiene una
+# version menor, _load_config() corre auto-migración. v2 introducido en Sprint 4.3
+# para forzar paused=true en primer arranque post-deploy.
+_REPRICING_CONFIG_VERSION = 2
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
-        return {"items": {}}
+        return {"items": {}, "version": _REPRICING_CONFIG_VERSION}
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+
+    # Auto-migración: solo corre cuando el archivo viene de una version anterior.
+    if cfg.get("version", 1) < _REPRICING_CONFIG_VERSION:
+        old_version = cfg.get("version", 1)
+        old_paused  = cfg.get("paused", False)
+
+        cfg["paused"]  = True   # safety en primer deploy del Sprint 4.3
+        cfg["version"] = _REPRICING_CONFIG_VERSION
+
+        cfg["_migration_history"] = cfg.get("_migration_history", [])
+        cfg["_migration_history"].append({
+            "from_version": old_version,
+            "to_version":   _REPRICING_CONFIG_VERSION,
+            "timestamp":    _now_iso(),
+            "changes":      f"forced paused=True (was {old_paused}) for Sprint 4.3 safety - "
+                            f"prevents accidental price changes until user explicitly disables "
+                            f"pause from /settings",
+        })
+
+        _save_config(cfg)
+        _logger.warning(
+            "Repricing config migrated to v%d: paused forced to True for safety. "
+            "See _migration_history in repricing.json.",
+            _REPRICING_CONFIG_VERSION,
+        )
+
+    return cfg
 
 
 def _save_config(cfg: dict):
