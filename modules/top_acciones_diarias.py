@@ -186,6 +186,25 @@ def get_done_summary(alias: str, days: int = 7) -> dict:
     }
 
 
+def get_done_history(alias: str, days: int = 7) -> list:
+    """Lista detallada de acciones hechas en los últimos N días (más recientes primero).
+    Cada entrada conserva snapshot completo para análisis posterior del impacto real."""
+    data = _load_json(_done_path(alias), default={"items": []}) or {"items": []}
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    activas = []
+    for d in data.get("items", []):
+        try:
+            ts = datetime.fromisoformat(d["marcado_hecho_en"])
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts > cutoff:
+                activas.append(d)
+        except Exception:
+            continue
+    activas.sort(key=lambda d: d.get("marcado_hecho_en", ""), reverse=True)
+    return activas
+
+
 # ── Detectors ─────────────────────────────────────────────────────────────────
 
 def _candidates_duplicados(alias: str) -> list[Oportunidad]:

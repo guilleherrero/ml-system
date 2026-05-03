@@ -7845,6 +7845,83 @@ def api_top_acciones_dismiss(alias):
     return jsonify({'ok': True, 'fingerprint': fp})
 
 
+@app.route('/api/top-acciones/<alias>/historial')
+def api_top_acciones_historial(alias):
+    """Devuelve el detalle de acciones marcadas como hechas en los últimos N días
+    (default 7). Cada entrada incluye snapshot al momento del marcado."""
+    try:
+        _assert_valid_alias(alias)
+    except ValueError:
+        return jsonify({'ok': False, 'error': f'Alias desconocido: {alias!r}'}), 404
+
+    try:
+        days = int(request.args.get('days', 7))
+    except (TypeError, ValueError):
+        days = 7
+    days = max(1, min(days, 90))
+
+    from modules import top_acciones_diarias as ta
+    return jsonify({
+        'ok':       True,
+        'historial': ta.get_done_history(alias, days=days),
+        'resumen':  ta.get_done_summary(alias, days=days),
+    })
+
+
+@app.route('/api/top-acciones/<alias>/sugerencias-proactivas')
+def api_top_acciones_sugerencias_proactivas(alias):
+    """Sugerencias cualitativas (sin impacto $ calculable) para mostrar cuando
+    NO hay oportunidades cuantitativas en el Top 3. Evita que el bloque quede vacío."""
+    try:
+        _assert_valid_alias(alias)
+    except ValueError:
+        return jsonify({'ok': False, 'error': f'Alias desconocido: {alias!r}'}), 404
+
+    sugerencias = []
+
+    # Sugerencia 1 — cobertura de costos baja → wizard top 10
+    s        = safe(alias)
+    stock    = load_json(os.path.join(DATA_DIR, f'stock_{s}.json')) or {}
+    items    = stock.get('items', [])
+    costos   = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+    con_costo = sum(1 for i in items if i.get('id') in costos)
+    if items and con_costo < min(10, len(items)):
+        sugerencias.append({
+            'titulo':      'Cargá costos top 10 para desbloquear más detectores',
+            'descripcion': f'Tenés {con_costo} de {len(items)} items con costo. Sin costo, '
+                           f'los detectores de funnel y stock crítico no pueden estimar impacto.',
+            'cta_label':   'Cargar top 10 →',
+            'cta_url':     f'/costos/wizard?alias={alias}',
+            'icon':        'bi-cash-coin',
+        })
+
+    # Sugerencia 2 — calendario comercial próximo
+    try:
+        eventos = build_calendario()
+        proximo = next((e for e in eventos if e.get('dias', 999) <= 30), None)
+        if proximo:
+            sugerencias.append({
+                'titulo':      f'Próximo evento: {proximo["nombre"]} en {proximo["dias"]} días',
+                'descripcion': proximo.get('consejo', '')[:120],
+                'cta_label':   'Ver calendario →',
+                'cta_url':     '/calendario',
+                'icon':        'bi-calendar-event',
+            })
+    except Exception:
+        pass
+
+    # Sugerencia 3 — siempre presente como fallback
+    sugerencias.append({
+        'titulo':      'Optimizá títulos y descripciones con IA',
+        'descripcion': 'Re-corré la optimización IA en publicaciones con conversión baja para mejorar score ML.',
+        'cta_label':   'Optimizar IA →',
+        'cta_url':     f'/optimizaciones/{alias}',
+        'icon':        'bi-stars',
+    })
+
+    return jsonify({'ok': True, 'sugerencias': sugerencias[:3]})
+
+
 @app.route('/api/top-acciones/<alias>/done', methods=['POST'])
 def api_top_acciones_done(alias):
     """Marca una oportunidad como hecha. Persiste snapshot para análisis posterior.
