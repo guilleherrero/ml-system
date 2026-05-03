@@ -145,6 +145,43 @@
 </div>
 {% endif %}
 
+<!-- ══ BANNER DE COBERTURA DE COSTOS (Sprint 4.2) ═════════════ -->
+{% set baja_cobertura = rows | selectattr('costos_fact_cobertura', 'lt', 70) | list %}
+{% if baja_cobertura %}
+{% for row in baja_cobertura %}
+{% set fact_pct = row.costos_fact_cobertura %}
+{% set tone     = 'crit' if fact_pct < 30 else ('warn' if fact_pct < 70 else 'info') %}
+{% set bg      = '#fef2f2' if tone=='crit' else ('#fefce8' if tone=='warn' else '#eff6ff') %}
+{% set border  = '#fca5a5' if tone=='crit' else ('#fde68a' if tone=='warn' else '#bfdbfe') %}
+{% set color   = '#b91c1c' if tone=='crit' else ('#92400e' if tone=='warn' else '#1d4ed8') %}
+<div style="background:{{ bg }};border:1px solid {{ border }};border-radius:10px;
+            padding:.85rem 1.05rem;margin-bottom:1rem;font-size:.86rem;color:{{ color }};
+            display:flex;gap:.75rem;align-items:flex-start">
+  <i class="bi bi-cash-coin" style="font-size:1.25rem;flex-shrink:0;margin-top:.05rem"></i>
+  <div style="flex:1;line-height:1.5">
+    {% if row.costos_items_con_costo == 0 %}
+      <strong>{{ row.alias }} — Sin costos cargados</strong> ·
+      Estás tomando decisiones de margen, repricing y rentabilidad a ciegas.
+      Cargá los <strong>top 10 productos</strong> en 5 minutos y desbloqueá visibilidad real.
+    {% else %}
+      <strong>{{ row.alias }} — Cobertura de costos: {{ row.costos_items_con_costo }}/{{ row.costos_total_items }}</strong>
+      ({{ fact_pct }}% de tu facturación 30d con margen calculado).
+      {% if fact_pct < 50 %}
+        Cargá los productos restantes para tener margen completo en todas las pantallas.
+      {% else %}
+        Buen avance — completá los que faltan para llegar al 100%.
+      {% endif %}
+    {% endif %}
+  </div>
+  <a href="/costos/wizard?alias={{ row.alias | urlencode }}"
+     style="background:{{ color }};color:#fff;text-decoration:none;padding:.45rem 1rem;
+            border-radius:7px;font-size:.78rem;font-weight:600;white-space:nowrap;flex-shrink:0">
+    <i class="bi bi-magic me-1"></i>Cargar top 10 con wizard
+  </a>
+</div>
+{% endfor %}
+{% endif %}
+
 <!-- ══ UNA CARD POR CUENTA ════════════════════════════════════ -->
 {% for row in rows %}
 {% set rk = row.alias | replace(' ','_') %}

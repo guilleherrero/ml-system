@@ -1581,6 +1581,20 @@ def dashboard():
         except Exception:
             pass
 
+        # Cobertura de costos — para banner del wizard en el Command Center
+        costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+        items_con_costo = sum(1 for i in stock_items if i.get('id') in costos_data)
+        cobertura_pct = round(items_con_costo / len(stock_items) * 100, 1) if stock_items else 0
+        # Facturación cubierta por los items que ya tienen costo
+        fact_total = sum(
+            (i.get('precio') or 0) * (i.get('ventas_30d') or 0) for i in stock_items
+        )
+        fact_cubierta = sum(
+            (i.get('precio') or 0) * (i.get('ventas_30d') or 0)
+            for i in stock_items if i.get('id') in costos_data
+        )
+        fact_cobertura_pct = round(fact_cubierta / fact_total * 100, 1) if fact_total else 0
+
         rows.append({
             'alias':           alias,
             'nickname':        acc.get('nickname', ''),
@@ -1596,6 +1610,11 @@ def dashboard():
             'rep_fecha':       rep_latest.get('fecha') if rep_latest else None,
             'repricing_count': repricing_count,
             'pausadas':        pausadas_count,
+            # Sprint 4.2 — para el banner de cobertura de costos
+            'costos_items_con_costo':  items_con_costo,
+            'costos_total_items':      len(stock_items),
+            'costos_cobertura_pct':    cobertura_pct,
+            'costos_fact_cobertura':   fact_cobertura_pct,
         })
 
     calendario = build_calendario()[:3]
@@ -2161,6 +2180,179 @@ def api_costos_save():
         return jsonify({'ok': True, 'saved': saved, 'deleted': deleted})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+
+
+@app.route('/costos/wizard')
+def costos_wizard_page():
+    """Wizard de carga de costos para los top 10 productos por facturación.
+
+    Si la cuenta es única, la usa por default. Si hay múltiples, toma el alias
+    del query string ?alias=... o el primero que aparezca.
+    """
+    accounts = get_accounts()
+    alias    = request.args.get('alias', '').strip()
+    if not alias and accounts:
+        alias = accounts[0].get('alias', '')
+    return render_template('costos_wizard.html', alias=alias, accounts=accounts)
+
+
+@app.route('/api/costos-wizard-top10/<alias>')
+def api_costos_wizard_top10(alias):
+    """Devuelve los top 10 productos por facturación 30d para el wizard de carga.
+
+    Incluye:
+      - top10: lista ordenada con foto, título, precio, ventas, facturación,
+        tiene_costo, costo_actual, costo_updated, fee_rate_estimado
+      - metricas_total: cobertura global de facturación + items con costo
+      - tiene_demos: bool (la lista detallada va por /api/costos-detectar-demo)
+    """
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+    fees_cfg    = get_fee_rates()
+
+    items = stock_data.get('items', [])
+    if not items:
+        return jsonify({
+            'ok': True,
+            'top10': [],
+            'metricas_total': {
+                'total_items': 0, 'facturacion_total_30d': 0,
+                'facturacion_top10': 0, 'pct_top10': 0,
+                'items_con_costo': 0, 'cobertura_pct': 0,
+            },
+            'tiene_demos': False, 'demos_count': 0,
+        })
+
+    # Ranking por facturación 30d
+    enriched = []
+    for it in items:
+        item_id    = it.get('id', '')
+        precio     = float(it.get('precio') or 0)
+        ventas_30d = int(it.get('ventas_30d') or 0)
+        fact_30d   = round(precio * ventas_30d, 0)
+        ce         = costos_data.get(item_id) or {}
+        fee_rate   = float(it.get('fee_rate') or get_rate(it.get('listing_type', ''), fees_cfg))
+        enriched.append({
+            'id':              item_id,
+            'titulo':          (it.get('titulo') or '')[:100],
+            'precio':          precio,
+            'ventas_30d':      ventas_30d,
+            'facturacion_30d': fact_30d,
+            'tiene_costo':     bool(ce),
+            'costo_actual':    ce.get('costo'),
+            'costo_updated':   ce.get('updated'),
+            'fee_rate':        round(fee_rate, 4),
+            'listing_type':    it.get('listing_type', ''),
+        })
+
+    enriched.sort(key=lambda x: -x['facturacion_30d'])
+    top10 = enriched[:10]
+
+    fact_total  = sum(x['facturacion_30d'] for x in enriched)
+    fact_top10  = sum(x['facturacion_30d'] for x in top10)
+    pct_top10   = round(fact_top10 / fact_total * 100, 1) if fact_total > 0 else 0
+    con_costo_n = sum(1 for x in enriched if x['tiene_costo'])
+    cobertura_n = round(con_costo_n / len(enriched) * 100, 1) if enriched else 0
+
+    # Detección rápida de demos (la lista detallada va por endpoint separado)
+    demo_ids   = _detectar_costos_demo(costos_data, items)
+    demos_count = len(demo_ids)
+
+    return jsonify({
+        'ok':    True,
+        'top10': top10,
+        'metricas_total': {
+            'total_items':           len(enriched),
+            'facturacion_total_30d': fact_total,
+            'facturacion_top10':     fact_top10,
+            'pct_top10':             pct_top10,
+            'items_con_costo':       con_costo_n,
+            'cobertura_pct':         cobertura_n,
+        },
+        'tiene_demos': demos_count > 0,
+        'demos_count': demos_count,
+    })
+
+
+def _detectar_costos_demo(costos_data: dict, stock_items: list) -> list:
+    """Identifica entries en costos.json que probablemente son del seed demo.
+
+    Criterios (cualquiera basta):
+      1. Patrón del seed: id match exacto a MLA001..MLA999 (3 dígitos cortos)
+         que es el formato que usa demo_data.py.
+      2. Huérfano: el id no aparece en stock_<alias>.json — si el sistema lo
+         leyó del seed pero el item nunca existió en la cuenta real.
+    """
+    import re as _re
+    seed_pattern = _re.compile(r'^MLA0\d{2}$')   # MLA001..MLA099 — 3 chars after MLA0
+    stock_ids    = {(it.get('id') or '').upper() for it in stock_items if it.get('id')}
+
+    demo_ids = []
+    for cost_id in costos_data.keys():
+        cid = (cost_id or '').strip().upper()
+        if not cid:
+            continue
+        # Criterio 1: patrón del seed
+        if seed_pattern.match(cid):
+            demo_ids.append(cost_id)
+            continue
+        # Criterio 2: huérfano (solo si tenemos stock cargado para comparar)
+        if stock_ids and cid not in stock_ids:
+            demo_ids.append(cost_id)
+    return demo_ids
+
+
+@app.route('/api/costos-limpiar-demo/<alias>', methods=['POST'])
+def api_costos_limpiar_demo(alias):
+    """Elimina las entries identificadas como costos demo / huérfanos.
+
+    Usa el mismo detector que api_costos_detectar_demo para identificar qué
+    borrar. Solo toca los entries del seed o huérfanos — los costos reales
+    quedan intactos.
+    """
+    costos_path = os.path.join(CONFIG_DIR, 'costos.json')
+    costos_data = load_json(costos_path) or {}
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    items       = stock_data.get('items', [])
+
+    demo_ids = _detectar_costos_demo(costos_data, items)
+    if not demo_ids:
+        return jsonify({'ok': True, 'deleted': 0, 'mensaje': 'No hay costos demo para limpiar.'})
+
+    for cid in demo_ids:
+        costos_data.pop(cid, None)
+    save_json(costos_path, costos_data)
+
+    _audit('LIMPIAR_COSTOS_DEMO', alias=alias, count=len(demo_ids), ids=','.join(demo_ids[:10]))
+    return jsonify({
+        'ok':       True,
+        'deleted':  len(demo_ids),
+        'ids':      demo_ids,
+        'mensaje':  f'{len(demo_ids)} costos demo eliminados de config/costos.json',
+    })
+
+
+@app.route('/api/costos-detectar-demo/<alias>')
+def api_costos_detectar_demo(alias):
+    """Devuelve la lista detallada de costos identificados como demo/huérfanos."""
+    costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    items       = stock_data.get('items', [])
+
+    demo_ids = _detectar_costos_demo(costos_data, items)
+    detalle  = [{
+        'id':       cid,
+        'alias':    (costos_data.get(cid) or {}).get('alias', ''),
+        'titulo':   (costos_data.get(cid) or {}).get('titulo', ''),
+        'costo':    (costos_data.get(cid) or {}).get('costo'),
+        'updated':  (costos_data.get(cid) or {}).get('updated'),
+    } for cid in demo_ids]
+
+    return jsonify({
+        'ok':    True,
+        'count': len(demo_ids),
+        'items': detalle,
+    })
 
 
 @app.route('/api/item-ai-rec/<alias>/<item_id>', methods=['POST'])

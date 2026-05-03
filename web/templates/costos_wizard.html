@@ -1,0 +1,623 @@
+{% extends "base.html" %}
+{% block title %} — Wizard de costos · {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+  .wizard-header {
+    background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+    padding:1.4rem 1.6rem; margin-bottom:1.2rem;
+  }
+  .wizard-header h1 { font-size:1.2rem; font-weight:700; margin:0 0 .3rem; }
+  .wizard-header .sub { font-size:.84rem; color:#64748b; }
+  .breadcrumb-steps {
+    display:flex; gap:.4rem; margin-top:.9rem;
+  }
+  .step-pill {
+    padding:.3rem .85rem; border-radius:14px; font-size:.74rem;
+    background:#f1f5f9; color:#94a3b8; font-weight:600;
+  }
+  .step-pill.active { background:#3b82f6; color:#fff; }
+  .step-pill.done   { background:#dcfce7; color:#15803d; }
+
+  .wizard-section { display:none; }
+  .wizard-section.active { display:block; }
+
+  .demo-banner {
+    background:#fef3c7; border:1px solid #fde68a;
+    border-radius:10px; padding:.85rem 1.05rem; margin-bottom:1rem;
+    font-size:.86rem; color:#92400e;
+    display:flex; gap:.75rem; align-items:flex-start;
+  }
+  .demo-banner .desc { flex:1; line-height:1.45; }
+  .btn-clean-demo {
+    background:#d97706; color:#fff; border:none; padding:.4rem .9rem;
+    border-radius:6px; font-size:.78rem; font-weight:600; cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn-clean-demo:hover { background:#b45309; }
+
+  /* Paso 1 — tabla resumen */
+  .top10-table {
+    width:100%; border-collapse:collapse; font-size:.85rem;
+    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    overflow:hidden;
+  }
+  .top10-table th {
+    background:#f8fafc; font-size:.66rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.04em; color:#64748b;
+    padding:.65rem .8rem; text-align:left; border-bottom:1px solid #e2e8f0;
+  }
+  .top10-table td {
+    padding:.7rem .8rem; border-bottom:1px solid #f1f5f9;
+    vertical-align:top;
+  }
+  .top10-table .rank { font-weight:800; color:#3b82f6; }
+  .top10-table .titulo { font-weight:600; color:#0f172a; line-height:1.3; }
+  .top10-table .mla { font-size:.72rem; color:#94a3b8; margin-top:2px; }
+  .top10-table .precio { font-weight:700; }
+  .top10-table .fact { font-weight:700; color:#16a34a; }
+  .top10-table .badge-costo {
+    background:#dcfce7; color:#15803d; font-size:.66rem; font-weight:700;
+    padding:2px 8px; border-radius:8px;
+  }
+
+  .summary-bar {
+    background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px;
+    padding:.9rem 1.2rem; margin-bottom:1.2rem;
+    display:flex; gap:1.5rem; flex-wrap:wrap; align-items:center;
+  }
+  .summary-bar .num  { font-weight:800; font-size:1.4rem; color:#1e40af; }
+  .summary-bar .lbl  { font-size:.7rem; color:#64748b; text-transform:uppercase;
+                       letter-spacing:.04em; font-weight:600; margin-top:1px; }
+
+  /* Paso 2 — carga */
+  .cobertura-box {
+    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    padding:1rem 1.2rem; margin-bottom:1rem; position:sticky; top:1rem;
+    z-index:10; box-shadow:0 2px 8px rgba(0,0,0,.05);
+  }
+  .cobertura-bar {
+    height:14px; background:#f1f5f9; border-radius:7px; overflow:hidden;
+    margin:.5rem 0;
+  }
+  .cobertura-fill {
+    height:100%; transition:width .3s, background .3s;
+    background:#dc2626;   /* default rojo */
+  }
+  .cobertura-fill.warn { background:#d97706; }
+  .cobertura-fill.ok   { background:#16a34a; }
+  .cobertura-text { font-size:.8rem; font-weight:600; color:#1e293b; }
+  .cobertura-meta { font-size:.72rem; color:#64748b; margin-top:.2rem; }
+
+  .item-card {
+    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    padding:1rem 1.2rem; margin-bottom:.8rem;
+    display:grid; grid-template-columns: 1fr 320px; gap:1.2rem;
+  }
+  .item-card.skipped { opacity:.55; background:#f8fafc; }
+  .item-card.has-cost { border-left:4px solid #16a34a; }
+  .item-info .titulo  { font-weight:600; color:#0f172a; line-height:1.35; }
+  .item-info .meta    { font-size:.74rem; color:#64748b; margin-top:.3rem;
+                        display:flex; gap:.8rem; flex-wrap:wrap; }
+  .item-info code     { font-size:.72rem; padding:1px 5px;
+                        background:#f1f5f9; border-radius:4px; }
+
+  .input-row { display:flex; gap:.5rem; align-items:center; }
+  .input-row label { font-size:.72rem; font-weight:600; color:#475569;
+                     white-space:nowrap; }
+  .input-row input {
+    flex:1; padding:.45rem .7rem; border:1.5px solid #cbd5e1; border-radius:6px;
+    font-size:.9rem; font-weight:600; color:#0f172a;
+  }
+  .input-row input:focus {
+    outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15);
+  }
+  .calc-preview {
+    margin-top:.55rem; padding:.55rem .7rem; border-radius:7px;
+    background:#f8fafc; font-size:.78rem; line-height:1.5;
+  }
+  .calc-preview.ok    { background:#f0fdf4; border:1px solid #86efac; }
+  .calc-preview.warn  { background:#fffbeb; border:1px solid #fde68a; }
+  .calc-preview.crit  { background:#fef2f2; border:1px solid #fca5a5; }
+  .calc-preview.crit-strong { background:#fee2e2; border:2px solid #ef4444; }
+  .calc-preview .margen-num {
+    font-size:1.05rem; font-weight:800;
+  }
+  .calc-preview .formula {
+    font-size:.7rem; color:#64748b; margin-top:.25rem; font-family:monospace;
+  }
+  .skip-link {
+    margin-top:.4rem; font-size:.72rem; color:#94a3b8; cursor:pointer;
+    background:none; border:none; padding:0; text-decoration:underline;
+  }
+  .skip-link:hover { color:#475569; }
+  .unskip-link {
+    margin-top:.4rem; font-size:.72rem; color:#3b82f6; cursor:pointer;
+    background:none; border:none; padding:0; text-decoration:underline;
+  }
+
+  .nav-buttons {
+    display:flex; gap:.6rem; justify-content:space-between;
+    margin-top:1.4rem; padding-top:1.2rem; border-top:1px solid #e2e8f0;
+  }
+  .btn-prev { background:transparent; color:#64748b; border:1px solid #cbd5e1;
+              padding:.55rem 1.2rem; border-radius:7px; cursor:pointer; }
+  .btn-next { background:#3b82f6; color:#fff; border:none;
+              padding:.55rem 1.5rem; border-radius:7px; font-weight:600; cursor:pointer; }
+  .btn-next:hover  { background:#2563eb; }
+  .btn-next:disabled { background:#cbd5e1; cursor:not-allowed; }
+  .btn-final { background:#16a34a; }
+  .btn-final:hover { background:#15803d; }
+
+  /* Paso 3 — resumen */
+  .summary-grid {
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+    gap:.8rem; margin-bottom:1.2rem;
+  }
+  .summary-card {
+    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    padding:1rem 1.2rem;
+  }
+  .summary-card .num { font-size:1.6rem; font-weight:800; color:#0f172a; }
+  .summary-card .lbl { font-size:.7rem; color:#64748b; text-transform:uppercase;
+                       letter-spacing:.04em; font-weight:600; margin-top:.2rem; }
+</style>
+
+<div class="wizard-header">
+  <h1><i class="bi bi-cash-coin me-2 text-primary"></i>Wizard de carga de costos</h1>
+  <div class="sub">
+    {{ alias }} — Cargá los costos de tus 10 productos top y desbloqueá visibilidad de margen real
+    en todas las pantallas.
+  </div>
+  <div class="breadcrumb-steps">
+    <div class="step-pill active" id="step-pill-1">1. Top 10 detectado</div>
+    <div class="step-pill" id="step-pill-2">2. Carga de costos</div>
+    <div class="step-pill" id="step-pill-3">3. Confirmación</div>
+  </div>
+</div>
+
+<div id="wiz-loading" style="text-align:center; padding:3rem; color:#94a3b8">
+  <i class="bi bi-hourglass-split"></i> Cargando ranking de productos…
+</div>
+
+<div id="wiz-content" style="display:none">
+
+  <!-- Banner de costos demo (commit 3 lo enchufa con endpoint clean) -->
+  <div id="demo-banner" class="demo-banner" style="display:none">
+    <i class="bi bi-exclamation-triangle-fill" style="font-size:1.2rem;flex-shrink:0;margin-top:.05rem"></i>
+    <div class="desc">
+      <strong>Detectamos <span id="demo-count">N</span> costos de datos demo</strong>
+      (formato MLA001, MLA002...). Estos no corresponden a publicaciones reales y pueden distorsionar las métricas.
+    </div>
+    <button class="btn-clean-demo" onclick="limpiarDemos()">
+      <i class="bi bi-trash3 me-1"></i>Limpiar costos demo
+    </button>
+    <button onclick="cerrarBannerDemo()" style="background:none;border:none;color:#92400e;cursor:pointer;font-size:.78rem;padding:.4rem">
+      Continuar de todas formas
+    </button>
+  </div>
+
+  <!-- ── PASO 1 — Top 10 detectado ────────────────────────────────── -->
+  <div class="wizard-section active" id="section-1">
+    <div class="summary-bar">
+      <div>
+        <div class="num" id="s1-fact-top10">$0</div>
+        <div class="lbl">Facturación top 10 (30d)</div>
+      </div>
+      <div>
+        <div class="num"><span id="s1-pct">0</span>%</div>
+        <div class="lbl">de tu facturación total</div>
+      </div>
+      <div>
+        <div class="num" id="s1-cobertura">0/0</div>
+        <div class="lbl">items con costo cargado hoy</div>
+      </div>
+      <div style="font-size:.74rem; color:#64748b; max-width:280px; line-height:1.4; margin-left:auto">
+        <i class="bi bi-info-circle me-1"></i>Cargando estos 10 desbloqueás margen real para el grueso de tu negocio.
+      </div>
+    </div>
+
+    <table class="top10-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Producto</th>
+          <th class="text-end">Precio</th>
+          <th class="text-end">v30d</th>
+          <th class="text-end">Facturación 30d</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody id="top10-tbody"></tbody>
+    </table>
+
+    <div class="nav-buttons">
+      <span></span>
+      <button class="btn-next" onclick="irAPaso2()">
+        Siguiente — cargar costos <i class="bi bi-arrow-right ms-1"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── PASO 2 — Carga ──────────────────────────────────────────── -->
+  <div class="wizard-section" id="section-2">
+    <div class="cobertura-box">
+      <div class="cobertura-text" id="cob-text">Cobertura de margen: 0% de facturación · 0/10 cargados</div>
+      <div class="cobertura-bar"><div class="cobertura-fill" id="cob-fill" style="width:0%"></div></div>
+      <div class="cobertura-meta" id="cob-meta">$0 de $0 cubiertos</div>
+    </div>
+
+    <div id="cards-container"></div>
+
+    <div class="nav-buttons">
+      <button class="btn-prev" onclick="irAPaso(1)">
+        <i class="bi bi-arrow-left me-1"></i>Volver
+      </button>
+      <button class="btn-next" onclick="irAPaso3()">
+        Revisar y guardar <i class="bi bi-arrow-right ms-1"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── PASO 3 — Confirmación ──────────────────────────────────── -->
+  <div class="wizard-section" id="section-3">
+    <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px;
+                padding:1.2rem 1.4rem; margin-bottom:1.2rem">
+      <h5 style="margin:0 0 .4rem; color:#15803d; font-weight:700">
+        <i class="bi bi-check-circle-fill me-1"></i>Listo para guardar
+      </h5>
+      <p style="margin:0; font-size:.86rem; color:#166534">
+        Revisá el resumen. Al confirmar, los costos se guardan en config/costos.json
+        y todas las pantallas (Stock, Ventas, Full) van a mostrar margen real.
+      </p>
+    </div>
+
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="num" id="s3-cargados">0</div>
+        <div class="lbl">cargados</div>
+      </div>
+      <div class="summary-card">
+        <div class="num" id="s3-salteados">0</div>
+        <div class="lbl">salteados</div>
+      </div>
+      <div class="summary-card">
+        <div class="num" id="s3-margen-prom">—</div>
+        <div class="lbl">margen promedio top 10</div>
+      </div>
+      <div class="summary-card">
+        <div class="num" id="s3-cobertura-fact">0%</div>
+        <div class="lbl">cobertura de facturación</div>
+      </div>
+    </div>
+
+    <div id="resumen-tbody"></div>
+
+    <div class="nav-buttons">
+      <button class="btn-prev" onclick="irAPaso(2)">
+        <i class="bi bi-arrow-left me-1"></i>Volver a editar
+      </button>
+      <button class="btn-next btn-final" id="btn-guardar" onclick="guardarCostos()">
+        <i class="bi bi-cloud-upload me-1"></i>Guardar costos
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const ALIAS = {{ alias | tojson }};
+let _data = null;     // payload del endpoint top10
+let _items = [];      // items del wizard con state local
+let _step = 1;
+
+// ── Cargar datos inicial ─────────────────────────────────────────
+async function loadWizard() {
+  try {
+    const r = await fetch('/api/costos-wizard-top10/' + encodeURIComponent(ALIAS));
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'sin datos');
+    _data = d;
+    _items = d.top10.map(it => ({
+      ...it,
+      costo_input: it.costo_actual || null,
+      skipped: false,
+    }));
+    document.getElementById('wiz-loading').style.display = 'none';
+    document.getElementById('wiz-content').style.display = 'block';
+
+    // Banner de demos
+    if (d.tiene_demos) {
+      document.getElementById('demo-count').textContent = d.demos_count;
+      document.getElementById('demo-banner').style.display = 'flex';
+    }
+
+    renderPaso1();
+  } catch (e) {
+    document.getElementById('wiz-loading').innerHTML =
+      `<div style="color:#dc2626"><strong>Error:</strong> ${e.message}</div>`;
+  }
+}
+
+// ── PASO 1 ───────────────────────────────────────────────────────
+function renderPaso1() {
+  const m = _data.metricas_total;
+  document.getElementById('s1-fact-top10').textContent = '$' + m.facturacion_top10.toLocaleString('es-AR');
+  document.getElementById('s1-pct').textContent       = m.pct_top10;
+  document.getElementById('s1-cobertura').textContent = m.items_con_costo + '/' + m.total_items;
+
+  const tbody = document.getElementById('top10-tbody');
+  tbody.innerHTML = _items.map((it, i) => {
+    const badge = it.tiene_costo
+      ? `<span class="badge-costo">✓ Costo cargado</span>
+         <div style="font-size:.7rem;color:#94a3b8;margin-top:2px">$${(it.costo_actual||0).toLocaleString('es-AR')} · ${it.costo_updated || '?'}</div>`
+      : `<span style="color:#dc2626;font-size:.74rem;font-weight:600">✗ Sin costo</span>`;
+    return `
+      <tr>
+        <td class="rank">${i+1}</td>
+        <td>
+          <div class="titulo">${escHTML(it.titulo)}</div>
+          <div class="mla">${it.id}</div>
+        </td>
+        <td class="text-end precio">$${it.precio.toLocaleString('es-AR')}</td>
+        <td class="text-end">${it.ventas_30d}</td>
+        <td class="text-end fact">$${it.facturacion_30d.toLocaleString('es-AR')}</td>
+        <td>${badge}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ── PASO 2 — render cards con calculadora live ───────────────────
+function renderPaso2() {
+  const cont = document.getElementById('cards-container');
+  cont.innerHTML = _items.map((it, i) => renderItemCard(it, i)).join('');
+  actualizarCobertura();
+}
+
+function renderItemCard(it, i) {
+  const sugerido = Math.round(it.precio * 0.4);
+  const cardClass = it.skipped ? 'skipped' : (it.costo_input ? 'has-cost' : '');
+  const inputAttrs = it.skipped ? 'disabled' : '';
+  const value = it.costo_input != null ? it.costo_input : '';
+  const placeholder = `ej. $${sugerido.toLocaleString('es-AR')} (40% del precio)`;
+  const skipBtn = it.skipped
+    ? `<button class="unskip-link" onclick="toggleSkip(${i})">↶ Volver a cargar este</button>`
+    : `<button class="skip-link" onclick="toggleSkip(${i})">Saltear este por ahora</button>`;
+  const yaTenia = it.tiene_costo
+    ? `<span style="font-size:.66rem;background:#dcfce7;color:#15803d;padding:1px 6px;border-radius:8px;margin-left:.4rem">✓ ya cargado · ${it.costo_updated || '?'}</span>`
+    : '';
+
+  return `
+    <div class="item-card ${cardClass}" id="card-${i}">
+      <div class="item-info">
+        <div class="titulo">${escHTML(it.titulo)} ${yaTenia}</div>
+        <div class="meta">
+          <code>${it.id}</code>
+          <span>Precio: <strong>$${it.precio.toLocaleString('es-AR')}</strong></span>
+          <span>Vendido 30d: <strong>${it.ventas_30d}</strong></span>
+          <span>Facturó: <strong style="color:#16a34a">$${it.facturacion_30d.toLocaleString('es-AR')}</strong></span>
+          <span>Fee ML: ${(it.fee_rate*100).toFixed(1)}%</span>
+        </div>
+      </div>
+      <div>
+        <div class="input-row">
+          <label>Costo (ARS):</label>
+          <input type="number" min="0" step="1"
+                 placeholder="${placeholder}"
+                 value="${value}"
+                 ${inputAttrs}
+                 oninput="onCostoInput(${i}, this.value)">
+        </div>
+        <div class="calc-preview" id="calc-${i}">
+          <span style="color:#94a3b8">Ingresá el costo para ver el margen estimado</span>
+        </div>
+        ${skipBtn}
+      </div>
+    </div>`;
+}
+
+function onCostoInput(idx, val) {
+  const v = parseFloat(val);
+  _items[idx].costo_input = (Number.isFinite(v) && v >= 0) ? v : null;
+  _items[idx].skipped = false;
+  refreshCalc(idx);
+  // Actualizar clase del card
+  const card = document.getElementById('card-' + idx);
+  card.className = 'item-card' + (_items[idx].costo_input ? ' has-cost' : '');
+  actualizarCobertura();
+}
+
+function toggleSkip(idx) {
+  _items[idx].skipped = !_items[idx].skipped;
+  if (_items[idx].skipped) _items[idx].costo_input = null;
+  // Re-render solo este card
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = renderItemCard(_items[idx], idx);
+  document.getElementById('card-' + idx).replaceWith(wrapper.firstElementChild);
+  actualizarCobertura();
+}
+
+function refreshCalc(idx) {
+  const it = _items[idx];
+  const target = document.getElementById('calc-' + idx);
+  if (!target) return;
+  const costo = it.costo_input;
+  if (!costo || costo <= 0) {
+    target.className = 'calc-preview';
+    target.innerHTML = '<span style="color:#94a3b8">Ingresá el costo para ver el margen estimado</span>';
+    return;
+  }
+  const fee = it.precio * it.fee_rate;
+  const ganancia = it.precio - fee - costo;
+  const margenPct = (ganancia / it.precio) * 100;
+  let cls = 'ok';
+  if (margenPct < 0)         cls = 'crit-strong';
+  else if (margenPct < 15)   cls = 'crit';
+  else if (margenPct < 25)   cls = 'warn';
+  const color = cls === 'ok' ? '#15803d'
+              : cls === 'warn' ? '#b45309'
+              : '#b91c1c';
+  target.className = 'calc-preview ' + cls;
+  const warn = margenPct < 0
+    ? '<div style="color:#b91c1c;font-weight:600;margin-top:.25rem">⚠ Margen NEGATIVO — pérdida por venta</div>'
+    : (margenPct < 15
+       ? '<div style="color:#b45309;margin-top:.25rem">⚠ Margen muy bajo (<15%)</div>'
+       : '');
+  target.innerHTML = `
+    <div style="display:flex;gap:1rem;align-items:baseline;flex-wrap:wrap">
+      <span style="color:${color}">Margen estimado:</span>
+      <span class="margen-num" style="color:${color}">$${ganancia.toLocaleString('es-AR', {maximumFractionDigits:0})}</span>
+      <span class="margen-num" style="color:${color}">(${margenPct.toFixed(1)}%)</span>
+    </div>
+    <div class="formula">$${it.precio.toLocaleString('es-AR')} (precio) − $${costo.toLocaleString('es-AR')} (costo) − $${fee.toLocaleString('es-AR', {maximumFractionDigits:0})} (fee ${(it.fee_rate*100).toFixed(1)}%) = $${ganancia.toLocaleString('es-AR', {maximumFractionDigits:0})}</div>
+    ${warn}`;
+}
+
+function actualizarCobertura() {
+  const cargados = _items.filter(it => it.costo_input && it.costo_input > 0);
+  const factCubierta = cargados.reduce((s, it) => s + it.facturacion_30d, 0);
+  const factTotal    = _data.metricas_total.facturacion_total_30d || 1;
+  const pct          = (factCubierta / factTotal) * 100;
+
+  document.getElementById('cob-text').textContent =
+    `Cobertura de margen: ${pct.toFixed(1)}% de facturación · ${cargados.length}/10 cargados`;
+  document.getElementById('cob-meta').textContent =
+    `$${Math.round(factCubierta).toLocaleString('es-AR')} de $${Math.round(factTotal).toLocaleString('es-AR')} cubiertos`;
+  const fill = document.getElementById('cob-fill');
+  fill.style.width = Math.min(pct, 100).toFixed(1) + '%';
+  fill.className = 'cobertura-fill' + (pct >= 70 ? ' ok' : pct >= 30 ? ' warn' : '');
+}
+
+// ── PASO 3 ───────────────────────────────────────────────────────
+function renderPaso3() {
+  const cargados = _items.filter(it => it.costo_input && it.costo_input > 0);
+  const salteados = _items.filter(it => it.skipped || !it.costo_input);
+  const factCubierta = cargados.reduce((s, it) => s + it.facturacion_30d, 0);
+  const factTotal    = _data.metricas_total.facturacion_total_30d || 1;
+  const pct          = (factCubierta / factTotal) * 100;
+
+  // Margen promedio
+  let margenPromedio = '—';
+  if (cargados.length) {
+    const margenes = cargados.map(it => {
+      const fee = it.precio * it.fee_rate;
+      return ((it.precio - fee - it.costo_input) / it.precio) * 100;
+    });
+    margenPromedio = (margenes.reduce((a,b)=>a+b,0) / margenes.length).toFixed(1) + '%';
+  }
+
+  document.getElementById('s3-cargados').textContent       = cargados.length;
+  document.getElementById('s3-salteados').textContent      = salteados.length;
+  document.getElementById('s3-margen-prom').textContent    = margenPromedio;
+  document.getElementById('s3-cobertura-fact').textContent = pct.toFixed(1) + '%';
+
+  // Tabla de resumen
+  const rows = cargados.map(it => {
+    const fee = it.precio * it.fee_rate;
+    const ganancia = it.precio - fee - it.costo_input;
+    const margen = ganancia / it.precio * 100;
+    const color = margen < 0 ? '#b91c1c' : margen < 15 ? '#b45309' : margen < 25 ? '#d97706' : '#15803d';
+    return `
+      <tr>
+        <td><div style="font-weight:600">${escHTML(it.titulo)}</div><div class="mla">${it.id}</div></td>
+        <td class="text-end">$${it.precio.toLocaleString('es-AR')}</td>
+        <td class="text-end">$${it.costo_input.toLocaleString('es-AR')}</td>
+        <td class="text-end" style="font-weight:700;color:${color}">$${Math.round(ganancia).toLocaleString('es-AR')} (${margen.toFixed(1)}%)</td>
+      </tr>`;
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:1rem">Ningún producto cargado</td></tr>';
+
+  document.getElementById('resumen-tbody').innerHTML = `
+    <table class="top10-table">
+      <thead>
+        <tr><th>Producto</th><th class="text-end">Precio</th><th class="text-end">Costo</th><th class="text-end">Margen</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  document.getElementById('btn-guardar').disabled = (cargados.length === 0);
+}
+
+// ── Navegación ───────────────────────────────────────────────────
+function irAPaso(n) {
+  document.querySelectorAll('.wizard-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('section-' + n).classList.add('active');
+  for (let i = 1; i <= 3; i++) {
+    const pill = document.getElementById('step-pill-' + i);
+    pill.classList.remove('active', 'done');
+    if (i < n)       pill.classList.add('done');
+    else if (i === n) pill.classList.add('active');
+  }
+  _step = n;
+  if (n === 2) renderPaso2();
+  if (n === 3) renderPaso3();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+function irAPaso2() { irAPaso(2); }
+function irAPaso3() { irAPaso(3); }
+
+// ── Guardar ──────────────────────────────────────────────────────
+async function guardarCostos() {
+  const btn = document.getElementById('btn-guardar');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  const cargados = _items.filter(it => it.costo_input && it.costo_input > 0);
+  const payload = {
+    alias: ALIAS,
+    costos: cargados.map(it => ({
+      id: it.id, titulo: it.titulo, precio: it.precio, costo: it.costo_input,
+    })),
+  };
+  try {
+    const r = await fetch('/api/costos-save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(`✓ ${d.saved} costos guardados.\nLas pantallas de Stock, Ventas y Full ya muestran margen real.`);
+      window.location.href = '/stock/' + encodeURIComponent(ALIAS);
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Guardar costos';
+    }
+  } catch (e) {
+    alert('Error de red: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Guardar costos';
+  }
+}
+
+// ── Demos (commit 3 lo enchufa con endpoint clean) ────────────────
+function cerrarBannerDemo() {
+  document.getElementById('demo-banner').style.display = 'none';
+}
+
+async function limpiarDemos() {
+  // Stub — se conecta en commit 3 al endpoint /api/costos-limpiar-demo
+  if (!confirm('¿Eliminar los costos demo? Esta acción borra solo los entries identificados como demo.')) return;
+  try {
+    const r = await fetch('/api/costos-limpiar-demo/' + encodeURIComponent(ALIAS), {method:'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      alert(`✓ ${d.deleted} costos demo eliminados.`);
+      location.reload();
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── Util ─────────────────────────────────────────────────────────
+function escHTML(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+loadWizard();
+</script>
+{% endblock %}
