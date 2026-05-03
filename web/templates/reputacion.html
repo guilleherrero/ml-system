@@ -233,17 +233,14 @@
     </div>
     {% endif %}
 
-    {# Aviso de permisos #}
+    {# Mini aviso — detalle en /settings/permisos (Sprint 4.5) #}
     <div class="mt-3 p-2 rounded d-flex align-items-center gap-2"
          style="background:#f8fafc;border:1px solid #e2e8f0;font-size:.72rem;color:#64748b">
-      <i class="bi bi-info-circle text-primary"></i>
+      <i class="bi bi-key-fill text-primary"></i>
       <span>
-        Para ver el detalle de cada reclamo (motivo, resolución, mensajes del comprador)
-        necesitás activar el permiso <strong>Postventa</strong> en tu cuenta.
+        Para el detalle de reclamos (motivo, mensajes) se requiere el permiso <strong>Postventa</strong>.
+        <a href="/settings/permisos">Activalo en Permisos API</a>.
       </span>
-      <a href="/oauth/connect/{{ alias }}" class="btn btn-xs btn-outline-primary ms-auto py-0 px-2" style="font-size:.7rem;white-space:nowrap">
-        Activar permiso
-      </a>
     </div>
 
   </div>
@@ -493,7 +490,8 @@
 
     {% else %}
     <div class="text-muted text-center py-3" style="font-size:.85rem">
-      <i class="bi bi-info-circle me-1"></i>Sin datos de órdenes. Verificá que la cuenta tenga el permiso "Órdenes" habilitado.
+      <i class="bi bi-key-fill me-1"></i>Sin datos de órdenes — esta función requiere el permiso <strong>Órdenes</strong>.
+      <a href="/settings/permisos">Activalo en Permisos API</a>.
     </div>
     {% endif %}
   </div>

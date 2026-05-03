@@ -214,55 +214,17 @@
   </div>
 {% endif %}
 
-{# ─── Banner OAuth Publicidad ─────────────────────────────────────────────────── #}
-{% if account_alias %}
-<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:.85rem 1.1rem;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:.85rem">
-  <i class="bi bi-key-fill" style="color:#c2410c;font-size:1.1rem;flex-shrink:0;margin-top:.1rem"></i>
-  <div style="flex:1">
-    <div style="font-size:.8rem;font-weight:700;color:#92400e;margin-bottom:.25rem">Los botones de acción requieren permiso de escritura en Advertising</div>
-    <div style="font-size:.76rem;color:#9a3412;line-height:1.55">
-      Los cambios de presupuesto, pausar campaña y mover productos devuelven error 401 porque la cuenta no tiene el permiso
-      <strong>Publicidad (write)</strong> habilitado en el portal developer de ML.
-      Seguí el proceso de reconexión para activarlo — dura 5 minutos.
-    </div>
-  </div>
-  <a href="/oauth/connect/{{ account_alias }}"
-     style="flex-shrink:0;background:#c2410c;color:#fff;border:none;border-radius:8px;padding:.45rem .9rem;font-size:.76rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;white-space:nowrap">
-    <i class="bi bi-arrow-right-circle-fill"></i> Resolver ahora
-  </a>
-</div>
-{% endif %}
+{# Banner de permiso movido a /settings/permisos (Sprint 4.5) — se muestra global #}
 
 {# ─── No campaigns ────────────────────────────────────────────────────────────── #}
 {% if not campaigns %}
   {% if as.auth_error %}
-  {# ── Error de permisos de Publicidad ───────────────────────────────────── #}
-  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:1.5rem;max-width:640px;margin:0 auto">
-    <div style="display:flex;align-items:flex-start;gap:1rem">
-      <i class="bi bi-key-fill" style="font-size:1.8rem;color:#c2410c;flex-shrink:0;margin-top:.1rem"></i>
-      <div style="flex:1">
-        <div style="font-size:1rem;font-weight:800;color:#92400e;margin-bottom:.5rem">
-          Falta el permiso de Publicidad
-        </div>
-        <div style="font-size:.82rem;color:#9a3412;line-height:1.6;margin-bottom:1rem">
-          Tu cuenta de MercadoLibre está conectada, pero el token actual no tiene
-          el permiso <strong>Publicidad (read)</strong> habilitado en el portal developer de ML.
-          Sin ese permiso no se pueden ver métricas de campañas ni ítems en ads.
-          <br><br>
-          <strong>Cómo solucionarlo:</strong>
-          <ol style="margin:.5rem 0 0 1.2rem;padding:0">
-            <li>Andá al <a href="https://developers.mercadolibre.com.ar/devcenter" target="_blank" style="color:#c2410c">portal developer de ML</a></li>
-            <li>Entrá a tu aplicación y habilitá el permiso <strong>Publicidad</strong></li>
-            <li>Volvé acá y presioná "Reconectar cuenta" para obtener el nuevo token</li>
-          </ol>
-        </div>
-        {% if account_alias %}
-        <a href="/oauth/connect/{{ account_alias }}"
-           style="display:inline-flex;align-items:center;gap:.5rem;background:#c2410c;color:#fff;border:none;border-radius:10px;padding:.6rem 1.2rem;font-size:.85rem;font-weight:700;text-decoration:none">
-          <i class="bi bi-arrow-right-circle-fill"></i> Reconectar cuenta con permisos de Publicidad
-        </a>
-        {% endif %}
-      </div>
+  {# Mini empty-state — el detalle vive en /settings/permisos (Sprint 4.5) #}
+  <div class="alert alert-warning d-flex gap-2 align-items-start" style="max-width:640px;margin:0 auto">
+    <i class="bi bi-key-fill mt-1 flex-shrink-0"></i>
+    <div>
+      Esta función requiere el permiso <strong>Publicidad</strong>.
+      <a href="/settings/permisos" class="alert-link">Activalo en Permisos API</a>.
     </div>
   </div>
   {% elif not as.api_connected %}

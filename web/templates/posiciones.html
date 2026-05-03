@@ -164,13 +164,12 @@
 </div>
 
 {% elif all_search_blocked %}
-<!-- ── API BLOQUEADA ─────────────────────────────────────────── -->
+<!-- ── API BLOQUEADA — mini empty-state (Sprint 4.5) ─────────── -->
 <div class="alert alert-warning d-flex gap-2 align-items-start mb-4">
-  <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+  <i class="bi bi-key-fill mt-1 flex-shrink-0"></i>
   <div>
-    <strong>Se requiere el permiso "Ítems y búsqueda" en tu app ML.</strong><br>
-    Activalo en el panel de desarrolladores de MercadoLibre para rastrear posiciones reales.<br>
-    <span class="text-muted small">Mientras tanto, podés ver el estado de tus publicaciones abajo.</span>
+    Esta función requiere el permiso <strong>Ítems y búsqueda</strong>.
+    <a href="/settings/permisos" class="alert-link">Activalo en Permisos API</a>.
   </div>
 </div>
 {% set con_ventas      = items | selectattr('ventas_30d', 'gt', 0) | list %}
