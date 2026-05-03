@@ -2163,6 +2163,20 @@ def api_costos_save():
         return jsonify({'ok': False, 'error': str(e)})
 
 
+@app.route('/costos/wizard')
+def costos_wizard_page():
+    """Wizard de carga de costos para los top 10 productos por facturación.
+
+    Si la cuenta es única, la usa por default. Si hay múltiples, toma el alias
+    del query string ?alias=... o el primero que aparezca.
+    """
+    accounts = get_accounts()
+    alias    = request.args.get('alias', '').strip()
+    if not alias and accounts:
+        alias = accounts[0].get('alias', '')
+    return render_template('costos_wizard.html', alias=alias, accounts=accounts)
+
+
 @app.route('/api/costos-wizard-top10/<alias>')
 def api_costos_wizard_top10(alias):
     """Devuelve los top 10 productos por facturación 30d para el wizard de carga.
