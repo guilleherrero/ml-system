@@ -134,6 +134,26 @@
   </div>
 </div>
 
+<!-- ══ REPRICING — TOGGLE GLOBAL (Sprint 4.3) ═════════════════ -->
+<div class="settings-section">
+  <div class="settings-title">
+    <i class="bi bi-currency-exchange text-danger"></i>Repricing automático
+    <span id="rep-badge" class="badge-inactive ms-auto">Cargando...</span>
+  </div>
+  <p class="text-muted small mb-3">
+    El cron <code>repricing_hourly</code> ejecuta los cambios de precio configurados
+    cada hora entre 8 y 22 ART. Podés <strong>pausar todo</strong> con un solo click —
+    útil para Hot Sale o eventos donde querés precios manuales.
+  </p>
+  <div id="rep-status" class="alert py-2" style="font-size:.84rem">Cargando estado…</div>
+  <button class="btn btn-sm" id="btn-pause-rep" onclick="toggleRepricingGlobal()">
+    Cargar estado…
+  </button>
+  <a href="/repricing/wizard" class="btn btn-sm btn-outline-primary ms-2">
+    <i class="bi bi-magic me-1"></i>Abrir wizard
+  </a>
+</div>
+
 <!-- ══ NOTIFICACIONES EMAIL ═══════════════════════════════════ -->
 <div class="settings-section">
   <div class="settings-title">
@@ -278,6 +298,60 @@
 
 {% block scripts %}
 <script>
+// ── Sprint 4.3: Toggle global de repricing ───────────────────
+async function loadRepricingStatus() {
+  try {
+    const r = await fetch('/api/repricing-status-global');
+    const d = await r.json();
+    const badge = document.getElementById('rep-badge');
+    const status = document.getElementById('rep-status');
+    const btn = document.getElementById('btn-pause-rep');
+    if (d.paused) {
+      badge.className = 'badge-inactive ms-auto';
+      badge.textContent = '⏸ Pausado';
+      status.className = 'alert alert-warning py-2';
+      status.style.fontSize = '.84rem';
+      status.innerHTML = `<i class="bi bi-pause-circle me-1"></i><strong>Repricing PAUSADO globalmente.</strong> Las ${d.items_n} reglas configuradas no se ejecutan hasta reanudar.`;
+      btn.className = 'btn btn-sm btn-success';
+      btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Reanudar repricing';
+    } else {
+      badge.className = 'badge-active ms-auto';
+      badge.textContent = '▶ Activo';
+      status.className = 'alert alert-success py-2';
+      status.style.fontSize = '.84rem';
+      status.innerHTML = `<i class="bi bi-check-circle me-1"></i>Repricing <strong>activo</strong> — ${d.items_n} reglas configuradas. El cron las procesa cada hora 8-22 ART.`;
+      btn.className = 'btn btn-sm btn-outline-warning';
+      btn.innerHTML = '<i class="bi bi-pause-circle me-1"></i>Pausar repricing global';
+    }
+  } catch (e) {
+    document.getElementById('rep-status').innerHTML = `<span class="text-danger">Error: ${e.message}</span>`;
+  }
+}
+
+async function toggleRepricingGlobal() {
+  const r = await fetch('/api/repricing-status-global');
+  const d = await r.json();
+  const newState = !d.paused;
+  const msg = newState
+    ? '⚠ Vas a PAUSAR el repricing global. Ningún precio se va a cambiar automáticamente hasta que reanudes.\n\n¿Confirmás?'
+    : '¿Reanudar el repricing? El cron va a empezar a aplicar cambios automáticos en su próxima corrida.';
+  if (!confirm(msg)) return;
+  try {
+    const r2 = await fetch('/api/repricing-toggle-global', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({paused: newState}),
+    });
+    const d2 = await r2.json();
+    if (d2.ok) loadRepricingStatus();
+    else alert('Error: ' + (d2.error || 'desconocido'));
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+loadRepricingStatus();
+
 // ── Cargar lista de jobs y renderizar tabla ──────────────────
 async function cargarJobs() {
   try {

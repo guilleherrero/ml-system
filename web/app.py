@@ -7723,6 +7723,49 @@ def api_repricing_toggle_global():
     return jsonify({'ok': True, 'paused': is_globally_paused()})
 
 
+@app.route('/api/repricing-status-global')
+def api_repricing_status_global():
+    """Estado del toggle global + count de items con regla activa."""
+    from modules.repricing import is_globally_paused
+    cfg = load_json(os.path.join(CONFIG_DIR, 'repricing.json')) or {}
+    items_n = len((cfg.get('items') or {}))
+    return jsonify({
+        'ok':       True,
+        'paused':   is_globally_paused(cfg),
+        'items_n':  items_n,
+    })
+
+
+@app.route('/api/repricing-historial/<alias>/<item_id>')
+def api_repricing_historial(alias, item_id):
+    """Devuelve los últimos N cambios de precio aplicados al item.
+
+    Lee data/acciones_automaticas_<alias>.json y filtra por
+    accion='precio_cambiado' AND mla=item_id. Más reciente primero.
+    """
+    item_id = (item_id or '').strip().upper()
+    try:
+        limit = int(request.args.get('limit', 20))
+    except (TypeError, ValueError):
+        limit = 20
+
+    log_path = os.path.join(DATA_DIR, f'acciones_automaticas_{safe(alias)}.json')
+    if not os.path.exists(log_path):
+        return jsonify({'ok': True, 'historial': []})
+
+    try:
+        log = load_json(log_path) or []
+    except Exception:
+        log = []
+
+    historial = [
+        e for e in log
+        if e.get('accion') == 'precio_cambiado' and (e.get('mla') or '').upper() == item_id
+    ]
+    historial.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    return jsonify({'ok': True, 'historial': historial[:limit]})
+
+
 # ── Herramientas ──────────────────────────────────────────────────────────────
 
 @app.route('/calendario')
