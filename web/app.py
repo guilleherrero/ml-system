@@ -12547,6 +12547,16 @@ def _scheduler_run_all_inner():
             app.logger.error('[scheduler] %s — Meli Ads ERROR: %s', alias, e)
             print(f'[scheduler] {alias} — Meli Ads ERROR: {e}')
 
+        # Sprint 4.5 — precalentar cache de permisos para que el banner global
+        # tenga datos frescos sin esperar a que el usuario abra /settings/permisos
+        try:
+            from modules.permisos_checker import check_permisos
+            check_permisos(client, alias, force_refresh=True)
+            print(f'[scheduler] {alias} — permisos OK')
+        except Exception as e:
+            app.logger.error('[scheduler] %s — permisos ERROR: %s', alias, e)
+            print(f'[scheduler] {alias} — permisos ERROR: {e}')
+
     # ── Monitor de Evolución: evaluar alertas post-optimización ───────────────
     try:
         _scheduler_check_monitor()
