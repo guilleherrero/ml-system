@@ -18,9 +18,15 @@
 
     /* ── Sidebar ─────────────────────────────────────────────── */
     #sidebar {
-      width:var(--sbw); min-height:100vh; background:var(--sb);
+      width:var(--sbw); height:100vh; background:var(--sb);
       position:fixed; top:0; left:0; z-index:100;
-      display:flex; flex-direction:column; overflow-y:auto;
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    /* El nav central scrollea — el footer admin queda fijo abajo */
+    #sidebar nav { flex:1 1 auto; overflow-y:auto; min-height:0; }
+    .nav-admin {
+      flex-shrink:0; border-top:1px solid #1e2128; padding:6px 0 4px;
+      background:var(--sb);
     }
 
     /* Brand */
@@ -52,16 +58,20 @@
     }
     .sec-account i { color:var(--accent); font-size:.8rem; }
 
-    /* Nav links */
-    #sidebar nav a {
+    /* Nav links (incluye .nav-admin para que los items de abajo hereden el estilo) */
+    #sidebar nav a,
+    #sidebar .nav-admin a {
       display:flex; align-items:center; gap:9px;
       padding:7px 18px; color:#6b7280; text-decoration:none;
       font-size:.845rem; transition:all .15s;
       border-left:3px solid transparent; position:relative;
     }
-    #sidebar nav a:hover  { color:#e5e7eb; background:#1a1d26; border-left-color:#374151; }
-    #sidebar nav a.active { color:#fff; background:#1a1d26; border-left-color:var(--accent); }
-    #sidebar nav a i { font-size:.9rem; width:16px; text-align:center; flex-shrink:0; }
+    #sidebar nav a:hover,
+    #sidebar .nav-admin a:hover  { color:#e5e7eb; background:#1a1d26; border-left-color:#374151; }
+    #sidebar nav a.active,
+    #sidebar .nav-admin a.active { color:#fff; background:#1a1d26; border-left-color:var(--accent); }
+    #sidebar nav a i,
+    #sidebar .nav-admin a i { font-size:.9rem; width:16px; text-align:center; flex-shrink:0; }
 
     /* Primary action link (Optimizar IA) */
     #sidebar nav a.nav-primary {
@@ -293,7 +303,10 @@
       <i class="bi bi-diagram-3"></i> Multicuenta
     </a>
 
-    <div class="nav-divider"></div>
+  </nav>
+
+  <!-- ── Admin (siempre visible, no scrollea) ───────────────── -->
+  <div class="nav-admin">
     <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
       <i class="bi bi-gear"></i> Configuración
     </a>
@@ -308,8 +321,7 @@
     <a href="#" onclick="reiniciarServidor();return false;" style="color:#6b7280">
       <i class="bi bi-arrow-clockwise"></i> Reiniciar servidor
     </a>
-
-  </nav>
+  </div>
 
   <!-- Usuario logueado -->
   <div style="padding:10px 14px;border-top:1px solid #1e2128;margin-top:auto;display:flex;align-items:center;gap:8px">
