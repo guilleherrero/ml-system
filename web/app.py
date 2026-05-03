@@ -2283,6 +2283,36 @@ def _detectar_costos_demo(costos_data: dict, stock_items: list) -> list:
     return demo_ids
 
 
+@app.route('/api/costos-limpiar-demo/<alias>', methods=['POST'])
+def api_costos_limpiar_demo(alias):
+    """Elimina las entries identificadas como costos demo / huérfanos.
+
+    Usa el mismo detector que api_costos_detectar_demo para identificar qué
+    borrar. Solo toca los entries del seed o huérfanos — los costos reales
+    quedan intactos.
+    """
+    costos_path = os.path.join(CONFIG_DIR, 'costos.json')
+    costos_data = load_json(costos_path) or {}
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    items       = stock_data.get('items', [])
+
+    demo_ids = _detectar_costos_demo(costos_data, items)
+    if not demo_ids:
+        return jsonify({'ok': True, 'deleted': 0, 'mensaje': 'No hay costos demo para limpiar.'})
+
+    for cid in demo_ids:
+        costos_data.pop(cid, None)
+    save_json(costos_path, costos_data)
+
+    _audit('LIMPIAR_COSTOS_DEMO', alias=alias, count=len(demo_ids), ids=','.join(demo_ids[:10]))
+    return jsonify({
+        'ok':       True,
+        'deleted':  len(demo_ids),
+        'ids':      demo_ids,
+        'mensaje':  f'{len(demo_ids)} costos demo eliminados de config/costos.json',
+    })
+
+
 @app.route('/api/costos-detectar-demo/<alias>')
 def api_costos_detectar_demo(alias):
     """Devuelve la lista detallada de costos identificados como demo/huérfanos."""
