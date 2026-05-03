@@ -219,6 +219,10 @@
     <a href="/stock/{{ acc.alias }}" class="{{ 'active' if request.path == '/stock/'~acc.alias else '' }}">
       <i class="bi bi-grid-1x2"></i> Mis Publicaciones
     </a>
+    <a href="/costos/wizard?alias={{ acc.alias | urlencode }}"
+       class="{{ 'active' if request.path == '/costos/wizard' and request.args.get('alias') == acc.alias else '' }}">
+      <i class="bi bi-cash-coin"></i> Cargar costos (top 10)
+    </a>
     <a href="/salud/{{ acc.alias }}" class="{{ 'active' if request.path == '/salud/'~acc.alias else '' }}">
       <i class="bi bi-heart-pulse"></i> Salud del Catálogo
     </a>
