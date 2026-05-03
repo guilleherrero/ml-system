@@ -6451,6 +6451,10 @@ def api_meli_ads_update_budget():
         _client = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
         _client._ensure_token()
         result = update_campaign_budget(_client.account.access_token, campaign_id, new_budget)
+        from modules.permisos_checker import log_write_attempt
+        log_write_attempt(_accounts[0].alias, 'publicidad_write',
+                          f'/advertising/product_ads/campaigns/{campaign_id}',
+                          result.get('status', 0))
         return jsonify({'ok': result['ok'], 'mensaje': result['message']})
     except Exception as e:
         return jsonify({'ok': False, 'mensaje': str(e)})
@@ -6481,6 +6485,10 @@ def api_meli_ads_update_status():
         _client = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
         _client._ensure_token()
         result = update_campaign_status(_client.account.access_token, campaign_id, status)
+        from modules.permisos_checker import log_write_attempt
+        log_write_attempt(_accounts[0].alias, 'publicidad_write',
+                          f'/advertising/product_ads/campaigns/{campaign_id}',
+                          result.get('status', 0))
         return jsonify({'ok': result['ok'], 'mensaje': result['message']})
     except Exception as e:
         return jsonify({'ok': False, 'mensaje': str(e)})
@@ -6757,6 +6765,10 @@ def api_meli_ads_item_move():
         _client  = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
         _client._ensure_token()
         result = move_item_to_campaign(_client.account.access_token, item_id, new_camp_id)
+        from modules.permisos_checker import log_write_attempt
+        log_write_attempt(_accounts[0].alias, 'publicidad_write',
+                          f'/advertising/product_ads/items/{item_id}',
+                          result.get('status', 0))
         return jsonify({'ok': result['ok'], 'mensaje': result['message'],
                         'needs_reauth': result.get('needs_reauth', False)})
     except Exception as e:
@@ -13110,6 +13122,32 @@ def api_ping():
     updated_today = bool(_scheduler_last_run and _scheduler_last_run.date() >= date.today())
     return jsonify({'ok': True, 'updated_today': updated_today,
                     'last_run': _scheduler_last_run.strftime('%Y-%m-%d %H:%M') if _scheduler_last_run else None})
+
+
+# ── Permisos API (Sprint 4.5) ────────────────────────────────────────────────
+
+@app.route('/api/check-permisos/<alias>')
+def api_check_permisos(alias):
+    """Devuelve el estado de los 5 permisos para una cuenta. Usa cache 6h salvo ?refresh=1."""
+    from modules.permisos_checker import check_permisos
+    from core.account_manager import AccountManager as _AM
+    force = request.args.get('refresh') in ('1', 'true', 'yes')
+    try:
+        client = _AM().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada: {e}'}), 404
+    try:
+        data = check_permisos(client, alias, force_refresh=force)
+        return jsonify({'ok': True, **data})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/check-permisos/<alias>/summary')
+def api_check_permisos_summary(alias):
+    """Resumen rápido SIN tocar API ML — solo lee cache. Para el banner global."""
+    from modules.permisos_checker import get_permisos_summary
+    return jsonify({'ok': True, **(get_permisos_summary(alias) or {'resumen': {}})})
 
 
 @app.route('/api/scheduler-status')
