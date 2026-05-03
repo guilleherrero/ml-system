@@ -7407,6 +7407,309 @@ def api_repricing_apply():
         return jsonify({'ok': False, 'error': str(e)})
 
 
+# ── Sprint 4.3: Wizard de Repricing ───────────────────────────────────────────
+
+# Strategy → multiplicador sobre el precio del competidor
+_REPRICING_STRATEGIES = {
+    'conservadora': 0.995,
+    'balanceada':   0.99,
+    'agresiva':     0.98,
+}
+
+
+def _calcular_precio_sugerido(competitor_price: float, strategy: str = 'balanceada') -> float:
+    """Aplica el multiplicador de la estrategia. Sin competidor, devuelve el actual."""
+    if not competitor_price or competitor_price <= 0:
+        return 0
+    mult = _REPRICING_STRATEGIES.get(strategy, _REPRICING_STRATEGIES['balanceada'])
+    return round(competitor_price * mult, 2)
+
+
+def _calc_margen_pct(precio: float, costo: float, fee_rate: float) -> float:
+    """Margen % luego de fees + costo. Devuelve negativo si vende a pérdida."""
+    if precio <= 0 or not costo or costo <= 0:
+        return 0.0
+    fee = precio * (fee_rate or 0)
+    ganancia = precio - fee - costo
+    return round((ganancia / precio) * 100, 1)
+
+
+@app.route('/api/repricing-wizard-candidates/<alias>')
+def api_repricing_wizard_candidates(alias):
+    """Detecta items perdiendo Buy Box CON costo cargado para alimentar el wizard.
+
+    Llama en vivo a la API ML por cada item de catálogo (mismo flujo que
+    /salud/<alias>) — puede tardar 5-15 segundos. Devuelve dos listas:
+      - candidatos: viables para activar repricing (catalog + perdiendo BB + con costo)
+      - sin_costo: items perdiendo BB pero sin costo cargado (CTA al wizard de costos)
+    """
+    try:
+        token, _, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Auth: {e}'}), 401
+
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+    fees_cfg    = get_fee_rates()
+    items       = stock_data.get('items', [])
+
+    candidatos: list  = []
+    sin_costo:  list  = []
+
+    ML = 'https://api.mercadolibre.com'
+    # Iterar — cap a 50 items para evitar timeouts en cuentas grandes
+    for it in items[:50]:
+        item_id = it.get('id', '')
+        if not item_id:
+            continue
+        precio = float(it.get('precio') or 0)
+        listing_type = it.get('listing_type', '')
+        fee_rate = float(it.get('fee_rate') or get_rate(listing_type, fees_cfg))
+
+        # Verificar que esté en catálogo + obtener Buy Box
+        try:
+            r_item = req_lib.get(f'{ML}/items/{item_id}', headers=heads,
+                                 params={'attributes': 'id,catalog_product_id,price'},
+                                 timeout=6)
+            if not r_item.ok:
+                continue
+            cpid = (r_item.json() or {}).get('catalog_product_id')
+            if not cpid:
+                continue   # no es de catálogo, no aplica repricing
+        except Exception:
+            continue
+
+        # Buy Box price
+        try:
+            rp = req_lib.get(f'{ML}/products/{cpid}/items', headers=heads,
+                             params={'limit': 5}, timeout=6)
+            if not rp.ok:
+                continue
+            sellers = rp.json().get('results', [])
+            if not sellers:
+                continue
+            winner    = sellers[0]
+            winner_id = winner.get('id') or winner.get('item_id', '')
+            bb_price  = float(winner.get('price') or 0)
+            we_win    = (winner_id == item_id)
+            if we_win:
+                continue   # no perdiendo BB, no es candidato
+        except Exception:
+            continue
+
+        # Es de catálogo y NO ganamos BB → candidato. Filtrar por costo.
+        ce = costos_data.get(item_id) or {}
+        item_payload = {
+            'id':              item_id,
+            'titulo':          (it.get('titulo') or '')[:80],
+            'precio_actual':   precio,
+            'precio_buy_box':  bb_price,
+            'diferencia_pct':  round((bb_price - precio) / precio * 100, 1) if precio else 0,
+            'stock':           int(it.get('stock') or 0),
+            'ventas_30d':      int(it.get('ventas_30d') or 0),
+            'fee_rate':        round(fee_rate, 4),
+            'listing_type':    listing_type,
+        }
+
+        if not ce.get('costo'):
+            sin_costo.append(item_payload)
+            continue
+
+        # Tiene costo: calcular sugerencias
+        costo            = float(ce['costo'])
+        precio_sugerido  = _calcular_precio_sugerido(bb_price, 'balanceada')
+        margen_actual    = _calc_margen_pct(precio, costo, fee_rate)
+        margen_sugerido  = _calc_margen_pct(precio_sugerido, costo, fee_rate)
+        # min_price calculado con cost-basis (antipérdida) y márgen target 15%
+        min_price_anti  = round(costo / (1 - fee_rate), 2)            # cubre fees
+        min_price_15pct = round(costo / (1 - fee_rate - 0.15), 2)     # margen 15%
+        min_price_sug   = max(min_price_anti, round(precio * 0.85, 2))
+
+        # Categorización semaforizada
+        if margen_sugerido >= 20:
+            categoria = 'viable'
+        elif margen_sugerido >= 10:
+            categoria = 'ajustado'
+        else:
+            categoria = 'sin_margen'
+
+        item_payload.update({
+            'tiene_costo':           True,
+            'costo':                 costo,
+            'margen_actual_pct':     margen_actual,
+            'precio_sugerido':       precio_sugerido,
+            'margen_sugerido_pct':   margen_sugerido,
+            'min_price_antiperdida': min_price_anti,
+            'min_price_15pct':       min_price_15pct,
+            'min_price_sugerido':    min_price_sug,
+            'precio_max_sugerido':   round(precio * 1.10, 2),
+            'categoria':             categoria,
+            'pre_seleccionar':       (categoria == 'viable'),
+        })
+        candidatos.append(item_payload)
+        _time_module.sleep(0.1)
+
+    fact_total = sum(c.get('precio_actual', 0) * c.get('ventas_30d', 0) for c in candidatos)
+    return jsonify({
+        'ok':          True,
+        'candidatos':  candidatos,
+        'sin_costo':   sin_costo,
+        'totales': {
+            'candidatos_total':   len(candidatos),
+            'candidatos_viables': sum(1 for c in candidatos if c['categoria'] == 'viable'),
+            'sin_costo_total':    len(sin_costo),
+            'fact_total_30d':     fact_total,
+        },
+    })
+
+
+@app.route('/api/repricing-wizard-simular', methods=['POST'])
+def api_repricing_wizard_simular():
+    """Dry-run obligatorio antes de activar. Recibe items + breakers + estrategia.
+    Devuelve por item el precio sugerido + margen + impacto estimado.
+    """
+    body       = request.get_json() or {}
+    items      = body.get('items') or []
+    estrategia = body.get('estrategia', 'balanceada')
+
+    simulacion: list = []
+    impacto_pos = 0
+    impacto_neg = 0
+    for it in items:
+        precio_actual = float(it.get('precio_actual') or 0)
+        bb_price      = float(it.get('precio_buy_box') or 0)
+        costo         = float(it.get('costo') or 0)
+        fee_rate      = float(it.get('fee_rate') or 0.13)
+        ventas_30d    = int(it.get('ventas_30d') or 0)
+        min_price     = float(it.get('min_price') or 0)
+
+        precio_nuevo = _calcular_precio_sugerido(bb_price, estrategia)
+        precio_nuevo = max(precio_nuevo, min_price)   # respeta min_price del wizard
+        margen_nuevo = _calc_margen_pct(precio_nuevo, costo, fee_rate)
+        delta_pct    = round((precio_nuevo - precio_actual) / precio_actual * 100, 2) if precio_actual else 0
+
+        # Estimación grosera de impacto: si bajamos precio, asumimos +30% ventas
+        # (gana BB → más conversión). Si subimos, asumimos -10% por menos competitividad.
+        ventas_estim_delta = 0
+        if precio_nuevo < precio_actual:
+            ventas_estim_delta = round(ventas_30d * 0.3)
+        elif precio_nuevo > precio_actual:
+            ventas_estim_delta = -round(ventas_30d * 0.1)
+
+        impacto_fact = ventas_estim_delta * precio_nuevo
+        impacto_margen = ventas_estim_delta * (precio_nuevo - costo - precio_nuevo * fee_rate)
+        if impacto_margen >= 0:
+            impacto_pos += impacto_margen
+        else:
+            impacto_neg += impacto_margen
+
+        alerta = None
+        if margen_nuevo < 0:
+            alerta = 'MARGEN NEGATIVO — vendería a pérdida'
+        elif margen_nuevo < 10:
+            alerta = f'Margen muy bajo ({margen_nuevo}%) — confirmar antes de aplicar'
+
+        simulacion.append({
+            'id':             it.get('id'),
+            'titulo':         it.get('titulo'),
+            'precio_actual':  precio_actual,
+            'precio_nuevo':   precio_nuevo,
+            'delta_pct':      delta_pct,
+            'margen_nuevo':   margen_nuevo,
+            'ventas_estim_delta': ventas_estim_delta,
+            'impacto_fact':   round(impacto_fact, 0),
+            'impacto_margen': round(impacto_margen, 0),
+            'alerta':         alerta,
+        })
+
+    return jsonify({
+        'ok':         True,
+        'simulacion': simulacion,
+        'totales': {
+            'items_n':           len(simulacion),
+            'items_con_alerta':  sum(1 for s in simulacion if s['alerta']),
+            'impacto_margen_pos': round(impacto_pos, 0),
+            'impacto_margen_neg': round(impacto_neg, 0),
+            'impacto_neto':      round(impacto_pos + impacto_neg, 0),
+        },
+    })
+
+
+@app.route('/api/repricing-wizard-activar', methods=['POST'])
+def api_repricing_wizard_activar():
+    """Guarda las reglas seleccionadas en config/repricing.json. A partir de
+    este momento el cron repricing_hourly del Sprint 2.3 las procesa cada hora.
+
+    Body: {alias, items: [{id, titulo, precio_actual, precio_min, precio_max, costo}],
+           breakers: {...}, estrategia: 'balanceada'}
+    """
+    body       = request.get_json() or {}
+    alias      = (body.get('alias') or '').strip()
+    items      = body.get('items') or []
+    breakers   = body.get('breakers') or {}
+    estrategia = body.get('estrategia', 'balanceada')
+
+    if not alias or not items:
+        return jsonify({'ok': False, 'error': 'alias e items son requeridos'}), 400
+
+    cfg_path = os.path.join(CONFIG_DIR, 'repricing.json')
+    cfg = load_json(cfg_path) or {'items': {}}
+    cfg.setdefault('items', {})
+    cfg['breakers']    = {**({} if not isinstance(cfg.get('breakers'), dict) else cfg['breakers']), **breakers}
+    cfg['estrategia']  = estrategia
+
+    saved = 0
+    errors: list = []
+    for it in items:
+        item_id = (it.get('id') or '').strip().upper()
+        if not item_id:
+            continue
+        try:
+            precio_actual = float(it.get('precio_actual') or 0)
+            precio_min    = float(it.get('precio_min') or 0)
+            precio_max    = float(it.get('precio_max') or precio_actual * 1.10)
+            costo         = float(it.get('costo') or 0)
+        except (TypeError, ValueError):
+            errors.append(f'{item_id}: precios inválidos')
+            continue
+
+        if precio_min <= 0 or precio_max <= 0 or precio_min >= precio_max:
+            errors.append(f'{item_id}: min/max inválidos')
+            continue
+
+        cfg['items'][item_id] = {
+            'titulo':          (it.get('titulo') or '')[:120],
+            'precio_actual':   round(precio_actual, 2),
+            'precio_min':      round(precio_min, 2),
+            'precio_max':      round(precio_max, 2),
+            'costo':           round(costo, 2) if costo > 0 else None,
+            'alias':           alias,
+            'activado_en':     datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'estrategia':      estrategia,
+        }
+        saved += 1
+
+    save_json(cfg_path, cfg)
+    _audit('REPRICING_ACTIVAR', alias=alias, items=saved, estrategia=estrategia)
+    return jsonify({
+        'ok':       True,
+        'saved':    saved,
+        'errors':   errors,
+        'mensaje':  f'{saved} reglas activadas. El cron repricing_hourly las procesará en su próxima corrida.',
+    })
+
+
+@app.route('/api/repricing-toggle-global', methods=['POST'])
+def api_repricing_toggle_global():
+    """Pausa/reanuda repricing global. El cron respeta el flag al inicio de cada corrida."""
+    from modules.repricing import set_globally_paused, is_globally_paused
+    body   = request.get_json() or {}
+    paused = bool(body.get('paused', False))
+    set_globally_paused(paused)
+    _audit('REPRICING_PAUSE_GLOBAL' if paused else 'REPRICING_RESUME_GLOBAL')
+    return jsonify({'ok': True, 'paused': is_globally_paused()})
+
+
 # ── Herramientas ──────────────────────────────────────────────────────────────
 
 @app.route('/calendario')
