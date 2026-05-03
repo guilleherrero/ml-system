@@ -7766,6 +7766,129 @@ def api_repricing_historial(alias, item_id):
     return jsonify({'ok': True, 'historial': historial[:limit]})
 
 
+# ── Sprint 4.1: Top 3 acciones del día ────────────────────────────────────────
+
+@app.route('/api/top-acciones/<alias>')
+def api_top_acciones(alias):
+    """Devuelve el top 3 de acciones rentables para el alias.
+
+    Query params:
+      ?debug=1     incluye all_candidates + by_source + métricas internas
+      ?force=1     bypassa cache y recomputa (puede tardar 1-3s)
+    """
+    try:
+        _assert_valid_alias(alias)
+    except ValueError:
+        return jsonify({'ok': False, 'error': f'Alias desconocido: {alias!r}'}), 404
+
+    from modules import top_acciones_diarias as ta
+    force = request.args.get('force', '').strip() in ('1', 'true', 'yes')
+    debug = request.args.get('debug', '').strip() in ('1', 'true', 'yes')
+
+    result = ta.top3(alias, force_recompute=force)
+    done_summary = ta.get_done_summary(alias, days=7)
+
+    if debug:
+        return jsonify({
+            'ok':              True,
+            'top_3':           result.get('top_3', []),
+            'all_candidates':  result.get('all_candidates', []),
+            'by_source':       result.get('by_source', {}),
+            'dismissed_count': result.get('dismissed_count', 0),
+            'computed_at':     result.get('computed_at'),
+            'from_cache':      result.get('from_cache', False),
+            'compute_time_ms': result.get('compute_time_ms', 0),
+            'done_summary':    done_summary,
+            'alias':           alias,
+        })
+
+    return jsonify({
+        'ok':            True,
+        'top_3':         result.get('top_3', []),
+        'computed_at':   result.get('computed_at'),
+        'from_cache':    result.get('from_cache', False),
+        'done_summary':  done_summary,
+    })
+
+
+@app.route('/api/top-acciones/<alias>/dismiss', methods=['POST'])
+def api_top_acciones_dismiss(alias):
+    """Descarta una oportunidad por fingerprint. TTL 30 días."""
+    try:
+        _assert_valid_alias(alias)
+    except ValueError:
+        return jsonify({'ok': False, 'error': f'Alias desconocido: {alias!r}'}), 404
+
+    body = request.get_json(silent=True) or {}
+    fp = (body.get('fingerprint') or '').strip()
+    if not fp:
+        return jsonify({'ok': False, 'error': 'fingerprint requerido'}), 400
+
+    from modules import top_acciones_diarias as ta
+    ta.add_dismissed(
+        alias=alias,
+        fingerprint=fp,
+        tipo=body.get('tipo', ''),
+        descripcion=body.get('descripcion', ''),
+        razon=body.get('razon', ''),
+    )
+    _audit('TOP_ACCIONES_DISMISS', alias=alias, fp=fp, razon=body.get('razon', ''))
+
+    # Invalidar cache para que el próximo GET no devuelva el item descartado
+    cache_path = os.path.join(DATA_DIR, f'top_acciones_cache_{safe(alias)}.json')
+    if os.path.exists(cache_path):
+        try:
+            os.remove(cache_path)
+        except OSError:
+            pass
+
+    return jsonify({'ok': True, 'fingerprint': fp})
+
+
+@app.route('/api/top-acciones/<alias>/done', methods=['POST'])
+def api_top_acciones_done(alias):
+    """Marca una oportunidad como hecha. Persiste snapshot para análisis posterior.
+
+    Body esperado: {fingerprint, tipo, descripcion, impacto_reportado_ars, snapshot}
+    """
+    try:
+        _assert_valid_alias(alias)
+    except ValueError:
+        return jsonify({'ok': False, 'error': f'Alias desconocido: {alias!r}'}), 404
+
+    body = request.get_json(silent=True) or {}
+    fp = (body.get('fingerprint') or '').strip()
+    if not fp:
+        return jsonify({'ok': False, 'error': 'fingerprint requerido'}), 400
+
+    try:
+        impacto = float(body.get('impacto_reportado_ars') or 0)
+    except (TypeError, ValueError):
+        impacto = 0.0
+
+    from modules import top_acciones_diarias as ta
+    ta.add_done(
+        alias=alias,
+        fingerprint=fp,
+        tipo=body.get('tipo', ''),
+        descripcion=body.get('descripcion', ''),
+        impacto_reportado_ars=impacto,
+        snapshot=body.get('snapshot') or {},
+    )
+    _audit('TOP_ACCIONES_DONE', alias=alias, fp=fp, impacto=impacto)
+
+    # Invalidar cache
+    cache_path = os.path.join(DATA_DIR, f'top_acciones_cache_{safe(alias)}.json')
+    if os.path.exists(cache_path):
+        try:
+            os.remove(cache_path)
+        except OSError:
+            pass
+
+    return jsonify({'ok': True, 'fingerprint': fp,
+                    'done_summary': ta.get_done_summary(alias, days=7)})
+
+
 # ── Herramientas ──────────────────────────────────────────────────────────────
 
 @app.route('/calendario')
@@ -13314,6 +13437,34 @@ def _job_weekly_reopt():
     print(f'[job_weekly_reopt] Re-optimización manual completada — {procesadas} publicaciones procesadas.')
 
 
+def _job_top_acciones_daily():
+    """Job 6 — Sprint 4.1: precomputa el Top 3 acciones del día para cada cuenta.
+
+    Se ejecuta antes del refresh diario (06:00 ART, daily_update va a las 07:00)
+    para asegurar que el Command Center sirva un Top 3 fresco al primer login del día.
+    Escribe data/top_acciones_cache_<alias>.json. Logging detallado por fuente
+    en _logger del módulo top_acciones_diarias.
+    """
+    from core.account_manager import AccountManager
+    from modules import top_acciones_diarias as ta
+
+    mgr = AccountManager()
+    accounts = [a for a in mgr.list_accounts() if a.active]
+    if not accounts:
+        print('[job_top_acciones] sin cuentas activas — skip')
+        return
+
+    for acc in accounts:
+        try:
+            result = ta.top3(acc.alias, force_recompute=True)
+            print(f'[job_top_acciones] {acc.alias}: top_3={len(result.get("top_3", []))}, '
+                  f'all={len(result.get("all_candidates", []))}, '
+                  f'time={result.get("compute_time_ms", 0)}ms')
+        except Exception as e:
+            app.logger.error('[job_top_acciones] %s — error: %s', acc.alias, e)
+            raise
+
+
 def _start_scheduler():
     """Inicia APScheduler con los 5 jobs del Sprint 2 vía JobManager."""
     try:
@@ -13368,10 +13519,18 @@ def _start_scheduler():
             description='Verificar Buy Box en publicaciones de catálogo cada 6h. Alerta si se perdió.',
         )
 
+        # Job 6 — Top 3 acciones diarias (Sprint 4.1) — 06:00 ART
+        jm.register_job(
+            'top_acciones_daily', _job_top_acciones_daily,
+            CronTrigger(hour=6, minute=0, timezone='America/Argentina/Buenos_Aires'),
+            name='Top 3 acciones diarias',
+            description='Precomputa Top 3 oportunidades por cuenta antes del refresh diario. Cache 24h.',
+        )
+
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 5 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 6 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')
