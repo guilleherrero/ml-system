@@ -572,7 +572,7 @@ def api_usuarios_cambiar_pass_admin():
     return jsonify({'ok': True})
 
 def build_calendario():
-    from modules.radar_oportunidades import _build_calendario
+    from modules.calendario_comercial import _build_calendario
     today = date.today()
     year  = today.year
     eventos = []
