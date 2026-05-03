@@ -14,7 +14,6 @@ Diseño:
 """
 
 import hashlib
-import json
 import logging
 import os
 import time
@@ -70,22 +69,24 @@ def _fingerprint(tipo: str, *parts) -> str:
 
 
 def _load_json(path: str, default=None):
+    """Lee via db_storage.db_load — soporta filesystem local y PostgreSQL en Render.
+    Pasa por la misma abstracción que el resto del codebase."""
     try:
-        if not os.path.exists(path):
-            return default
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        from core.db_storage import db_load
+        result = db_load(path)
+        return result if result is not None else default
     except Exception as e:
         _logger.warning("[top_acciones] failed loading %s: %s", path, e)
         return default
 
 
 def _save_json(path: str, data) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, path)
+    """Escribe via db_storage.db_save — soporta filesystem local y PostgreSQL."""
+    try:
+        from core.db_storage import db_save
+        db_save(path, data)
+    except Exception as e:
+        _logger.error("[top_acciones] failed saving %s: %s", path, e)
 
 
 def _dismissed_path(alias: str) -> str:
@@ -192,9 +193,13 @@ def _candidates_duplicados(alias: str) -> list[Oportunidad]:
     out: list[Oportunidad] = []
     skipped: dict = {"sin_impacto": 0, "sano": 0}
 
-    stock = _load_json(_stock_path(alias))
-    if not stock or not stock.get("items"):
-        _logger.info("[top_acciones] duplicados: skip — sin stock_<alias>.json")
+    src_path = _stock_path(alias)
+    stock = _load_json(src_path)
+    items_count = len((stock or {}).get("items", []))
+    _logger.info("[top_acciones.duplicados] alias=%s, source_path=%s, loaded=%d items",
+                 alias, src_path, items_count)
+    if items_count == 0:
+        _logger.info("[top_acciones.duplicados] skip — sin items en %s", src_path)
         return out
 
     try:
@@ -242,16 +247,19 @@ def _candidates_ads(alias: str) -> list[Oportunidad]:
     Lee data/raw/ads_performance.csv (formato del módulo meli_ads_engine).
     Threshold: gap >= $5.000 ARS para evitar ruido."""
     out: list[Oportunidad] = []
+    src_path = os.path.join(DATA_DIR, "raw", "ads_performance.csv")
 
     try:
         from modules.meli_ads_engine import _load_ads_performance
         agg = _load_ads_performance()
     except Exception as e:
-        _logger.exception("[top_acciones] ads: load falló: %s", e)
+        _logger.exception("[top_acciones.ads] load falló: %s", e)
         return out
 
+    _logger.info("[top_acciones.ads] alias=%s, source_path=%s, loaded=%d items",
+                 alias, src_path, len(agg))
     if not agg:
-        _logger.info("[top_acciones] ads: skip — sin data/raw/ads_performance.csv")
+        _logger.info("[top_acciones.ads] skip — sin data/raw/ads_performance.csv")
         return out
 
     skipped = {"con_revenue": 0, "gap_chico": 0}
@@ -297,9 +305,13 @@ def _candidates_funnel(alias: str) -> list[Oportunidad]:
     out: list[Oportunidad] = []
     skipped = {"sin_trafico": 0, "con_ventas": 0, "sin_costo": 0}
 
-    stock = _load_json(_stock_path(alias))
-    if not stock or not stock.get("items"):
-        _logger.info("[top_acciones] funnel: skip — sin stock_<alias>.json")
+    src_path = _stock_path(alias)
+    stock = _load_json(src_path)
+    items_count = len((stock or {}).get("items", []))
+    _logger.info("[top_acciones.funnel] alias=%s, source_path=%s, loaded=%d items",
+                 alias, src_path, items_count)
+    if items_count == 0:
+        _logger.info("[top_acciones.funnel] skip — sin items en %s", src_path)
         return out
 
     for it in stock["items"]:
@@ -350,9 +362,13 @@ def _candidates_stock_critico(alias: str) -> list[Oportunidad]:
     out: list[Oportunidad] = []
     skipped = {"vel_baja": 0, "stock_amplio": 0, "sin_costo": 0, "sin_stock": 0}
 
-    stock = _load_json(_stock_path(alias))
-    if not stock or not stock.get("items"):
-        _logger.info("[top_acciones] stock_critico: skip — sin stock_<alias>.json")
+    src_path = _stock_path(alias)
+    stock = _load_json(src_path)
+    items_count = len((stock or {}).get("items", []))
+    _logger.info("[top_acciones.stock_critico] alias=%s, source_path=%s, loaded=%d items",
+                 alias, src_path, items_count)
+    if items_count == 0:
+        _logger.info("[top_acciones.stock_critico] skip — sin items en %s", src_path)
         return out
 
     for it in stock["items"]:
@@ -410,21 +426,26 @@ def _candidates_buybox(alias: str) -> list[Oportunidad]:
     """F — items perdiendo Buy Box. STUB: requiere snapshot persistido de /salud
     (que aún no existe en disco — el endpoint llama API live). Devuelve [] hasta
     que se implemente persistencia. Tampoco se debe llamar API live desde un cron diario."""
-    _logger.info("[top_acciones] buybox: skip — needs persisted salud_<alias>.json snapshot")
+    src_path = os.path.join(DATA_DIR, f"salud_{_safe(alias)}.json")
+    _logger.info("[top_acciones.buybox] alias=%s, source_path=%s, loaded=%d items "
+                 "(STUB — needs persisted salud snapshot)", alias, src_path, 0)
     return []
 
 
 def _candidates_repricing(alias: str) -> list[Oportunidad]:
     """B — wizard de repricing (BB perdidos con costo cargado). STUB: depende del
     snapshot de buybox para no llamar API live en el cron diario."""
-    _logger.info("[top_acciones] repricing: skip — depends on buybox snapshot")
+    _logger.info("[top_acciones.repricing] alias=%s, source_path=N/A, loaded=0 items "
+                 "(STUB — depends on buybox snapshot)", alias)
     return []
 
 
 def _candidates_full(alias: str) -> list[Oportunidad]:
     """C — stock muerto en Mercado Full. STUB: requiere snapshot persistido.
     full_manager.run() llama API live, no apto para cron diario."""
-    _logger.info("[top_acciones] full: skip — needs persisted full_<alias>.json snapshot")
+    src_path = os.path.join(DATA_DIR, f"full_{_safe(alias)}.json")
+    _logger.info("[top_acciones.full] alias=%s, source_path=%s, loaded=%d items "
+                 "(STUB — needs persisted full snapshot)", alias, src_path, 0)
     # Suprimir hint de unused import: la fórmula está disponible para cuando agreguemos snapshot.
     _ = impacto_stock_muerto_full
     _ = impacto_buybox_perdido
@@ -505,7 +526,7 @@ def top3(alias: str, *, force_recompute: bool = False) -> dict:
     _save_json(_cache_path(alias), result)
 
     # Primera corrida: dump verbose para postmortem
-    if not os.path.exists(_first_run_path(alias)):
+    if _load_json(_first_run_path(alias)) is None:
         _save_json(_first_run_path(alias), result)
         _logger.warning("[top_acciones] first-run snapshot saved for %s "
                         "(top_3=%d, all=%d, time=%dms)",
