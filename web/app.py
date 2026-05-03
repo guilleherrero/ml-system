@@ -7407,6 +7407,19 @@ def api_repricing_apply():
         return jsonify({'ok': False, 'error': str(e)})
 
 
+@app.route('/repricing/wizard')
+def repricing_wizard_page():
+    """Wizard de configuración masiva de repricing.
+
+    Toma alias del query string ?alias=... o el primer activo.
+    """
+    accounts = get_accounts()
+    alias    = request.args.get('alias', '').strip()
+    if not alias and accounts:
+        alias = accounts[0].get('alias', '')
+    return render_template('repricing_wizard.html', alias=alias, accounts=accounts)
+
+
 # ── Sprint 4.3: Wizard de Repricing ───────────────────────────────────────────
 
 # Strategy → multiplicador sobre el precio del competidor
