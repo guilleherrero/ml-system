@@ -810,31 +810,54 @@ function loadTopAcciones(alias) {
   const box  = document.getElementById(`top-acciones-${k}`);
   const list = document.getElementById(`top-acciones-list-${k}`);
   const foot = document.getElementById(`top-acciones-footer-${k}`);
-  if (!box || !list) return;
+  if (!box || !list) {
+    console.warn(`[top-acciones] DOM no encontrado para alias=${alias} (k=${k}). box=${!!box} list=${!!list}`);
+    return;
+  }
 
-  fetch(`/api/top-acciones/${encodeURIComponent(alias)}`)
-    .then(r => r.json())
+  // Cache-bust: el browser puede tener cacheada una respuesta vieja del endpoint
+  const url = `/api/top-acciones/${encodeURIComponent(alias)}?_=${Date.now()}`;
+  fetch(url, { cache: 'no-store' })
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} en ${url}`);
+      return r.json();
+    })
     .then(d => {
-      if (!d.ok) { box.style.display = 'none'; return; }
+      if (!d.ok) {
+        console.warn(`[top-acciones] respuesta ok=false para ${alias}`, d);
+        box.style.display = 'none';
+        return;
+      }
       box.style.display = 'block';
 
       const top = d.top_3 || [];
       if (top.length === 0) {
         // Cargar sugerencias proactivas para no dejar el bloque vacío
-        fetch(`/api/top-acciones/${encodeURIComponent(alias)}/sugerencias-proactivas`)
+        fetch(`/api/top-acciones/${encodeURIComponent(alias)}/sugerencias-proactivas`, { cache: 'no-store' })
           .then(r => r.json())
           .then(s => {
             list.innerHTML = renderTopAccionesEmpty(s.ok ? s.sugerencias : []);
           })
-          .catch(() => { list.innerHTML = renderTopAccionesEmpty([]); });
+          .catch(err => {
+            console.warn(`[top-acciones] sugerencias-proactivas fallaron para ${alias}`, err);
+            list.innerHTML = renderTopAccionesEmpty([]);
+          });
         foot.innerHTML = renderTopAccionesFooter(alias, d.done_summary);
         return;
       }
 
-      list.innerHTML = top.map((opp, i) => renderTopAccion(alias, opp, i + 1)).join('');
-      foot.innerHTML = renderTopAccionesFooter(alias, d.done_summary);
+      try {
+        list.innerHTML = top.map((opp, i) => renderTopAccion(alias, opp, i + 1)).join('');
+        foot.innerHTML = renderTopAccionesFooter(alias, d.done_summary);
+      } catch (err) {
+        console.error(`[top-acciones] error rendereando para ${alias}`, err, top);
+        box.style.display = 'none';
+      }
     })
-    .catch(() => { box.style.display = 'none'; });
+    .catch(err => {
+      console.error(`[top-acciones] fetch falló para ${alias}`, err);
+      box.style.display = 'none';
+    });
 }
 
 function topAccionDismiss(alias, fp, tipo, descripcion) {
