@@ -1581,6 +1581,20 @@ def dashboard():
         except Exception:
             pass
 
+        # Cobertura de costos — para banner del wizard en el Command Center
+        costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+        items_con_costo = sum(1 for i in stock_items if i.get('id') in costos_data)
+        cobertura_pct = round(items_con_costo / len(stock_items) * 100, 1) if stock_items else 0
+        # Facturación cubierta por los items que ya tienen costo
+        fact_total = sum(
+            (i.get('precio') or 0) * (i.get('ventas_30d') or 0) for i in stock_items
+        )
+        fact_cubierta = sum(
+            (i.get('precio') or 0) * (i.get('ventas_30d') or 0)
+            for i in stock_items if i.get('id') in costos_data
+        )
+        fact_cobertura_pct = round(fact_cubierta / fact_total * 100, 1) if fact_total else 0
+
         rows.append({
             'alias':           alias,
             'nickname':        acc.get('nickname', ''),
@@ -1596,6 +1610,11 @@ def dashboard():
             'rep_fecha':       rep_latest.get('fecha') if rep_latest else None,
             'repricing_count': repricing_count,
             'pausadas':        pausadas_count,
+            # Sprint 4.2 — para el banner de cobertura de costos
+            'costos_items_con_costo':  items_con_costo,
+            'costos_total_items':      len(stock_items),
+            'costos_cobertura_pct':    cobertura_pct,
+            'costos_fact_cobertura':   fact_cobertura_pct,
         })
 
     calendario = build_calendario()[:3]
