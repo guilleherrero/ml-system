@@ -441,6 +441,140 @@ class TestListarPendientes(VeredictoTestBase):
         self.assertEqual(pendientes[0]["snapshots_n"], 5)
 
 
+class TestParserClaude(unittest.TestCase):
+    """Cubre el parser tolerante de la respuesta de Claude (commit 3)."""
+
+    def _resp_valida(self) -> str:
+        return """{
+            "veredicto": "ganadora",
+            "score_exito": 78,
+            "razonamiento": "Visitas 7d crecieron de 100 a 140 (+40%), ventas 30d pasaron de 8 a 12 (+50%) y la posición mejoró del puesto #12 al #7.",
+            "recomendacion": "replicar",
+            "razon_recomendacion": "El patrón de keywords agregadas funcionó claramente. Aplicarlo a publicaciones similares.",
+            "metricas_clave": ["visitas_7d", "ventas_30d", "posicion"],
+            "alertas": []
+        }"""
+
+    def test_json_pelado_valido(self):
+        out = vo._parse_respuesta_claude(self._resp_valida())
+        self.assertEqual(out["veredicto"], "ganadora")
+        self.assertEqual(out["score_exito"], 78)
+        self.assertEqual(out["recomendacion"], "replicar")
+        self.assertEqual(len(out["metricas_clave"]), 3)
+
+    def test_json_envuelto_en_markdown(self):
+        envuelto = "```json\n" + self._resp_valida() + "\n```"
+        out = vo._parse_respuesta_claude(envuelto)
+        self.assertEqual(out["veredicto"], "ganadora")
+
+    def test_json_envuelto_en_fence_sin_lang(self):
+        envuelto = "Acá te dejo el resultado:\n```\n" + self._resp_valida() + "\n```\nEspero te sirva."
+        out = vo._parse_respuesta_claude(envuelto)
+        self.assertEqual(out["veredicto"], "ganadora")
+
+    def test_json_con_texto_alrededor(self):
+        # Sin fences pero con texto antes/después
+        envuelto = "Mi análisis: " + self._resp_valida() + " — fin del análisis."
+        out = vo._parse_respuesta_claude(envuelto)
+        self.assertEqual(out["score_exito"], 78)
+
+    def test_veredicto_invalido_lanza(self):
+        bad = self._resp_valida().replace('"ganadora"', '"genial"')
+        with self.assertRaisesRegex(ValueError, "Veredicto inválido"):
+            vo._parse_respuesta_claude(bad)
+
+    def test_recomendacion_invalida_lanza(self):
+        bad = self._resp_valida().replace('"replicar"', '"hacer_magia"')
+        with self.assertRaisesRegex(ValueError, "Recomendación inválida"):
+            vo._parse_respuesta_claude(bad)
+
+    def test_score_fuera_de_rango_lanza(self):
+        bad = self._resp_valida().replace('"score_exito": 78', '"score_exito": 150')
+        with self.assertRaisesRegex(ValueError, "score_exito fuera de rango"):
+            vo._parse_respuesta_claude(bad)
+
+    def test_listas_faltantes_se_normalizan(self):
+        sin_listas = """{
+            "veredicto": "neutra", "score_exito": 50,
+            "razonamiento": "x", "recomendacion": "mantener",
+            "razon_recomendacion": "x"
+        }"""
+        out = vo._parse_respuesta_claude(sin_listas)
+        self.assertEqual(out["metricas_clave"], [])
+        self.assertEqual(out["alertas"], [])
+
+    def test_sin_json_lanza(self):
+        with self.assertRaisesRegex(ValueError, "Respuesta sin JSON"):
+            vo._parse_respuesta_claude("No tengo JSON para vos, perdón.")
+
+
+class TestPromptIncluyeDeltasConcretos(unittest.TestCase):
+    """El prompt debe citar deltas concretos. Si esto rompe, calibramos."""
+
+    def test_prompt_contiene_deltas_y_threshold(self):
+        deltas = {
+            "visitas_7d":   {"t0": 100, "actual": 140, "delta_abs": 40, "delta_pct": 40.0},
+            "ventas_30d":   {"t0": 8,   "actual": 12,  "delta_abs": 4,  "delta_pct": 50.0},
+            "ventas_total": {"t0": 480, "actual": 520, "delta_abs": 40, "delta_pct": 8.3},
+            "conv_pct":     {"t0": 2.5, "actual": 3.5, "delta_abs": 1.0, "delta_pct": 40.0},
+            "posicion":     {"t0": 12,  "actual": 7,   "delta_abs": 5,  "delta_pct": None},
+        }
+        baseline = {
+            "posicion_kw": "lampara led",
+            "visibilidad": {"score_calidad_ml": 65, "tiene_buy_box": False, "esta_en_catalogo": True},
+        }
+        prompt = vo._construir_prompt(
+            titulo_producto="Lampara LED Solar 100W",
+            fecha_opt="2026-04-25", dias=9,
+            baseline=baseline, deltas=deltas,
+            snapshots_usados=7, threshold=15.0,
+            applied=["titulo", "ficha"],
+        )
+        # Deltas concretos en el prompt (formato +40.0% del helper)
+        self.assertIn("+40.0%", prompt)
+        self.assertIn("+50.0%", prompt)
+        self.assertIn("subió 5 puesto", prompt)
+        # Threshold mencionado
+        self.assertIn("15.0%", prompt)
+        # Cambios aplicados listados
+        self.assertIn("titulo, ficha", prompt)
+        # Reglas duras presentes
+        self.assertIn("NO inventes", prompt)
+        self.assertIn("NO especules", prompt)
+        # Estructura JSON pedida
+        self.assertIn('"veredicto"', prompt)
+        self.assertIn('"recomendacion"', prompt)
+
+
+class TestErrorIA(VeredictoTestBase):
+    """Si _generar_veredicto_ia lanza, evaluar_optimizacion devuelve estado=error."""
+
+    def setUp(self):
+        super().setUp()
+        self._orig_gen = vo._generar_veredicto_ia
+        def _exploding(**kwargs):
+            raise RuntimeError("Claude API timeout (mock)")
+        vo._generar_veredicto_ia = _exploding
+
+    def tearDown(self):
+        vo._generar_veredicto_ia = self._orig_gen
+        super().tearDown()
+
+    def test_error_ia_no_propaga_y_no_persiste(self):
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        self.assertEqual(r["estado"], "error")
+        self.assertIn("Claude API timeout", r["mensaje"])
+        # No debería haber nada persistido
+        v = vo.obtener_veredicto("MLA1", "N", self.data_dir, incluir_no_vigentes=True)
+        self.assertIsNone(v)
+
+
 class TestPersistenciaTTL(VeredictoTestBase):
     """Cubre TTL de descartados y historial agregado (commit 2)."""
 

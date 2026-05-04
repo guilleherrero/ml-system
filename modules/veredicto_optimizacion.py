@@ -538,19 +538,30 @@ def evaluar_optimizacion(item_id: str, alias: str, data_dir: str = "",
     deltas = _calcular_deltas(baseline, ultimo)
     threshold = threshold_aplicado(len(snapshots))
 
-    veredicto_dict = _generar_veredicto_ia(
-        alias=alias,
-        item_id=item_id,
-        titulo_producto=entry.get("titulo_producto") or "",
-        fecha_opt=fecha_opt,
-        dias=dias,
-        baseline=baseline,
-        ultimo=ultimo,
-        deltas=deltas,
-        snapshots_usados=len(snapshots),
-        threshold=threshold,
-        applied=entry.get("applied") or [],
-    )
+    try:
+        veredicto_dict = _generar_veredicto_ia(
+            alias=alias,
+            item_id=item_id,
+            titulo_producto=entry.get("titulo_producto") or "",
+            fecha_opt=fecha_opt,
+            dias=dias,
+            baseline=baseline,
+            deltas=deltas,
+            snapshots_usados=len(snapshots),
+            threshold=threshold,
+            applied=entry.get("applied") or [],
+            data_dir=data_dir,
+        )
+    except Exception as e:
+        _logger.error("[veredicto] error generando IA para %s/%s: %s",
+                      alias, item_id, e)
+        return {
+            "estado":             "error",
+            "dias_transcurridos": dias,
+            "snapshots_usados":   len(snapshots),
+            "mensaje":            f"Error al generar veredicto: {e}",
+            "veredicto":          None,
+        }
 
     # ── 6) Persistir ─────────────────────────────────────────────────────────
     _persistir_veredicto(data_dir, veredicto_dict, force_replace=bool(existente))
@@ -594,19 +605,296 @@ def _persistir_veredicto(data_dir: str, veredicto_dict: dict,
     _persistir_store(data_dir, store)
 
 
-# ── Generación IA — definida en commit 3, stub aquí para test ────────────────
+# ── Generación IA (Claude Opus) ──────────────────────────────────────────────
+
+# Costo por modelo en USD por 1M tokens (espejado de web/app.py para no
+# crear dependencia circular con el server)
+_TOKEN_PRICES_USD_PER_M = {
+    "claude-opus-4-6":           {"input": 15.0,  "output": 75.0},
+    "claude-haiku-4-5-20251001": {"input":  0.25, "output":  1.25},
+}
+
+
+def _fmt_num(v, suffix: str = "") -> str:
+    """Formato amigable para el prompt: enteros con separador, floats con 2 dec."""
+    if v is None:
+        return "n/d"
+    try:
+        f = float(v)
+        if f.is_integer():
+            return f"{int(f):,}".replace(",", ".") + suffix
+        return f"{f:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + suffix
+    except (TypeError, ValueError):
+        return str(v) + suffix
+
+
+def _fmt_delta_pct(d: float | None) -> str:
+    if d is None:
+        return "n/d"
+    sign = "+" if d > 0 else ""
+    return f"{sign}{d}%"
+
+
+def _serializar_deltas_para_prompt(deltas: dict) -> str:
+    """Tabla compacta T0 | actual | Δ — minimiza tokens y maximiza claridad."""
+    rows = []
+    metricas = [
+        ("Visitas 7d",   "visitas_7d",   ""),
+        ("Ventas 30d",   "ventas_30d",   " unid"),
+        ("Ventas total", "ventas_total", " unid"),
+        ("Conversión",   "conv_pct",     "%"),
+    ]
+    for label, key, suf in metricas:
+        d = deltas.get(key) or {}
+        rows.append(
+            f"  - {label:<14}T0: {_fmt_num(d.get('t0'), suf):<12} "
+            f"actual: {_fmt_num(d.get('actual'), suf):<12} "
+            f"Δ: {_fmt_delta_pct(d.get('delta_pct'))}"
+        )
+    # Posición — formato especial (ranking discreto, lower is better)
+    pd = deltas.get("posicion") or {}
+    pos_t0   = _fmt_num(pd.get("t0"))
+    pos_now  = _fmt_num(pd.get("actual"))
+    pos_delta = pd.get("delta_abs")
+    if pos_delta is None:
+        pos_str = "n/d"
+    elif pos_delta > 0:
+        pos_str = f"subió {int(pos_delta)} puesto(s) (mejoró)"
+    elif pos_delta < 0:
+        pos_str = f"bajó {abs(int(pos_delta))} puesto(s) (empeoró)"
+    else:
+        pos_str = "sin cambio"
+    rows.append(
+        f"  - Posición       T0: #{pos_t0:<11} actual: #{pos_now:<11} Δ: {pos_str}"
+    )
+    return "\n".join(rows)
+
+
+def _construir_prompt(titulo_producto: str, fecha_opt: str, dias: int,
+                      baseline: dict, deltas: dict,
+                      snapshots_usados: int, threshold: float,
+                      applied: list) -> str:
+    """Prompt compacto y accionable. ~1.2-1.8K tokens input."""
+    pos_kw = baseline.get("posicion_kw") or "n/d"
+    score_ml = (baseline.get("visibilidad") or {}).get("score_calidad_ml")
+    bb       = (baseline.get("visibilidad") or {}).get("tiene_buy_box")
+    cat      = (baseline.get("visibilidad") or {}).get("esta_en_catalogo")
+
+    cambios_aplicados = ", ".join(applied) if applied else "no especificado"
+    data_parcial      = "SÍ" if snapshots_usados < SNAPSHOTS_PARA_THRESHOLD_BAJO else "no"
+    deltas_block      = _serializar_deltas_para_prompt(deltas)
+
+    return f"""Sos un consultor de e-commerce evaluando si una optimización SEO de MercadoLibre Argentina fue exitosa. Tenés acceso a métricas reales antes/después capturadas por nuestro sistema. Reglas duras:
+
+1. NO inventes datos. Solo razoná sobre lo que está abajo.
+2. NO especules sobre el algoritmo de ML (es opaco).
+3. Sé conciso, accionable, y citá deltas CONCRETOS (números, no "mejoró").
+4. La recomendación debe ser un siguiente paso claro: replicar / mantener / revertir / regenerar.
+5. Si la data es parcial (snapshots < 5), mencionalo en "alertas" — no inventes confianza.
+
+═══════════════════════════════════════════════════════
+PRODUCTO: {titulo_producto[:120]}
+KEYWORD PRIORITARIA: "{pos_kw}"
+OPTIMIZACIÓN APLICADA hace {dias} días ({fecha_opt})
+CAMBIOS APLICADOS: {cambios_aplicados}
+
+CONTEXTO DEL BASELINE T0:
+  - Score de calidad ML: {score_ml if score_ml is not None else "n/d"}/100
+  - En catálogo: {"sí" if cat else "no" if cat is not None else "n/d"}
+  - Buy Box: {"sí" if bb else "no" if bb is not None else "n/d"}
+
+DELTAS (T0 → snapshot más reciente):
+{deltas_block}
+
+DATA PARCIAL: {data_parcial}  (snapshots usados: {snapshots_usados})
+THRESHOLD APLICADO: {threshold}% (cambios menores se consideran ruido)
+═══════════════════════════════════════════════════════
+
+REGLAS DE VEREDICTO (basadas en threshold {threshold}%):
+- "ganadora": ≥2 métricas clave (visitas, ventas, conversión, posición) mejoran ≥{threshold}%, sin caídas significativas.
+- "perdedora": ≥2 métricas clave caen ≥{threshold}%, o ventas 30d caen ≥10%.
+- "neutra": el resto, o data muy ruidosa para conclusión fuerte.
+
+RECOMENDACIÓN según veredicto:
+- "replicar":  ganadora con patrón claro → llevar el cambio a publicaciones similares (Sprint 3.3).
+- "mantener":  ganadora moderada o neutra positiva → no tocar, seguir midiendo.
+- "regenerar": neutra ambigua o métricas mixtas → re-ejecutar Optimizar IA con aprendizajes.
+- "revertir":  perdedora clara con caída sostenida → volver al título/ficha anterior.
+
+DEVOLVÉ ÚNICAMENTE JSON VÁLIDO (sin markdown, sin texto adicional, sin ```), con esta estructura:
+{{
+  "veredicto": "ganadora" | "neutra" | "perdedora",
+  "score_exito": <int 0-100>,
+  "razonamiento": "<3-5 oraciones citando deltas concretos>",
+  "recomendacion": "replicar" | "mantener" | "revertir" | "regenerar",
+  "razon_recomendacion": "<1-2 oraciones explicando por qué esa acción>",
+  "metricas_clave": ["<2-3 métricas que más movieron, ej: visitas_7d>"],
+  "alertas": ["<observaciones, ej: 'data parcial: solo 4 snapshots'>"]
+}}"""
+
+
+def _parse_respuesta_claude(texto: str) -> dict:
+    """Parsea el JSON devuelto por Claude. Tolerante a cercos de markdown."""
+    import json as _json
+    import re
+
+    # Si vino envuelto en ```json ... ```, extraer
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", texto, re.DOTALL)
+    candidato = fence.group(1) if fence else texto
+
+    # Si hay texto antes/después del JSON, extraer el primer objeto balanceado
+    inicio = candidato.find("{")
+    if inicio == -1:
+        raise ValueError(f"Respuesta sin JSON: {texto[:200]}")
+    profundidad = 0
+    fin = -1
+    for i, ch in enumerate(candidato[inicio:], inicio):
+        if ch == "{":
+            profundidad += 1
+        elif ch == "}":
+            profundidad -= 1
+            if profundidad == 0:
+                fin = i
+                break
+    if fin == -1:
+        raise ValueError(f"JSON sin cerrar: {candidato[:200]}")
+
+    obj = _json.loads(candidato[inicio:fin + 1])
+
+    # Validaciones / saneamiento
+    if obj.get("veredicto") not in VEREDICTOS_VALIDOS:
+        raise ValueError(f"Veredicto inválido: {obj.get('veredicto')!r}. "
+                         f"Esperaba uno de {VEREDICTOS_VALIDOS}")
+    if obj.get("recomendacion") not in RECOMENDACIONES_OK:
+        raise ValueError(f"Recomendación inválida: {obj.get('recomendacion')!r}. "
+                         f"Esperaba una de {RECOMENDACIONES_OK}")
+    score = obj.get("score_exito")
+    if not isinstance(score, (int, float)) or not (0 <= score <= 100):
+        raise ValueError(f"score_exito fuera de rango: {score!r}")
+
+    # Listas pueden venir vacías o como string — normalizar
+    if not isinstance(obj.get("metricas_clave"), list):
+        obj["metricas_clave"] = []
+    if not isinstance(obj.get("alertas"), list):
+        obj["alertas"] = []
+
+    return obj
+
+
+def _log_token_usage_local(data_dir: str, funcion: str, modelo: str,
+                           tokens_in: int, tokens_out: int) -> float:
+    """Loggea uso de tokens en data/token_log.json. Devuelve costo USD calculado.
+
+    Espeja la estructura de web/app.py:_log_token_usage para que el cap mensual
+    los pueda agregar uniformemente."""
+    rates = _TOKEN_PRICES_USD_PER_M.get(modelo, {"input": 3.0, "output": 15.0})
+    costo = (tokens_in * rates["input"] + tokens_out * rates["output"]) / 1_000_000
+    entry = {
+        "ts":      datetime.now().isoformat(timespec="seconds"),
+        "funcion": funcion,
+        "modelo":  modelo,
+        "in":      tokens_in,
+        "out":     tokens_out,
+        "usd":     round(costo, 6),
+    }
+    path = os.path.join(data_dir, "token_log.json")
+    try:
+        log = _load_json(path, default={"entries": []}) or {"entries": []}
+        log.setdefault("entries", []).append(entry)
+        if len(log["entries"]) > 1000:
+            log["entries"] = log["entries"][-1000:]
+        _save_json(path, log)
+    except Exception as e:
+        _logger.error("[veredicto] no pude loggear tokens: %s", e)
+    return round(costo, 6)
+
 
 def _generar_veredicto_ia(alias: str, item_id: str, titulo_producto: str,
                           fecha_opt: str, dias: int,
-                          baseline: dict, ultimo: dict, deltas: dict,
+                          baseline: dict, deltas: dict,
                           snapshots_usados: int, threshold: float,
-                          applied: list) -> dict:
-    """Genera el veredicto via Claude API. Stub implementado en commit 3.
+                          applied: list, data_dir: str = "") -> dict:
+    """Genera el veredicto vía Claude Opus. Devuelve el dict completo listo
+    para persistir, con campo `_debug` rico para calibración futura.
 
-    Hasta entonces, los tests usan monkey-patch para evitar llamadas reales."""
-    raise NotImplementedError(
-        "_generar_veredicto_ia se implementa en commit 3 (prompt + Claude API)."
+    Lanza excepción si la API key no está, si Claude falla o si el JSON es
+    inválido. El caller (evaluar_optimizacion) decide cómo manejar el error.
+    """
+    import os as _os
+    api_key = _os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY no configurada en el entorno.")
+
+    # Import lazy para no exigir anthropic en tests con stub
+    from anthropic import Anthropic  # type: ignore
+
+    client = Anthropic(api_key=api_key)
+    prompt = _construir_prompt(
+        titulo_producto=titulo_producto, fecha_opt=fecha_opt, dias=dias,
+        baseline=baseline, deltas=deltas,
+        snapshots_usados=snapshots_usados, threshold=threshold,
+        applied=applied,
     )
+
+    t0 = datetime.now()
+    msg = client.messages.create(
+        model=MODELO_DEFAULT,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    duracion_ms = int((datetime.now() - t0).total_seconds() * 1000)
+
+    # Extraer texto del response
+    texto = ""
+    for block in (msg.content or []):
+        if getattr(block, "type", "") == "text":
+            texto += block.text
+    if not texto:
+        raise RuntimeError(f"Claude devolvió respuesta vacía. Stop reason: {msg.stop_reason}")
+
+    parsed = _parse_respuesta_claude(texto)
+
+    tokens_in  = msg.usage.input_tokens
+    tokens_out = msg.usage.output_tokens
+    costo = _log_token_usage_local(
+        data_dir or _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data"),
+        funcion="Veredicto IA — Evaluar optimización",
+        modelo=MODELO_DEFAULT,
+        tokens_in=tokens_in, tokens_out=tokens_out,
+    )
+
+    fp = fingerprint_veredicto(alias, item_id, fecha_opt)
+    return {
+        "fingerprint":         fp,
+        "alias":               alias,
+        "item_id":             item_id,
+        "titulo_producto":     titulo_producto,
+        "fecha_optimizacion":  fecha_opt,
+        "fecha_veredicto":     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "dias_transcurridos":  dias,
+        "veredicto":           parsed["veredicto"],
+        "score_exito":         int(parsed["score_exito"]),
+        "razonamiento":        parsed["razonamiento"],
+        "recomendacion":       parsed["recomendacion"],
+        "razon_recomendacion": parsed["razon_recomendacion"],
+        "metricas_clave":      parsed["metricas_clave"],
+        "alertas":             parsed["alertas"],
+        "deltas":              deltas,
+        "snapshots_usados":    snapshots_usados,
+        "estado":              "vigente",
+        "_debug": {
+            "timestamp":             datetime.now().isoformat(timespec="seconds"),
+            "tokens_in":             tokens_in,
+            "tokens_out":            tokens_out,
+            "cost_usd":              costo,
+            "duracion_ms":           duracion_ms,
+            "threshold_aplicado":    threshold,
+            "snapshots_usados":      snapshots_usados,
+            "snapshots_disponibles": snapshots_usados,
+            "prompt_version":        PROMPT_VERSION,
+            "modelo":                MODELO_DEFAULT,
+        },
+    }
 
 
 __all__ = [
