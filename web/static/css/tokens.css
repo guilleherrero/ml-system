@@ -1,0 +1,155 @@
+/* ============================================================
+   tokens.css — Sistema ML Novara (design tokens)
+   Sprint 5.2 / 2026-05-04
+
+   Variables CSS centralizadas. Todos los componentes (.app-*) y
+   templates deben referenciar estas variables — no hardcodear hex,
+   tamaños o spacings.
+
+   Convención de paleta semántica con escala 50-100-400-500-700:
+     50  = fondo muy claro (banner soft)
+     100 = fondo light (badge bg, alert bg)
+     400 = brillante (KPIs, números grandes — usa los hex "tailwind-500")
+     500 = principal (texto, borde — usa los hex "tailwind-600")
+     700 = oscuro (énfasis, texto sobre fondo light)
+
+   La escala se calibró contra los valores REALES más usados en el
+   sistema (ver docs/DESIGN_SYSTEM.md). Los hex se eligieron para
+   coincidir exactamente con lo que ya estaba en producción — esto
+   es REFACTOR, no rediseño.
+   ============================================================ */
+
+:root {
+
+  /* ═══ Colores semánticos ═══════════════════════════════════ */
+
+  /* Critical — red */
+  --color-critical-50:  #fef2f2;
+  --color-critical-100: #fee2e2;
+  --color-critical-400: #ef4444;   /* red-500 — KPIs, borders crit */
+  --color-critical-500: #dc2626;   /* red-600 — texto, badge */
+  --color-critical-700: #991b1b;   /* énfasis sobre fondo crit-100 */
+
+  /* Warning — amber */
+  --color-warning-50:   #fffbeb;
+  --color-warning-100:  #fef3c7;
+  --color-warning-400:  #f59e0b;   /* amber-500 — KPIs */
+  --color-warning-500:  #d97706;   /* amber-600 — texto */
+  --color-warning-700:  #92400e;   /* énfasis sobre fondo warn-100 */
+
+  /* Success — green */
+  --color-success-50:   #f0fdf4;
+  --color-success-100:  #dcfce7;
+  --color-success-400:  #10b981;   /* emerald-500 — KPIs */
+  --color-success-500:  #16a34a;   /* green-600 — texto */
+  --color-success-700:  #15803d;   /* énfasis sobre fondo success-100 */
+
+  /* Info / primario — blue */
+  --color-info-100:     #dbeafe;
+  --color-info-300:     #93c5fd;
+  --color-info-400:     #60a5fa;
+  --color-info-500:     #3b82f6;   /* blue-500 — acento principal */
+  --color-info-600:     #2563eb;   /* blue-600 — acción primaria */
+  --color-info-700:     #1d4ed8;   /* blue-700 — pressed */
+
+  /* Neutral / grises */
+  --color-neutral-0:    #ffffff;
+  --color-neutral-50:   #f8fafc;   /* slate-50 — fondo muy claro */
+  --color-neutral-100:  #f1f5f9;   /* slate-100 — fondo cards alt */
+  --color-neutral-200:  #e2e8f0;   /* slate-200 — bordes/dividers */
+  --color-neutral-400:  #94a3b8;   /* slate-400 — texto secundario */
+  --color-neutral-500:  #6b7280;   /* gray-500 — texto neutro */
+  --color-neutral-600:  #64748b;   /* slate-500 — texto neutro alt */
+  --color-neutral-700:  #374151;   /* gray-700 — texto oscuro */
+  --color-neutral-800:  #1e293b;   /* slate-800 — fondo oscuro */
+  --color-neutral-900:  #0f1117;   /* sidebar bg */
+
+  /* Sidebar (esquema oscuro propio) */
+  --color-sidebar-bg:               #0f1117;
+  --color-sidebar-bg-alt:           #161920;
+  --color-sidebar-border:           #1e2128;
+  --color-sidebar-text:             #6b7280;
+  --color-sidebar-text-hover:       #e5e7eb;
+  --color-sidebar-text-active:      #ffffff;
+  --color-sidebar-link-hover-bg:    #1a1d26;
+  --color-sidebar-link-active-bg:   #1a1d26;
+
+  /* ═══ Tipografía ═══════════════════════════════════════════ */
+
+  --font-base: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Escala calibrada al sistema actual (escala comprimida) */
+  --text-xxs:    0.65rem;   /* leyendas diminutas */
+  --text-xs:     0.72rem;   /* labels, hints (top frecuencia: 141 usos) */
+  --text-sm:     0.78rem;   /* texto comprimido */
+  --text-md:     0.85rem;   /* body comprimido */
+  --text-base:   0.875rem;  /* estándar Bootstrap */
+  --text-lg:     1rem;      /* body grande */
+  --text-h3:     1.1rem;    /* subtítulos */
+  --text-h2:     1.3rem;    /* títulos sección */
+  --text-h1:     1.75rem;   /* números KPI */
+  --text-display: 2rem;     /* display titles */
+
+  --line-height-tight:   1.2;
+  --line-height-base:    1.5;
+  --line-height-relaxed: 1.7;
+
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  /* ═══ Espaciado (escala 4-8-16-24-32) ═════════════════════ */
+
+  --spacing-xxs: 2px;
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  16px;
+  --spacing-lg:  24px;
+  --spacing-xl:  32px;
+  --spacing-2xl: 48px;
+
+  /* ═══ Border radius ═══════════════════════════════════════ */
+
+  --radius-sm:   4px;     /* botones chicos, badges */
+  --radius-md:   8px;     /* cajas, botones */
+  --radius-lg:   10px;    /* cards estándar (decisión Sprint 5.2) */
+  --radius-xl:   12px;    /* cards extra-redondeadas (base.html) */
+  --radius-pill: 999px;   /* pills, avatares circulares */
+
+  /* ═══ Sombras ═════════════════════════════════════════════ */
+
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.07);   /* elevation-100 */
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);  /* elevation-200 */
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.20); /* elevation-300 */
+
+  /* ═══ Iconos ═════════════════════════════════════════════ */
+
+  --icon-xs: 12px;
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --icon-xl: 32px;
+
+  /* ═══ Layout ═════════════════════════════════════════════ */
+
+  --sidebar-width: 240px;
+
+  /* ═══════════════════════════════════════════════════════════
+     Aliases retrocompatibles
+     ────────────────────────────────────────────────────────────
+     Mantienen el nombre viejo de variables que estaban en el
+     <style> de base.html. Los templates que usen var(--sb),
+     var(--sbw), var(--accent), etc. siguen funcionando durante
+     la transición.
+
+     ELIMINAR estos aliases al cerrar Sprint 5.2-bis (cuando todos
+     los templates hayan migrado a los tokens nuevos).
+     ═══════════════════════════════════════════════════════════ */
+
+  --sb:      var(--color-sidebar-bg);     /* #0f1117 */
+  --sb2:     var(--color-sidebar-bg-alt); /* #161920 */
+  --sbw:     var(--sidebar-width);        /* 240px */
+  --accent:  var(--color-info-500);       /* #3b82f6 */
+  --accent2: #6366f1;                      /* indigo-500 — único uso (brand gradient) */
+}
