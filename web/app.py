@@ -13561,6 +13561,111 @@ def _job_top_acciones_daily():
             raise
 
 
+def _job_daily_snapshots():
+    """Job 8 — Sprint 3.2 (extensión 3.1): captura snapshot diario de cada
+    optimización del monitor para que el Veredicto IA semanal tenga data
+    confiable en T+7.
+
+    Se ejecuta diariamente a las 04:00 ART (antes de top_acciones_daily y
+    daily_update). Itera sobre `monitor_evolucion.json`, agrupa por alias,
+    instancia el MLClient una vez por alias y captura snapshots livianos
+    (mismo shape que /api/monitor-refresh: visitas_7d, ventas_total,
+    posición, conv_pct, ventas_30d).
+
+    Filtros:
+      - Solo opts con fecha_opt entre 1 y 90 días atrás (skip muy nuevas o
+        muy viejas — las viejas ya tienen veredicto, las nuevas se capturan
+        en el flujo del baseline).
+      - Skip si la entry está _capturing (evitar race con baseline async).
+    """
+    from core.account_manager import AccountManager
+    from datetime import datetime as _dtn, timedelta as _tdd
+
+    mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    mon = load_json(mon_path) or {'items': []}
+    if not isinstance(mon, dict) or not mon.get('items'):
+        print('[job_daily_snapshots] sin items en monitor — skip')
+        return
+
+    hoy = _dtn.now()
+    cutoff_min = hoy - _tdd(days=90)
+    cutoff_max = hoy - _tdd(days=1)
+
+    # Agrupar por alias para reusar headers
+    por_alias: dict[str, list[dict]] = {}
+    for it in mon['items']:
+        if it.get('_capturing'):
+            continue
+        if not it.get('baseline'):
+            continue
+        fecha_opt_str = (it.get('fecha_opt') or '')[:10]
+        try:
+            fecha_opt = _dtn.strptime(fecha_opt_str, '%Y-%m-%d')
+        except (TypeError, ValueError):
+            continue
+        if fecha_opt < cutoff_min or fecha_opt > cutoff_max:
+            continue
+        alias = it.get('alias')
+        if not alias:
+            continue
+        por_alias.setdefault(alias, []).append(it)
+
+    if not por_alias:
+        print('[job_daily_snapshots] no hay opts elegibles (1-90 días) — skip')
+        return
+
+    mgr = AccountManager()
+    procesados = 0
+    errores = 0
+    fecha_snap_str = hoy.strftime('%Y-%m-%d %H:%M')
+
+    for alias, items in por_alias.items():
+        try:
+            client = mgr.get_client(alias)
+            client._ensure_token()
+            heads = {'Authorization': f'Bearer {client.account.access_token}'}
+        except Exception as e:
+            app.logger.error('[job_daily_snapshots] %s — auth falló: %s', alias, e)
+            errores += len(items)
+            continue
+
+        for it in items:
+            item_id = it.get('item_id')
+            try:
+                snap = _capturar_snapshot_simple(item_id, heads, alias)
+                snap['fecha'] = fecha_snap_str
+                # Anti-duplicado: si ya hay un snapshot del mismo día, lo reemplazamos
+                today_iso = hoy.strftime('%Y-%m-%d')
+                snaps = it.setdefault('snapshots', [])
+                snaps = [s for s in snaps if (s.get('fecha') or '')[:10] != today_iso]
+                snaps.append(snap)
+                it['snapshots'] = snaps[-30:]   # rolling 30
+                it['ultimo_snapshot'] = snap
+
+                # Si tiene republicación, también capturamos snapshot de la original
+                pub_orig = it.get('publicacion_original') or {}
+                mla_orig = pub_orig.get('mla')
+                if mla_orig:
+                    snap_orig = _capturar_snapshot_simple(mla_orig, heads, alias)
+                    snap_orig['fecha'] = fecha_snap_str
+                    o_snaps = pub_orig.setdefault('snapshots', [])
+                    o_snaps = [s for s in o_snaps if (s.get('fecha') or '')[:10] != today_iso]
+                    o_snaps.append(snap_orig)
+                    pub_orig['snapshots'] = o_snaps[-30:]
+                    pub_orig['ultimo_snapshot'] = snap_orig
+                    it['publicacion_original'] = pub_orig
+
+                procesados += 1
+            except Exception as e:
+                errores += 1
+                app.logger.error('[job_daily_snapshots] %s/%s — %s',
+                                 alias, item_id, e)
+
+    save_json(mon_path, mon)
+    print(f'[job_daily_snapshots] DONE — {procesados} snapshots ok, {errores} errores '
+          f'sobre {sum(len(v) for v in por_alias.values())} items elegibles.')
+
+
 def _job_veredictos_weekly():
     """Job 7 — Sprint 3.2: Veredicto IA semanal de optimizaciones aplicadas.
 
@@ -13711,7 +13816,7 @@ def _start_scheduler():
             description='Precomputa Top 3 oportunidades por cuenta antes del refresh diario. Cache 24h.',
         )
 
-        # Job 7 — Veredicto IA semanal (Sprint 3.2) — Lunes 06:00 ART
+        # Job 7 — Veredicto IA semanal (Sprint 3.2) — Lunes 06:15 ART
         # Ejecuta DESPUÉS del top_acciones_daily para no competir por CPU.
         # Hard cap $30/mes con auto-pausa si se excede.
         jm.register_job(
@@ -13724,10 +13829,23 @@ def _start_scheduler():
                          'Hard cap $30/mes con auto-pausa.'),
         )
 
+        # Job 8 — Snapshot diario del Monitor (Sprint 3.2 / extensión 3.1) — 04:00 ART
+        # Captura snapshot ligero de cada opt del monitor (1-90 días) para que
+        # el cron weekly_veredictos tenga data confiable en T+7.
+        jm.register_job(
+            'daily_snapshots', _job_daily_snapshots,
+            CronTrigger(hour=4, minute=0,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Snapshot diario del Monitor',
+            description=('Captura snapshot ligero (visitas, ventas, posición, '
+                         'conversión) de cada optimización aplicada hace 1-90 días. '
+                         'Alimenta al Veredicto IA semanal con timeline completa.'),
+        )
+
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 7 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 8 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')
