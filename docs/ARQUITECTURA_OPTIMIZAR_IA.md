@@ -1,6 +1,7 @@
 # Arquitectura — Optimizar IA (`modules/seo_optimizer.py`)
 
-**Tamaño:** 2.893 líneas · **Hash MD5 al momento de escribir:** `1e7272662f0761fba99bdb07f23fa1cc`
+**Tamaño:** 2.900 líneas · **Hash MD5 actual:** `74783469aeae1d4c12bec279d034dff3`
+(hash original al escribir este doc: `1e7272662f0761fba99bdb07f23fa1cc` — ver sección 9 para historial de modificaciones autorizadas)
 
 Este documento describe la arquitectura interna del motor SEO sin describir
 cómo modificarlo. Se actualiza solo cuando se agregan funciones públicas o
@@ -546,3 +547,49 @@ Endpoints usados (todos con `Authorization: Bearer <token>`):
 9. ☐ Si se agregó una constante, **actualizar la sección 2**.
 10. ☐ Cambio significativo (afecta el output del motor) → seguir el protocolo de **validación manual** en `docs/GUIA_REGRESION.md` (correr una optimización en producción y verificar que todos los bloques aparecen).
 11. ☐ Antes de mergear a `main`, repasar este checklist completo.
+
+---
+
+## 9. Historial de modificaciones autorizadas
+
+Cada entrada documenta una excepción explícita a la **Regla #1** (no tocar
+`modules/seo_optimizer.py` sin autorización). Solo se modifican prompts o
+constantes acotadas; nunca la lógica algorítmica de los 7 sub-módulos.
+
+### 2026-05-04 — hotfix prompt: prevenir emojis y leakage de checklist
+
+**Autorizado por:** usuario (Guille) en sesión Sprint 3.2.
+**Hash antes:** `1e7272662f0761fba99bdb07f23fa1cc`
+**Hash después:** `74783469aeae1d4c12bec279d034dff3`
+**Función modificada:** `_build_synthesis_prompt` (única función tocada).
+**Diff:** +7 líneas, 0 modificadas, 0 borradas.
+
+**Motivación:** auditoría de outputs reales en `data/optimizaciones_Cuenta_1.json`
+detectó dos bugs:
+- 1/6 descripciones con emojis (`□`, `✓`) — MLA1509022925.
+- En el mismo caso, leakage del bloque `CHECKLIST DE VALIDACIÓN INTERNA`
+  del prompt como contenido de la descripción (Claude lo copió textual).
+
+Ambos romperían la publicación si se aplicaran a ML.
+
+**Cambios al prompt:**
+1. En el bloque `REGLAS TÉCNICAS DE ML` de DESCRIPCIÓN se agregó una línea
+   prohibiendo emojis explícitamente, listando los más comunes
+   (`✓ ✗ ⚠ □ ★ ► ▸ ✅ ❌ 🎯 📊`) y aclarando que aplica también a FICHA
+   y TÍTULO.
+2. Se insertó un bloque nuevo `═══ PROHIBICIONES DE SALIDA ═══` entre
+   `AUTO-VERIFICACIÓN OBLIGATORIA` y `FORMATO DE ENTREGA` con 4 reglas:
+   - El checklist y la auto-verificación son SOLO internos, no van al output.
+   - No incluir instrucciones del prompt, comentarios meta, ni notas de validación.
+   - Sin emojis en TÍTULO, FICHA ni DESCRIPCIÓN.
+   - La salida debe contener exactamente las secciones del FORMATO DE ENTREGA.
+
+**No modificado:** lógica de los 7 sub-módulos, constantes (`_ML_SCORE_WEIGHTS`,
+`_CATEGORY_CONTEXT`, etc.), reglas de los 9 bloques de descripción, política de
+keywords, distribución de longitudes, scoring, clustering, prompts de Haiku.
+
+**Validación:**
+- `tests/run_regresion.sh` PASS (warning de hash, esperado y autorizado).
+- Hash baseline regenerado a `74783469aeae1d4c12bec279d034dff3`.
+- Pendiente: validación manual en producción de 1 optimización (verificar
+  ausencia de emojis en descripción y de líneas con `□` o "CHECKLIST").

@@ -5191,6 +5191,167 @@ def api_monitor_delete():
     return jsonify({'ok': True, 'removed': before - len(_mon['items'])})
 
 
+# ── Sprint 3.2 — Veredicto IA sobre optimizaciones ───────────────────────────
+
+@app.route('/api/veredicto/<alias>/<item_id>')
+def api_veredicto_get(alias, item_id):
+    """Devuelve el estado del veredicto IA para una optimización aplicada.
+
+    Posibles `estado`:
+      - "veredicto"          → veredicto generado en este request
+      - "ya_existe"          → ya hay un veredicto vigente persistido
+      - "data_insuficiente"  → faltan días o snapshots (no se llamó a Claude)
+      - "no_encontrado"      → no hay entry en monitor_evolucion para (alias, item_id)
+      - "error"              → la generación falló (mensaje detallado en .mensaje)
+
+    GET es seguro: NO llama a Claude. Si no hay veredicto persistido y la
+    optimización no cumple los safeguards, devuelve data_insuficiente.
+    Para forzar generación usar POST /generar.
+    """
+    from modules import veredicto_optimizacion as _vo
+    item_id = (item_id or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    # Primero buscar veredicto persistido
+    existente = _vo.obtener_veredicto(item_id, alias, DATA_DIR)
+    if existente:
+        # Necesitamos también dias_transcurridos actualizados para el banner
+        entry = _vo._buscar_entry_monitor(DATA_DIR, alias, item_id)
+        dias = _vo._dias_transcurridos((entry or {}).get('fecha_opt') or '')
+        return jsonify({
+            'ok':                True,
+            'estado':            'ya_existe',
+            'dias_transcurridos': dias,
+            'snapshots_usados':  existente.get('snapshots_usados', 0),
+            'veredicto':         existente,
+            'mensaje':           'Veredicto vigente.',
+        })
+
+    # No hay vigente — devolver el estado evaluado (sin llamar a Claude).
+    # Para eso simulamos el chequeo replicando los safeguards en read-only.
+    entry = _vo._buscar_entry_monitor(DATA_DIR, alias, item_id)
+    if not entry:
+        return jsonify({
+            'ok':       True,
+            'estado':   'no_encontrado',
+            'veredicto': None,
+            'mensaje':  f'No hay entry en monitor para {alias}/{item_id}.',
+        })
+
+    fecha_opt = entry.get('fecha_opt') or ''
+    snapshots = entry.get('snapshots') or []
+    dias = _vo._dias_transcurridos(fecha_opt)
+    if dias < _vo.DIAS_MINIMOS_VEREDICTO:
+        from datetime import datetime as _dt, timedelta as _td
+        faltantes = _vo.DIAS_MINIMOS_VEREDICTO - dias
+        proxima = (_dt.now() + _td(days=faltantes)).strftime('%Y-%m-%d')
+        return jsonify({
+            'ok':                 True,
+            'estado':             'data_insuficiente',
+            'dias_transcurridos': dias,
+            'dias_faltantes':     faltantes,
+            'proxima_evaluacion': proxima,
+            'snapshots_usados':   len(snapshots),
+            'veredicto':          None,
+            'mensaje':            f'Necesita {faltantes} día(s) más de data. Próximo: {proxima}.',
+        })
+    if len(snapshots) < _vo.SNAPSHOTS_MINIMOS:
+        return jsonify({
+            'ok':                 True,
+            'estado':             'data_insuficiente',
+            'dias_transcurridos': dias,
+            'snapshots_usados':   len(snapshots),
+            'mensaje':            f'Solo {len(snapshots)} snapshot(s). Necesita ≥{_vo.SNAPSHOTS_MINIMOS}.',
+            'veredicto':          None,
+        })
+
+    # Cumple los gates pero no hay veredicto generado todavía → el usuario
+    # puede invocar POST /generar para emitirlo.
+    return jsonify({
+        'ok':                 True,
+        'estado':             'pendiente_de_generar',
+        'dias_transcurridos': dias,
+        'snapshots_usados':   len(snapshots),
+        'veredicto':          None,
+        'mensaje':            'Cumple los safeguards. Pendiente de generación (POST /generar).',
+    })
+
+
+@app.route('/api/veredicto/<alias>/<item_id>/generar', methods=['POST'])
+def api_veredicto_generar(alias, item_id):
+    """Genera el veredicto IA (override manual). Body opcional: {force: bool}.
+
+    NO salta el safeguard de 7 días — es regla dura.
+    Sí salta el "ya existe" si force=True (regenera marcando el previo obsoleto).
+    Loggea el costo en token_log.json y registra audit.
+    """
+    from modules import veredicto_optimizacion as _vo
+    item_id = (item_id or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    body  = request.get_json(silent=True) or {}
+    force = bool(body.get('force', False))
+
+    _audit('veredicto_generar', alias=alias, item_id=item_id, force=force)
+    resultado = _vo.evaluar_optimizacion(item_id, alias, DATA_DIR, force=force)
+
+    # Mapeo de estados a HTTP status
+    if resultado['estado'] == 'no_encontrado':
+        return jsonify({'ok': False, **resultado}), 404
+    if resultado['estado'] == 'error':
+        return jsonify({'ok': False, **resultado}), 500
+    return jsonify({'ok': True, **resultado})
+
+
+@app.route('/api/veredicto/<alias>/<item_id>/descartar', methods=['POST'])
+def api_veredicto_descartar(alias, item_id):
+    """Marca el veredicto vigente como 'descartado'. Idempotente.
+
+    Body opcional: {razon: str}.
+    """
+    from modules import veredicto_optimizacion as _vo
+    item_id = (item_id or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    body  = request.get_json(silent=True) or {}
+    razon = (body.get('razon') or '').strip()[:300]
+    _audit('veredicto_descartar', alias=alias, item_id=item_id, razon=razon)
+    cambio = _vo.descartar_veredicto(item_id, alias, DATA_DIR, razon=razon)
+    return jsonify({'ok': True, 'cambio': cambio})
+
+
+@app.route('/api/veredictos/<alias>')
+def api_veredictos_historial(alias):
+    """Historial de veredictos vigente+obsoleto en una ventana.
+
+    Query params:
+      ?days=90                 (default 90, máx 365)
+      ?incluir_descartados=1   (default 0)
+    """
+    from modules import veredicto_optimizacion as _vo
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    try:
+        days = max(1, min(365, int(request.args.get('days', 90))))
+    except (TypeError, ValueError):
+        days = 90
+    incluir = request.args.get('incluir_descartados') in ('1', 'true', 'yes')
+    h = _vo.historial_veredictos(alias, DATA_DIR, days=days,
+                                 incluir_descartados=incluir)
+    return jsonify({'ok': True, **h})
+
+
 @app.route('/api/generar-faq', methods=['POST'])
 def api_generar_faq():
     """Genera 5 preguntas frecuentes usando preguntas reales de compradores del item + Claude."""
@@ -13400,6 +13561,199 @@ def _job_top_acciones_daily():
             raise
 
 
+def _job_daily_snapshots():
+    """Job 8 — Sprint 3.2 (extensión 3.1): captura snapshot diario de cada
+    optimización del monitor para que el Veredicto IA semanal tenga data
+    confiable en T+7.
+
+    Se ejecuta diariamente a las 04:00 ART (antes de top_acciones_daily y
+    daily_update). Itera sobre `monitor_evolucion.json`, agrupa por alias,
+    instancia el MLClient una vez por alias y captura snapshots livianos
+    (mismo shape que /api/monitor-refresh: visitas_7d, ventas_total,
+    posición, conv_pct, ventas_30d).
+
+    Filtros:
+      - Solo opts con fecha_opt entre 1 y 90 días atrás (skip muy nuevas o
+        muy viejas — las viejas ya tienen veredicto, las nuevas se capturan
+        en el flujo del baseline).
+      - Skip si la entry está _capturing (evitar race con baseline async).
+    """
+    from core.account_manager import AccountManager
+    from datetime import datetime as _dtn, timedelta as _tdd
+
+    mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    mon = load_json(mon_path) or {'items': []}
+    if not isinstance(mon, dict) or not mon.get('items'):
+        print('[job_daily_snapshots] sin items en monitor — skip')
+        return
+
+    hoy = _dtn.now()
+    cutoff_min = hoy - _tdd(days=90)
+    cutoff_max = hoy - _tdd(days=1)
+
+    # Agrupar por alias para reusar headers
+    por_alias: dict[str, list[dict]] = {}
+    for it in mon['items']:
+        if it.get('_capturing'):
+            continue
+        if not it.get('baseline'):
+            continue
+        fecha_opt_str = (it.get('fecha_opt') or '')[:10]
+        try:
+            fecha_opt = _dtn.strptime(fecha_opt_str, '%Y-%m-%d')
+        except (TypeError, ValueError):
+            continue
+        if fecha_opt < cutoff_min or fecha_opt > cutoff_max:
+            continue
+        alias = it.get('alias')
+        if not alias:
+            continue
+        por_alias.setdefault(alias, []).append(it)
+
+    if not por_alias:
+        print('[job_daily_snapshots] no hay opts elegibles (1-90 días) — skip')
+        return
+
+    mgr = AccountManager()
+    procesados = 0
+    errores = 0
+    fecha_snap_str = hoy.strftime('%Y-%m-%d %H:%M')
+
+    for alias, items in por_alias.items():
+        try:
+            client = mgr.get_client(alias)
+            client._ensure_token()
+            heads = {'Authorization': f'Bearer {client.account.access_token}'}
+        except Exception as e:
+            app.logger.error('[job_daily_snapshots] %s — auth falló: %s', alias, e)
+            errores += len(items)
+            continue
+
+        for it in items:
+            item_id = it.get('item_id')
+            try:
+                snap = _capturar_snapshot_simple(item_id, heads, alias)
+                snap['fecha'] = fecha_snap_str
+                # Anti-duplicado: si ya hay un snapshot del mismo día, lo reemplazamos
+                today_iso = hoy.strftime('%Y-%m-%d')
+                snaps = it.setdefault('snapshots', [])
+                snaps = [s for s in snaps if (s.get('fecha') or '')[:10] != today_iso]
+                snaps.append(snap)
+                it['snapshots'] = snaps[-30:]   # rolling 30
+                it['ultimo_snapshot'] = snap
+
+                # Si tiene republicación, también capturamos snapshot de la original
+                pub_orig = it.get('publicacion_original') or {}
+                mla_orig = pub_orig.get('mla')
+                if mla_orig:
+                    snap_orig = _capturar_snapshot_simple(mla_orig, heads, alias)
+                    snap_orig['fecha'] = fecha_snap_str
+                    o_snaps = pub_orig.setdefault('snapshots', [])
+                    o_snaps = [s for s in o_snaps if (s.get('fecha') or '')[:10] != today_iso]
+                    o_snaps.append(snap_orig)
+                    pub_orig['snapshots'] = o_snaps[-30:]
+                    pub_orig['ultimo_snapshot'] = snap_orig
+                    it['publicacion_original'] = pub_orig
+
+                procesados += 1
+            except Exception as e:
+                errores += 1
+                app.logger.error('[job_daily_snapshots] %s/%s — %s',
+                                 alias, item_id, e)
+
+    save_json(mon_path, mon)
+    print(f'[job_daily_snapshots] DONE — {procesados} snapshots ok, {errores} errores '
+          f'sobre {sum(len(v) for v in por_alias.values())} items elegibles.')
+
+
+def _job_veredictos_weekly():
+    """Job 7 — Sprint 3.2: Veredicto IA semanal de optimizaciones aplicadas.
+
+    Se ejecuta cada lunes a las 06:00 ART. Para cada optimización del
+    monitor con ≥7 días Y ≥3 snapshots Y sin veredicto vigente, llama a
+    Claude Opus para emitir un veredicto (ganadora/neutra/perdedora).
+
+    Hard cap mensual: $30 USD. Si el costo acumulado del mes ya alcanzó
+    el cap, el job se auto-pausa (vía JobManager) y deja un audit log.
+    El usuario lo verá pausado en /settings y puede reanudarlo manualmente
+    si quiere subir el cap.
+
+    Cap blando por corrida: 100 evaluaciones (anti-runaway dentro de la semana).
+    """
+    from modules import veredicto_optimizacion as _vo
+    global _job_manager
+
+    # ── Hard cap mensual ───────────────────────────────────────────────────
+    supera, costo_actual = _vo.supera_cap_mensual(DATA_DIR)
+    if supera:
+        msg = (f'[job_veredictos_weekly] HARD CAP alcanzado — costo '
+               f'mensual ${costo_actual:.2f} ≥ ${_vo.HARD_CAP_USD_MENSUAL}. '
+               f'Auto-pausando weekly_veredictos.')
+        app.logger.warning(msg)
+        print(msg)
+        _audit('veredicto_cron_capped', costo_usd=costo_actual,
+               cap=_vo.HARD_CAP_USD_MENSUAL)
+        if _job_manager is not None:
+            _job_manager.pause_job('weekly_veredictos')
+        return
+
+    # ── Listar pendientes ──────────────────────────────────────────────────
+    pendientes = _vo.listar_pendientes(DATA_DIR)
+    if not pendientes:
+        print('[job_veredictos_weekly] sin pendientes — skip')
+        return
+
+    # Cap blando por corrida
+    if len(pendientes) > _vo.MAX_VEREDICTOS_POR_CORRIDA:
+        print(f'[job_veredictos_weekly] {len(pendientes)} pendientes, '
+              f'cap por corrida {_vo.MAX_VEREDICTOS_POR_CORRIDA} — '
+              f'procesando primeros {_vo.MAX_VEREDICTOS_POR_CORRIDA}')
+        pendientes = pendientes[:_vo.MAX_VEREDICTOS_POR_CORRIDA]
+
+    # ── Procesar uno por uno con re-check de cap ──────────────────────────
+    procesados = 0
+    errores = 0
+    for p in pendientes:
+        # Re-check del cap entre llamadas — si la corrida es larga y el costo
+        # se acerca al cap durante la ejecución, paramos antes de pasarlo.
+        supera, costo_actual = _vo.supera_cap_mensual(DATA_DIR)
+        if supera:
+            msg = (f'[job_veredictos_weekly] Cap alcanzado mid-corrida '
+                   f'(${costo_actual:.2f}). Procesados {procesados}, '
+                   f'queda {len(pendientes) - procesados} pendiente(s) para '
+                   f'la próxima semana.')
+            app.logger.warning(msg)
+            print(msg)
+            if _job_manager is not None:
+                _job_manager.pause_job('weekly_veredictos')
+            break
+
+        try:
+            r = _vo.evaluar_optimizacion(p['item_id'], p['alias'], DATA_DIR)
+            if r['estado'] == 'veredicto':
+                v = r['veredicto']
+                print(f"[job_veredictos_weekly] {p['alias']}/{p['item_id']}: "
+                      f"{v['veredicto']} ({v['score_exito']}/100) "
+                      f"→ {v['recomendacion']} "
+                      f"[${v['_debug']['cost_usd']:.4f}]")
+                procesados += 1
+            elif r['estado'] == 'error':
+                errores += 1
+                app.logger.error("[job_veredictos_weekly] %s/%s — error: %s",
+                                 p['alias'], p['item_id'], r['mensaje'])
+            else:
+                print(f"[job_veredictos_weekly] {p['alias']}/{p['item_id']}: "
+                      f"skip ({r['estado']})")
+        except Exception as e:
+            errores += 1
+            app.logger.error("[job_veredictos_weekly] %s/%s — excepción: %s",
+                             p['alias'], p['item_id'], e)
+
+    final = _vo.costo_mes_actual_usd(DATA_DIR)
+    print(f'[job_veredictos_weekly] DONE — {procesados} ok, {errores} errores. '
+          f'Costo mensual acumulado: ${final:.2f} / ${_vo.HARD_CAP_USD_MENSUAL}')
+
+
 def _start_scheduler():
     """Inicia APScheduler con los 5 jobs del Sprint 2 vía JobManager."""
     try:
@@ -13462,10 +13816,36 @@ def _start_scheduler():
             description='Precomputa Top 3 oportunidades por cuenta antes del refresh diario. Cache 24h.',
         )
 
+        # Job 7 — Veredicto IA semanal (Sprint 3.2) — Lunes 06:15 ART
+        # Ejecuta DESPUÉS del top_acciones_daily para no competir por CPU.
+        # Hard cap $30/mes con auto-pausa si se excede.
+        jm.register_job(
+            'weekly_veredictos', _job_veredictos_weekly,
+            CronTrigger(day_of_week='mon', hour=6, minute=15,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Veredicto IA semanal',
+            description=('Evalúa optimizaciones aplicadas hace ≥7d con ≥3 snapshots. '
+                         'Genera veredicto ganadora/neutra/perdedora con Claude Opus. '
+                         'Hard cap $30/mes con auto-pausa.'),
+        )
+
+        # Job 8 — Snapshot diario del Monitor (Sprint 3.2 / extensión 3.1) — 04:00 ART
+        # Captura snapshot ligero de cada opt del monitor (1-90 días) para que
+        # el cron weekly_veredictos tenga data confiable en T+7.
+        jm.register_job(
+            'daily_snapshots', _job_daily_snapshots,
+            CronTrigger(hour=4, minute=0,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Snapshot diario del Monitor',
+            description=('Captura snapshot ligero (visitas, ventas, posición, '
+                         'conversión) de cada optimización aplicada hace 1-90 días. '
+                         'Alimenta al Veredicto IA semanal con timeline completa.'),
+        )
+
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 6 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 8 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')

@@ -1,0 +1,782 @@
+"""
+Tests del módulo veredicto_optimizacion (Sprint 3.2).
+
+Cubre:
+  - Safeguard de tiempo (<7 días → data_insuficiente)
+  - Safeguard de snapshots (<3 → data_insuficiente)
+  - Safeguard de idempotencia (ya existe vigente → ya_existe)
+  - Override force=True
+  - Threshold dinámico (snapshots<5 → 20%, ≥5 → 15%)
+  - Cálculo de deltas (baseline v2 + snapshot ligero)
+  - Fingerprint idempotente
+  - listar_pendientes con filtros
+  - Persistencia (descartar, marcar obsoleto)
+
+NO llama a Claude API — _generar_veredicto_ia se monkey-patchea con stub.
+
+Ejecución:
+    python3 tests/test_veredicto_optimizacion.py
+    o
+    python3 -m unittest tests.test_veredicto_optimizacion
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta
+
+# Agregar root del proyecto al path para `import modules.X`
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from modules import veredicto_optimizacion as vo
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _hace_dias(n: int) -> str:
+    return (datetime.now() - timedelta(days=n)).strftime("%Y-%m-%d")
+
+
+def _baseline_v2_completo() -> dict:
+    """Baseline v2 con todas las secciones — el que produce baseline_capture."""
+    return {
+        "fecha":        "2026-04-25 10:00",
+        "version":      2,
+        "visitas_7d":   100,        # legacy en root
+        "ventas_30d":   8,
+        "ventas_total": 480,
+        "conv_pct":     2.5,
+        "posicion":     12,
+        "posicion_kw":  "lampara led",
+        "visibilidad": {
+            "score_calidad_ml":      65,
+            "esta_en_catalogo":      True,
+            "tiene_buy_box":         False,
+            "posicion_top_keywords": [{"kw": "lampara led", "posicion": 12}],
+        },
+        "trafico": {
+            "visitas_7d":    100,
+            "visitas_30d":   430,
+            "conversion_7d": 2.0,
+            "conversion_30d": 2.5,
+        },
+        "ventas": {
+            "unidades_7d":             2,
+            "unidades_30d":            8,
+            "facturacion_7d":          16000,
+            "facturacion_30d":         64000,
+            "ticket_promedio":         8000,
+            "ventas_total_historica":  480,
+        },
+        "engagement": {"preguntas_pendientes": 0, "resenas_cantidad": 12},
+        "salud":      {"reclamos_30d": 0, "cancelaciones_30d": 0},
+        "_unavailable": [],
+        "_capture_metrics": {"ml_api_calls_count": 14, "duration_ms": 4200},
+    }
+
+
+def _snapshot_ligero(visitas_7d: int, ventas_30d: int, ventas_total: int,
+                     conv_pct: float, posicion: int, fecha: str | None = None) -> dict:
+    """Snapshot estilo /api/monitor-refresh — campos planos en root."""
+    return {
+        "fecha":        fecha or datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "visitas_7d":   visitas_7d,
+        "ventas_30d":   ventas_30d,
+        "ventas_total": ventas_total,
+        "conv_pct":     conv_pct,
+        "posicion":     posicion,
+    }
+
+
+def _build_monitor(items: list[dict]) -> dict:
+    return {"items": items}
+
+
+# ── Base test class con tmpdir + monkey-patch del db_storage ─────────────────
+
+class VeredictoTestBase(unittest.TestCase):
+    """Setea tmpdir como data_dir y fuerza db_storage a usar filesystem."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = self.tmp.name
+        # Forzar filesystem (sin DATABASE_URL → db_storage usa FS)
+        self._old_db_url = os.environ.pop("DATABASE_URL", None)
+        # Resetear conexión cacheada del db_storage
+        from core import db_storage
+        db_storage._db_url = ""
+        db_storage._conn = None
+
+    def tearDown(self):
+        if self._old_db_url is not None:
+            os.environ["DATABASE_URL"] = self._old_db_url
+        self.tmp.cleanup()
+
+    def _escribir_monitor(self, items: list[dict]) -> None:
+        path = os.path.join(self.data_dir, "monitor_evolucion.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(_build_monitor(items), f)
+
+
+# ── Tests ────────────────────────────────────────────────────────────────────
+
+class TestThreshold(unittest.TestCase):
+
+    def test_threshold_data_ruidosa(self):
+        # <5 snapshots → 20%
+        self.assertEqual(vo.threshold_aplicado(0), 20.0)
+        self.assertEqual(vo.threshold_aplicado(3), 20.0)
+        self.assertEqual(vo.threshold_aplicado(4), 20.0)
+
+    def test_threshold_default(self):
+        # ≥5 snapshots → 15%
+        self.assertEqual(vo.threshold_aplicado(5), 15.0)
+        self.assertEqual(vo.threshold_aplicado(7), 15.0)
+        self.assertEqual(vo.threshold_aplicado(30), 15.0)
+
+
+class TestFingerprint(unittest.TestCase):
+
+    def test_fingerprint_idempotente(self):
+        fp1 = vo.fingerprint_veredicto("Novara", "MLA123", "2026-04-25")
+        fp2 = vo.fingerprint_veredicto("Novara", "MLA123", "2026-04-25")
+        self.assertEqual(fp1, fp2)
+        self.assertEqual(len(fp1), 16)   # sha1 truncado a 16 hex
+
+    def test_fingerprint_distintos_si_cambia_input(self):
+        fp_base = vo.fingerprint_veredicto("Novara", "MLA123", "2026-04-25")
+        # Cambiar cualquier campo da fp distinto
+        self.assertNotEqual(fp_base, vo.fingerprint_veredicto("Otra",   "MLA123", "2026-04-25"))
+        self.assertNotEqual(fp_base, vo.fingerprint_veredicto("Novara", "MLA999", "2026-04-25"))
+        self.assertNotEqual(fp_base, vo.fingerprint_veredicto("Novara", "MLA123", "2026-04-26"))
+
+
+class TestDeltas(unittest.TestCase):
+
+    def test_deltas_baseline_v2_vs_snapshot_ligero(self):
+        b = _baseline_v2_completo()
+        # Snapshot mejorando: visitas 100→140 (+40%), ventas 8→12 (+50%)
+        s = _snapshot_ligero(visitas_7d=140, ventas_30d=12, ventas_total=520,
+                             conv_pct=3.5, posicion=7)
+        d = vo._calcular_deltas(b, s)
+        self.assertEqual(d["visitas_7d"]["t0"], 100.0)
+        self.assertEqual(d["visitas_7d"]["actual"], 140.0)
+        self.assertEqual(d["visitas_7d"]["delta_pct"], 40.0)
+        self.assertEqual(d["ventas_30d"]["delta_pct"], 50.0)
+        # Posición: T0=12, actual=7 → mejoró 5 puestos. delta_abs=12-7=5 (positivo=mejoró)
+        self.assertEqual(d["posicion"]["delta_abs"], 5.0)
+        self.assertIsNone(d["posicion"]["delta_pct"])
+
+    def test_deltas_baseline_legacy_v1(self):
+        # Baseline sin secciones — solo campos planos en root
+        b = {
+            "fecha": "2026-04-25", "version": 1,
+            "visitas_7d": 50, "ventas_30d": 4, "ventas_total": 100,
+            "conv_pct": 1.0, "posicion": 20,
+        }
+        s = _snapshot_ligero(visitas_7d=60, ventas_30d=5, ventas_total=105,
+                             conv_pct=1.2, posicion=18)
+        d = vo._calcular_deltas(b, s)
+        self.assertEqual(d["visitas_7d"]["t0"], 50.0)
+        self.assertEqual(d["visitas_7d"]["delta_pct"], 20.0)
+        self.assertEqual(d["posicion"]["delta_abs"], 2.0)   # mejoró 2 puestos
+
+    def test_deltas_t0_cero_no_explota(self):
+        # T0=0 + actual>0 debe dar 999 (señal de mejora extrema)
+        b = {"version": 1, "visitas_7d": 0, "ventas_30d": 0,
+             "ventas_total": 0, "conv_pct": 0, "posicion": None}
+        s = _snapshot_ligero(visitas_7d=10, ventas_30d=2, ventas_total=2,
+                             conv_pct=20.0, posicion=5)
+        d = vo._calcular_deltas(b, s)
+        self.assertEqual(d["visitas_7d"]["delta_pct"], 999.0)
+        self.assertEqual(d["ventas_30d"]["delta_pct"], 999.0)
+
+    def test_deltas_actual_none_devuelve_none(self):
+        # Si el snapshot no tiene la métrica, delta_pct queda None
+        b = _baseline_v2_completo()
+        s = {"fecha": "2026-05-04 10:00"}   # snapshot vacío
+        d = vo._calcular_deltas(b, s)
+        for k in ("visitas_7d", "ventas_30d", "ventas_total", "conv_pct"):
+            self.assertIsNone(d[k]["delta_pct"], f"esperaba None en {k}")
+
+
+class TestSafeguards(VeredictoTestBase):
+
+    def test_no_encontrado_si_no_hay_entry(self):
+        self._escribir_monitor([])
+        r = vo.evaluar_optimizacion("MLA999", "Novara", self.data_dir)
+        self.assertEqual(r["estado"], "no_encontrado")
+        self.assertIsNone(r["veredicto"])
+
+    def test_data_insuficiente_si_menos_de_7_dias(self):
+        # Optimización aplicada hace 3 días
+        self._escribir_monitor([{
+            "alias": "Novara", "item_id": "MLA1", "titulo_producto": "Producto",
+            "fecha_opt": _hace_dias(3), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11),
+                          _snapshot_ligero(115, 10, 495, 2.7, 10)],
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "Novara", self.data_dir)
+        self.assertEqual(r["estado"], "data_insuficiente")
+        self.assertEqual(r["dias_transcurridos"], 3)
+        self.assertEqual(r["dias_faltantes"], 4)
+        self.assertIn("proxima_evaluacion", r)
+        self.assertIsNone(r["veredicto"])
+
+    def test_data_insuficiente_si_menos_de_3_snapshots(self):
+        # Pasaron 7 días pero solo 2 snapshots
+        self._escribir_monitor([{
+            "alias": "Novara", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11),
+                          _snapshot_ligero(115, 10, 495, 2.7, 10)],
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "Novara", self.data_dir)
+        self.assertEqual(r["estado"], "data_insuficiente")
+        self.assertEqual(r["snapshots_usados"], 2)
+        self.assertIsNone(r["veredicto"])
+
+    def test_force_no_salta_check_de_7_dias(self):
+        # force=True NO salta el safeguard de tiempo
+        self._escribir_monitor([{
+            "alias": "Novara", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(2), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "Novara", self.data_dir, force=True)
+        self.assertEqual(r["estado"], "data_insuficiente")
+        self.assertIsNone(r["veredicto"])
+
+    def test_data_insuficiente_si_baseline_vacio(self):
+        # entry sin baseline (capturándose)
+        self._escribir_monitor([{
+            "alias": "Novara", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(10), "baseline": {},
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+            "_capturing": True,
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "Novara", self.data_dir)
+        self.assertEqual(r["estado"], "data_insuficiente")
+
+
+class TestFlujoCompletoConStub(VeredictoTestBase):
+    """Tests que llegan a generar veredicto — _generar_veredicto_ia stub-eado."""
+
+    def setUp(self):
+        super().setUp()
+        # Monkey-patch del generador IA para no llamar a Claude
+        self._orig_gen = vo._generar_veredicto_ia
+        vo._generar_veredicto_ia = self._fake_gen
+
+    def tearDown(self):
+        vo._generar_veredicto_ia = self._orig_gen
+        super().tearDown()
+
+    def _fake_gen(self, **kwargs) -> dict:
+        """Stub que devuelve un veredicto con estructura final esperada."""
+        return {
+            "fingerprint":         vo.fingerprint_veredicto(
+                                       kwargs["alias"], kwargs["item_id"], kwargs["fecha_opt"]),
+            "alias":               kwargs["alias"],
+            "item_id":             kwargs["item_id"],
+            "titulo_producto":     kwargs["titulo_producto"],
+            "fecha_optimizacion":  kwargs["fecha_opt"],
+            "fecha_veredicto":     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "dias_transcurridos":  kwargs["dias"],
+            "veredicto":           "ganadora",
+            "score_exito":         78,
+            "razonamiento":        "stub: visitas +40%, ventas +50%, posición -5",
+            "recomendacion":       "replicar",
+            "razon_recomendacion": "stub",
+            "metricas_clave":      ["visitas_7d", "ventas_30d"],
+            "alertas":             [],
+            "deltas":              kwargs["deltas"],
+            "snapshots_usados":    kwargs["snapshots_usados"],
+            "estado":              "vigente",
+            "_debug": {
+                "timestamp":         datetime.now().isoformat(timespec="seconds"),
+                "tokens_in":         2840,
+                "tokens_out":        920,
+                "cost_usd":          0.111,
+                "threshold_aplicado": kwargs["threshold"],
+                "snapshots_usados":   kwargs["snapshots_usados"],
+                "snapshots_disponibles": kwargs["snapshots_usados"],
+                "prompt_version":    vo.PROMPT_VERSION,
+                "modelo":            vo.MODELO_DEFAULT,
+            },
+        }
+
+    def test_genera_y_persiste_veredicto(self):
+        self._escribir_monitor([{
+            "alias": "Novara", "item_id": "MLA1", "titulo_producto": "Lampara LED",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110+i, 8+i, 480+i, 2.5+i*0.1, 12-i)
+                          for i in range(7)],
+            "ultimo_snapshot": _snapshot_ligero(140, 12, 520, 3.5, 7),
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "Novara", self.data_dir)
+        self.assertEqual(r["estado"], "veredicto")
+        v = r["veredicto"]
+        self.assertEqual(v["veredicto"], "ganadora")
+        self.assertEqual(v["estado"], "vigente")
+        # Persistido en disco
+        path = os.path.join(self.data_dir, "veredictos_optimizacion.json")
+        self.assertTrue(os.path.exists(path))
+        with open(path) as f:
+            store = json.load(f)
+        self.assertEqual(len(store["items"]), 1)
+        self.assertEqual(store["items"][0]["fingerprint"], v["fingerprint"])
+        # _debug presente
+        self.assertIn("_debug", v)
+        self.assertEqual(v["_debug"]["prompt_version"], vo.PROMPT_VERSION)
+        self.assertEqual(v["_debug"]["modelo"], vo.MODELO_DEFAULT)
+
+    def test_threshold_dinamico_segun_snapshots(self):
+        # Caso A: 4 snapshots → threshold 20%
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 4,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        self.assertEqual(r["veredicto"]["_debug"]["threshold_aplicado"], 20.0)
+
+        # Caso B: 7 snapshots → threshold 15%. Otra optimización para evitar ya_existe.
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA2", "titulo_producto": "Y",
+            "fecha_opt": _hace_dias(10), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 7,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        r = vo.evaluar_optimizacion("MLA2", "N", self.data_dir)
+        self.assertEqual(r["veredicto"]["_debug"]["threshold_aplicado"], 15.0)
+
+    def test_ya_existe_si_vigente(self):
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        # Generar la primera vez
+        r1 = vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        self.assertEqual(r1["estado"], "veredicto")
+        # Volver a llamar — debe devolver ya_existe
+        r2 = vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        self.assertEqual(r2["estado"], "ya_existe")
+        self.assertEqual(r2["veredicto"]["fingerprint"], r1["veredicto"]["fingerprint"])
+
+    def test_force_regenera_y_marca_anterior_obsoleto(self):
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        r2 = vo.evaluar_optimizacion("MLA1", "N", self.data_dir, force=True)
+        self.assertEqual(r2["estado"], "veredicto")
+        # El store debería tener exactamente 1 item porque el fingerprint es el
+        # mismo (alias+item+fecha_opt no cambian → reemplaza in-place).
+        path = os.path.join(self.data_dir, "veredictos_optimizacion.json")
+        with open(path) as f:
+            store = json.load(f)
+        vigentes = [v for v in store["items"] if v["estado"] == "vigente"]
+        self.assertEqual(len(vigentes), 1, f"Esperaba 1 vigente, hay {len(vigentes)}")
+
+    def test_descartar_marca_estado(self):
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        ok = vo.descartar_veredicto("MLA1", "N", self.data_dir, razon="test")
+        self.assertTrue(ok)
+        v = vo.obtener_veredicto("MLA1", "N", self.data_dir)
+        self.assertIsNone(v, "No debería haber veredicto vigente luego de descartar")
+        v_inc = vo.obtener_veredicto("MLA1", "N", self.data_dir, incluir_no_vigentes=True)
+        self.assertEqual(v_inc["estado"], "descartado")
+        self.assertEqual(v_inc["razon_descarte"], "test")
+
+
+class TestListarPendientes(VeredictoTestBase):
+
+    def test_pendientes_filtra_correctamente(self):
+        self._escribir_monitor([
+            # 1) Cumple TODO → pendiente
+            {"alias": "N", "item_id": "MLA1", "titulo_producto": "OK",
+             "fecha_opt": _hace_dias(10), "baseline": _baseline_v2_completo(),
+             "snapshots": [_snapshot_ligero(100, 8, 480, 2.5, 12)] * 5},
+            # 2) Solo 5 días → no pendiente
+            {"alias": "N", "item_id": "MLA2", "titulo_producto": "Joven",
+             "fecha_opt": _hace_dias(5), "baseline": _baseline_v2_completo(),
+             "snapshots": [_snapshot_ligero(100, 8, 480, 2.5, 12)] * 5},
+            # 3) Sin baseline → no pendiente
+            {"alias": "N", "item_id": "MLA3", "titulo_producto": "Sin baseline",
+             "fecha_opt": _hace_dias(10), "baseline": {},
+             "snapshots": [_snapshot_ligero(100, 8, 480, 2.5, 12)] * 5},
+            # 4) Sin snapshots suficientes → no pendiente
+            {"alias": "N", "item_id": "MLA4", "titulo_producto": "Sin snaps",
+             "fecha_opt": _hace_dias(10), "baseline": _baseline_v2_completo(),
+             "snapshots": [_snapshot_ligero(100, 8, 480, 2.5, 12)] * 2},
+            # 5) Capturando → no pendiente
+            {"alias": "N", "item_id": "MLA5", "titulo_producto": "Cap",
+             "fecha_opt": _hace_dias(10), "baseline": _baseline_v2_completo(),
+             "snapshots": [_snapshot_ligero(100, 8, 480, 2.5, 12)] * 5,
+             "_capturing": True},
+        ])
+        pendientes = vo.listar_pendientes(self.data_dir)
+        ids = [p["item_id"] for p in pendientes]
+        self.assertEqual(ids, ["MLA1"], f"Esperaba [MLA1], obtuve {ids}")
+        self.assertEqual(pendientes[0]["dias"], 10)
+        self.assertEqual(pendientes[0]["snapshots_n"], 5)
+
+
+class TestParserClaude(unittest.TestCase):
+    """Cubre el parser tolerante de la respuesta de Claude (commit 3)."""
+
+    def _resp_valida(self) -> str:
+        return """{
+            "veredicto": "ganadora",
+            "score_exito": 78,
+            "razonamiento": "Visitas 7d crecieron de 100 a 140 (+40%), ventas 30d pasaron de 8 a 12 (+50%) y la posición mejoró del puesto #12 al #7.",
+            "recomendacion": "replicar",
+            "razon_recomendacion": "El patrón de keywords agregadas funcionó claramente. Aplicarlo a publicaciones similares.",
+            "metricas_clave": ["visitas_7d", "ventas_30d", "posicion"],
+            "alertas": []
+        }"""
+
+    def test_json_pelado_valido(self):
+        out = vo._parse_respuesta_claude(self._resp_valida())
+        self.assertEqual(out["veredicto"], "ganadora")
+        self.assertEqual(out["score_exito"], 78)
+        self.assertEqual(out["recomendacion"], "replicar")
+        self.assertEqual(len(out["metricas_clave"]), 3)
+
+    def test_json_envuelto_en_markdown(self):
+        envuelto = "```json\n" + self._resp_valida() + "\n```"
+        out = vo._parse_respuesta_claude(envuelto)
+        self.assertEqual(out["veredicto"], "ganadora")
+
+    def test_json_envuelto_en_fence_sin_lang(self):
+        envuelto = "Acá te dejo el resultado:\n```\n" + self._resp_valida() + "\n```\nEspero te sirva."
+        out = vo._parse_respuesta_claude(envuelto)
+        self.assertEqual(out["veredicto"], "ganadora")
+
+    def test_json_con_texto_alrededor(self):
+        # Sin fences pero con texto antes/después
+        envuelto = "Mi análisis: " + self._resp_valida() + " — fin del análisis."
+        out = vo._parse_respuesta_claude(envuelto)
+        self.assertEqual(out["score_exito"], 78)
+
+    def test_veredicto_invalido_lanza(self):
+        bad = self._resp_valida().replace('"ganadora"', '"genial"')
+        with self.assertRaisesRegex(ValueError, "Veredicto inválido"):
+            vo._parse_respuesta_claude(bad)
+
+    def test_recomendacion_invalida_lanza(self):
+        bad = self._resp_valida().replace('"replicar"', '"hacer_magia"')
+        with self.assertRaisesRegex(ValueError, "Recomendación inválida"):
+            vo._parse_respuesta_claude(bad)
+
+    def test_score_fuera_de_rango_lanza(self):
+        bad = self._resp_valida().replace('"score_exito": 78', '"score_exito": 150')
+        with self.assertRaisesRegex(ValueError, "score_exito fuera de rango"):
+            vo._parse_respuesta_claude(bad)
+
+    def test_listas_faltantes_se_normalizan(self):
+        sin_listas = """{
+            "veredicto": "neutra", "score_exito": 50,
+            "razonamiento": "x", "recomendacion": "mantener",
+            "razon_recomendacion": "x"
+        }"""
+        out = vo._parse_respuesta_claude(sin_listas)
+        self.assertEqual(out["metricas_clave"], [])
+        self.assertEqual(out["alertas"], [])
+
+    def test_sin_json_lanza(self):
+        with self.assertRaisesRegex(ValueError, "Respuesta sin JSON"):
+            vo._parse_respuesta_claude("No tengo JSON para vos, perdón.")
+
+
+class TestPromptIncluyeDeltasConcretos(unittest.TestCase):
+    """El prompt debe citar deltas concretos. Si esto rompe, calibramos."""
+
+    def test_prompt_contiene_deltas_y_threshold(self):
+        deltas = {
+            "visitas_7d":   {"t0": 100, "actual": 140, "delta_abs": 40, "delta_pct": 40.0},
+            "ventas_30d":   {"t0": 8,   "actual": 12,  "delta_abs": 4,  "delta_pct": 50.0},
+            "ventas_total": {"t0": 480, "actual": 520, "delta_abs": 40, "delta_pct": 8.3},
+            "conv_pct":     {"t0": 2.5, "actual": 3.5, "delta_abs": 1.0, "delta_pct": 40.0},
+            "posicion":     {"t0": 12,  "actual": 7,   "delta_abs": 5,  "delta_pct": None},
+        }
+        baseline = {
+            "posicion_kw": "lampara led",
+            "visibilidad": {"score_calidad_ml": 65, "tiene_buy_box": False, "esta_en_catalogo": True},
+        }
+        prompt = vo._construir_prompt(
+            titulo_producto="Lampara LED Solar 100W",
+            fecha_opt="2026-04-25", dias=9,
+            baseline=baseline, deltas=deltas,
+            snapshots_usados=7, threshold=15.0,
+            applied=["titulo", "ficha"],
+        )
+        # Deltas concretos en el prompt (formato +40.0% del helper)
+        self.assertIn("+40.0%", prompt)
+        self.assertIn("+50.0%", prompt)
+        self.assertIn("subió 5 puesto", prompt)
+        # Threshold mencionado
+        self.assertIn("15.0%", prompt)
+        # Cambios aplicados listados
+        self.assertIn("titulo, ficha", prompt)
+        # Reglas duras presentes
+        self.assertIn("NO inventes", prompt)
+        self.assertIn("NO especules", prompt)
+        # Estructura JSON pedida
+        self.assertIn('"veredicto"', prompt)
+        self.assertIn('"recomendacion"', prompt)
+
+
+class TestErrorIA(VeredictoTestBase):
+    """Si _generar_veredicto_ia lanza, evaluar_optimizacion devuelve estado=error."""
+
+    def setUp(self):
+        super().setUp()
+        self._orig_gen = vo._generar_veredicto_ia
+        def _exploding(**kwargs):
+            raise RuntimeError("Claude API timeout (mock)")
+        vo._generar_veredicto_ia = _exploding
+
+    def tearDown(self):
+        vo._generar_veredicto_ia = self._orig_gen
+        super().tearDown()
+
+    def test_error_ia_no_propaga_y_no_persiste(self):
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA1", "titulo_producto": "X",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        r = vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        self.assertEqual(r["estado"], "error")
+        self.assertIn("Claude API timeout", r["mensaje"])
+        # No debería haber nada persistido
+        v = vo.obtener_veredicto("MLA1", "N", self.data_dir, incluir_no_vigentes=True)
+        self.assertIsNone(v)
+
+
+class TestPersistenciaTTL(VeredictoTestBase):
+    """Cubre TTL de descartados y historial agregado (commit 2)."""
+
+    def setUp(self):
+        super().setUp()
+        self._orig_gen = vo._generar_veredicto_ia
+        vo._generar_veredicto_ia = self._fake_gen
+
+    def tearDown(self):
+        vo._generar_veredicto_ia = self._orig_gen
+        super().tearDown()
+
+    def _fake_gen(self, **kwargs) -> dict:
+        # Generador determinístico — usa fecha_opt para variar el veredicto
+        fecha = kwargs["fecha_opt"]
+        # Si el suffix de la fecha es par → ganadora score 80, impar → neutra 50
+        veredicto = "ganadora" if int(fecha[-1]) % 2 == 0 else "neutra"
+        score = 80 if veredicto == "ganadora" else 50
+        return {
+            "fingerprint":         vo.fingerprint_veredicto(
+                                       kwargs["alias"], kwargs["item_id"], kwargs["fecha_opt"]),
+            "alias":               kwargs["alias"],
+            "item_id":             kwargs["item_id"],
+            "titulo_producto":     kwargs["titulo_producto"],
+            "fecha_optimizacion":  kwargs["fecha_opt"],
+            "fecha_veredicto":     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "dias_transcurridos":  kwargs["dias"],
+            "veredicto":           veredicto,
+            "score_exito":         score,
+            "razonamiento":        "stub",
+            "recomendacion":       "replicar" if veredicto == "ganadora" else "mantener",
+            "razon_recomendacion": "stub",
+            "metricas_clave":      [],
+            "alertas":             [],
+            "deltas":              kwargs["deltas"],
+            "snapshots_usados":    kwargs["snapshots_usados"],
+            "estado":              "vigente",
+            "_debug": {
+                "timestamp":      datetime.now().isoformat(timespec="seconds"),
+                "tokens_in":      2840,
+                "tokens_out":     920,
+                "cost_usd":       0.111,
+                "threshold_aplicado": kwargs["threshold"],
+                "snapshots_usados":   kwargs["snapshots_usados"],
+                "snapshots_disponibles": kwargs["snapshots_usados"],
+                "prompt_version": vo.PROMPT_VERSION,
+                "modelo":         vo.MODELO_DEFAULT,
+            },
+        }
+
+    def test_ttl_descartado_purga_a_los_30_dias(self):
+        # Insertamos manualmente un descartado de hace 31 días
+        viejo = (datetime.now() - timedelta(days=31)).isoformat(timespec="seconds")
+        store_inicial = {
+            "items": [
+                {"fingerprint": "abc123", "alias": "N", "item_id": "MLA1",
+                 "fecha_optimizacion": "2026-03-01", "fecha_veredicto": viejo,
+                 "estado": "descartado", "actualizado_en": viejo,
+                 "veredicto": "ganadora", "score_exito": 70, "_debug": {"cost_usd": 0.10}},
+                {"fingerprint": "def456", "alias": "N", "item_id": "MLA2",
+                 "fecha_optimizacion": "2026-04-01", "fecha_veredicto": vo._now_iso(),
+                 "estado": "descartado", "actualizado_en": vo._now_iso(),
+                 "veredicto": "neutra", "score_exito": 50, "_debug": {"cost_usd": 0.10}},
+            ]
+        }
+        with open(os.path.join(self.data_dir, "veredictos_optimizacion.json"), "w") as f:
+            json.dump(store_inicial, f)
+
+        # Cargar el store debe purgar el viejo y mantener el reciente
+        store = vo._cargar_store(self.data_dir)
+        ids = [v["item_id"] for v in store["items"]]
+        self.assertEqual(ids, ["MLA2"], "Esperaba que se purgue el descartado de hace 31d")
+
+    def test_purgar_expirados_off_no_modifica_store(self):
+        viejo = (datetime.now() - timedelta(days=60)).isoformat(timespec="seconds")
+        store_inicial = {
+            "items": [
+                {"fingerprint": "x", "alias": "N", "item_id": "MLA1",
+                 "fecha_optimizacion": "2026-01-01", "fecha_veredicto": viejo,
+                 "estado": "descartado", "actualizado_en": viejo, "veredicto": "ganadora",
+                 "score_exito": 70, "_debug": {}},
+            ]
+        }
+        with open(os.path.join(self.data_dir, "veredictos_optimizacion.json"), "w") as f:
+            json.dump(store_inicial, f)
+        store = vo._cargar_store(self.data_dir, purgar_expirados=False)
+        self.assertEqual(len(store["items"]), 1, "Sin purga, el descartado debe mantenerse")
+
+    def test_historial_agrega_correctamente(self):
+        # Generar 3 veredictos con fechas/items distintos
+        for i, item in enumerate(["MLA0", "MLA1", "MLA2"]):
+            self._escribir_monitor([{
+                "alias": "N", "item_id": item, "titulo_producto": f"P{i}",
+                "fecha_opt": _hace_dias(8 + i),
+                "baseline": _baseline_v2_completo(),
+                "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+                "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+            }])
+            vo.evaluar_optimizacion(item, "N", self.data_dir)
+
+        h = vo.historial_veredictos("N", self.data_dir, days=30)
+        self.assertEqual(h["resumen"]["count_total"], 3)
+        # Por la lógica del fake_gen: MLA0 (suffix 0) ganadora, MLA1 (1) neutra, MLA2 (2) ganadora
+        self.assertEqual(h["resumen"]["count_ganadora"], 2)
+        self.assertEqual(h["resumen"]["count_neutra"], 1)
+        self.assertEqual(h["resumen"]["count_perdedora"], 0)
+        # Score promedio: (80+50+80)/3 = 70
+        self.assertEqual(h["resumen"]["score_promedio"], 70.0)
+        # Costo: 3 * 0.111 = 0.333
+        self.assertAlmostEqual(h["resumen"]["costo_total_usd"], 0.333, places=3)
+
+    def test_historial_filtra_por_alias(self):
+        # Crear veredictos en 2 alias distintos
+        for alias in ("Novara", "OtraCuenta"):
+            self._escribir_monitor([{
+                "alias": alias, "item_id": "MLA1", "titulo_producto": "P",
+                "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+                "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+                "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+            }])
+            vo.evaluar_optimizacion("MLA1", alias, self.data_dir)
+
+        h_nov = vo.historial_veredictos("Novara", self.data_dir)
+        h_otra = vo.historial_veredictos("OtraCuenta", self.data_dir)
+        h_all = vo.historial_veredictos(None, self.data_dir)
+        self.assertEqual(h_nov["resumen"]["count_total"], 1)
+        self.assertEqual(h_otra["resumen"]["count_total"], 1)
+        self.assertEqual(h_all["resumen"]["count_total"], 2)
+
+    def test_historial_excluye_descartados_por_default(self):
+        self._escribir_monitor([{
+            "alias": "N", "item_id": "MLA1", "titulo_producto": "P",
+            "fecha_opt": _hace_dias(8), "baseline": _baseline_v2_completo(),
+            "snapshots": [_snapshot_ligero(110, 9, 490, 2.6, 11)] * 5,
+            "ultimo_snapshot": _snapshot_ligero(110, 9, 490, 2.6, 11),
+        }])
+        vo.evaluar_optimizacion("MLA1", "N", self.data_dir)
+        vo.descartar_veredicto("MLA1", "N", self.data_dir)
+
+        h = vo.historial_veredictos("N", self.data_dir)
+        self.assertEqual(h["resumen"]["count_total"], 0,
+                         "Sin incluir_descartados=True, no debe aparecer")
+        h_inc = vo.historial_veredictos("N", self.data_dir, incluir_descartados=True)
+        self.assertEqual(h_inc["resumen"]["count_total"], 1)
+
+
+class TestCostGuard(VeredictoTestBase):
+    """Cubre el hard cap mensual de $30/mes (commit 6)."""
+
+    def _seed_token_log(self, entries: list[dict]) -> None:
+        with open(os.path.join(self.data_dir, "token_log.json"), "w") as f:
+            json.dump({"entries": entries}, f)
+
+    def test_costo_mes_actual_solo_suma_mes_corriente(self):
+        ahora = datetime.now()
+        mes_anterior = ahora - timedelta(days=45)
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 5.5},
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 2.3},
+            # Mes anterior — no debería contar
+            {"ts": mes_anterior.isoformat(), "funcion": "Veredicto IA — eval", "usd": 100.0},
+            # Otro feature — no debería contar
+            {"ts": ahora.isoformat(), "funcion": "Optimizar IA", "usd": 10.0},
+        ])
+        actual = vo.costo_mes_actual_usd(self.data_dir)
+        self.assertAlmostEqual(actual, 7.8, places=2)
+
+    def test_supera_cap_falso_bajo_threshold(self):
+        ahora = datetime.now()
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 15.0},
+        ])
+        supera, cost = vo.supera_cap_mensual(self.data_dir)
+        self.assertFalse(supera)
+        self.assertEqual(cost, 15.0)
+
+    def test_supera_cap_verdadero_en_threshold(self):
+        ahora = datetime.now()
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 30.0},
+        ])
+        supera, cost = vo.supera_cap_mensual(self.data_dir)
+        self.assertTrue(supera, "Esperaba supera=True en threshold exacto")
+        self.assertEqual(cost, 30.0)
+
+    def test_supera_cap_verdadero_pasado_threshold(self):
+        ahora = datetime.now()
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 32.5},
+        ])
+        supera, cost = vo.supera_cap_mensual(self.data_dir)
+        self.assertTrue(supera)
+        self.assertEqual(cost, 32.5)
+
+    def test_costo_sin_log_devuelve_cero(self):
+        # Sin token_log.json
+        actual = vo.costo_mes_actual_usd(self.data_dir)
+        self.assertEqual(actual, 0.0)
+
+
+# ── Runner ───────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    # Output verbose para que tests/run_regresion.sh muestre cada caso
+    unittest.main(verbosity=2)
