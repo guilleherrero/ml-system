@@ -5352,6 +5352,359 @@ def api_veredictos_historial(alias):
     return jsonify({'ok': True, **h})
 
 
+# ── Sprint 3.3: Replicador de Patrones Ganadores ────────────────────────────
+
+@app.route('/api/replicar/oportunidades/<alias>')
+def api_replicar_oportunidades(alias):
+    """Devuelve veredictos vigentes ganadores con recomendación 'replicar'.
+
+    No consume API ML ni Claude. Lectura pura de veredictos_optimizacion.json
+    + replicas_<alias>.json para conteos.
+    """
+    from modules import replicador_patrones as _rp
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    items = _rp.listar_oportunidades(alias, DATA_DIR)
+    cap_supera, cap_actual = _rp.supera_cap_mensual(DATA_DIR)
+    return jsonify({
+        'ok': True,
+        'oportunidades': items,
+        'count': len(items),
+        'cap_supera': cap_supera,
+        'cap_actual_usd': cap_actual,
+        'cap_max_usd': _rp.HARD_CAP_USD_MENSUAL,
+    })
+
+
+@app.route('/api/replicar/<alias>/<item_id_origen>/similares')
+def api_replicar_similares(alias, item_id_origen):
+    """Detecta productos similares para replicar el patrón ganador del origen.
+
+    Hace varias llamadas a la API ML (listings + multiget). Cachear en frontend.
+    Query params:
+      ?max_resultados=10  (default 10, máx 30)
+    """
+    from modules import replicador_patrones as _rp
+    item_id_origen = (item_id_origen or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    try:
+        max_r = max(1, min(30, int(request.args.get('max_resultados', 10))))
+    except (TypeError, ValueError):
+        max_r = 10
+
+    try:
+        from core.account_manager import AccountManager as _AM
+        client = _AM().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No hay cliente ML para {alias}: {e}'}), 404
+
+    # Validar que existe veredicto ganador para el origen
+    from modules import veredicto_optimizacion as _vo
+    veredicto = _vo.obtener_veredicto(item_id_origen, alias, DATA_DIR)
+    if not veredicto:
+        return jsonify({'ok': False, 'error': 'No hay veredicto vigente para este item'}), 404
+    if veredicto.get('recomendacion') != 'replicar':
+        return jsonify({
+            'ok': False,
+            'error': f"El veredicto recomienda '{veredicto.get('recomendacion')}', no 'replicar'.",
+        }), 400
+
+    try:
+        candidatos = _rp.detectar_productos_similares(
+            alias, item_id_origen, client, DATA_DIR, max_resultados=max_r)
+    except Exception as e:
+        app.logger.exception('[replicar/similares] error')
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    return jsonify({
+        'ok': True,
+        'item_origen':   item_id_origen,
+        'titulo_origen': veredicto.get('titulo_producto', ''),
+        'candidatos':    candidatos,
+        'count':         len(candidatos),
+    })
+
+
+@app.route('/api/replicar/<alias>/<item_id_origen>/<item_id_destino>/preview',
+           methods=['POST'])
+def api_replicar_preview(alias, item_id_origen, item_id_destino):
+    """Genera la propuesta de réplica adaptada al destino vía Claude Haiku.
+
+    Flujo:
+      1. Carga veredicto + monitor + optimizacion del origen.
+      2. Extrae el patrón ganador.
+      3. Trae datos del item destino (API ML get_item).
+      4. Llama a Haiku para adaptar.
+      5. Registra como 'preview_generado' con payload completo.
+
+    Body opcional: {force: bool} para regenerar aunque ya exista preview <7d.
+    """
+    from modules import replicador_patrones as _rp
+    from modules import veredicto_optimizacion as _vo
+
+    item_id_origen  = (item_id_origen or '').strip().upper()
+    item_id_destino = (item_id_destino or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    body  = request.get_json(silent=True) or {}
+    force = bool(body.get('force', False))
+
+    # Cap mensual
+    cap_supera, cap_actual = _rp.supera_cap_mensual(DATA_DIR)
+    if cap_supera and not force:
+        return jsonify({
+            'ok': False,
+            'error': f'Hard cap mensual alcanzado: ${cap_actual} / ${_rp.HARD_CAP_USD_MENSUAL}.',
+            'cap_actual_usd': cap_actual,
+        }), 429
+
+    # Validar veredicto
+    veredicto = _vo.obtener_veredicto(item_id_origen, alias, DATA_DIR)
+    if not veredicto:
+        return jsonify({'ok': False, 'error': 'No hay veredicto vigente para el origen'}), 404
+    if veredicto.get('recomendacion') != 'replicar':
+        return jsonify({
+            'ok': False,
+            'error': f"Veredicto recomienda '{veredicto.get('recomendacion')}', no 'replicar'."
+        }), 400
+
+    # Idempotencia: si hay preview <7d y no force, devolver el existente
+    if not force:
+        existente = _rp.obtener_decision(alias, item_id_origen, item_id_destino, DATA_DIR)
+        if (existente and existente.get('accion') == 'preview_generado'
+                and _rp._dias_desde(existente.get('fecha', '')) < _rp.TTL_PREVIEW_PENDIENTE_DIAS):
+            return jsonify({
+                'ok': True,
+                'cached': True,
+                'preview': existente.get('payload', {}),
+                'mensaje': 'Preview vigente <7d. Pasá force=true para regenerar.',
+            })
+
+    # Extraer patrón
+    monitor_entry = _vo._buscar_entry_monitor(DATA_DIR, alias, item_id_origen)
+    optimizacion  = _rp._buscar_optimizacion(DATA_DIR, alias, item_id_origen)
+    patron = _rp.extraer_patron_ganador(veredicto, optimizacion, monitor_entry)
+
+    # Datos del destino
+    try:
+        from core.account_manager import AccountManager as _AM
+        client = _AM().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No hay cliente ML para {alias}: {e}'}), 404
+    try:
+        item_destino_data = client.get_item(item_id_destino)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Item destino no encontrado: {e}'}), 404
+
+    # Llamada a Haiku
+    try:
+        preview = _rp.generar_replica_haiku(patron, item_destino_data, DATA_DIR)
+    except Exception as e:
+        app.logger.exception('[replicar/preview] error generando con Haiku')
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    # Registrar decisión "preview_generado"
+    _rp.registrar_decision(
+        alias, item_id_origen, item_id_destino, 'preview_generado', DATA_DIR,
+        payload={
+            'aplicable':             preview.get('aplicable'),
+            'titulo_actual':         item_destino_data.get('title', ''),
+            'titulo_propuesto':      preview.get('titulo_propuesto', ''),
+            'titulo_motivo':         preview.get('titulo_motivo', ''),
+            'descripcion_propuesta': preview.get('descripcion_propuesta', ''),
+            'cambios_clave':         preview.get('cambios_clave', []),
+            'confianza':             preview.get('confianza', 0),
+            '_debug':                preview.get('_debug', {}),
+        }
+    )
+    _audit('REPLICAR_PREVIEW', alias=alias,
+           item_origen=item_id_origen, item_destino=item_id_destino)
+
+    return jsonify({
+        'ok':            True,
+        'cached':        False,
+        'item_origen':   item_id_origen,
+        'item_destino':  item_id_destino,
+        'titulo_actual': item_destino_data.get('title', ''),
+        'patron':        patron,
+        'preview':       preview,
+    })
+
+
+@app.route('/api/replicar/<alias>/<item_id_origen>/<item_id_destino>/descartar',
+           methods=['POST'])
+def api_replicar_descartar(alias, item_id_origen, item_id_destino):
+    """Marca esta sugerencia (origen → destino) como descartada.
+    No vuelve a aparecer hasta que pase TTL (60d). Body opcional: {razon: str}."""
+    from modules import replicador_patrones as _rp
+    item_id_origen  = (item_id_origen or '').strip().upper()
+    item_id_destino = (item_id_destino or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    body  = request.get_json(silent=True) or {}
+    razon = (body.get('razon') or '').strip()[:300]
+    _rp.registrar_decision(alias, item_id_origen, item_id_destino, 'descartada',
+                           DATA_DIR, payload={'razon': razon})
+    _audit('REPLICAR_DESCARTAR', alias=alias,
+           item_origen=item_id_origen, item_destino=item_id_destino, razon=razon)
+    return jsonify({'ok': True, 'mensaje': 'Sugerencia descartada.'})
+
+
+@app.route('/api/replicar/<alias>/<item_id_origen>/<item_id_destino>/aplicar',
+           methods=['POST'])
+def api_replicar_aplicar(alias, item_id_origen, item_id_destino):
+    """Aplica la réplica al producto destino: modifica título y/o descripción
+    en MercadoLibre, registra como 'aplicada' y dispara el baseline async
+    (igual que el flujo de Optimizar IA estándar).
+
+    Body: {titulo: str, descripcion: str}  (vienen del preview, editables por el user)
+    """
+    from modules import replicador_patrones as _rp
+    item_id_origen  = (item_id_origen or '').strip().upper()
+    item_id_destino = (item_id_destino or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    body         = request.get_json(silent=True) or {}
+    titulo_nuevo = (body.get('titulo') or '').strip()
+    descripcion  = (body.get('descripcion') or '').strip()
+
+    if not titulo_nuevo and not descripcion:
+        return jsonify({'ok': False, 'error': 'Falta título y/o descripción a aplicar'}), 400
+    if titulo_nuevo and len(titulo_nuevo) > 60:
+        return jsonify({'ok': False, 'error': 'Título supera 60 chars (límite ML)'}), 400
+
+    try:
+        from core.account_manager import AccountManager as _AM
+        client = _AM().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No hay cliente ML para {alias}: {e}'}), 404
+
+    # Capturar título/visitas/ventas ANTES (para el monitor de evolución)
+    try:
+        item_data = client.get_item(item_id_destino)
+        titulo_antes = item_data.get('title', '')
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Item destino no encontrado: {e}'}), 404
+
+    applied = []
+    errors = []
+
+    # Aplicar título
+    if titulo_nuevo and titulo_nuevo != titulo_antes:
+        try:
+            client.update_item(item_id_destino, {'title': titulo_nuevo})
+            applied.append('titulo')
+        except Exception as e:
+            errors.append(f'título: {e}')
+
+    # Aplicar descripción (endpoint separado en ML)
+    if descripcion:
+        try:
+            from core.ml_client import ML_API_BASE
+            import requests as _rq
+            r = _rq.put(
+                f'{ML_API_BASE}/items/{item_id_destino}/description',
+                headers={'Authorization': f'Bearer {client.account.access_token}',
+                         'Content-Type': 'application/json'},
+                json={'plain_text': descripcion},
+                timeout=10,
+            )
+            if r.status_code in (200, 201):
+                applied.append('descripcion')
+            else:
+                errors.append(f'descripción: HTTP {r.status_code} {r.text[:200]}')
+        except Exception as e:
+            errors.append(f'descripción: {e}')
+
+    if not applied:
+        return jsonify({'ok': False, 'error': 'No se aplicó ningún cambio',
+                        'errors': errors}), 500
+
+    # Registrar como 'aplicada' en replicas
+    _rp.registrar_decision(
+        alias, item_id_origen, item_id_destino, 'aplicada', DATA_DIR,
+        payload={
+            'titulo_antes':   titulo_antes,
+            'titulo_despues': titulo_nuevo or titulo_antes,
+            'descripcion_aplicada': bool(descripcion),
+            'applied':        applied,
+            'errors':         errors,
+        }
+    )
+    _audit('REPLICAR_APLICAR', alias=alias,
+           item_origen=item_id_origen, item_destino=item_id_destino,
+           campos=','.join(applied))
+
+    # Registrar en monitor_evolucion para que el destino entre al loop
+    # de Sprint 3.1 (baseline async + snapshots) y eventualmente al Veredicto IA.
+    try:
+        _now      = datetime.now().strftime('%Y-%m-%d %H:%M')
+        _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+        _mon      = load_json(_mon_path) or {'items': []}
+        if not isinstance(_mon, dict):
+            _mon = {'items': []}
+        _existing = next((x for x in _mon['items']
+                          if x.get('item_id') == item_id_destino and x.get('alias') == alias), None)
+        _baseline_min = {
+            'fecha':        _now,
+            'visitas_7d':   None,
+            'ventas_30d':   None,
+            'ventas_total': None,
+            'conv_pct':     None,
+            'posicion':     None,
+            'posicion_kw':  '',
+        }
+        nueva_entry = {
+            'item_id':         item_id_destino,
+            'alias':           alias,
+            'titulo_producto': titulo_antes or item_id_destino,
+            'fecha_opt':       _now,
+            'titulo_antes':    titulo_antes,
+            'titulo_despues':  titulo_nuevo or titulo_antes,
+            'baseline':        _baseline_min,
+            'snapshots':       [],
+            'ultimo_snapshot': None,
+            'applied':         applied,
+            'origen_replica':  item_id_origen,  # marca de trazabilidad Sprint 3.3
+        }
+        if _existing:
+            _existing.update(nueva_entry)
+        else:
+            _mon['items'].append(nueva_entry)
+        save_json(_mon_path, _mon)
+
+        # Lanzar captura de baseline COMPLETO async (igual que Optimizar IA)
+        try:
+            from modules.baseline_capture import capturar_baseline_async, marcar_capturing
+            marcar_capturing(DATA_DIR, item_id_destino, alias)
+            capturar_baseline_async(item_id_destino, alias, client, DATA_DIR)
+        except Exception as e:
+            app.logger.warning('[replicar/aplicar] baseline async failed: %s', e)
+    except Exception as e:
+        app.logger.warning('[replicar/aplicar] monitor update failed: %s', e)
+
+    return jsonify({
+        'ok':            True,
+        'applied':       applied,
+        'errors':        errors,
+        'item_destino':  item_id_destino,
+        'mensaje':       f"Réplica aplicada en {item_id_destino}.",
+    })
+
+
 @app.route('/api/generar-faq', methods=['POST'])
 def api_generar_faq():
     """Genera 5 preguntas frecuentes usando preguntas reales de compradores del item + Claude."""
