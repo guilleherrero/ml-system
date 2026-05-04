@@ -526,9 +526,9 @@ function renderVeredictoBanner(it) {
              🔄 Regenerar con aprendizajes
            </button>`;
   } else if (rec === 'replicar') {
-    cta = `<button data-action="cta-replicar" disabled
-                   title="Disponible en Sprint 3.3">
-             🚀 Replicar patrón (Sprint 3.3)
+    cta = `<button data-action="cta-replicar" data-item="${escAttr(it.item_id)}"
+                   title="Buscar productos similares para aplicar el patrón ganador">
+             🚀 Replicar patrón a similares
            </button>`;
   } else if (rec === 'revertir') {
     cta = `<button data-action="cta-revertir" disabled
@@ -636,7 +636,200 @@ document.addEventListener('click', (ev) => {
   if (action === 'generar-veredicto')   generarVeredictoAhora(item);
   if (action === 'descartar-veredicto') descartarVeredictoBanner(item);
   if (action === 'cta-regenerar')       regenerarOptimizacion(item);
+  if (action === 'cta-replicar')        abrirModalReplicar(item);
 });
+
+// ── Sprint 3.3 — Replicar patrón ganador ─────────────────────────────────
+async function abrirModalReplicar(itemIdOrigen) {
+  // Crear/abrir modal lazy (una sola instancia)
+  let modal = document.getElementById('modalReplicar');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modalReplicar';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:2rem;';
+    modal.innerHTML = '<div id="modalReplicarBody" style="background:#fff;border-radius:12px;max-width:980px;width:100%;padding:1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.2)"></div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+  }
+  modal.style.display = 'flex';
+  const body = document.getElementById('modalReplicarBody');
+  body.innerHTML = `<div style="text-align:center;padding:2rem">
+    <div class="spinner-border" role="status"></div>
+    <p style="margin-top:1rem;color:#64748b">Buscando productos similares en tu catálogo…</p>
+    <p style="font-size:.8rem;color:#94a3b8">Esto puede tardar 5-10 segundos</p>
+  </div>`;
+
+  try {
+    const r = await fetch(`/api/replicar/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemIdOrigen)}/similares?max_resultados=10`);
+    const d = await r.json();
+    if (!d.ok) {
+      body.innerHTML = renderModalError(d.error || 'Error desconocido', itemIdOrigen);
+      return;
+    }
+    body.innerHTML = renderModalCandidatos(d, itemIdOrigen);
+  } catch (e) {
+    body.innerHTML = renderModalError(e.message, itemIdOrigen);
+  }
+}
+
+function renderModalError(msg, itemIdOrigen) {
+  return `<div>
+    <h4 style="margin:0 0 .5rem">No se pudo abrir el replicador</h4>
+    <p style="color:#dc2626;margin:0 0 1rem">${msg}</p>
+    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalReplicar').style.display='none'">Cerrar</button>
+  </div>`;
+}
+
+function renderModalCandidatos(data, itemIdOrigen) {
+  const candidatos = data.candidatos || [];
+  const aplicables = candidatos.filter(c => !c.bloqueado_por);
+  const bloqueados = candidatos.filter(c =>  c.bloqueado_por);
+
+  const headerHtml = `<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:1rem;margin-bottom:1rem">
+    <div>
+      <h4 style="margin:0 0 .25rem">🚀 Replicar patrón ganador</h4>
+      <div style="font-size:.85rem;color:#64748b">Origen: <strong>${data.titulo_origen || itemIdOrigen}</strong></div>
+      <div style="font-size:.78rem;color:#94a3b8;margin-top:.25rem">${aplicables.length} candidato${aplicables.length!==1?'s':''} disponible${aplicables.length!==1?'s':''} · ${bloqueados.length} bloqueado${bloqueados.length!==1?'s':''}</div>
+    </div>
+    <button class="btn-close" aria-label="Cerrar" onclick="document.getElementById('modalReplicar').style.display='none'"></button>
+  </div>`;
+
+  if (candidatos.length === 0) {
+    return headerHtml + `<div style="text-align:center;padding:1.5rem;color:#64748b">
+      No se encontraron productos similares en tu catálogo (umbral mínimo: 30% similitud).
+      <p style="font-size:.85rem;margin-top:.5rem">Esto es normal si el patrón ganador es muy específico.</p>
+    </div>`;
+  }
+
+  const aplicablesHtml = aplicables.map(c => `
+    <div class="candidato-card" style="border:1px solid #e5e7eb;border-radius:8px;padding:.85rem;margin-bottom:.75rem">
+      <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:.92rem;margin-bottom:.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.titulo}</div>
+          <div style="font-size:.75rem;color:#64748b">
+            ${c.item_id} · $${c.price ? c.price.toLocaleString('es-AR') : 'n/d'} · ${c.sold_quantity || 0} vendidos
+            ${c.permalink ? `· <a href="${c.permalink}" target="_blank" rel="noopener">ver en ML</a>` : ''}
+          </div>
+          <div style="font-size:.78rem;color:#3b82f6;margin-top:.25rem">
+            <strong>${Math.round(c.similitud * 100)}% similitud</strong> ${c.mismo_categoria ? '· misma categoría' : ''} · ${c.motivo_inclusion}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.3rem">
+          <button class="btn btn-primary btn-sm" onclick="generarPreviewReplica('${itemIdOrigen}','${c.item_id}')">
+            👁 Preview IA
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="descartarSugerencia('${itemIdOrigen}','${c.item_id}')">
+            🗑 Descartar
+          </button>
+        </div>
+      </div>
+      <div id="preview-${c.item_id}" style="display:none;margin-top:.75rem;padding-top:.75rem;border-top:1px dashed #e5e7eb"></div>
+    </div>
+  `).join('');
+
+  const bloqueadosHtml = bloqueados.length ? `
+    <details style="margin-top:1rem">
+      <summary style="cursor:pointer;color:#94a3b8;font-size:.85rem">Ver ${bloqueados.length} bloqueado${bloqueados.length!==1?'s':''}</summary>
+      <div style="margin-top:.5rem">
+        ${bloqueados.map(c => `<div style="padding:.5rem;border:1px dashed #e5e7eb;border-radius:6px;margin-bottom:.4rem;font-size:.82rem;opacity:.65">
+          <strong>${c.titulo.slice(0,60)}…</strong> — <span style="color:#dc2626">${c.bloqueado_por}</span>
+        </div>`).join('')}
+      </div>
+    </details>` : '';
+
+  const noteHtml = `<div style="font-size:.75rem;color:#94a3b8;margin-top:1rem;padding:.5rem;background:#f8fafc;border-radius:6px">
+    💡 Cada preview consume ~$0.005 USD (Claude Haiku). Hard cap: $5/mes.
+    Aplicación es 1-por-1 — siempre revisás antes de aplicar.
+  </div>`;
+
+  return headerHtml + aplicablesHtml + bloqueadosHtml + noteHtml;
+}
+
+async function generarPreviewReplica(itemOrigen, itemDestino) {
+  const cont = document.getElementById('preview-' + itemDestino);
+  if (!cont) return;
+  cont.style.display = 'block';
+  cont.innerHTML = '<div style="color:#64748b;font-size:.85rem"><span class="spinner-border spinner-border-sm"></span> Generando propuesta IA (Haiku, ~5s, ~$0.005)…</div>';
+  try {
+    const r = await fetch(`/api/replicar/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemOrigen)}/${encodeURIComponent(itemDestino)}/preview`,
+                          {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})});
+    const d = await r.json();
+    if (!d.ok) {
+      cont.innerHTML = `<div style="color:#dc2626;font-size:.85rem">❌ ${d.error || 'Error'}</div>`;
+      return;
+    }
+    const p = d.preview || (d.cached ? d.preview : null);
+    if (!p) { cont.innerHTML = '<em>Sin propuesta</em>'; return; }
+    if (!p.aplicable) {
+      cont.innerHTML = `<div style="background:#fef3c7;padding:.6rem;border-radius:6px;font-size:.85rem">
+        <strong>⚠️ El patrón no aplica a este producto.</strong><br>
+        ${p.razon_no_aplicable || 'La IA determinó que el patrón no es transferible.'}
+      </div>`;
+      return;
+    }
+    const cambios = (p.cambios_clave || []).map(c => `<li>${c}</li>`).join('');
+    cont.innerHTML = `
+      <div style="font-size:.78rem;color:#64748b;margin-bottom:.5rem">
+        💡 Propuesta IA · Confianza ${p.confianza}/100 ${d.cached ? '<span style="background:#fef3c7;padding:1px 5px;border-radius:4px">cacheada</span>' : ''}
+      </div>
+      <div style="margin-bottom:.6rem">
+        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:.2rem">Título propuesto (${p.titulo_propuesto.length}/60):</label>
+        <input id="titReplica-${itemDestino}" type="text" maxlength="60" value="${escAttr(p.titulo_propuesto)}" style="width:100%;padding:.4rem;border:1px solid #e5e7eb;border-radius:4px;font-size:.88rem">
+        <div style="font-size:.72rem;color:#94a3b8;margin-top:.2rem"><em>${p.titulo_motivo || ''}</em></div>
+      </div>
+      <div style="margin-bottom:.6rem">
+        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:.2rem">Descripción propuesta:</label>
+        <textarea id="descReplica-${itemDestino}" rows="6" style="width:100%;padding:.4rem;border:1px solid #e5e7eb;border-radius:4px;font-size:.85rem">${p.descripcion_propuesta}</textarea>
+      </div>
+      ${cambios ? `<div style="font-size:.78rem;color:#475569;margin-bottom:.6rem"><strong>Cambios clave:</strong><ul style="margin:.2rem 0 0 1rem;padding:0">${cambios}</ul></div>` : ''}
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn-success btn-sm" onclick="aplicarReplica('${itemOrigen}','${itemDestino}')">✓ Aplicar a ML</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('preview-${itemDestino}').style.display='none'">Cerrar preview</button>
+      </div>`;
+  } catch (e) {
+    cont.innerHTML = `<div style="color:#dc2626;font-size:.85rem">❌ ${e.message}</div>`;
+  }
+}
+
+async function aplicarReplica(itemOrigen, itemDestino) {
+  const tit  = document.getElementById('titReplica-' + itemDestino);
+  const desc = document.getElementById('descReplica-' + itemDestino);
+  if (!tit || !desc) return;
+  if (!confirm(`Aplicar el patrón a ${itemDestino}?\n\nSe va a modificar título y descripción en MercadoLibre.`)) return;
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerText = 'Aplicando…';
+  try {
+    const r = await fetch(`/api/replicar/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemOrigen)}/${encodeURIComponent(itemDestino)}/aplicar`,
+                          {method: 'POST', headers: {'Content-Type':'application/json'},
+                           body: JSON.stringify({titulo: tit.value, descripcion: desc.value})});
+    const d = await r.json();
+    if (d.ok) {
+      const cont = document.getElementById('preview-' + itemDestino);
+      cont.innerHTML = `<div style="background:#dcfce7;padding:.6rem;border-radius:6px;font-size:.88rem;color:#166534">
+        ✅ Réplica aplicada en ${itemDestino}. Campos: <strong>${(d.applied || []).join(', ')}</strong>.
+        Empieza a medirse — verás el veredicto en ~7 días.
+      </div>`;
+    } else {
+      btn.disabled = false; btn.innerText = '✓ Aplicar a ML';
+      alert('Error al aplicar: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) {
+    btn.disabled = false; btn.innerText = '✓ Aplicar a ML';
+    alert('Error: ' + e.message);
+  }
+}
+
+async function descartarSugerencia(itemOrigen, itemDestino) {
+  const razon = prompt('¿Por qué descartás esta sugerencia? (opcional)') || '';
+  try {
+    const r = await fetch(`/api/replicar/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemOrigen)}/${encodeURIComponent(itemDestino)}/descartar`,
+                          {method: 'POST', headers: {'Content-Type':'application/json'},
+                           body: JSON.stringify({razon})});
+    const d = await r.json();
+    if (d.ok) abrirModalReplicar(itemOrigen);   // refrescar lista
+  } catch (e) { alert('Error: ' + e.message); }
+}
 
 function renderItem(it) {
   const b  = it.baseline       || {};
