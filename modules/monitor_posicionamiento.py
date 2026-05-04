@@ -59,7 +59,9 @@ def _search_position(item_id: str, category_id: str, keywords: str,
     """Busca el item usando la API oficial de ML y devuelve su posición (1-based). 999 = no encontrado."""
     if not token:
         return NOT_FOUND_POS
-    headers = {'Authorization': f'Bearer {token}'}
+    # Hotfix 04/05/2026: /sites/MLA/search es endpoint PÚBLICO, NO enviar Authorization
+    # (con token puede devolver 403 falso si scopes no son los esperados).
+    headers = {'Accept': 'application/json'}
     page_size = 50
     for page in range(SEARCH_PAGES):
         offset = page * page_size

@@ -196,25 +196,42 @@ def _test_publicidad_write(alias: str) -> dict:
 
 
 def _test_items_busqueda(token: str, user_id) -> dict:
-    if not user_id:
-        return {'estado': 'error', 'mensaje': 'No se pudo obtener user_id de la cuenta.'}
+    """Hotfix 04/05/2026: el endpoint /sites/MLA/search es PÚBLICO — no requiere
+    Authorization. Si lo enviás, ML puede responder 403 incluso con permisos OK.
+
+    Estrategia mejorada (2 fases):
+      1. Búsqueda pública por keyword (sin auth) — confirma que la API pública responde.
+      2. Búsqueda por seller_id (sin auth tampoco — search público también acepta seller_id).
+    """
+    # 1) Búsqueda pública por keyword — debe funcionar sin token
     try:
-        r = requests.get(f'{ML_BASE}/sites/MLA/search',
-                         headers={'Authorization': f'Bearer {token}'},
-                         params={'seller_id': user_id, 'limit': 1},
-                         timeout=8)
-        if r.status_code == 200:
-            data = r.json()
-            results = data.get('results') if isinstance(data, dict) else None
-            if results is None:
-                return {'estado': 'parcial', 'http_code': 200,
-                        'mensaje': 'La API respondió 200 pero sin la clave "results" — formato inesperado.'}
-            return {'estado': 'activo'}
-        if r.status_code in (401, 403):
-            return {'estado': 'faltante', 'http_code': r.status_code,
-                    'mensaje': 'GET /sites/MLA/search devolvió 401/403 — falta el toggle "Ítems y búsqueda" en el panel ML.'}
-        return {'estado': 'error', 'http_code': r.status_code,
-                'mensaje': f'Respuesta inesperada: HTTP {r.status_code}'}
+        r1 = requests.get(f'{ML_BASE}/sites/MLA/search',
+                          headers={'Accept': 'application/json'},
+                          params={'q': 'iphone', 'limit': 1},
+                          timeout=8)
+        if r1.status_code != 200:
+            return {'estado': 'error', 'http_code': r1.status_code,
+                    'mensaje': f'API pública /sites/MLA/search responde HTTP {r1.status_code} — problema de red o ML caído.'}
+    except requests.RequestException as e:
+        return {'estado': 'error', 'mensaje': f'Error de red en búsqueda pública: {e}'}
+
+    # 2) Búsqueda por seller_id (también debería funcionar sin auth)
+    if not user_id:
+        return {'estado': 'activo',
+                'mensaje': 'Búsqueda pública del marketplace funciona. user_id no disponible para test específico.'}
+    try:
+        r2 = requests.get(f'{ML_BASE}/sites/MLA/search',
+                          headers={'Accept': 'application/json'},
+                          params={'seller_id': user_id, 'limit': 1},
+                          timeout=8)
+        if r2.status_code == 200:
+            return {'estado': 'activo',
+                    'mensaje': 'Búsqueda pública + búsqueda por seller_id funcionan correctamente.'}
+        if r2.status_code in (401, 403):
+            return {'estado': 'parcial', 'http_code': r2.status_code,
+                    'mensaje': f'Búsqueda pública OK, pero búsqueda filtrada por seller_id devolvió {r2.status_code}. /posiciones funciona; /competencia puede tener limitaciones.'}
+        return {'estado': 'parcial', 'http_code': r2.status_code,
+                'mensaje': f'Búsqueda pública OK; búsqueda por seller respondió {r2.status_code}.'}
     except requests.RequestException as e:
         return {'estado': 'error', 'mensaje': f'Error de red: {e}'}
 

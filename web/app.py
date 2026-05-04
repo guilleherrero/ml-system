@@ -994,7 +994,7 @@ def _fetch_competitors_full(keyword: str, token: str, exclude_id: str = '', limi
     try:
         resp = req_lib.get(
             'https://api.mercadolibre.com/sites/MLA/search',
-            headers=headers,
+            headers={'Accept': 'application/json'},
             params={'q': keyword, 'limit': 20},
             timeout=10,
         )
@@ -1153,7 +1153,7 @@ def _fetch_top_competitors_summary(keywords: list[str], item_id: str, token: str
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers=headers,
+                headers={'Accept': 'application/json'},
                 params={'q': kw, 'limit': 10},
                 timeout=10,
             )
@@ -6288,7 +6288,7 @@ def _check_keyword_position(item_id: str, keyword: str, token: str, max_results:
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers=headers,
+                headers={'Accept': 'application/json'},
                 params={'q': keyword, 'limit': PAGE_SIZE, 'offset': offset},
                 timeout=10,
             )
@@ -6376,7 +6376,7 @@ def api_buscar_posicion():
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers=headers,
+                headers={'Accept': 'application/json'},
                 params={'q': keyword, 'limit': PAGE_SIZE, 'offset': offset},
                 timeout=10
             )
@@ -7437,7 +7437,7 @@ def api_evaluar_producto():
             hdrs = {'Authorization': f'Bearer {token}'}
             sr = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers=hdrs,
+                headers={'Accept': 'application/json'},
                 params={'q': query, 'limit': 5, 'sort': 'sold_quantity_desc'},
                 timeout=10,
             )
@@ -7871,7 +7871,7 @@ def api_repricing_simulate(alias):
                 # Publicación fuera de catálogo → búsqueda por categoría (imprecisa)
                 try:
                     sr = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
-                                     headers=heads,
+                                     headers={'Accept': 'application/json'},
                                      params={'category': cat_id, 'sort': 'price_asc', 'limit': 5},
                                      timeout=8)
                     if sr.ok:
@@ -10295,7 +10295,7 @@ def api_descubrir_competidores():
                 try:
                     sr = req_lib.get(
                         'https://api.mercadolibre.com/sites/MLA/search',
-                        headers=headers,
+                        headers={'Accept': 'application/json'},
                         params={'q': kd['keyword'], 'limit': 10, 'sort': 'relevance'},
                         timeout=10
                     )
@@ -12039,7 +12039,7 @@ def api_lanzar():
 
             search_r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
                 params={'q': producto, 'sort': 'sold_quantity_desc', 'limit': 6},
-                headers=ml_headers, timeout=12)
+                headers={'Accept': 'application/json'}, timeout=12)
 
             real_comps = []
             if search_r.ok:
@@ -12386,7 +12386,7 @@ def api_lanzar_producto():
             # Buscar top 5 competidores (ordenados por ventas)
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers=headers,
+                headers={'Accept': 'application/json'},
                 params={'q': query, 'limit': 5, 'sort': 'sold_quantity_desc'},
                 timeout=10,
             )
@@ -15532,7 +15532,7 @@ def api_analisis_experto_run(alias):
                 if not _kw:
                     return None
                 _r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
-                    headers=heads, params={'q': _kw, 'limit': 10}, timeout=8)
+                    headers={'Accept': 'application/json'}, params={'q': _kw, 'limit': 10}, timeout=8)
                 if not _r.ok:
                     return None
                 _res = _r.json().get('results', [])

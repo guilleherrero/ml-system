@@ -304,10 +304,11 @@ def _get_competitor_info(item: dict, token: str) -> dict:
             pass
 
     # ── Caso 2: no es catálogo → búsqueda por categoría (imprecisa) ──────────
+    # Hotfix 04/05/2026: /sites/MLA/search es PÚBLICO, no enviar Authorization.
     try:
         resp = requests.get(
             "https://api.mercadolibre.com/sites/MLA/search",
-            headers=headers,
+            headers={"Accept": "application/json"},
             params={"category": category, "sort": "price_asc", "limit": 5},
             timeout=8,
         )

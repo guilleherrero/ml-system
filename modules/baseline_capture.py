@@ -135,8 +135,9 @@ def _capturar_visibilidad(item_id: str, headers: dict, top_kws: list[str],
         for kw in top_kws[:_TOP_KEYWORDS_N]:
             try:
                 api_calls += 1
+                # Hotfix 04/05/2026: /sites/MLA/search es PÚBLICO, no enviar Authorization
                 r = requests.get(f'{_ML}/sites/MLA/search',
-                                 headers=headers,
+                                 headers={'Accept': 'application/json'},
                                  params={'q': kw, 'limit': 50}, timeout=8)
                 if r.ok:
                     results = r.json().get('results', [])

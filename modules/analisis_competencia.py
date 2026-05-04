@@ -83,19 +83,19 @@ def _get_product_detail(product_id: str, token: str) -> Optional[dict]:
 
 def _get_top_sellers_items(category_id: str, token: str, limit: int = 5) -> list[dict]:
     """
-    Intenta obtener los items más vendidos via búsqueda directa.
-    Requiere permiso 'items' habilitado en la app ML.
-    Devuelve lista vacía si el permiso no está activo.
+    Intenta obtener los items más vendidos via búsqueda pública.
+    Hotfix 04/05/2026: /sites/MLA/search es endpoint PÚBLICO — no requiere Authorization.
+    Enviar token causaba 403 falso. Ahora usa headers limpios.
     """
     resp = requests.get(
         "https://api.mercadolibre.com/sites/MLA/search",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Accept": "application/json"},
         params={"category": category_id, "sort": "sold_quantity", "limit": limit},
         timeout=10,
     )
     if resp.ok:
         return resp.json().get("results", [])
-    return []  # 403 si el permiso no está activo
+    return []  # No vacía si está caído ML o categoría inválida
 
 
 def _extract_keywords_for_search(title: str, max_words: int = 4) -> str:
