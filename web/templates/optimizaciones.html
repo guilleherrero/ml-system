@@ -124,6 +124,24 @@
 .btn-modal-confirm:hover:not(:disabled) { background:#1d4ed8; }
 .btn-modal-confirm:disabled { background:#93c5fd; cursor:not-allowed; }
 .modal-char-warn { background:#fef9c3; border:1px solid #fde68a; border-radius:6px; padding:6px 10px; font-size:.75rem; color:#92400e; margin-top:8px; }
+
+/* ─── Sprint UX M1: Tabs horizontales del output de optimización ───── */
+.opt-tabs              { border-top:1px solid #e5e7eb; background:#fff; }
+.opt-tabs-nav          { display:flex; gap:0; background:#f8fafc; border-bottom:1px solid #e5e7eb; padding:0 12px; overflow-x:auto; scrollbar-width:thin; }
+.opt-tabs-nav button   { background:transparent; border:none; padding:11px 16px; font-size:.83rem; font-weight:600; color:#64748b; cursor:pointer; border-bottom:2.5px solid transparent; white-space:nowrap; transition:color .15s, border-color .15s, background .15s; display:inline-flex; align-items:center; gap:6px; }
+.opt-tabs-nav button:hover:not(:disabled) { color:#1e293b; background:#eef2f7; }
+.opt-tabs-nav button.active { color:#2563eb; border-bottom-color:#2563eb; background:#fff; }
+.opt-tabs-nav button:disabled { color:#cbd5e1; cursor:not-allowed; opacity:.55; }
+.opt-tabs-nav button .tab-badge { background:#dc2626; color:#fff; font-size:.62rem; font-weight:700; border-radius:9px; padding:1px 6px; margin-left:4px; }
+.opt-tabs-nav button.active .tab-badge { background:#2563eb; }
+.opt-tabs-nav button:disabled .tab-badge { display:none; }
+.opt-tab-pane          { display:none; }
+.opt-tab-pane.active   { display:block; }
+.opt-tab-empty         { padding:32px 20px; text-align:center; color:#94a3b8; font-size:.85rem; }
+.opt-tab-empty i       { font-size:1.6rem; display:block; margin-bottom:6px; opacity:.5; }
+@media (max-width: 640px) {
+  .opt-tabs-nav button { padding:10px 12px; font-size:.78rem; }
+}
 </style>
 <div class="page-header">
   <div>
@@ -809,8 +827,25 @@
     <div style="font-size:.84rem;color:#64748b;margin-top:2px">{{ item.get('titulo_actual', '—') }}</div>
   </div>
 
-  <!-- ─ Títulos optimizados ──────────────────────────────────────────── -->
-  {% if titulos or item.get('titulo_nuevo') %}
+  <!-- ── Sprint UX M1 — Tabs del output ────────────────────────────── -->
+  {% set _has_titulo   = (titulos or item.get('titulo_nuevo')) %}
+  {% set _has_acciones = (item.get('alerta_catalogo') or item.get('precio_recomendado') or item.get('fotos_recomendadas') or item.get('correcciones_titulo')) %}
+  {% set _has_ficha    = item.get('ficha_perfecta') %}
+  {% set _has_desc     = item.get('descripcion_nueva') %}
+  {% set _has_analisis = (item.get('puntaje_calidad') or item.get('qa_insights') or item.get('score_oficial_ml') or item.get('analisis_ficha') or item.get('analisis_desc') or item.get('keywords_faltantes')) %}
+  <div class="opt-tabs">
+    <div class="opt-tabs-nav" role="tablist" data-card="opt-card-{{ outer_idx }}">
+      <button type="button" data-opt-tab="titulo-{{ outer_idx }}"   {% if not _has_titulo %}disabled{% endif %}><i class="bi bi-tag"></i> Título</button>
+      <button type="button" data-opt-tab="acciones-{{ outer_idx }}" {% if not _has_acciones %}disabled{% endif %}><i class="bi bi-clipboard-check"></i> Acciones</button>
+      <button type="button" data-opt-tab="ficha-{{ outer_idx }}"    {% if not _has_ficha %}disabled{% endif %}><i class="bi bi-table"></i> Ficha técnica</button>
+      <button type="button" data-opt-tab="desc-{{ outer_idx }}"     {% if not _has_desc %}disabled{% endif %}><i class="bi bi-file-text"></i> Descripción</button>
+      <button type="button" data-opt-tab="analisis-{{ outer_idx }}" {% if not _has_analisis %}disabled{% endif %}><i class="bi bi-graph-up"></i> Análisis</button>
+    </div>
+    <div class="opt-tabs-content">
+
+  <!-- ─ Tab: Título ─────────────────────────────────────────────────── -->
+  <div class="opt-tab-pane" data-opt-tab-content="titulo-{{ outer_idx }}">
+  {% if _has_titulo %}
   <div class="opt-sec">
     <div class="opt-sec-hdr">
       <i class="bi bi-check-circle-fill" style="color:#16a34a;font-size:.88rem"></i>
@@ -891,10 +926,14 @@
       {% endif %}
     </div>
   </div>
+  {% else %}
+  <div class="opt-tab-empty"><i class="bi bi-info-circle"></i>Sin títulos sugeridos para esta optimización.</div>
   {% endif %}
+  </div><!-- /tab-pane Título -->
 
-  <!-- ─ Acciones recomendadas ──────────────────────────────────────── -->
-  {% if item.get('alerta_catalogo') or item.get('precio_recomendado') or item.get('fotos_recomendadas') or item.get('correcciones_titulo') %}
+  <!-- ─ Tab: Acciones recomendadas ──────────────────────────────────── -->
+  <div class="opt-tab-pane" data-opt-tab-content="acciones-{{ outer_idx }}">
+  {% if _has_acciones %}
   <div class="opt-sec">
     <div class="opt-sec-hdr">
       <i class="bi bi-lightning-charge-fill" style="color:#d97706;font-size:.88rem"></i>
@@ -929,10 +968,14 @@
       </div>
     </div>
   </div>
+  {% else %}
+  <div class="opt-tab-empty"><i class="bi bi-info-circle"></i>Sin acciones recomendadas adicionales.</div>
   {% endif %}
+  </div><!-- /tab-pane Acciones -->
 
-  <!-- ─ Ficha técnica ────────────────────────────────────────────────── -->
-  {% if item.get('ficha_perfecta') %}
+  <!-- ─ Tab: Ficha técnica ──────────────────────────────────────────── -->
+  <div class="opt-tab-pane" data-opt-tab-content="ficha-{{ outer_idx }}">
+  {% if _has_ficha %}
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.fchev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
       <i class="bi bi-table" style="color:#9a3412;font-size:.88rem"></i>
@@ -957,9 +1000,13 @@
            title="Editá directamente los campos antes de aplicar">{{ item.get('ficha_perfecta') }}</div>
     </div>
   </div>
+  {% else %}
+  <div class="opt-tab-empty"><i class="bi bi-info-circle"></i>Sin ficha técnica generada para esta optimización.</div>
   {% endif %}
+  </div><!-- /tab-pane Ficha -->
 
-  <!-- ─ Análisis de calidad ─────────────────────────────────────────── -->
+  <!-- ─ Tab: Análisis (calidad + insights) ──────────────────────────── -->
+  <div class="opt-tab-pane" data-opt-tab-content="analisis-{{ outer_idx }}">
   {% if item.get('puntaje_calidad') or item.get('resumen_mercado') or item.get('keywords_faltantes') or item.get('analisis_ficha') or item.get('analisis_desc') or item.get('score_oficial_ml') %}
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.achev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
@@ -1076,9 +1123,14 @@
     </div>
   </div>
   {% endif %}
+  {% if not _has_analisis %}
+  <div class="opt-tab-empty"><i class="bi bi-info-circle"></i>Sin análisis ni insights generados para esta optimización.</div>
+  {% endif %}
+  </div><!-- /tab-pane Análisis -->
 
-  <!-- ─ Descripción superadora ───────────────────────────────────────── -->
-  {% if item.get('descripcion_nueva') %}
+  <!-- ─ Tab: Descripción superadora ─────────────────────────────────── -->
+  <div class="opt-tab-pane" data-opt-tab-content="desc-{{ outer_idx }}">
+  {% if _has_desc %}
   <div class="opt-sec">
     <div class="opt-sec-hdr">
       <i class="bi bi-file-richtext-fill" style="color:#14532d;font-size:.88rem"></i>
@@ -1121,7 +1173,13 @@
       </div>
     </div>
   </div>
+  {% else %}
+  <div class="opt-tab-empty"><i class="bi bi-info-circle"></i>Sin descripción optimizada para esta publicación.</div>
   {% endif %}
+  </div><!-- /tab-pane Descripción -->
+
+    </div><!-- /opt-tabs-content -->
+  </div><!-- /opt-tabs Sprint UX M1 -->
 
 </div><!-- /opt-card -->
 {% endfor %}
@@ -3092,5 +3150,61 @@ function seleccionarDesdeQs(itemId) {
   const paso1 = document.querySelector('[data-paso1]');
   if (paso1) paso1.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+/* ─── Sprint UX M1 — Tabs del output de optimización ───────────────── */
+function initOptTabs(scope) {
+  const root = scope || document;
+  // Por cada nav de tabs en la página
+  root.querySelectorAll('.opt-tabs-nav').forEach(nav => {
+    if (nav.dataset.optTabsBound === '1') return;
+    nav.dataset.optTabsBound = '1';
+
+    const buttons = nav.querySelectorAll('button[data-opt-tab]');
+    // Activar la primera tab no-disabled por defecto
+    const firstActivable = Array.from(buttons).find(b => !b.disabled);
+    if (firstActivable) activateOptTab(firstActivable);
+
+    // Click handler delegado
+    nav.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-opt-tab]');
+      if (!btn || btn.disabled) return;
+      activateOptTab(btn);
+    });
+
+    // Atajo de teclado: ←/→ navega entre tabs habilitadas
+    nav.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const activable = Array.from(buttons).filter(b => !b.disabled);
+      const idx = activable.indexOf(document.activeElement);
+      if (idx === -1) return;
+      const next = e.key === 'ArrowRight'
+        ? activable[(idx + 1) % activable.length]
+        : activable[(idx - 1 + activable.length) % activable.length];
+      next.focus();
+      activateOptTab(next);
+    });
+  });
+}
+
+function activateOptTab(btn) {
+  const target = btn.dataset.optTab;
+  if (!target) return;
+  const nav = btn.closest('.opt-tabs-nav');
+  const card = nav && nav.closest('.opt-tabs');
+  if (!card) return;
+
+  // Desactivar todos los buttons del nav
+  nav.querySelectorAll('button[data-opt-tab]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  // Mostrar solo la pane que matchea
+  card.querySelectorAll('.opt-tab-pane').forEach(p => {
+    p.classList.toggle('active', p.dataset.optTabContent === target);
+  });
+}
+
+// Inicializar al cargar y exponer para reinit (cuando se recarga el historial)
+document.addEventListener('DOMContentLoaded', () => initOptTabs());
+window.initOptTabs = initOptTabs;
 </script>
 {% endblock %}
