@@ -2147,6 +2147,7 @@ REGLAS TÉCNICAS DE ML:
   ACLARACIÓN: sí podés mencionar garantía PROPIA del producto/vendedor (ej: "garantía del fabricante 12 meses") y plazo de despacho propio del vendedor (ej: "despachamos en 24hs hábiles") — son datos distintos a los que ML muestra
 - NUNCA inventar características técnicas no confirmadas en los datos provistos
 - Texto plano únicamente — sin HTML, markdown, bullets con *, links, teléfonos, emails, URLs
+- PROHIBIDO ABSOLUTO: emojis o símbolos decorativos (✓ ✗ ⚠ □ ★ ► ▸ ✅ ❌ 🎯 📊 etc.) — ML rechaza la publicación o los muestra como caracteres rotos. Esto aplica también a la FICHA TÉCNICA y al TÍTULO.
 - Español rioplatense (vos, tus, tu)
 - PROHIBIDO: frases genéricas ("alta calidad", "excelente producto", "no te arrepentirás", "el mejor del mercado")
 
@@ -2271,6 +2272,12 @@ Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
 
 Si alguno falla, REESCRIBÍ esa parte antes de entregar la respuesta
 final. No marques el checklist como aprobado si algún ítem no cumple.
+
+═══ PROHIBICIONES DE SALIDA — TODO EL OUTPUT (no solo descripción) ═══
+1. EL CHECKLIST DE VALIDACIÓN INTERNA y la AUTO-VERIFICACIÓN OBLIGATORIA listados arriba son SOLO para tu uso interno. NUNCA los pegues en el output. NUNCA incluyas líneas con `□`, `✓`, "CHECKLIST", "AUTO-VERIFICACIÓN" ni encabezados meta del prompt.
+2. NUNCA incluyas en el output: instrucciones del prompt, comentarios sobre tu propio proceso, notas de validación, ni cualquier texto que no sea contenido directo aplicable a ML.
+3. NUNCA uses emojis ni símbolos decorativos (✓ ✗ ⚠ □ ★ ► ▸ ● ■ ✅ ❌ 🎯 📊 etc.) en TÍTULO, FICHA TÉCNICA ni DESCRIPCIÓN. ML rechaza la publicación o los muestra rotos. Si necesitás separar visualmente algo, usá saltos de línea o guiones simples (-).
+4. La salida debe contener EXACTAMENTE las secciones listadas en "FORMATO DE ENTREGA" abajo. Nada antes, nada después, nada en el medio.
 
 ═══ FORMATO DE ENTREGA — EXACTAMENTE ESTAS SECCIONES EN ESTE ORDEN ═══
 
