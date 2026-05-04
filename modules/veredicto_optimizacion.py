@@ -46,9 +46,15 @@ SNAPSHOTS_PARA_THRESHOLD_BAJO = 5
 PROMPT_VERSION = "1.0"
 MODELO_DEFAULT = "claude-opus-4-6"
 
-# Token budget (input ~3K, output ~1K → ~$0.10 por veredicto)
+# Token budget (input ~3K, output ~1K → ~$0.10 por veredicto en peor caso)
 MAX_INPUT_TOKENS_OBJETIVO = 3000
 MAX_OUTPUT_TOKENS         = 1024
+
+# Hard cap mensual de costo del feature Veredicto IA (decisión Sprint 3.2)
+# Si el costo acumulado del mes corriente supera esto, el cron se pausa.
+HARD_CAP_USD_MENSUAL      = 30.0
+# Cap blando por corrida del cron (anti-runaway en una sola ejecución)
+MAX_VEREDICTOS_POR_CORRIDA = 100
 
 # Veredictos válidos
 VEREDICTOS_VALIDOS    = ("ganadora", "neutra", "perdedora")
@@ -897,6 +903,43 @@ def _generar_veredicto_ia(alias: str, item_id: str, titulo_producto: str,
     }
 
 
+# ── Cost guard (hard cap $30/mes) ────────────────────────────────────────────
+
+def costo_mes_actual_usd(data_dir: str,
+                         feature_substr: str = "Veredicto IA") -> float:
+    """Suma el costo USD del feature en el mes corriente (calendario AR).
+
+    Lee data/token_log.json (estructura compartida con web/app.py). Filtra por
+    la subcadena del campo `funcion` y por mes/año actual. Tolerante: si no
+    hay log o no es parseable, devuelve 0.0.
+    """
+    path = os.path.join(data_dir, "token_log.json")
+    log = _load_json(path, default={"entries": []}) or {"entries": []}
+    if not isinstance(log, dict):
+        return 0.0
+    ahora = datetime.now()
+    año, mes = ahora.year, ahora.month
+    acumulado = 0.0
+    for e in log.get("entries", []):
+        if feature_substr not in (e.get("funcion") or ""):
+            continue
+        ts = _parse_fecha(e.get("ts") or "")
+        if not ts or ts.year != año or ts.month != mes:
+            continue
+        try:
+            acumulado += float(e.get("usd") or 0)
+        except (TypeError, ValueError):
+            continue
+    return round(acumulado, 4)
+
+
+def supera_cap_mensual(data_dir: str) -> tuple[bool, float]:
+    """Devuelve (supera, costo_actual). True si el costo del mes ya alcanzó
+    o superó HARD_CAP_USD_MENSUAL."""
+    actual = costo_mes_actual_usd(data_dir)
+    return (actual >= HARD_CAP_USD_MENSUAL, actual)
+
+
 __all__ = [
     "evaluar_optimizacion",
     "listar_pendientes",
@@ -905,10 +948,14 @@ __all__ = [
     "historial_veredictos",
     "fingerprint_veredicto",
     "threshold_aplicado",
+    "costo_mes_actual_usd",
+    "supera_cap_mensual",
     "DIAS_MINIMOS_VEREDICTO",
     "SNAPSHOTS_MINIMOS",
     "TTL_VEREDICTO_DIAS",
     "TTL_DESCARTADO_DIAS",
+    "HARD_CAP_USD_MENSUAL",
+    "MAX_VEREDICTOS_POR_CORRIDA",
     "PROMPT_VERSION",
     "MODELO_DEFAULT",
 ]

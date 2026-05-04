@@ -721,6 +721,60 @@ class TestPersistenciaTTL(VeredictoTestBase):
         self.assertEqual(h_inc["resumen"]["count_total"], 1)
 
 
+class TestCostGuard(VeredictoTestBase):
+    """Cubre el hard cap mensual de $30/mes (commit 6)."""
+
+    def _seed_token_log(self, entries: list[dict]) -> None:
+        with open(os.path.join(self.data_dir, "token_log.json"), "w") as f:
+            json.dump({"entries": entries}, f)
+
+    def test_costo_mes_actual_solo_suma_mes_corriente(self):
+        ahora = datetime.now()
+        mes_anterior = ahora - timedelta(days=45)
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 5.5},
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 2.3},
+            # Mes anterior — no debería contar
+            {"ts": mes_anterior.isoformat(), "funcion": "Veredicto IA — eval", "usd": 100.0},
+            # Otro feature — no debería contar
+            {"ts": ahora.isoformat(), "funcion": "Optimizar IA", "usd": 10.0},
+        ])
+        actual = vo.costo_mes_actual_usd(self.data_dir)
+        self.assertAlmostEqual(actual, 7.8, places=2)
+
+    def test_supera_cap_falso_bajo_threshold(self):
+        ahora = datetime.now()
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 15.0},
+        ])
+        supera, cost = vo.supera_cap_mensual(self.data_dir)
+        self.assertFalse(supera)
+        self.assertEqual(cost, 15.0)
+
+    def test_supera_cap_verdadero_en_threshold(self):
+        ahora = datetime.now()
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 30.0},
+        ])
+        supera, cost = vo.supera_cap_mensual(self.data_dir)
+        self.assertTrue(supera, "Esperaba supera=True en threshold exacto")
+        self.assertEqual(cost, 30.0)
+
+    def test_supera_cap_verdadero_pasado_threshold(self):
+        ahora = datetime.now()
+        self._seed_token_log([
+            {"ts": ahora.isoformat(), "funcion": "Veredicto IA — eval", "usd": 32.5},
+        ])
+        supera, cost = vo.supera_cap_mensual(self.data_dir)
+        self.assertTrue(supera)
+        self.assertEqual(cost, 32.5)
+
+    def test_costo_sin_log_devuelve_cero(self):
+        # Sin token_log.json
+        actual = vo.costo_mes_actual_usd(self.data_dir)
+        self.assertEqual(actual, 0.0)
+
+
 # ── Runner ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

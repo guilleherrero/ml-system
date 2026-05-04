@@ -13561,6 +13561,94 @@ def _job_top_acciones_daily():
             raise
 
 
+def _job_veredictos_weekly():
+    """Job 7 — Sprint 3.2: Veredicto IA semanal de optimizaciones aplicadas.
+
+    Se ejecuta cada lunes a las 06:00 ART. Para cada optimización del
+    monitor con ≥7 días Y ≥3 snapshots Y sin veredicto vigente, llama a
+    Claude Opus para emitir un veredicto (ganadora/neutra/perdedora).
+
+    Hard cap mensual: $30 USD. Si el costo acumulado del mes ya alcanzó
+    el cap, el job se auto-pausa (vía JobManager) y deja un audit log.
+    El usuario lo verá pausado en /settings y puede reanudarlo manualmente
+    si quiere subir el cap.
+
+    Cap blando por corrida: 100 evaluaciones (anti-runaway dentro de la semana).
+    """
+    from modules import veredicto_optimizacion as _vo
+    global _job_manager
+
+    # ── Hard cap mensual ───────────────────────────────────────────────────
+    supera, costo_actual = _vo.supera_cap_mensual(DATA_DIR)
+    if supera:
+        msg = (f'[job_veredictos_weekly] HARD CAP alcanzado — costo '
+               f'mensual ${costo_actual:.2f} ≥ ${_vo.HARD_CAP_USD_MENSUAL}. '
+               f'Auto-pausando weekly_veredictos.')
+        app.logger.warning(msg)
+        print(msg)
+        _audit('veredicto_cron_capped', costo_usd=costo_actual,
+               cap=_vo.HARD_CAP_USD_MENSUAL)
+        if _job_manager is not None:
+            _job_manager.pause_job('weekly_veredictos')
+        return
+
+    # ── Listar pendientes ──────────────────────────────────────────────────
+    pendientes = _vo.listar_pendientes(DATA_DIR)
+    if not pendientes:
+        print('[job_veredictos_weekly] sin pendientes — skip')
+        return
+
+    # Cap blando por corrida
+    if len(pendientes) > _vo.MAX_VEREDICTOS_POR_CORRIDA:
+        print(f'[job_veredictos_weekly] {len(pendientes)} pendientes, '
+              f'cap por corrida {_vo.MAX_VEREDICTOS_POR_CORRIDA} — '
+              f'procesando primeros {_vo.MAX_VEREDICTOS_POR_CORRIDA}')
+        pendientes = pendientes[:_vo.MAX_VEREDICTOS_POR_CORRIDA]
+
+    # ── Procesar uno por uno con re-check de cap ──────────────────────────
+    procesados = 0
+    errores = 0
+    for p in pendientes:
+        # Re-check del cap entre llamadas — si la corrida es larga y el costo
+        # se acerca al cap durante la ejecución, paramos antes de pasarlo.
+        supera, costo_actual = _vo.supera_cap_mensual(DATA_DIR)
+        if supera:
+            msg = (f'[job_veredictos_weekly] Cap alcanzado mid-corrida '
+                   f'(${costo_actual:.2f}). Procesados {procesados}, '
+                   f'queda {len(pendientes) - procesados} pendiente(s) para '
+                   f'la próxima semana.')
+            app.logger.warning(msg)
+            print(msg)
+            if _job_manager is not None:
+                _job_manager.pause_job('weekly_veredictos')
+            break
+
+        try:
+            r = _vo.evaluar_optimizacion(p['item_id'], p['alias'], DATA_DIR)
+            if r['estado'] == 'veredicto':
+                v = r['veredicto']
+                print(f"[job_veredictos_weekly] {p['alias']}/{p['item_id']}: "
+                      f"{v['veredicto']} ({v['score_exito']}/100) "
+                      f"→ {v['recomendacion']} "
+                      f"[${v['_debug']['cost_usd']:.4f}]")
+                procesados += 1
+            elif r['estado'] == 'error':
+                errores += 1
+                app.logger.error("[job_veredictos_weekly] %s/%s — error: %s",
+                                 p['alias'], p['item_id'], r['mensaje'])
+            else:
+                print(f"[job_veredictos_weekly] {p['alias']}/{p['item_id']}: "
+                      f"skip ({r['estado']})")
+        except Exception as e:
+            errores += 1
+            app.logger.error("[job_veredictos_weekly] %s/%s — excepción: %s",
+                             p['alias'], p['item_id'], e)
+
+    final = _vo.costo_mes_actual_usd(DATA_DIR)
+    print(f'[job_veredictos_weekly] DONE — {procesados} ok, {errores} errores. '
+          f'Costo mensual acumulado: ${final:.2f} / ${_vo.HARD_CAP_USD_MENSUAL}')
+
+
 def _start_scheduler():
     """Inicia APScheduler con los 5 jobs del Sprint 2 vía JobManager."""
     try:
@@ -13623,10 +13711,23 @@ def _start_scheduler():
             description='Precomputa Top 3 oportunidades por cuenta antes del refresh diario. Cache 24h.',
         )
 
+        # Job 7 — Veredicto IA semanal (Sprint 3.2) — Lunes 06:00 ART
+        # Ejecuta DESPUÉS del top_acciones_daily para no competir por CPU.
+        # Hard cap $30/mes con auto-pausa si se excede.
+        jm.register_job(
+            'weekly_veredictos', _job_veredictos_weekly,
+            CronTrigger(day_of_week='mon', hour=6, minute=15,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Veredicto IA semanal',
+            description=('Evalúa optimizaciones aplicadas hace ≥7d con ≥3 snapshots. '
+                         'Genera veredicto ganadora/neutra/perdedora con Claude Opus. '
+                         'Hard cap $30/mes con auto-pausa.'),
+        )
+
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 6 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 7 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')
