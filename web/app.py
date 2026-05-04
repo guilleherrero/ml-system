@@ -5191,6 +5191,167 @@ def api_monitor_delete():
     return jsonify({'ok': True, 'removed': before - len(_mon['items'])})
 
 
+# ── Sprint 3.2 — Veredicto IA sobre optimizaciones ───────────────────────────
+
+@app.route('/api/veredicto/<alias>/<item_id>')
+def api_veredicto_get(alias, item_id):
+    """Devuelve el estado del veredicto IA para una optimización aplicada.
+
+    Posibles `estado`:
+      - "veredicto"          → veredicto generado en este request
+      - "ya_existe"          → ya hay un veredicto vigente persistido
+      - "data_insuficiente"  → faltan días o snapshots (no se llamó a Claude)
+      - "no_encontrado"      → no hay entry en monitor_evolucion para (alias, item_id)
+      - "error"              → la generación falló (mensaje detallado en .mensaje)
+
+    GET es seguro: NO llama a Claude. Si no hay veredicto persistido y la
+    optimización no cumple los safeguards, devuelve data_insuficiente.
+    Para forzar generación usar POST /generar.
+    """
+    from modules import veredicto_optimizacion as _vo
+    item_id = (item_id or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    # Primero buscar veredicto persistido
+    existente = _vo.obtener_veredicto(item_id, alias, DATA_DIR)
+    if existente:
+        # Necesitamos también dias_transcurridos actualizados para el banner
+        entry = _vo._buscar_entry_monitor(DATA_DIR, alias, item_id)
+        dias = _vo._dias_transcurridos((entry or {}).get('fecha_opt') or '')
+        return jsonify({
+            'ok':                True,
+            'estado':            'ya_existe',
+            'dias_transcurridos': dias,
+            'snapshots_usados':  existente.get('snapshots_usados', 0),
+            'veredicto':         existente,
+            'mensaje':           'Veredicto vigente.',
+        })
+
+    # No hay vigente — devolver el estado evaluado (sin llamar a Claude).
+    # Para eso simulamos el chequeo replicando los safeguards en read-only.
+    entry = _vo._buscar_entry_monitor(DATA_DIR, alias, item_id)
+    if not entry:
+        return jsonify({
+            'ok':       True,
+            'estado':   'no_encontrado',
+            'veredicto': None,
+            'mensaje':  f'No hay entry en monitor para {alias}/{item_id}.',
+        })
+
+    fecha_opt = entry.get('fecha_opt') or ''
+    snapshots = entry.get('snapshots') or []
+    dias = _vo._dias_transcurridos(fecha_opt)
+    if dias < _vo.DIAS_MINIMOS_VEREDICTO:
+        from datetime import datetime as _dt, timedelta as _td
+        faltantes = _vo.DIAS_MINIMOS_VEREDICTO - dias
+        proxima = (_dt.now() + _td(days=faltantes)).strftime('%Y-%m-%d')
+        return jsonify({
+            'ok':                 True,
+            'estado':             'data_insuficiente',
+            'dias_transcurridos': dias,
+            'dias_faltantes':     faltantes,
+            'proxima_evaluacion': proxima,
+            'snapshots_usados':   len(snapshots),
+            'veredicto':          None,
+            'mensaje':            f'Necesita {faltantes} día(s) más de data. Próximo: {proxima}.',
+        })
+    if len(snapshots) < _vo.SNAPSHOTS_MINIMOS:
+        return jsonify({
+            'ok':                 True,
+            'estado':             'data_insuficiente',
+            'dias_transcurridos': dias,
+            'snapshots_usados':   len(snapshots),
+            'mensaje':            f'Solo {len(snapshots)} snapshot(s). Necesita ≥{_vo.SNAPSHOTS_MINIMOS}.',
+            'veredicto':          None,
+        })
+
+    # Cumple los gates pero no hay veredicto generado todavía → el usuario
+    # puede invocar POST /generar para emitirlo.
+    return jsonify({
+        'ok':                 True,
+        'estado':             'pendiente_de_generar',
+        'dias_transcurridos': dias,
+        'snapshots_usados':   len(snapshots),
+        'veredicto':          None,
+        'mensaje':            'Cumple los safeguards. Pendiente de generación (POST /generar).',
+    })
+
+
+@app.route('/api/veredicto/<alias>/<item_id>/generar', methods=['POST'])
+def api_veredicto_generar(alias, item_id):
+    """Genera el veredicto IA (override manual). Body opcional: {force: bool}.
+
+    NO salta el safeguard de 7 días — es regla dura.
+    Sí salta el "ya existe" si force=True (regenera marcando el previo obsoleto).
+    Loggea el costo en token_log.json y registra audit.
+    """
+    from modules import veredicto_optimizacion as _vo
+    item_id = (item_id or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    body  = request.get_json(silent=True) or {}
+    force = bool(body.get('force', False))
+
+    _audit('veredicto_generar', alias=alias, item_id=item_id, force=force)
+    resultado = _vo.evaluar_optimizacion(item_id, alias, DATA_DIR, force=force)
+
+    # Mapeo de estados a HTTP status
+    if resultado['estado'] == 'no_encontrado':
+        return jsonify({'ok': False, **resultado}), 404
+    if resultado['estado'] == 'error':
+        return jsonify({'ok': False, **resultado}), 500
+    return jsonify({'ok': True, **resultado})
+
+
+@app.route('/api/veredicto/<alias>/<item_id>/descartar', methods=['POST'])
+def api_veredicto_descartar(alias, item_id):
+    """Marca el veredicto vigente como 'descartado'. Idempotente.
+
+    Body opcional: {razon: str}.
+    """
+    from modules import veredicto_optimizacion as _vo
+    item_id = (item_id or '').strip().upper()
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+
+    body  = request.get_json(silent=True) or {}
+    razon = (body.get('razon') or '').strip()[:300]
+    _audit('veredicto_descartar', alias=alias, item_id=item_id, razon=razon)
+    cambio = _vo.descartar_veredicto(item_id, alias, DATA_DIR, razon=razon)
+    return jsonify({'ok': True, 'cambio': cambio})
+
+
+@app.route('/api/veredictos/<alias>')
+def api_veredictos_historial(alias):
+    """Historial de veredictos vigente+obsoleto en una ventana.
+
+    Query params:
+      ?days=90                 (default 90, máx 365)
+      ?incluir_descartados=1   (default 0)
+    """
+    from modules import veredicto_optimizacion as _vo
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    try:
+        days = max(1, min(365, int(request.args.get('days', 90))))
+    except (TypeError, ValueError):
+        days = 90
+    incluir = request.args.get('incluir_descartados') in ('1', 'true', 'yes')
+    h = _vo.historial_veredictos(alias, DATA_DIR, days=days,
+                                 incluir_descartados=incluir)
+    return jsonify({'ok': True, **h})
+
+
 @app.route('/api/generar-faq', methods=['POST'])
 def api_generar_faq():
     """Genera 5 preguntas frecuentes usando preguntas reales de compradores del item + Claude."""
