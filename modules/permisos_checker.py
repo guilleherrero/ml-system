@@ -145,15 +145,34 @@ def _read_inferencia(alias: str, permiso_id: str) -> dict:
 # ── Tests por permiso ────────────────────────────────────────────────────────
 
 def _test_publicidad_read(token: str) -> dict:
+    """Hotfix 04/05/2026: ML deprecó GET /advertising/product_ads/campaigns
+    (devolvía 405). Migrado al endpoint oficial documentado:
+       GET /advertising/advertisers?product_id=PADS
+    Si responde 200 + lista no vacía → la cuenta es advertiser PADS y tiene permisos.
+    """
     try:
-        r = requests.get(f'{ML_BASE}/advertising/product_ads/campaigns',
-                         headers={'Authorization': f'Bearer {token}'},
+        r = requests.get(f'{ML_BASE}/advertising/advertisers',
+                         headers={'Authorization': f'Bearer {token}',
+                                  'Api-Version': '1'},
+                         params={'product_id': 'PADS'},
                          timeout=8)
         if r.status_code == 200:
-            return {'estado': 'activo'}
+            try:
+                advertisers = (r.json() or {}).get('advertisers') or []
+            except Exception:
+                advertisers = []
+            if advertisers:
+                return {'estado': 'activo',
+                        'mensaje': f'advertiser_id detectado: {advertisers[0].get("advertiser_id")}'}
+            # 200 pero lista vacía → tiene permisos pero no es advertiser PADS
+            return {'estado': 'parcial',
+                    'mensaje': 'API responde OK pero la cuenta no es advertiser de Product Ads (PADS).'}
         if r.status_code in (401, 403):
             return {'estado': 'faltante', 'http_code': r.status_code,
-                    'mensaje': 'GET de campañas devolvió 401/403 — falta el toggle de Publicidad en el panel ML.'}
+                    'mensaje': f'GET /advertising/advertisers devolvió {r.status_code} — falta el toggle de Publicidad en el panel ML o reconectar OAuth.'}
+        if r.status_code == 404:
+            return {'estado': 'faltante', 'http_code': 404,
+                    'mensaje': 'Endpoint Publicidad no expuesto a esta cuenta — la app no tiene scope advertising.'}
         return {'estado': 'error', 'http_code': r.status_code,
                 'mensaje': f'Respuesta inesperada: HTTP {r.status_code}'}
     except requests.RequestException as e:
@@ -201,16 +220,26 @@ def _test_items_busqueda(token: str, user_id) -> dict:
 
 
 def _test_postventa(token: str) -> dict:
+    """Hotfix 04/05/2026: ML deprecó GET /v1/claims?role=respondent (devolvía 404).
+    Migrado al endpoint moderno: GET /post-purchase/v1/claims/search.
+    El sistema NO depende de este permiso para funcionar (los reclamos del dashboard
+    vienen del endpoint público /users/{id}/reputation), así que un fallo acá es
+    cosmético — sigue siendo informativo si el usuario quiere postventa avanzada.
+    """
     try:
-        r = requests.get(f'{ML_BASE}/v1/claims',
+        r = requests.get(f'{ML_BASE}/post-purchase/v1/claims/search',
                          headers={'Authorization': f'Bearer {token}'},
-                         params={'role': 'respondent', 'limit': 1},
+                         params={'stage': 'claim', 'status': 'opened', 'limit': 1},
                          timeout=8)
         if r.status_code == 200:
             return {'estado': 'activo'}
         if r.status_code in (401, 403):
             return {'estado': 'faltante', 'http_code': r.status_code,
-                    'mensaje': 'GET /v1/claims devolvió 401/403 — el permiso Postventa requiere acuerdo formal con MercadoLibre.'}
+                    'mensaje': f'GET /post-purchase/v1/claims devolvió {r.status_code} — el permiso Postventa requiere acuerdo formal con MercadoLibre.'}
+        if r.status_code == 404:
+            # 404 puede indicar simplemente "no hay reclamos" en algunos endpoints
+            return {'estado': 'desconocido', 'http_code': 404,
+                    'mensaje': 'Endpoint no devuelve datos. El sistema sigue funcionando: los reclamos del dashboard vienen del endpoint público de reputación.'}
         return {'estado': 'error', 'http_code': r.status_code,
                 'mensaje': f'Respuesta inesperada: HTTP {r.status_code}'}
     except requests.RequestException as e:
