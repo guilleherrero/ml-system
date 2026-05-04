@@ -258,6 +258,77 @@
 .alerta-banner.neutro  { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; }
 .alerta-banner .alerta-icon { font-size: 1rem; flex-shrink: 0; margin-top: .05rem; }
 .alerta-fecha { font-size: .68rem; color: #94a3b8; margin-top: .2rem; }
+
+/* ── Sprint 3.2 — Banner del Veredicto IA ─────────────────────────────── */
+.veredicto-banner {
+  border-radius: 10px; padding: .9rem 1.1rem; margin-bottom: 1rem;
+  border-left: 4px solid;
+  display: flex; flex-direction: column; gap: .55rem;
+}
+.veredicto-banner--ganadora {
+  background: var(--color-success-50, #f0fdf4);
+  border-color:    var(--color-success-500, #16a34a);
+  color:           var(--color-success-700, #15803d);
+}
+.veredicto-banner--neutra {
+  background: var(--color-warning-50, #fffbeb);
+  border-color:    var(--color-warning-500, #d97706);
+  color:           var(--color-warning-700, #92400e);
+}
+.veredicto-banner--perdedora {
+  background: var(--color-critical-50, #fef2f2);
+  border-color:    var(--color-critical-500, #dc2626);
+  color:           var(--color-critical-700, #991b1b);
+}
+.veredicto-banner--info {
+  background: #eff6ff; border-color: #3b82f6; color: #1d4ed8;
+}
+.veredicto-header {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .55rem;
+  font-size: .9rem; font-weight: 700;
+}
+.veredicto-header .score {
+  font-weight: 600; opacity: .82; font-size: .8rem;
+}
+.veredicto-razon {
+  font-size: .82rem; line-height: 1.5; color: #334155;
+  margin: 0;
+}
+.veredicto-recomendacion {
+  display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+  font-size: .8rem; color: #475569;
+}
+.veredicto-recomendacion strong { color: #1e293b; }
+.veredicto-meta {
+  font-size: .68rem; color: #94a3b8;
+  display: flex; gap: .8rem; flex-wrap: wrap;
+}
+.veredicto-actions {
+  display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .25rem;
+}
+.veredicto-actions button {
+  font-size: .76rem; padding: .35rem .85rem; border-radius: 6px;
+  border: 1px solid currentColor; background: transparent;
+  cursor: pointer; transition: all .15s; font-weight: 600;
+}
+.veredicto-actions button:hover:not(:disabled) {
+  background: currentColor; color: #fff;
+}
+.veredicto-actions button[data-action="cta-replicar"]:hover:not(:disabled),
+.veredicto-actions button[data-action="cta-revertir"]:hover:not(:disabled),
+.veredicto-actions button[data-action="cta-regenerar"]:hover:not(:disabled) {
+  /* Override del color para que no se confunda con el texto del banner */
+  background: #1e293b; color: #fff; border-color: #1e293b;
+}
+.veredicto-actions button:disabled {
+  opacity: .55; cursor: not-allowed; border-style: dashed;
+}
+.veredicto-alertas {
+  font-size: .72rem; color: #92400e; background: #fef3c7;
+  padding: .35rem .55rem; border-radius: 6px; margin-top: .2rem;
+}
+.veredicto-alertas ul { margin: 0; padding-left: 1rem; }
+
 </style>
 
 <div class="monitor-header">
@@ -386,6 +457,186 @@ function renderTimeline(it) {
   </button>
   <div id="${id}" style="display:none">${tbl}</div>`;
 }
+
+// ── Sprint 3.2 — Banner del Veredicto IA ─────────────────────────────────
+const REC_LABELS = {
+  replicar:  '🚀 Replicar patrón a publicaciones similares',
+  mantener:  '✓ Mantener — seguir midiendo',
+  regenerar: '🔄 Regenerar optimización con aprendizajes',
+  revertir:  '↩ Revertir cambios',
+};
+
+function renderVeredictoBanner(it) {
+  const v = it.veredicto_estado;
+  if (!v || !v.estado) return '';
+
+  // Estado: data_insuficiente — banner azul informativo
+  if (v.estado === 'data_insuficiente') {
+    const dias  = v.dias_transcurridos || 0;
+    const falt  = v.dias_faltantes;
+    const proxy = v.proxima_evaluacion;
+    const snaps = v.snapshots_usados || 0;
+    let msg;
+    if (falt && falt > 0) {
+      msg = `<strong>📊 Midiendo —</strong> veredicto disponible en <strong>${falt} día${falt!==1?'s':''}</strong> (${proxy}). ${snaps} snapshot${snaps!==1?'s':''} capturados.`;
+    } else {
+      msg = `<strong>📊 Midiendo —</strong> ${v.mensaje || 'data parcial.'}`;
+    }
+    return `<div class="veredicto-banner veredicto-banner--info">
+      <div class="veredicto-razon">${msg}</div>
+    </div>`;
+  }
+
+  // Estado: pendiente_de_generar — cumple gates pero no se generó aún
+  if (v.estado === 'pendiente_de_generar') {
+    return `<div class="veredicto-banner veredicto-banner--info">
+      <div class="veredicto-header">
+        <span>📊 Listo para evaluar</span>
+        <span class="score">${v.dias_transcurridos}d transcurridos · ${v.snapshots_usados} snapshots</span>
+      </div>
+      <div class="veredicto-razon">
+        Cumple los criterios para un veredicto IA. Generalo manualmente o esperá al cron del lunes.
+      </div>
+      <div class="veredicto-actions">
+        <button data-action="generar-veredicto" data-item="${escAttr(it.item_id)}">
+          🤖 Generar veredicto ahora
+        </button>
+      </div>
+    </div>`;
+  }
+
+  // Estado: ya_existe — render del veredicto persistido
+  if (v.estado !== 'ya_existe') return '';
+  const ver = v.veredicto || {};
+  const tipo  = ver.veredicto || 'neutra';
+  const ic = tipo === 'ganadora' ? '✅' : tipo === 'perdedora' ? '❌' : '🟡';
+  const lbl = tipo === 'ganadora' ? 'Ganadora' : tipo === 'perdedora' ? 'Perdedora' : 'Neutra';
+  const score = ver.score_exito;
+  const rec   = ver.recomendacion || 'mantener';
+  const recLabel = REC_LABELS[rec] || rec;
+  const fechaV = ver.fecha_veredicto || '';
+  const snaps  = ver.snapshots_usados || 0;
+  const dbg = ver._debug || {};
+
+  // CTAs por recomendación. Solo regenerar es funcional en Sprint 3.2.
+  // Replicar y revertir quedan disabled hasta Sprint 3.3.
+  let cta = '';
+  if (rec === 'regenerar') {
+    cta = `<button data-action="cta-regenerar" data-item="${escAttr(it.item_id)}">
+             🔄 Regenerar con aprendizajes
+           </button>`;
+  } else if (rec === 'replicar') {
+    cta = `<button data-action="cta-replicar" disabled
+                   title="Disponible en Sprint 3.3">
+             🚀 Replicar patrón (Sprint 3.3)
+           </button>`;
+  } else if (rec === 'revertir') {
+    cta = `<button data-action="cta-revertir" disabled
+                   title="Disponible en Sprint 3.3">
+             ↩ Revertir cambios (Sprint 3.3)
+           </button>`;
+  }
+  // Botón descartar siempre visible
+  const descartar = `<button data-action="descartar-veredicto"
+                             data-item="${escAttr(it.item_id)}">
+                       🗑 Descartar veredicto
+                     </button>`;
+
+  // Alertas inteligentes del veredicto (caveats que detectó la IA)
+  const alertasHtml = (ver.alertas && ver.alertas.length)
+    ? `<div class="veredicto-alertas">
+         <strong>Alertas:</strong>
+         <ul>${ver.alertas.map(a => `<li>${a}</li>`).join('')}</ul>
+       </div>` : '';
+
+  // Métricas clave que más movieron — chips compactos
+  const mkChips = (ver.metricas_clave || []).map(m =>
+    `<span style="background:rgba(0,0,0,.07);padding:1px 7px;border-radius:8px;font-size:.7rem">${m}</span>`
+  ).join(' ');
+
+  return `<div class="veredicto-banner veredicto-banner--${tipo}">
+    <div class="veredicto-header">
+      <span>${ic} ${lbl}</span>
+      ${score !== undefined ? `<span class="score">Score ${score}/100</span>` : ''}
+      ${mkChips ? `<span style="margin-left:auto;display:flex;gap:.3rem;align-items:center">${mkChips}</span>` : ''}
+    </div>
+    <p class="veredicto-razon">${ver.razonamiento || ''}</p>
+    <div class="veredicto-recomendacion">
+      <strong>Recomendación:</strong> ${recLabel}.
+      <span style="opacity:.78">${ver.razon_recomendacion || ''}</span>
+    </div>
+    ${alertasHtml}
+    <div class="veredicto-actions">${cta}${descartar}</div>
+    <div class="veredicto-meta">
+      Generado el ${fechaV} · ${snaps} snapshots usados
+      ${dbg.threshold_aplicado ? ` · threshold ${dbg.threshold_aplicado}%` : ''}
+      ${dbg.modelo ? ` · ${dbg.modelo}` : ''}
+    </div>
+  </div>`;
+}
+
+async function fetchVeredictosParaItems(items) {
+  // Carga el estado del veredicto para cada item en paralelo. Tolerante a
+  // fallas individuales — si un fetch falla, el banner queda oculto para
+  // ese item pero el resto se renderiza normal.
+  await Promise.all(items.map(async (it) => {
+    try {
+      const r = await fetch(`/api/veredicto/${encodeURIComponent(ALIAS)}/${encodeURIComponent(it.item_id)}`);
+      const d = await r.json();
+      if (d && d.ok) it.veredicto_estado = d;
+    } catch (_) {
+      // silencio — banner no se muestra para este item
+    }
+  }));
+}
+
+async function generarVeredictoAhora(itemId) {
+  if (!confirm(`Generar veredicto IA para ${itemId}?\n\nEsto consume tokens de Claude (~$0.05 USD).`)) return;
+  try {
+    const r = await fetch(`/api/veredicto/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemId)}/generar`,
+                          {method: 'POST', headers: {'Content-Type': 'application/json'},
+                           body: JSON.stringify({})});
+    const d = await r.json();
+    if (d.ok) {
+      await loadMonitor();
+    } else {
+      alert('Error: ' + (d.mensaje || d.error || 'desconocido'));
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function descartarVeredictoBanner(itemId) {
+  const razon = prompt('Razón del descarte (opcional):') || '';
+  try {
+    const r = await fetch(`/api/veredicto/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemId)}/descartar`,
+                          {method: 'POST', headers: {'Content-Type': 'application/json'},
+                           body: JSON.stringify({razon})});
+    const d = await r.json();
+    if (d.ok) await loadMonitor();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function regenerarOptimizacion(itemId) {
+  // Sprint 3.2: la "regeneración" lleva al usuario a Optimizar IA con el item
+  // pre-cargado. La integración profunda (heredar aprendizajes del veredicto)
+  // queda para Sprint 3.3.
+  window.location.href = `/optimizar/${encodeURIComponent(ALIAS)}?item=${encodeURIComponent(itemId)}`;
+}
+
+document.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const item   = btn.dataset.item;
+  if (!item) return;
+  if (action === 'generar-veredicto')   generarVeredictoAhora(item);
+  if (action === 'descartar-veredicto') descartarVeredictoBanner(item);
+  if (action === 'cta-regenerar')       regenerarOptimizacion(item);
+});
 
 function renderItem(it) {
   const b  = it.baseline       || {};
@@ -546,6 +797,7 @@ function renderItem(it) {
       ${alertasBlock}
       ${tituloBlock}
       ${renderInfoOriginal(it)}
+      ${renderVeredictoBanner(it)}
       ${metricsBlock}
       ${detailBlock}
       ${parcialBlock}
@@ -889,6 +1141,8 @@ async function loadMonitor() {
       </div>`;
       return;
     }
+    // Sprint 3.2 — paralelo fetch de veredictos antes de renderizar
+    await fetchVeredictosParaItems(data.items);
     container.innerHTML = data.items.map(renderItem).join('');
   } catch(e) {
     document.getElementById('monitor-container').innerHTML =
