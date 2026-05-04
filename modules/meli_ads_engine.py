@@ -1589,11 +1589,59 @@ def _get_campaign_detail(token: str, campaign_id: int) -> dict:
 
 # ── Funciones públicas del conector ─────────────────────────────────────────────────────────────────────────────
 
+def _get_advertiser_id_official(token: str) -> int | None:
+    """
+    Endpoint oficial documentado por ML para Product Ads:
+      GET /advertising/advertisers?product_id=PADS
+
+    Devuelve el advertiser_id directamente — NO requiere que la cuenta tenga
+    ítems activos en ads (a diferencia del workaround _get_advertiser_id_from_items).
+
+    Retorna None si:
+      - El token no tiene permisos sobre /advertising/* (401/403)
+      - La cuenta no es advertiser PADS (lista vacía)
+      - Error de red
+    """
+    r = _ads_get('/advertising/advertisers', token, params={'product_id': 'PADS'})
+    if not r['ok']:
+        logging.info(f'{_ADS_LOG} oficial /advertisers → {r["status"]} (intento fallback)')
+        return None
+    data = r['data'] or {}
+    advertisers = data.get('advertisers') or []
+    if not advertisers:
+        logging.info(f'{_ADS_LOG} /advertisers devolvió lista vacía (intento fallback)')
+        return None
+    # Tomar el primero — un seller normalmente tiene 1 advertiser_id de Product Ads
+    adv_id = advertisers[0].get('advertiser_id')
+    if not adv_id:
+        return None
+    try:
+        adv_id = int(adv_id)
+        logging.info(f'{_ADS_LOG} advertiser_id obtenido vía endpoint oficial: {adv_id}')
+        return adv_id
+    except (TypeError, ValueError):
+        return None
+
+
 def get_advertiser_id(token: str) -> int | None:
     """
-    Devuelve el advertiser_id asociado al token escaneando ítems activos.
-    Retorna None si no hay ítems con Product Ads o sin acceso.
+    Devuelve el advertiser_id de Product Ads asociado al token.
+
+    Estrategia (en orden, fail-soft):
+      1. Endpoint OFICIAL: GET /advertising/advertisers?product_id=PADS
+         — más confiable, NO requiere ítems activos en ads.
+      2. FALLBACK: escanear ítems activos buscando uno con advertiser_id
+         — útil si la cuenta tiene ads activos pero el endpoint oficial
+         devuelve 403 (caso edge de permisos parciales).
+
+    Retorna None si ningún método funciona (cuenta sin permisos o sin Product Ads).
     """
+    # 1) Intento oficial primero (instantáneo, 1 sola request)
+    adv_id = _get_advertiser_id_official(token)
+    if adv_id:
+        return adv_id
+
+    # 2) Fallback al workaround histórico (escanea hasta encontrar uno con ads)
     user_id, _, warnings = _get_user_id(token)
     for w in warnings:
         logging.warning(f'{_ADS_LOG} {w}')
