@@ -14310,6 +14310,139 @@ def api_check_permisos_summary(alias):
     return jsonify({'ok': True, **(get_permisos_summary(alias) or {'resumen': {}})})
 
 
+@app.route('/api/diagnostico-ml/<alias>')
+def api_diagnostico_ml(alias):
+    """DIAGNÓSTICO CRUDO sin cache.
+
+    Llama directamente a 6 endpoints clave de ML y devuelve status + body parcial
+    + headers de cada respuesta. Útil cuando el panel de Permisos muestra cosas
+    raras (HTTP 405/404) y querés ver QUÉ está respondiendo realmente ML.
+
+    Pensado para abrir desde el browser: /api/diagnostico-ml/Cuenta_1
+    """
+    from core.account_manager import AccountManager as _AM
+    import requests as _rq
+    try:
+        client = _AM().get_client(alias)
+        client._ensure_token()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada: {e}'}), 404
+
+    token   = client.account.access_token
+    user_id = str(client.account.user_id or '')
+    if not user_id:
+        try:
+            user_id = str(client.get_me().get('id', ''))
+        except Exception:
+            pass
+
+    headers = {'Authorization': f'Bearer {token}'}
+    headers_ads = {**headers, 'Api-Version': '1'}
+    base = 'https://api.mercadolibre.com'
+
+    tests = [
+        # (key, descripcion, method, url, params, headers)
+        ('me',                'GET /users/me — sanity check del token',
+            'GET', f'{base}/users/me', None, headers),
+        ('advertisers_pads',  'GET /advertising/advertisers?product_id=PADS — endpoint OFICIAL para advertiser_id',
+            'GET', f'{base}/advertising/advertisers', {'product_id': 'PADS'}, headers_ads),
+        ('campaigns_legacy',  'GET /advertising/product_ads/campaigns — endpoint VIEJO (devolvía 405)',
+            'GET', f'{base}/advertising/product_ads/campaigns', None, headers),
+        ('claims_post_purchase', 'GET /post-purchase/v1/claims/search — endpoint MODERNO de Postventa',
+            'GET', f'{base}/post-purchase/v1/claims/search',
+            {'stage': 'claim', 'status': 'opened', 'limit': 1}, headers),
+        ('claims_legacy',     'GET /v1/claims?role=respondent — endpoint VIEJO de Postventa (devolvía 404)',
+            'GET', f'{base}/v1/claims', {'role': 'respondent', 'limit': 1}, headers),
+        ('items_search',      'GET /sites/MLA/search?seller_id=... — Ítems y búsqueda',
+            'GET', f'{base}/sites/MLA/search',
+            {'seller_id': user_id, 'limit': 1} if user_id else None, headers),
+        ('orders_search',     'GET /orders/search?seller=... — Órdenes',
+            'GET', f'{base}/orders/search',
+            {'seller': user_id, 'limit': 1} if user_id else None, headers),
+    ]
+
+    resultados = []
+    for key, desc, method, url, params, hdr in tests:
+        item = {'id': key, 'descripcion': desc, 'method': method, 'url': url,
+                'params': params or {}}
+        if not url:
+            item.update({'status': None, 'error': 'URL inválida o user_id faltante'})
+            resultados.append(item)
+            continue
+        try:
+            r = _rq.request(method, url, params=params or {}, headers=hdr, timeout=10)
+            item['status'] = r.status_code
+            try:
+                body = r.json()
+                # Acortar body si es muy grande
+                if isinstance(body, dict):
+                    body_short = {k: (v if not isinstance(v, (list, dict))
+                                      else f'<{type(v).__name__} de {len(v)}>')
+                                  for k, v in body.items()}
+                elif isinstance(body, list):
+                    body_short = f'<list de {len(body)} elementos>'
+                    if body:
+                        body_short = [body[0]] + (['…'] if len(body) > 1 else [])
+                else:
+                    body_short = body
+                item['body'] = body_short
+            except Exception:
+                item['body'] = (r.text or '')[:500]
+            # Diagnostico humano
+            if r.status_code == 200:
+                item['diagnostico'] = '✅ OK'
+            elif r.status_code in (401, 403):
+                item['diagnostico'] = f'⚠️ {r.status_code} — falta permiso o reconectar OAuth'
+            elif r.status_code == 404:
+                item['diagnostico'] = '⚠️ 404 — endpoint no expuesto a esta cuenta'
+            elif r.status_code == 405:
+                item['diagnostico'] = '⚠️ 405 — método no permitido (endpoint cambió)'
+            else:
+                item['diagnostico'] = f'⚠️ HTTP {r.status_code}'
+        except Exception as e:
+            item['status'] = 0
+            item['error']  = str(e)
+            item['diagnostico'] = f'❌ Error de red: {e}'
+        resultados.append(item)
+
+    # Veredicto general para Meli ADS
+    adv_test = next((r for r in resultados if r['id'] == 'advertisers_pads'), None)
+    veredicto_ads = 'desconocido'
+    advertiser_id = None
+    if adv_test:
+        if adv_test['status'] == 200:
+            body = adv_test.get('body') or {}
+            if isinstance(body, dict):
+                advs = body.get('advertisers')
+                # advs puede ser un placeholder string como '<list de N>' por el truncado
+                if isinstance(advs, list) and advs:
+                    advertiser_id = advs[0].get('advertiser_id') if isinstance(advs[0], dict) else None
+                    veredicto_ads = 'tiene_permisos_es_advertiser'
+                elif isinstance(advs, str) and 'list de' in advs:
+                    veredicto_ads = 'tiene_permisos_es_advertiser'
+                else:
+                    veredicto_ads = 'tiene_permisos_no_es_advertiser'
+        elif adv_test['status'] in (401, 403):
+            veredicto_ads = 'falta_permiso_publicidad'
+        else:
+            veredicto_ads = f'error_status_{adv_test["status"]}'
+
+    return jsonify({
+        'ok':                  True,
+        'alias':               alias,
+        'user_id':             user_id,
+        'veredicto_ads':       veredicto_ads,
+        'advertiser_id_oficial': advertiser_id,
+        'resultados':          resultados,
+        'instrucciones': {
+            'tiene_permisos_es_advertiser':    'Tu cuenta TIENE permisos de ADS y es advertiser PADS. Si /meli-ads sigue vacío, hay un bug — avisá.',
+            'tiene_permisos_no_es_advertiser': 'Tenés permisos pero la cuenta no es advertiser de Product Ads. Activala en https://www.mercadoads.com/MLA/',
+            'falta_permiso_publicidad':        'Falta el toggle de Publicidad en el panel de developers ML. Andá a https://developers.mercadolibre.com/devcenter → tu app → Permisos → activá Publicidad → guardá → reconectá la cuenta en este sistema.',
+            'desconocido':                     'No se pudo determinar. Mirá el detalle de cada resultado abajo.',
+        }.get(veredicto_ads, ''),
+    })
+
+
 @app.route('/api/scheduler-status')
 def api_scheduler_status():
     next_run = None
