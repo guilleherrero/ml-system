@@ -8190,10 +8190,43 @@ def api_alertas():
     all_alerts  = []
     U, I = 'urgente', 'importante'
 
-    def add(nivel, alias, cat, icono, titulo, detalle, link, link_txt='Ver', item_id=None):
-        all_alerts.append({'nivel': nivel, 'alias': alias, 'categoria': cat,
-                           'icono': icono, 'titulo': titulo, 'detalle': detalle,
-                           'link': link, 'link_txt': link_txt, 'item_id': item_id})
+    # Sprint 4.4 — fingerprint + score_impacto + breakdown para tooltip
+    from modules.alertas_estado import fingerprint as _fp
+    from core.impact_calculator import (
+        impacto_buybox_perdido, impacto_trafico_desperdiciado,
+        impacto_stock_critico,
+    )
+
+    def add(nivel, alias, cat, icono, titulo, detalle, link, link_txt='Ver',
+            item_id=None, tipo=None, score_impacto_ars=0.0, score_breakdown=None):
+        # tipo: identificador estable de la alerta (ej. 'stock_critico')
+        # fp: hash sha1 de tipo + alias + item_id (idempotente entre runs)
+        tipo_norm = tipo or cat.lower()
+        fp = _fp(tipo_norm, alias, item_id or titulo)
+        all_alerts.append({
+            'fingerprint':       fp,
+            'tipo':              tipo_norm,
+            'nivel':             nivel,
+            'alias':             alias,
+            'categoria':         cat,
+            'icono':             icono,
+            'titulo':            titulo,
+            'detalle':           detalle,
+            'link':              link,
+            'link_txt':          link_txt,
+            'item_id':           item_id,
+            'score_impacto_ars': round(float(score_impacto_ars or 0), 2),
+            'score_breakdown':   score_breakdown,  # dict o None
+        })
+
+    def _calc_margen_pct(precio, costo, fee):
+        """Devuelve margen_pct estimado (0-100). Si falta costo, asume 30%."""
+        if not precio or precio <= 0:
+            return 0.0
+        if costo and costo > 0:
+            neto = precio * (1 - (fee or 0))
+            return max(0.0, round((neto - costo) / precio * 100, 2))
+        return 30.0  # supuesto conservador cuando no hay costo cargado
 
     fees_cache = get_fee_rates()  # lee de config/fees.json (sin refrescar)
 
@@ -8264,31 +8297,95 @@ def api_alertas():
             ast  = it.get('alerta_stock')
             dias = it.get('dias_stock')
 
+            # Cálculo de impacto — necesita velocidad y margen
+            vel_dia = it.get('velocidad') or 0
+            ventas_30d = it.get('ventas_30d') or round(vel_dia * 30)
+            margen_pct_eff = mpct if mpct is not None else _calc_margen_pct(precio, costo, fee)
+
             if ast == 'SIN_STOCK':
+                # 30 días sin stock = ventas perdidas todo el mes
+                imp = impacto_stock_critico(vel_dia, 0, precio, margen_pct_eff)
+                bdown = {
+                    'formula': 'velocidad/día × 30 días sin stock × precio × margen',
+                    'componentes': {
+                        'velocidad_dia': round(vel_dia, 2),
+                        'dias_sin_stock_proyectados': 30,
+                        'precio': precio,
+                        'margen_estimado_pct': margen_pct_eff,
+                    },
+                }
                 add(U, alias, 'Stock', 'bi-box-seam',
                     f'Sin stock: {titulo}',
-                    'La publicación está pausada en ML. Reponé urgente.', lk, 'Ver stock', item_id)
+                    'La publicación está pausada en ML. Reponé urgente.', lk, 'Ver stock',
+                    item_id, tipo='stock_sin_stock', score_impacto_ars=imp, score_breakdown=bdown)
             elif ast == 'CRITICO':
+                imp = impacto_stock_critico(vel_dia, dias or 0, precio, margen_pct_eff)
+                bdown = {
+                    'formula': 'velocidad/día × días sin stock proyectados × precio × margen',
+                    'componentes': {
+                        'velocidad_dia': round(vel_dia, 2),
+                        'dias_hasta_quiebre': round(dias or 0, 1),
+                        'precio': precio,
+                        'margen_estimado_pct': margen_pct_eff,
+                    },
+                }
                 add(U, alias, 'Stock', 'bi-exclamation-triangle',
                     f'Stock crítico: {titulo}',
                     f'Quedan {dias:.0f} días de stock. Iniciá la reposición hoy.' if dias else 'Menos de 7 días de stock.',
-                    lk, 'Ver stock', item_id)
+                    lk, 'Ver stock', item_id, tipo='stock_critico',
+                    score_impacto_ars=imp, score_breakdown=bdown)
             elif ast == 'ADVERTENCIA':
+                imp = impacto_stock_critico(vel_dia, dias or 0, precio, margen_pct_eff)
+                bdown = {
+                    'formula': 'velocidad/día × días sin stock proyectados × precio × margen',
+                    'componentes': {
+                        'velocidad_dia': round(vel_dia, 2),
+                        'dias_hasta_quiebre': round(dias or 0, 1),
+                        'precio': precio,
+                        'margen_estimado_pct': margen_pct_eff,
+                    },
+                }
                 add(I, alias, 'Stock', 'bi-clock-history',
                     f'Stock bajo: {titulo}',
                     f'{dias:.0f} días de stock restantes.' if dias else 'Menos de 15 días de stock.',
-                    lk, 'Ver stock', item_id)
+                    lk, 'Ver stock', item_id, tipo='stock_advertencia',
+                    score_impacto_ars=imp, score_breakdown=bdown)
 
             if am == 'NEGATIVO' and mpct is not None:
+                # Pérdida real / mes = ventas_30d × |precio × margen_negativo|
+                perdida_mes = abs(precio * (mpct / 100.0)) * (ventas_30d or 0)
+                bdown = {
+                    'formula': 'ventas_30d × precio × |margen_negativo_pct|',
+                    'componentes': {
+                        'ventas_30d': ventas_30d,
+                        'precio': precio,
+                        'margen_pct': round(mpct, 2),
+                    },
+                }
                 add(U, alias, 'Margen', 'bi-currency-dollar',
                     f'Margen negativo: {titulo}',
                     f'Margen: {mpct:.1f}% — perdés dinero en cada venta.',
-                    lk, 'Ver stock', item_id)
+                    lk, 'Ver stock', item_id, tipo='margen_negativo',
+                    score_impacto_ars=round(perdida_mes, 2), score_breakdown=bdown)
             elif am == 'BAJO' and mpct is not None:
+                # Costo de oportunidad: cuánto más ganarías si subieras a 25% margen
+                margen_objetivo = 25.0
+                delta_pct = max(0.0, margen_objetivo - mpct)
+                gap_mes = (precio * (delta_pct / 100.0)) * (ventas_30d or 0)
+                bdown = {
+                    'formula': 'ventas_30d × precio × (margen_objetivo 25% - margen_actual)',
+                    'componentes': {
+                        'ventas_30d': ventas_30d,
+                        'precio': precio,
+                        'margen_actual_pct': round(mpct, 2),
+                        'margen_objetivo_pct': margen_objetivo,
+                    },
+                }
                 add(I, alias, 'Margen', 'bi-graph-down',
                     f'Margen bajo: {titulo}',
                     f'Margen: {mpct:.1f}% — por debajo del 10% recomendado.',
-                    lk, 'Ver stock', item_id)
+                    lk, 'Ver stock', item_id, tipo='margen_bajo',
+                    score_impacto_ars=round(gap_mes, 2), score_breakdown=bdown)
 
             # ── Visitas y conversión ───────────────────────────────────────
             vis  = it.get('visitas_30d')   # ya actualizado si se buscó en vivo
@@ -8300,28 +8397,68 @@ def api_alertas():
                     add(I, alias, 'Conversión', 'bi-eye-slash',
                         f'Sin exposición: {titulo}',
                         'La publicación no recibió ninguna visita en 30 días. Revisá título y categoría.',
-                        lk, 'Ver stock', item_id)
+                        lk, 'Ver stock', item_id, tipo='conversion_sin_exposicion',
+                        score_impacto_ars=0)  # sin visitas no hay base para estimar impacto $
                 elif vis < 100:
-                    trafico_bajo_items.append(vis)   # acumular, no generar una por una
+                    trafico_bajo_items.append((vis, precio, margen_pct_eff))   # acumular
                 elif vtas == 0 and vis >= 100:
+                    imp = impacto_trafico_desperdiciado(vis, precio, margen_pct_eff)
+                    bdown = {
+                        'formula': 'visitas_30d × conversión_objetivo 1% × precio × margen',
+                        'componentes': {
+                            'visitas_30d': vis,
+                            'conversion_objetivo_pct': 1.0,
+                            'precio': precio,
+                            'margen_estimado_pct': margen_pct_eff,
+                        },
+                    }
                     add(U, alias, 'Conversión', 'bi-funnel',
                         f'Sin ventas con visitas: {titulo}',
                         f'{vis} visitas pero 0 ventas. Revisá precio vs competencia y foto principal.',
-                        lk, 'Ver stock', item_id)
+                        lk, 'Ver stock', item_id, tipo='conversion_sin_ventas',
+                        score_impacto_ars=imp, score_breakdown=bdown)
                 elif conv is not None and conv < 1:
+                    imp = impacto_trafico_desperdiciado(vis, precio, margen_pct_eff)
+                    bdown = {
+                        'formula': 'visitas_30d × (conversión_objetivo 1% - actual) × precio × margen',
+                        'componentes': {
+                            'visitas_30d': vis,
+                            'conversion_actual_pct': round(conv, 2),
+                            'conversion_objetivo_pct': 1.0,
+                            'precio': precio,
+                            'margen_estimado_pct': margen_pct_eff,
+                        },
+                    }
                     add(I, alias, 'Conversión', 'bi-funnel',
                         f'Conversión muy baja: {titulo}',
                         f'{conv:.1f}% de conversión con {vis} visitas. Revisá precio, fotos y descripción.',
-                        lk, 'Ver stock', item_id)
+                        lk, 'Ver stock', item_id, tipo='conversion_baja',
+                        score_impacto_ars=imp, score_breakdown=bdown)
 
         # Alerta agrupada de tráfico bajo
         if trafico_bajo_items:
             cnt = len(trafico_bajo_items)
-            avg = round(sum(trafico_bajo_items) / cnt)
+            visitas_list = [v for v, _, _ in trafico_bajo_items]
+            avg = round(sum(visitas_list) / cnt)
+            # Impacto: suma de cada item ((100 - vis) × 1% × precio × margen)
+            imp_total = 0.0
+            for vis_i, precio_i, margen_i in trafico_bajo_items:
+                imp_total += impacto_trafico_desperdiciado(max(50, 100 - vis_i + vis_i),
+                                                            precio_i, margen_i)
+            bdown = {
+                'formula': f'{cnt} publicaciones × visitas_objetivo × conversión 1% × precio × margen',
+                'componentes': {
+                    'cantidad_publicaciones': cnt,
+                    'visitas_promedio_actual': avg,
+                    'visitas_objetivo_minimo': 100,
+                    'conversion_objetivo_pct': 1.0,
+                },
+            }
             add(I, alias, 'Conversión', 'bi-eye',
                 f'{cnt} publicaciones con tráfico bajo — {alias}',
                 f'Promedio {avg} visitas/mes (mínimo saludable: 100). Optimizá títulos, fotos y atributos desde Competencia.',
-                f'/stock/{alias}', 'Ver stock')
+                f'/stock/{alias}', 'Ver stock', tipo='conversion_trafico_bajo_grupo',
+                score_impacto_ars=round(imp_total, 2), score_breakdown=bdown)
 
         # ── Posiciones: comparar con fecha anterior disponible más cercana ─
         pos_data = load_json(os.path.join(DATA_DIR, f'posiciones_{s}.json')) or {}
@@ -8346,16 +8483,42 @@ def api_alertas():
             dias_entre = (datetime.strptime(today, '%Y-%m-%d') -
                           datetime.strptime(fecha_prev, '%Y-%m-%d')).days
             detalle_fecha = f'(vs {fecha_prev}, {dias_entre}d atrás)' if dias_entre > 1 else ''
+            # Buscar el item en stock para precio + velocidad
+            _item_stock = next((it for it in stock_items if it.get('id') == item_id), None)
+            _precio_p = float(_item_stock.get('precio', 0)) if _item_stock else 0
+            _vel_p   = (_item_stock or {}).get('velocidad') or 0
+            _ce_p    = costos_data.get(item_id, {})
+            _costo_p = _ce_p.get('costo') if _ce_p else (_item_stock or {}).get('costo')
+            _fee_p   = (_item_stock or {}).get('fee_rate') or get_rate(
+                (_item_stock or {}).get('listing_type', ''), fees_cache)
+            _margen_p = _calc_margen_pct(_precio_p, _costo_p, _fee_p)
+            # Heurística: cada posición perdida = ~10% menos visitas; convertir a $
+            # ventas_perdidas_mes = (delta × 10%) × velocidad_mensual × margen
+            _vel_mensual = _vel_p * 30
+            _pct_perdido = min(0.5, delta * 0.10)  # cap al 50%
+            _imp_pos = _vel_mensual * _pct_perdido * _precio_p * (_margen_p / 100.0)
+            _bdown_pos = {
+                'formula': 'posiciones_perdidas × 10%/posición × velocidad_mensual × precio × margen',
+                'componentes': {
+                    'delta_posiciones': delta,
+                    'velocidad_mensual': round(_vel_mensual, 1),
+                    'precio': _precio_p,
+                    'margen_estimado_pct': _margen_p,
+                    'pct_visitas_perdidas_estimado': round(_pct_perdido * 100, 1),
+                },
+            }
             if delta >= 5:
                 add(U, alias, 'Posiciones', 'bi-graph-down-arrow',
                     f'Caída fuerte de posición: {d.get("title","")[:48]}',
                     f'Bajó {delta} posiciones: {pos_prev} → {pos_hoy} {detalle_fecha}',
-                    f'/posiciones/{alias}', 'Ver posiciones', item_id)
+                    f'/posiciones/{alias}', 'Ver posiciones', item_id, tipo='posicion_caida_fuerte',
+                    score_impacto_ars=round(_imp_pos, 2), score_breakdown=_bdown_pos)
             elif delta >= 3:
                 add(I, alias, 'Posiciones', 'bi-arrow-down',
                     f'Bajó posición: {d.get("title","")[:50]}',
                     f'Bajó {delta} posiciones: {pos_prev} → {pos_hoy} {detalle_fecha}',
-                    f'/posiciones/{alias}', 'Ver posiciones', item_id)
+                    f'/posiciones/{alias}', 'Ver posiciones', item_id, tipo='posicion_bajo',
+                    score_impacto_ars=round(_imp_pos, 2), score_breakdown=_bdown_pos)
 
         # ── Reputación ─────────────────────────────────────────────────────
         rep_data = load_json(os.path.join(DATA_DIR, f'reputacion_{s}.json'))
@@ -8365,26 +8528,29 @@ def api_alertas():
             demoras  = rep.get('demoras_pct', 0)
             nivel    = rep.get('nivel', '')
             lkr      = f'/reputacion/{alias}'
+            # Reputación: NO se calcula score_impacto_ars (decisión Sprint 4.4)
+            # — el impacto monetario directo de reclamos no es estimable sin
+            # heurística inventada. Aparecen agrupadas al final del centro.
             if reclamos > 2:
                 add(U, alias, 'Reputación', 'bi-shield-exclamation',
                     f'Reclamos críticos — {alias}',
                     f'{reclamos:.1f}% de reclamos. Supera el 2% máximo — reputación en riesgo.',
-                    lkr, 'Ver reputación')
+                    lkr, 'Ver reputación', tipo='reputacion_reclamos_critico', score_impacto_ars=0)
             elif reclamos > 1:
                 add(I, alias, 'Reputación', 'bi-shield-half',
                     f'Reclamos en alerta — {alias}',
                     f'{reclamos:.1f}% de reclamos. Por encima del 2% baja tu nivel.',
-                    lkr, 'Ver reputación')
+                    lkr, 'Ver reputación', tipo='reputacion_reclamos_alerta', score_impacto_ars=0)
             if demoras > 15:
                 add(I, alias, 'Reputación', 'bi-clock',
                     f'Demoras de envío — {alias}',
                     f'{demoras:.1f}% de envíos demorados (límite: 15%).',
-                    lkr, 'Ver reputación')
+                    lkr, 'Ver reputación', tipo='reputacion_demoras', score_impacto_ars=0)
             if nivel in ('4_rojo', '3_naranja', '2_amarillo'):
                 add(I, alias, 'Reputación', 'bi-star-half',
                     f'Nivel de reputación bajo — {alias}',
                     f'Nivel: {nivel.replace("_"," ").title()}. Reducí reclamos y demoras.',
-                    lkr, 'Ver reputación')
+                    lkr, 'Ver reputación', tipo='reputacion_nivel_bajo', score_impacto_ars=0)
 
         # ── Publicaciones pausadas por ML ──────────────────────────────────
         try:
@@ -8417,15 +8583,41 @@ def api_alertas():
                                 _titles[_b.get('id','')] = _b.get('title','')
                     for _pid in _paused_ids[:10]:
                         _t = _titles.get(_pid, _pid)[:55]
+                        # Impacto: si tenemos velocidad histórica del item, calculamos
+                        # ventas perdidas por estar pausada todo el mes
+                        _it_p = next((it for it in stock_items if it.get('id') == _pid), None)
+                        if _it_p:
+                            _vel_p_dia = _it_p.get('velocidad') or 0
+                            _precio_p2 = float(_it_p.get('precio', 0))
+                            _ce_p2 = costos_data.get(_pid, {})
+                            _costo_p2 = _ce_p2.get('costo') if _ce_p2 else _it_p.get('costo')
+                            _fee_p2 = _it_p.get('fee_rate') or get_rate(_it_p.get('listing_type', ''), fees_cache)
+                            _margen_p2 = _calc_margen_pct(_precio_p2, _costo_p2, _fee_p2)
+                            _imp_paused = impacto_stock_critico(_vel_p_dia, 0, _precio_p2, _margen_p2)
+                            _bdown_paused = {
+                                'formula': 'velocidad/día × 30 días pausada × precio × margen',
+                                'componentes': {
+                                    'velocidad_dia': round(_vel_p_dia, 2),
+                                    'dias_pausada_proyectados': 30,
+                                    'precio': _precio_p2,
+                                    'margen_estimado_pct': _margen_p2,
+                                },
+                            }
+                        else:
+                            _imp_paused = 0
+                            _bdown_paused = None
                         add(U, alias, 'Publicaciones', 'bi-pause-circle',
                             f'Publicación pausada: {_t}',
                             'ML pausó esta publicación. Revisá stock, precio o estado en Mis publicaciones.',
-                            f'https://www.mercadolibre.com.ar/anuncios/{_pid}/editar', 'Ver en ML', _pid)
+                            f'https://www.mercadolibre.com.ar/anuncios/{_pid}/editar', 'Ver en ML',
+                            _pid, tipo='publicacion_pausada',
+                            score_impacto_ars=_imp_paused, score_breakdown=_bdown_paused)
                     if len(_paused_ids) > 10:
                         add(I, alias, 'Publicaciones', 'bi-pause-circle',
                             f'{len(_paused_ids) - 10} publicaciones pausadas más',
                             'Revisá todas en Mis publicaciones de ML.',
-                            'https://www.mercadolibre.com.ar/vendedores/publicaciones', 'Ver todas')
+                            'https://www.mercadolibre.com.ar/vendedores/publicaciones', 'Ver todas',
+                            tipo='publicaciones_pausadas_extra', score_impacto_ars=0)
         except Exception:
             pass
 
@@ -8440,23 +8632,164 @@ def api_alertas():
                     f' ≈ ${_c.impacto_monetario_estimado:,.0f}/mes en ventas potencialmente perdidas'
                     if _c.impacto_monetario_estimado > 0 else ''
                 )
+                _bdown_canib = {
+                    'formula': 'visitas_perdidas_30d × conversión × precio × margen',
+                    'componentes': {
+                        'visitas_perdidas_30d': _c.visitas_perdidas_30d,
+                        'items_en_cluster': len(_c.items),
+                        'severidad': _c.severidad,
+                    },
+                }
                 add(_nivel, alias, 'Canibalización', _icono,
                     f"Cluster '{_c.titulo_corto[:60]}' canibalizando {_c.visitas_perdidas_30d} visitas/mes{_impacto_txt}",
                     f"{len(_c.items)} publicaciones del mismo producto compitiendo entre sí. "
                     f"Severidad: {_c.severidad}. Ver detalle para pausar las que no venden.",
-                    f'/duplicados/{alias}#cluster-{_c.cluster_id}', 'Ver detalle')
+                    f'/duplicados/{alias}#cluster-{_c.cluster_id}', 'Ver detalle',
+                    item_id=_c.cluster_id, tipo='canibalizacion',
+                    score_impacto_ars=float(_c.impacto_monetario_estimado or 0),
+                    score_breakdown=_bdown_canib)
         except Exception:
             pass
 
-    orden = {'urgente': 0, 'importante': 1, 'info': 2}
-    all_alerts.sort(key=lambda a: orden.get(a['nivel'], 9))
+    # Sprint 4.4 — Mergear estado persistido + auto-resolución
+    from modules.alertas_estado import (
+        cargar_estados, estado_efectivo, auto_resolver_ausentes,
+    )
+
+    # Agrupar alertas por alias para hacer el diff de auto-resolución por cuenta
+    alerts_por_alias: dict = {}
+    for a in all_alerts:
+        alerts_por_alias.setdefault(a['alias'], []).append(a)
+
+    # Auto-resolver: alertas que estaban pendientes y ya no aparecen
+    auto_resueltas_por_alias: dict = {}
+    for alias_k, lista in alerts_por_alias.items():
+        fps_actuales = {a['fingerprint'] for a in lista}
+        auto_resueltas_por_alias[alias_k] = auto_resolver_ausentes(alias_k, fps_actuales)
+
+    # Mergear estado en cada alerta + filtrar las descartadas/pospuestas vigentes
+    visible_alerts = []
+    recien_resueltas = []   # para mostrar 24h con badge ✓
+    for a in all_alerts:
+        ee = estado_efectivo(a['alias'], a['fingerprint'])
+        a['estado'] = ee.get('estado', 'pendiente')
+        a['estado_meta'] = ee  # cliente puede leer detalles
+
+        if ee.get('es_descartada_vigente'):
+            continue  # oculta del centro mientras el TTL no expire
+        if ee.get('es_pospuesta_vigente'):
+            continue  # oculta hasta que llegue pospuesta_hasta
+        if ee.get('es_recien_resuelta'):
+            # Mantener visible 24h con badge "Resuelta" / "Auto-resuelta"
+            recien_resueltas.append(a)
+            continue
+        if a['estado'] in ('resuelta', 'auto_resuelta'):
+            continue  # > 24h ya, va al tab "Resueltas"
+        visible_alerts.append(a)
+
+    # Orden: por score_impacto desc → las cuantificables primero, las sin score al final
+    # Como criterio secundario, urgente antes que importante.
+    orden_nivel = {'urgente': 0, 'importante': 1, 'info': 2}
+    visible_alerts.sort(key=lambda a: (
+        -float(a.get('score_impacto_ars') or 0),
+        orden_nivel.get(a['nivel'], 9),
+    ))
+
+    # Las recién resueltas van al final con badge especial (cliente decide cómo
+    # mostrarlas — orden por más recientes primero).
+    recien_resueltas.sort(key=lambda a: (a.get('estado_meta') or {}).get('actualizada_en', ''),
+                          reverse=True)
+
+    impacto_total_pendiente = sum(float(a.get('score_impacto_ars') or 0)
+                                  for a in visible_alerts)
+
     return jsonify({
-        'ok': True,
-        'total': len(all_alerts),
-        'urgentes':   sum(1 for a in all_alerts if a['nivel'] == 'urgente'),
-        'importantes': sum(1 for a in all_alerts if a['nivel'] == 'importante'),
-        'alerts': all_alerts,
+        'ok':                  True,
+        'total':               len(visible_alerts),
+        'urgentes':            sum(1 for a in visible_alerts if a['nivel'] == 'urgente'),
+        'importantes':         sum(1 for a in visible_alerts if a['nivel'] == 'importante'),
+        'alerts':              visible_alerts,
+        'recien_resueltas':    recien_resueltas,
+        'impacto_total_ars':   round(impacto_total_pendiente, 2),
+        'auto_resueltas_pase': sum(len(v) for v in auto_resueltas_por_alias.values()),
     })
+
+
+# ── Endpoints POST para gestionar estado de alertas (Sprint 4.4) ─────────────
+
+def _accounts_aliases():
+    return {a['alias'] for a in get_accounts()}
+
+
+@app.route('/api/alertas/<alias>/resolver', methods=['POST'])
+def api_alertas_resolver(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    body = request.get_json(silent=True) or {}
+    fps = body.get('fingerprints') or []
+    if isinstance(fps, str):
+        fps = [fps]
+    razon = (body.get('razon') or 'manual desde centro de alertas').strip()
+    snapshots = body.get('snapshots') or {}  # opcional: dict[fp, dict]
+    if not fps:
+        return jsonify({'ok': False, 'error': 'fingerprints requerido'}), 400
+    from modules.alertas_estado import marcar_resuelta
+    for fp in fps:
+        marcar_resuelta(alias, fp, snapshot=snapshots.get(fp), razon=razon)
+    _audit('ALERTAS_RESOLVER', alias=alias, count=len(fps))
+    return jsonify({'ok': True, 'count': len(fps)})
+
+
+@app.route('/api/alertas/<alias>/posponer', methods=['POST'])
+def api_alertas_posponer(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    body = request.get_json(silent=True) or {}
+    fps = body.get('fingerprints') or []
+    if isinstance(fps, str):
+        fps = [fps]
+    horas = int(body.get('horas') or 24)
+    if horas not in (4, 24, 168):
+        return jsonify({'ok': False, 'error': 'horas debe ser 4, 24 o 168'}), 400
+    razon = (body.get('razon') or '').strip()
+    snapshots = body.get('snapshots') or {}
+    if not fps:
+        return jsonify({'ok': False, 'error': 'fingerprints requerido'}), 400
+    from modules.alertas_estado import marcar_pospuesta
+    for fp in fps:
+        marcar_pospuesta(alias, fp, horas, snapshot=snapshots.get(fp), razon=razon)
+    _audit('ALERTAS_POSPONER', alias=alias, horas=horas, count=len(fps))
+    return jsonify({'ok': True, 'count': len(fps), 'horas': horas})
+
+
+@app.route('/api/alertas/<alias>/descartar', methods=['POST'])
+def api_alertas_descartar(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    body = request.get_json(silent=True) or {}
+    fps = body.get('fingerprints') or []
+    if isinstance(fps, str):
+        fps = [fps]
+    razon = (body.get('razon') or 'no aplica').strip()
+    snapshots = body.get('snapshots') or {}
+    if not fps:
+        return jsonify({'ok': False, 'error': 'fingerprints requerido'}), 400
+    from modules.alertas_estado import marcar_descartada
+    for fp in fps:
+        marcar_descartada(alias, fp, snapshot=snapshots.get(fp), razon=razon)
+    _audit('ALERTAS_DESCARTAR', alias=alias, count=len(fps))
+    return jsonify({'ok': True, 'count': len(fps)})
+
+
+@app.route('/api/alertas/<alias>/historial')
+def api_alertas_historial(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    days = int(request.args.get('days', 30))
+    days = max(1, min(days, 365))
+    from modules.alertas_estado import historial_resueltas
+    data = historial_resueltas(alias, days=days)
+    return jsonify({'ok': True, **data})
 
 
 @app.route('/multicuenta')
@@ -12259,16 +12592,38 @@ def _send_email_alert(subject: str, body_html: str, cfg: dict):
         return False, str(e)
 
 
+def _fmt_money_short(n: float) -> str:
+    """Formato corto: $1.2M, $850K, $1,234"""
+    n = float(n or 0)
+    if n >= 1e9: return f"${n/1e9:.1f}B".replace('.', ',')
+    if n >= 1e6: return f"${n/1e6:.1f}M".replace('.', ',')
+    if n >= 1e3: return f"${n/1e3:.0f}K"
+    return f"${int(n):,}".replace(',', '.')
+
+
 def _build_alert_email(alertas: list) -> str:
-    """Genera el HTML del email de alertas diarias."""
-    urgentes   = [a for a in alertas if a['nivel'] == 'urgente']
-    importantes = [a for a in alertas if a['nivel'] == 'importante']
+    """Genera el HTML del email de alertas diarias.
+
+    Sprint 4.4: ordena por score_impacto_ars desc dentro de cada nivel +
+    muestra impacto $ prominente cuando aplica + impacto total agregado."""
+    # Ordenar por impacto desc dentro de cada nivel (las que tienen score primero)
+    def _key(a):
+        return -float(a.get('score_impacto_ars') or 0)
+    urgentes    = sorted([a for a in alertas if a['nivel'] == 'urgente'], key=_key)
+    importantes = sorted([a for a in alertas if a['nivel'] == 'importante'], key=_key)
+    impacto_total = sum(float(a.get('score_impacto_ars') or 0) for a in alertas)
 
     def _row_color(nivel):
         return '#fee2e2' if nivel == 'urgente' else '#fef3c7'
 
     rows = ''
     for a in urgentes + importantes:
+        score = float(a.get('score_impacto_ars') or 0)
+        impacto_html = (
+            f'<div style="font-size:.8rem;font-weight:700;color:#15803d;margin-top:3px">'
+            f'+{_fmt_money_short(score)}/mes de impacto estimado</div>'
+            if score > 0 else ''
+        )
         rows += f"""
         <tr style="border-bottom:1px solid #f0f0f0">
           <td style="padding:10px 14px;background:{_row_color(a['nivel'])};width:80px;text-align:center;font-size:.75rem;font-weight:700;color:{'#dc2626' if a['nivel'] == 'urgente' else '#d97706'}">
@@ -12277,6 +12632,7 @@ def _build_alert_email(alertas: list) -> str:
           <td style="padding:10px 14px">
             <div style="font-weight:600;font-size:.85rem;color:#1e293b">{a['titulo']}</div>
             <div style="font-size:.78rem;color:#64748b;margin-top:2px">{a['detalle']}</div>
+            {impacto_html}
           </td>
           <td style="padding:10px 14px;white-space:nowrap">
             <a href="http://localhost:8080{a['link']}" style="font-size:.75rem;color:#2563eb">Ver →</a>
@@ -12284,6 +12640,14 @@ def _build_alert_email(alertas: list) -> str:
         </tr>"""
 
     fecha = datetime.now().strftime('%A %d de %B, %H:%M')
+    impacto_banner = (
+        f'<div style="background:#dcfce7;color:#15803d;padding:14px 24px;'
+        f'font-size:.95rem;font-weight:700;border-bottom:1px solid #86efac">'
+        f'💰 Impacto pendiente estimado: +{_fmt_money_short(impacto_total)}/mes — '
+        f'es lo que estás dejando sobre la mesa hoy.'
+        f'</div>'
+        if impacto_total > 0 else ''
+    )
     return f"""
     <html><body style="font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f7;margin:0;padding:20px">
       <div style="max-width:620px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
@@ -12291,6 +12655,7 @@ def _build_alert_email(alertas: list) -> str:
           <div style="color:#fff;font-size:1.1rem;font-weight:800">Sistema ML — Resumen diario</div>
           <div style="color:#93c5fd;font-size:.78rem;margin-top:4px">{fecha} | {len(urgentes)} urgentes · {len(importantes)} importantes</div>
         </div>
+        {impacto_banner}
         <table style="width:100%;border-collapse:collapse">
           {rows}
         </table>
@@ -12298,7 +12663,7 @@ def _build_alert_email(alertas: list) -> str:
           <a href="http://localhost:8080" style="background:#2563eb;color:#fff;padding:8px 20px;border-radius:8px;text-decoration:none;font-size:.8rem;font-weight:700">
             Abrir Sistema ML →
           </a>
-          <div style="font-size:.68rem;color:#94a3b8;margin-top:10px">Sistema ML · Actualización automática diaria</div>
+          <div style="font-size:.68rem;color:#94a3b8;margin-top:10px">Sistema ML · Actualización automática diaria · ordenado por impacto $ desc</div>
         </div>
       </div>
     </body></html>"""
