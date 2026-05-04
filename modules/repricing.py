@@ -308,7 +308,9 @@ def _get_competitor_info(item: dict, token: str) -> dict:
     try:
         resp = requests.get(
             "https://api.mercadolibre.com/sites/MLA/search",
-            headers={"Accept": "application/json"},
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                     "Accept": "application/json",
+                     "Referer": "https://www.mercadolibre.com.ar/"},
             params={"category": category, "sort": "price_asc", "limit": 5},
             timeout=8,
         )
