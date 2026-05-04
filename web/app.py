@@ -6699,6 +6699,51 @@ Reglas estrictas:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+@app.route('/api/item-info/<alias>/<item_id>')
+def api_item_info_minicard(alias, item_id):
+    """Sprint UX M2 — Devuelve metadata visual de un item (foto + precio + ventas + permalink).
+
+    Endpoint lazy: el frontend lo llama por cada card de optimización para mostrar
+    la mini-tarjeta sticky. Cacheable en frontend (item_id no cambia).
+
+    No requiere auth — el endpoint /items/<id> de ML es público.
+    """
+    item_id = (item_id or '').strip().upper()
+    if not item_id.startswith('MLA'):
+        return jsonify({'ok': False, 'error': 'item_id inválido'}), 400
+    try:
+        import requests as _rq
+        r = _rq.get(f'https://api.mercadolibre.com/items/{item_id}',
+                    params={'attributes': 'id,title,thumbnail,secure_thumbnail,pictures,price,currency_id,sold_quantity,available_quantity,status,permalink'},
+                    timeout=6)
+        if r.status_code != 200:
+            return jsonify({'ok': False, 'error': f'ML HTTP {r.status_code}'}), 502
+        body = r.json() or {}
+        # Preferir secure_thumbnail (HTTPS); fallback a primer picture
+        thumb = body.get('secure_thumbnail') or body.get('thumbnail') or ''
+        if not thumb and body.get('pictures'):
+            pics = body.get('pictures') or []
+            if pics:
+                thumb = pics[0].get('secure_url') or pics[0].get('url') or ''
+        # Si la URL es HTTP, forzar HTTPS para evitar mixed content
+        if thumb.startswith('http://'):
+            thumb = 'https://' + thumb[7:]
+        return jsonify({
+            'ok':         True,
+            'item_id':    body.get('id', item_id),
+            'title':      body.get('title', ''),
+            'thumbnail':  thumb,
+            'price':      body.get('price'),
+            'currency':   body.get('currency_id', 'ARS'),
+            'sold':       body.get('sold_quantity', 0),
+            'available':  body.get('available_quantity', 0),
+            'status':     body.get('status', ''),
+            'permalink':  body.get('permalink', ''),
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @app.route('/optimizaciones/<alias>')
 def optimizaciones(alias):
     data  = load_json(os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json'))
