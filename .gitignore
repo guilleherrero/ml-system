@@ -5,6 +5,7 @@ config/accounts.json
 # Datos de negocio personales
 config/costos.json
 config/repricing.json
+config/scheduler_overrides.json
 data/
 
 # Backups locales
