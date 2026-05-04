@@ -7,28 +7,123 @@
     box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:8px;
     display:flex; align-items:flex-start; gap:14px;
     border-left:4px solid #e5e7eb; transition:box-shadow .15s;
+    position:relative;
   }
   .alerta-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.1); }
   .alerta-card.urgente   { border-left-color:#ef4444; }
   .alerta-card.importante{ border-left-color:#f59e0b; }
   .alerta-card.info      { border-left-color:#3b82f6; }
+  .alerta-card.recien-resuelta { border-left-color:#22c55e; background:#f0fdf4; opacity:.92; }
+  .alerta-card.selected { background:#eff6ff; box-shadow:0 0 0 2px #93c5fd; }
+
+  .alerta-check {
+    flex-shrink:0; width:18px; height:18px; margin-top:8px; cursor:pointer;
+  }
+
   .alerta-icon { width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1rem; }
   .urgente   .alerta-icon { background:#fee2e2;color:#dc2626; }
   .importante .alerta-icon{ background:#fef3c7;color:#d97706; }
   .info      .alerta-icon { background:#dbeafe;color:#2563eb; }
+  .recien-resuelta .alerta-icon { background:#dcfce7;color:#16a34a; }
+
   .alerta-body { flex:1; min-width:0; }
   .alerta-titulo { font-size:.875rem;font-weight:600;color:#111827;line-height:1.3; }
   .alerta-detalle{ font-size:.78rem;color:#6b7280;margin-top:2px;line-height:1.4; }
   .alerta-meta { display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap; }
   .alerta-alias { background:#f3f4f6;color:#374151;border-radius:4px;padding:1px 8px;font-size:.7rem;font-weight:600; }
   .alerta-cat   { border-radius:4px;padding:1px 8px;font-size:.7rem;font-weight:600; }
-  .cat-Stock      { background:#ede9fe;color:#5b21b6; }
-  .cat-Margen     { background:#fee2e2;color:#991b1b; }
-  .cat-Posiciones { background:#fef3c7;color:#92400e; }
-  .cat-Reputación { background:#d1fae5;color:#065f46; }
-  .cat-Conversión { background:#dbeafe;color:#1e40af; }
+  .cat-Stock          { background:#ede9fe;color:#5b21b6; }
+  .cat-Margen         { background:#fee2e2;color:#991b1b; }
+  .cat-Posiciones     { background:#fef3c7;color:#92400e; }
+  .cat-Reputación     { background:#d1fae5;color:#065f46; }
+  .cat-Conversión     { background:#dbeafe;color:#1e40af; }
+  .cat-Publicaciones  { background:#fef3c7;color:#92400e; }
+  .cat-Canibalización { background:#fce7f3;color:#9d174d; }
   .alerta-link  { font-size:.72rem;color:#2563eb;text-decoration:none;font-weight:600;white-space:nowrap; }
   .alerta-link:hover { text-decoration:underline; }
+
+  /* Score impacto badge */
+  .impacto-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    background:#dcfce7; color:#15803d; border-radius:6px;
+    padding:3px 9px; font-size:.78rem; font-weight:700;
+    cursor:help; position:relative;
+  }
+  .impacto-badge.zero { background:#f1f5f9; color:#94a3b8; cursor:default; }
+  .impacto-badge .info-icon { font-size:.72rem; opacity:.6; }
+  .impacto-badge:hover .info-icon { opacity:1; }
+
+  /* Tooltip explicativo */
+  .impacto-tooltip {
+    visibility:hidden; opacity:0; transition:opacity .15s;
+    position:absolute; bottom:calc(100% + 8px); right:0;
+    background:#0f172a; color:#fff; border-radius:8px;
+    padding:10px 12px; font-size:.72rem; line-height:1.5;
+    width:320px; z-index:50; pointer-events:none;
+    box-shadow:0 8px 24px rgba(0,0,0,.25); white-space:normal; font-weight:400;
+  }
+  .impacto-tooltip::after {
+    content:''; position:absolute; top:100%; right:14px;
+    border:6px solid transparent; border-top-color:#0f172a;
+  }
+  .impacto-tooltip .tt-formula { color:#fcd34d; font-weight:600; margin-bottom:6px; font-size:.7rem; }
+  .impacto-tooltip .tt-comp { display:flex; justify-content:space-between; padding:2px 0; }
+  .impacto-tooltip .tt-comp .tt-key { color:#94a3b8; }
+  .impacto-tooltip .tt-comp .tt-val { font-weight:600; }
+  .impacto-badge:hover .impacto-tooltip { visibility:visible; opacity:1; }
+
+  /* Estado badges (recién resuelta, pospuesta, etc.) */
+  .estado-badge {
+    display:inline-flex; align-items:center; gap:3px;
+    border-radius:4px; padding:2px 7px; font-size:.66rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .estado-resuelta      { background:#dcfce7; color:#15803d; }
+  .estado-auto-resuelta { background:#dcfce7; color:#15803d; }
+  .estado-pospuesta     { background:#fef3c7; color:#92400e; }
+  .estado-reaparecio    { background:#fed7aa; color:#9a3412; }
+
+  /* Acciones rápidas en cada card */
+  .alerta-acciones { display:flex; gap:4px; flex-shrink:0; }
+  .alerta-acciones .btn-ax {
+    border:1px solid #e5e7eb; background:#fff; border-radius:6px;
+    padding:4px 8px; font-size:.7rem; cursor:pointer; color:#475569;
+    display:inline-flex; align-items:center; gap:3px;
+  }
+  .alerta-acciones .btn-ax:hover { background:#f1f5f9; border-color:#cbd5e1; }
+  .alerta-acciones .btn-resolver:hover { background:#dcfce7; color:#15803d; border-color:#86efac; }
+  .alerta-acciones .btn-descartar:hover { background:#fee2e2; color:#b91c1c; border-color:#fca5a5; }
+  .alerta-acciones .pos-dropdown { position:relative; }
+  .alerta-acciones .pos-menu {
+    position:absolute; right:0; top:calc(100% + 2px);
+    background:#fff; border:1px solid #e5e7eb; border-radius:8px;
+    box-shadow:0 4px 12px rgba(0,0,0,.1); min-width:120px; z-index:30;
+    display:none; overflow:hidden;
+  }
+  .alerta-acciones .pos-menu.open { display:block; }
+  .alerta-acciones .pos-menu button {
+    display:block; width:100%; padding:7px 12px; border:none; background:#fff;
+    text-align:left; font-size:.75rem; color:#374151; cursor:pointer;
+  }
+  .alerta-acciones .pos-menu button:hover { background:#f1f5f9; }
+
+  /* Bulk action bar */
+  .bulk-bar {
+    background:#1e3a8a; color:#fff; border-radius:10px;
+    padding:10px 16px; margin-bottom:14px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    box-shadow:0 4px 12px rgba(30,58,138,.25);
+  }
+  .bulk-bar .bulk-count { font-weight:700; font-size:.95rem; }
+  .bulk-bar .bulk-actions { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
+  .bulk-bar .bulk-actions button {
+    background:rgba(255,255,255,.18); color:#fff; border:none;
+    border-radius:6px; padding:6px 12px; font-size:.78rem; font-weight:600; cursor:pointer;
+  }
+  .bulk-bar .bulk-actions button:hover { background:rgba(255,255,255,.3); }
+  .bulk-bar .bulk-actions .btn-clear { background:transparent; opacity:.7; }
+  .bulk-bar .bulk-actions .pos-menu { background:#fff; color:#374151; }
+  .bulk-bar .bulk-actions .pos-menu button { color:#374151; }
 
   .nivel-tab { border:none;background:none;padding:8px 16px;border-bottom:2px solid transparent;
     font-size:.85rem;cursor:pointer;color:#6b7280;font-weight:500; }
@@ -49,16 +144,39 @@
   .cat-chip.active { background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600; }
   .skel { background:#e5e7eb;border-radius:6px;animation:pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+  .sort-toggle {
+    display:inline-flex; gap:4px; background:#f1f5f9; border-radius:8px;
+    padding:3px; font-size:.74rem;
+  }
+  .sort-toggle button {
+    border:none; background:transparent; padding:4px 10px; border-radius:6px;
+    color:#64748b; cursor:pointer; font-weight:600;
+  }
+  .sort-toggle button.active { background:#2563eb; color:#fff; }
+
+  .grupo-sin-impacto-header {
+    margin:24px 0 8px; padding:8px 14px; background:#f8fafc;
+    border-left:3px solid #cbd5e1; border-radius:6px;
+    font-size:.78rem; color:#64748b; font-weight:600;
+    display:flex; align-items:center; gap:6px;
+  }
 </style>
 
 <div class="page-header">
   <div>
     <h1><i class="bi bi-bell me-2 text-primary"></i>Centro de alertas</h1>
-    <div class="sub">Todas las cuentas — actualizado al instante desde los datos locales</div>
+    <div class="sub">Todas las cuentas — ordenado por impacto monetario estimado</div>
   </div>
-  <button class="btn btn-sm btn-outline-secondary" onclick="reload()">
-    <i class="bi bi-arrow-repeat me-1"></i>Actualizar
-  </button>
+  <div class="d-flex gap-2 align-items-center">
+    <div class="sort-toggle">
+      <button id="sort-impacto" class="active" onclick="setSort('impacto')">Por impacto $</button>
+      <button id="sort-nivel" onclick="setSort('nivel')">Por urgencia</button>
+    </div>
+    <button class="btn btn-sm btn-outline-secondary" onclick="reload()">
+      <i class="bi bi-arrow-repeat me-1"></i>Actualizar
+    </button>
+  </div>
 </div>
 
 <!-- ── Resumen ────────────────────────────────────────────────────────────── -->
@@ -76,13 +194,13 @@
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="stat-box blue">
-      <div class="num" id="cnt-total"><span class="skel" style="width:40px;height:32px;display:inline-block"></span></div>
-      <div class="lbl">Total alertas</div>
+    <div class="stat-box ok">
+      <div class="num" id="cnt-impacto" style="color:#15803d"><span class="skel" style="width:80px;height:32px;display:inline-block"></span></div>
+      <div class="lbl">Impacto pendiente $</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="stat-box ok">
+    <div class="stat-box blue">
       <div class="num" id="cnt-cuentas">{{ accounts|length }}</div>
       <div class="lbl">Cuentas monitoreadas</div>
     </div>
@@ -92,13 +210,16 @@
 <!-- ── Tabs de nivel + filtro de categoría ───────────────────────────────── -->
 <div style="border-bottom:1px solid #e5e7eb;margin-bottom:16px">
   <button class="nivel-tab active" onclick="setNivel(this,'todas')">
-    Todas <span class="badge-cnt cnt-todas" id="tab-cnt-todas">—</span>
+    Pendientes <span class="badge-cnt cnt-todas" id="tab-cnt-todas">—</span>
   </button>
   <button class="nivel-tab" onclick="setNivel(this,'urgente')">
     🔴 Urgentes <span class="badge-cnt cnt-urgente" id="tab-cnt-urgente">—</span>
   </button>
   <button class="nivel-tab" onclick="setNivel(this,'importante')">
     🟡 Importantes <span class="badge-cnt cnt-importante" id="tab-cnt-importante">—</span>
+  </button>
+  <button class="nivel-tab" onclick="setNivel(this,'historial')">
+    ✓ Resueltas (último mes) <span class="badge-cnt cnt-todas" id="tab-cnt-hist">—</span>
   </button>
 </div>
 
@@ -110,6 +231,8 @@
   <button class="cat-chip" onclick="setCat(this,'Conversión')">📉 Conversión</button>
   <button class="cat-chip" onclick="setCat(this,'Posiciones')">📍 Posiciones</button>
   <button class="cat-chip" onclick="setCat(this,'Reputación')">⭐ Reputación</button>
+  <button class="cat-chip" onclick="setCat(this,'Canibalización')">🔁 Canibalización</button>
+  <button class="cat-chip" onclick="setCat(this,'Publicaciones')">⏸ Publicaciones</button>
   {% if accounts|length > 1 %}
   <div class="ms-auto d-flex gap-2 align-items-center">
     <span class="text-muted small fw-semibold">Cuenta:</span>
@@ -123,6 +246,24 @@
   {% endif %}
 </div>
 
+<!-- ── Bulk action bar (visible cuando hay seleccionadas) ────────────────── -->
+<div id="bulk-bar" class="bulk-bar" style="display:none">
+  <div class="bulk-count"><i class="bi bi-check2-square me-2"></i><span id="bulk-count-num">0</span> seleccionadas</div>
+  <div class="bulk-actions">
+    <button onclick="bulkResolver()"><i class="bi bi-check-lg me-1"></i>Resolver</button>
+    <div class="pos-dropdown" style="position:relative;display:inline-block">
+      <button onclick="toggleBulkPosMenu(event)"><i class="bi bi-clock-history me-1"></i>Posponer ▾</button>
+      <div id="bulk-pos-menu" class="pos-menu">
+        <button onclick="bulkPosponer(4)">4 horas</button>
+        <button onclick="bulkPosponer(24)">24 horas</button>
+        <button onclick="bulkPosponer(168)">7 días</button>
+      </div>
+    </div>
+    <button onclick="bulkDescartar()"><i class="bi bi-x-lg me-1"></i>Descartar</button>
+    <button class="btn-clear" onclick="clearSelection()">Cancelar</button>
+  </div>
+</div>
+
 <!-- ── Lista de alertas ───────────────────────────────────────────────────── -->
 <div id="alertas-loading" class="text-center py-5">
   <div class="spinner-border text-primary"></div>
@@ -134,26 +275,55 @@
 {% block scripts %}
 <script>
 let allAlerts = [];
+let recienResueltas = [];
+let historialResueltas = {};  // por alias → {items, resumen}
 let activeNivel = 'todas';
 let activeCat   = 'todas';
+let activeSort  = 'impacto';   // 'impacto' | 'nivel'
+let selected    = new Set();   // fingerprints seleccionados
+let alertasIndex = {};         // fp → alerta (para bulk operations)
+
+function fmtMoney(n) {
+  if (!n || n === 0) return '$0';
+  if (n >= 1e9) return '$' + (n/1e9).toFixed(1).replace('.',',') + 'B';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(1).replace('.',',') + 'M';
+  if (n >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K';
+  return '$' + Math.round(n).toLocaleString('es-AR');
+}
+
+function fmtCompVal(k, v) {
+  if (typeof v !== 'number') return v;
+  if (k.includes('precio') || k.includes('ars') || k.includes('impacto')) return fmtMoney(v);
+  if (k.includes('pct')) return v.toFixed(1) + '%';
+  if (Number.isInteger(v)) return v.toLocaleString('es-AR');
+  return v;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 async function loadAlertas() {
   try {
-    const r = await fetch('/api/alertas');
+    const r = await fetch('/api/alertas', { cache: 'no-store' });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'Error');
 
     allAlerts = data.alerts;
+    recienResueltas = data.recien_resueltas || [];
+    alertasIndex = {};
+    [...allAlerts, ...recienResueltas].forEach(a => { alertasIndex[a.fingerprint] = a; });
 
-    // Stat boxes
     document.getElementById('cnt-urgente').textContent   = data.urgentes;
     document.getElementById('cnt-importante').textContent = data.importantes;
-    document.getElementById('cnt-total').textContent      = data.total;
+    document.getElementById('cnt-impacto').textContent    = fmtMoney(data.impacto_total_ars);
 
-    // Tab badges
     document.getElementById('tab-cnt-todas').textContent      = data.total;
     document.getElementById('tab-cnt-urgente').textContent    = data.urgentes;
     document.getElementById('tab-cnt-importante').textContent = data.importantes;
+
+    // Cargar historial en paralelo (solo cuenta actual o todas)
+    await loadHistorial();
 
     document.getElementById('alertas-loading').style.display = 'none';
     document.getElementById('alertas-list').style.display = '';
@@ -164,9 +334,25 @@ async function loadAlertas() {
   }
 }
 
+async function loadHistorial() {
+  // Una request por cuenta — el endpoint es por alias
+  const accAliases = [...new Set(allAlerts.map(a => a.alias).concat(recienResueltas.map(a => a.alias)))];
+  const promises = accAliases.map(alias =>
+    fetch(`/api/alertas/${encodeURIComponent(alias)}/historial?days=30`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { historialResueltas[alias] = d; })
+      .catch(() => { historialResueltas[alias] = { items: [], resumen: {} }; })
+  );
+  await Promise.all(promises);
+  const total = Object.values(historialResueltas).reduce((s, h) => s + ((h.resumen && h.resumen.count_total) || 0), 0);
+  document.getElementById('tab-cnt-hist').textContent = total;
+}
+
 function reload() {
   document.getElementById('alertas-loading').style.display = '';
   document.getElementById('alertas-list').style.display = 'none';
+  selected = new Set();
+  updateBulkBar();
   loadAlertas();
 }
 
@@ -184,17 +370,125 @@ function setCat(btn, cat) {
   applyFilters();
 }
 
+function setSort(s) {
+  activeSort = s;
+  document.getElementById('sort-impacto').classList.toggle('active', s === 'impacto');
+  document.getElementById('sort-nivel').classList.toggle('active', s === 'nivel');
+  applyFilters();
+}
+
+function renderImpactoBadge(a) {
+  const score = a.score_impacto_ars || 0;
+  if (!score) {
+    return `<span class="impacto-badge zero" title="Sin impacto $ cuantificado">—</span>`;
+  }
+  const bd = a.score_breakdown;
+  let tooltipHtml = '';
+  if (bd && bd.componentes) {
+    const compRows = Object.entries(bd.componentes)
+      .map(([k, v]) => `<div class="tt-comp"><span class="tt-key">${escapeHtml(k.replace(/_/g, ' '))}</span><span class="tt-val">${escapeHtml(String(fmtCompVal(k, v)))}</span></div>`)
+      .join('');
+    tooltipHtml = `<div class="impacto-tooltip">
+      <div class="tt-formula">📐 ${escapeHtml(bd.formula || '')}</div>
+      ${compRows}
+    </div>`;
+  }
+  return `<span class="impacto-badge" title="Hover para ver el cálculo">
+    +${fmtMoney(score)}/mes <i class="bi bi-info-circle info-icon"></i>
+    ${tooltipHtml}
+  </span>`;
+}
+
+function renderEstadoBadge(a) {
+  const meta = a.estado_meta || {};
+  if (a.estado === 'auto_resuelta' && meta.es_recien_resuelta) {
+    return `<span class="estado-badge estado-auto-resuelta"><i class="bi bi-check-lg"></i>Auto-resuelta</span>`;
+  }
+  if (a.estado === 'resuelta' && meta.es_recien_resuelta) {
+    return `<span class="estado-badge estado-resuelta"><i class="bi bi-check-lg"></i>Resuelta</span>`;
+  }
+  if (meta.reaparicion_reciente) {
+    return `<span class="estado-badge estado-reaparecio"><i class="bi bi-arrow-repeat"></i>Reapareció</span>`;
+  }
+  return '';
+}
+
+function renderAlertCard(a) {
+  const recienResuelta = a.estado === 'resuelta' || a.estado === 'auto_resuelta';
+  const cls = ['alerta-card', recienResuelta ? 'recien-resuelta' : a.nivel];
+  if (selected.has(a.fingerprint)) cls.push('selected');
+  const checkbox = recienResuelta ? '' : `
+    <input type="checkbox" class="alerta-check" data-fp="${a.fingerprint}"
+           onchange="toggleSelect('${a.fingerprint}')" ${selected.has(a.fingerprint) ? 'checked' : ''}>`;
+  const mlNum = a.item_id && a.item_id.startsWith('MLA') ? a.item_id.replace(/^MLA/, 'MLA-') : null;
+  const mlUrl = mlNum ? `https://articulo.mercadolibre.com.ar/${a.item_id.replace('MLA','MLA-')}` : null;
+  const itemBadge = mlNum
+    ? `<a href="${mlUrl}" target="_blank" class="alerta-link"
+          style="background:#f1f5f9;color:#374151;border-radius:4px;padding:1px 8px;font-size:.7rem;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+         <i class="bi bi-box-arrow-up-right" style="font-size:.65rem"></i>${mlNum}
+       </a>`
+    : '';
+  const acciones = recienResuelta ? '' : `
+    <div class="alerta-acciones">
+      <button class="btn-ax btn-resolver" onclick="quickResolver('${a.fingerprint}','${a.alias}')" title="Resolver">
+        <i class="bi bi-check-lg"></i>
+      </button>
+      <div class="pos-dropdown" style="position:relative;display:inline-block">
+        <button class="btn-ax" onclick="toggleQuickPosMenu(event,'${a.fingerprint}')" title="Posponer">
+          <i class="bi bi-clock-history"></i>
+        </button>
+        <div class="pos-menu" id="pm-${a.fingerprint}">
+          <button onclick="quickPosponer('${a.fingerprint}','${a.alias}',4)">4 horas</button>
+          <button onclick="quickPosponer('${a.fingerprint}','${a.alias}',24)">24 horas</button>
+          <button onclick="quickPosponer('${a.fingerprint}','${a.alias}',168)">7 días</button>
+        </div>
+      </div>
+      <button class="btn-ax btn-descartar" onclick="quickDescartar('${a.fingerprint}','${a.alias}')" title="Descartar 30 días">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>`;
+  return `
+  <div class="${cls.join(' ')}">
+    ${checkbox}
+    <div class="alerta-icon"><i class="bi ${a.icono}"></i></div>
+    <div class="alerta-body">
+      <div class="d-flex align-items-start gap-2 justify-content-between" style="gap:.5rem">
+        <div style="flex:1;min-width:0">
+          <div class="alerta-titulo">${escapeHtml(a.titulo)}</div>
+          <div class="alerta-detalle">${escapeHtml(a.detalle)}</div>
+        </div>
+        ${renderImpactoBadge(a)}
+      </div>
+      <div class="alerta-meta">
+        <span class="alerta-alias">${escapeHtml(a.alias)}</span>
+        <span class="alerta-cat cat-${escapeHtml(a.categoria)}">${escapeHtml(a.categoria)}</span>
+        ${renderEstadoBadge(a)}
+        ${itemBadge}
+        <a href="${a.link}" class="alerta-link ms-auto">${escapeHtml(a.link_txt)} →</a>
+        ${acciones}
+      </div>
+    </div>
+  </div>`;
+}
+
 function applyFilters() {
   const aliasFilter = document.getElementById('alias-filter')?.value || '';
+  const container = document.getElementById('alertas-list');
 
-  const filtered = allAlerts.filter(a => {
+  if (activeNivel === 'historial') {
+    return renderHistorial(container, aliasFilter);
+  }
+
+  let pool = [...allAlerts];
+  // Recién resueltas se mezclan con pendientes en la pestaña principal
+  pool = pool.concat(recienResueltas);
+
+  const filtered = pool.filter(a => {
     if (activeNivel !== 'todas' && a.nivel !== activeNivel) return false;
     if (activeCat   !== 'todas' && a.categoria !== activeCat) return false;
     if (aliasFilter && a.alias !== aliasFilter) return false;
     return true;
   });
-
-  const container = document.getElementById('alertas-list');
 
   if (filtered.length === 0) {
     container.innerHTML = `
@@ -206,47 +500,222 @@ function applyFilters() {
     return;
   }
 
-  // Agrupar por alias para mostrar separadores
-  const byAlias = {};
-  filtered.forEach(a => {
-    if (!byAlias[a.alias]) byAlias[a.alias] = [];
-    byAlias[a.alias].push(a);
+  // Separar las que tienen score > 0 vs las que no
+  const conScore = filtered.filter(a => (a.score_impacto_ars || 0) > 0);
+  const sinScore = filtered.filter(a => !(a.score_impacto_ars || 0));
+
+  // Ordenar
+  if (activeSort === 'impacto') {
+    conScore.sort((a, b) => (b.score_impacto_ars || 0) - (a.score_impacto_ars || 0));
+  } else {
+    const orden = { urgente: 0, importante: 1, info: 2 };
+    conScore.sort((a, b) => (orden[a.nivel] || 9) - (orden[b.nivel] || 9));
+  }
+  sinScore.sort((a, b) => {
+    const orden = { urgente: 0, importante: 1, info: 2 };
+    return (orden[a.nivel] || 9) - (orden[b.nivel] || 9);
   });
 
+  let html = conScore.map(renderAlertCard).join('');
+  if (sinScore.length > 0) {
+    html += `<div class="grupo-sin-impacto-header">
+      <i class="bi bi-info-circle"></i>
+      Sin impacto $ cuantificado · ${sinScore.length} alerta${sinScore.length > 1 ? 's' : ''}
+    </div>`;
+    html += sinScore.map(renderAlertCard).join('');
+  }
+  container.innerHTML = html;
+}
+
+function renderHistorial(container, aliasFilter) {
+  const aliases = aliasFilter ? [aliasFilter] : Object.keys(historialResueltas);
+  let totalCount = 0, totalImpacto = 0, totalAuto = 0, totalManual = 0;
   let html = '';
-  for (const [alias, alerts] of Object.entries(byAlias)) {
-    if (Object.keys(byAlias).length > 1) {
-      html += `<div class="text-muted small fw-semibold mb-2 mt-3" style="text-transform:uppercase;letter-spacing:.06em">
-        <i class="bi bi-shop me-1"></i>${alias} — ${alerts.length} alerta${alerts.length !== 1 ? 's' : ''}
-      </div>`;
-    }
-    alerts.forEach(a => {
-      const mlNum = a.item_id ? a.item_id.replace(/^MLA/, 'MLA-') : null;
-      const mlUrl = a.item_id ? `https://articulo.mercadolibre.com.ar/${a.item_id.replace('MLA','MLA-')}` : null;
-      const itemBadge = mlNum
-        ? `<a href="${mlUrl}" target="_blank" class="alerta-link"
-              style="background:#f1f5f9;color:#374151;border-radius:4px;padding:1px 8px;font-size:.7rem;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
-             <i class="bi bi-box-arrow-up-right" style="font-size:.65rem"></i>${mlNum}
-           </a>`
-        : '';
+  aliases.forEach(alias => {
+    const h = historialResueltas[alias];
+    if (!h || !h.items || !h.items.length) return;
+    totalCount += h.resumen.count_total || 0;
+    totalImpacto += h.resumen.impacto_evitado_ars || 0;
+    totalAuto += h.resumen.count_auto || 0;
+    totalManual += h.resumen.count_manuales || 0;
+    html += `<div class="text-muted small fw-semibold mb-2 mt-3" style="text-transform:uppercase;letter-spacing:.06em">
+      <i class="bi bi-shop me-1"></i>${escapeHtml(alias)} — ${h.resumen.count_total} resuelta${h.resumen.count_total !== 1 ? 's' : ''}
+    </div>`;
+    h.items.forEach(it => {
+      const auto = it.estado === 'auto_resuelta';
+      const snap = it.snapshot || {};
+      const impacto = snap.score_impacto_ars || 0;
+      const tip = it.tipo || '';
+      const cuando = it.actualizada_en ? new Date(it.actualizada_en).toLocaleString('es-AR') : '';
+      const razon = it.razon || '';
       html += `
-      <div class="alerta-card ${a.nivel}">
-        <div class="alerta-icon"><i class="bi ${a.icono}"></i></div>
+      <div class="alerta-card recien-resuelta" style="opacity:.85">
+        <div class="alerta-icon"><i class="bi bi-check-circle-fill"></i></div>
         <div class="alerta-body">
-          <div class="alerta-titulo">${a.titulo}</div>
-          <div class="alerta-detalle">${a.detalle}</div>
+          <div class="d-flex align-items-start gap-2 justify-content-between">
+            <div style="flex:1;min-width:0">
+              <div class="alerta-titulo">${escapeHtml(tip.replace(/_/g, ' '))}</div>
+              <div class="alerta-detalle">${escapeHtml(razon)} · ${escapeHtml(cuando)}</div>
+            </div>
+            ${impacto ? `<span class="impacto-badge">+${fmtMoney(impacto)}/mes evitado</span>` : ''}
+          </div>
           <div class="alerta-meta">
-            <span class="alerta-alias">${a.alias}</span>
-            <span class="alerta-cat cat-${a.categoria}">${a.categoria}</span>
-            ${itemBadge}
-            <a href="${a.link}" class="alerta-link ms-auto">${a.link_txt} →</a>
+            <span class="alerta-alias">${escapeHtml(alias)}</span>
+            <span class="estado-badge ${auto ? 'estado-auto-resuelta' : 'estado-resuelta'}">
+              <i class="bi bi-check-lg"></i>${auto ? 'Resuelta automáticamente' : 'Resuelta manualmente'}
+            </span>
           </div>
         </div>
       </div>`;
     });
-  }
+  });
 
-  container.innerHTML = html;
+  const headerStats = `
+    <div class="alert alert-success py-2 px-3 mb-3" style="font-size:.86rem">
+      <i class="bi bi-trophy-fill me-2"></i>
+      <strong>${totalCount}</strong> alertas resueltas en los últimos 30 días
+      ${totalImpacto > 0 ? ` — impacto evitado: <strong>+${fmtMoney(totalImpacto)}</strong>` : ''}
+      <span class="text-muted ms-2">(${totalManual} manuales · ${totalAuto} automáticas)</span>
+    </div>`;
+
+  if (!html) {
+    container.innerHTML = headerStats + `<div class="empty-state">
+      <i class="bi bi-clock-history"></i>
+      <div class="fw-semibold mb-1">Sin alertas resueltas en los últimos 30 días</div>
+    </div>`;
+    return;
+  }
+  container.innerHTML = headerStats + html;
+}
+
+// ── Selección + bulk actions ─────────────────────────────────────────────
+
+function toggleSelect(fp) {
+  if (selected.has(fp)) selected.delete(fp);
+  else selected.add(fp);
+  updateBulkBar();
+  applyFilters();
+}
+
+function clearSelection() {
+  selected = new Set();
+  updateBulkBar();
+  applyFilters();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  document.getElementById('bulk-count-num').textContent = selected.size;
+  bar.style.display = selected.size > 0 ? '' : 'none';
+}
+
+function toggleQuickPosMenu(ev, fp) {
+  ev.stopPropagation();
+  document.querySelectorAll('.pos-menu.open').forEach(m => {
+    if (m.id !== `pm-${fp}`) m.classList.remove('open');
+  });
+  document.getElementById(`pm-${fp}`).classList.toggle('open');
+}
+
+function toggleBulkPosMenu(ev) {
+  ev.stopPropagation();
+  document.querySelectorAll('.pos-menu.open').forEach(m => m.classList.remove('open'));
+  document.getElementById('bulk-pos-menu').classList.toggle('open');
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.pos-menu.open').forEach(m => m.classList.remove('open'));
+});
+
+// Quick (single) actions
+function quickResolver(fp, alias) {
+  if (!confirm('¿Marcar esta alerta como resuelta?')) return;
+  const a = alertasIndex[fp];
+  postAccion(`/api/alertas/${encodeURIComponent(alias)}/resolver`,
+    { fingerprints: [fp], snapshots: { [fp]: snapshotFromAlert(a) } });
+}
+function quickPosponer(fp, alias, horas) {
+  postAccion(`/api/alertas/${encodeURIComponent(alias)}/posponer`,
+    { fingerprints: [fp], horas, snapshots: { [fp]: snapshotFromAlert(alertasIndex[fp]) } });
+}
+function quickDescartar(fp, alias) {
+  if (!confirm('¿Descartar esta alerta por 30 días? Volverá a aparecer si la condición sigue después de ese plazo.')) return;
+  postAccion(`/api/alertas/${encodeURIComponent(alias)}/descartar`,
+    { fingerprints: [fp], snapshots: { [fp]: snapshotFromAlert(alertasIndex[fp]) } });
+}
+
+// Bulk actions (agrupar por alias porque el endpoint es por cuenta)
+function _selectedByAlias() {
+  const map = {};
+  selected.forEach(fp => {
+    const a = alertasIndex[fp];
+    if (!a) return;
+    if (!map[a.alias]) map[a.alias] = [];
+    map[a.alias].push(a);
+  });
+  return map;
+}
+
+function snapshotFromAlert(a) {
+  if (!a) return {};
+  return {
+    score_impacto_ars: a.score_impacto_ars,
+    titulo: a.titulo,
+    categoria: a.categoria,
+    item_id: a.item_id,
+  };
+}
+
+function bulkResolver() {
+  if (!confirm(`¿Resolver ${selected.size} alerta(s)?`)) return;
+  const byAlias = _selectedByAlias();
+  const promises = Object.entries(byAlias).map(([alias, alerts]) => {
+    const fps = alerts.map(a => a.fingerprint);
+    const snapshots = Object.fromEntries(alerts.map(a => [a.fingerprint, snapshotFromAlert(a)]));
+    return fetch(`/api/alertas/${encodeURIComponent(alias)}/resolver`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprints: fps, snapshots, razon: 'bulk desde centro' }),
+    }).then(r => r.json());
+  });
+  Promise.all(promises).then(() => { selected = new Set(); reload(); });
+}
+
+function bulkPosponer(horas) {
+  const byAlias = _selectedByAlias();
+  const promises = Object.entries(byAlias).map(([alias, alerts]) => {
+    const fps = alerts.map(a => a.fingerprint);
+    const snapshots = Object.fromEntries(alerts.map(a => [a.fingerprint, snapshotFromAlert(a)]));
+    return fetch(`/api/alertas/${encodeURIComponent(alias)}/posponer`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprints: fps, horas, snapshots }),
+    }).then(r => r.json());
+  });
+  Promise.all(promises).then(() => { selected = new Set(); reload(); });
+}
+
+function bulkDescartar() {
+  if (!confirm(`¿Descartar ${selected.size} alerta(s) por 30 días?`)) return;
+  const byAlias = _selectedByAlias();
+  const promises = Object.entries(byAlias).map(([alias, alerts]) => {
+    const fps = alerts.map(a => a.fingerprint);
+    const snapshots = Object.fromEntries(alerts.map(a => [a.fingerprint, snapshotFromAlert(a)]));
+    return fetch(`/api/alertas/${encodeURIComponent(alias)}/descartar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprints: fps, snapshots, razon: 'bulk desde centro' }),
+    }).then(r => r.json());
+  });
+  Promise.all(promises).then(() => { selected = new Set(); reload(); });
+}
+
+function postAccion(url, body) {
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) alert('Error: ' + (d.error || 'desconocido'));
+    reload();
+  }).catch(e => alert('Error de red: ' + e.message));
 }
 
 loadAlertas();
