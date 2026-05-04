@@ -12592,16 +12592,38 @@ def _send_email_alert(subject: str, body_html: str, cfg: dict):
         return False, str(e)
 
 
+def _fmt_money_short(n: float) -> str:
+    """Formato corto: $1.2M, $850K, $1,234"""
+    n = float(n or 0)
+    if n >= 1e9: return f"${n/1e9:.1f}B".replace('.', ',')
+    if n >= 1e6: return f"${n/1e6:.1f}M".replace('.', ',')
+    if n >= 1e3: return f"${n/1e3:.0f}K"
+    return f"${int(n):,}".replace(',', '.')
+
+
 def _build_alert_email(alertas: list) -> str:
-    """Genera el HTML del email de alertas diarias."""
-    urgentes   = [a for a in alertas if a['nivel'] == 'urgente']
-    importantes = [a for a in alertas if a['nivel'] == 'importante']
+    """Genera el HTML del email de alertas diarias.
+
+    Sprint 4.4: ordena por score_impacto_ars desc dentro de cada nivel +
+    muestra impacto $ prominente cuando aplica + impacto total agregado."""
+    # Ordenar por impacto desc dentro de cada nivel (las que tienen score primero)
+    def _key(a):
+        return -float(a.get('score_impacto_ars') or 0)
+    urgentes    = sorted([a for a in alertas if a['nivel'] == 'urgente'], key=_key)
+    importantes = sorted([a for a in alertas if a['nivel'] == 'importante'], key=_key)
+    impacto_total = sum(float(a.get('score_impacto_ars') or 0) for a in alertas)
 
     def _row_color(nivel):
         return '#fee2e2' if nivel == 'urgente' else '#fef3c7'
 
     rows = ''
     for a in urgentes + importantes:
+        score = float(a.get('score_impacto_ars') or 0)
+        impacto_html = (
+            f'<div style="font-size:.8rem;font-weight:700;color:#15803d;margin-top:3px">'
+            f'+{_fmt_money_short(score)}/mes de impacto estimado</div>'
+            if score > 0 else ''
+        )
         rows += f"""
         <tr style="border-bottom:1px solid #f0f0f0">
           <td style="padding:10px 14px;background:{_row_color(a['nivel'])};width:80px;text-align:center;font-size:.75rem;font-weight:700;color:{'#dc2626' if a['nivel'] == 'urgente' else '#d97706'}">
@@ -12610,6 +12632,7 @@ def _build_alert_email(alertas: list) -> str:
           <td style="padding:10px 14px">
             <div style="font-weight:600;font-size:.85rem;color:#1e293b">{a['titulo']}</div>
             <div style="font-size:.78rem;color:#64748b;margin-top:2px">{a['detalle']}</div>
+            {impacto_html}
           </td>
           <td style="padding:10px 14px;white-space:nowrap">
             <a href="http://localhost:8080{a['link']}" style="font-size:.75rem;color:#2563eb">Ver →</a>
@@ -12617,6 +12640,14 @@ def _build_alert_email(alertas: list) -> str:
         </tr>"""
 
     fecha = datetime.now().strftime('%A %d de %B, %H:%M')
+    impacto_banner = (
+        f'<div style="background:#dcfce7;color:#15803d;padding:14px 24px;'
+        f'font-size:.95rem;font-weight:700;border-bottom:1px solid #86efac">'
+        f'💰 Impacto pendiente estimado: +{_fmt_money_short(impacto_total)}/mes — '
+        f'es lo que estás dejando sobre la mesa hoy.'
+        f'</div>'
+        if impacto_total > 0 else ''
+    )
     return f"""
     <html><body style="font-family:'Segoe UI',Arial,sans-serif;background:#f0f2f7;margin:0;padding:20px">
       <div style="max-width:620px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)">
@@ -12624,6 +12655,7 @@ def _build_alert_email(alertas: list) -> str:
           <div style="color:#fff;font-size:1.1rem;font-weight:800">Sistema ML — Resumen diario</div>
           <div style="color:#93c5fd;font-size:.78rem;margin-top:4px">{fecha} | {len(urgentes)} urgentes · {len(importantes)} importantes</div>
         </div>
+        {impacto_banner}
         <table style="width:100%;border-collapse:collapse">
           {rows}
         </table>
@@ -12631,7 +12663,7 @@ def _build_alert_email(alertas: list) -> str:
           <a href="http://localhost:8080" style="background:#2563eb;color:#fff;padding:8px 20px;border-radius:8px;text-decoration:none;font-size:.8rem;font-weight:700">
             Abrir Sistema ML →
           </a>
-          <div style="font-size:.68rem;color:#94a3b8;margin-top:10px">Sistema ML · Actualización automática diaria</div>
+          <div style="font-size:.68rem;color:#94a3b8;margin-top:10px">Sistema ML · Actualización automática diaria · ordenado por impacto $ desc</div>
         </div>
       </div>
     </body></html>"""

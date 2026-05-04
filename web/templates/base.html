@@ -428,7 +428,18 @@ function runComando(comando, alias) {
     .then(r => r.json())
     .then(data => {
       const badge = document.getElementById('alertas-global-badge');
-      if (badge && data.urgentes > 0) {
+      if (!badge) return;
+      // Sprint 4.4: si hay impacto $ pendiente, mostrar badge con monto.
+      // Si no hay impacto pero hay urgentes, mostrar conteo simple.
+      const impacto = data.impacto_total_ars || 0;
+      if (impacto > 0) {
+        const fmt = impacto >= 1e6 ? `$${(impacto/1e6).toFixed(1).replace('.',',')}M`
+                  : impacto >= 1e3 ? `$${Math.round(impacto/1e3)}K`
+                  : `$${Math.round(impacto)}`;
+        badge.textContent = fmt;
+        badge.style.display = 'inline-block';
+        badge.title = `${data.urgentes} urgentes · ${data.importantes} importantes · impacto pendiente: ${fmt}/mes`;
+      } else if (data.urgentes > 0) {
         badge.textContent = data.urgentes;
         badge.style.display = 'inline-block';
       }
