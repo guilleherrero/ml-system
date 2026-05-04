@@ -25,11 +25,9 @@ Reglas críticas:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 from modules.alertas_estado import fingerprint as _alert_fingerprint
 
@@ -39,7 +37,8 @@ _logger = logging.getLogger(__name__)
 
 DIAS_MINIMOS_VEREDICTO    = 7      # No emitimos veredicto antes de T+7
 SNAPSHOTS_MINIMOS         = 3      # Si hay <3 snapshots, "data_insuficiente"
-TTL_VEREDICTO_DIAS        = 30     # Veredicto válido 30d antes de re-evaluar
+TTL_VEREDICTO_DIAS        = 30     # Veredicto vigente válido 30d antes de re-evaluar
+TTL_DESCARTADO_DIAS       = 30     # Descartados se purgan del store a los 30d
 THRESHOLD_DEFAULT_PCT     = 15.0   # Threshold base (≥5 snapshots)
 THRESHOLD_DATA_RUIDOSA    = 20.0   # Threshold cuando snapshots<5
 SNAPSHOTS_PARA_THRESHOLD_BAJO = 5
@@ -232,10 +231,37 @@ def threshold_aplicado(snapshots_usados: int) -> float:
 
 # ── Lectura/escritura del store de veredictos ────────────────────────────────
 
-def _cargar_store(data_dir: str) -> dict:
+def _cargar_store(data_dir: str, purgar_expirados: bool = True) -> dict:
+    """Carga el store de veredictos. Por default purga descartados >30d.
+
+    La purga es transparente: si encuentra descartados expirados los elimina
+    del array y reescribe el archivo. Devuelve el store ya limpio.
+    """
     raw = _load_json(_veredictos_path(data_dir), default={"items": []}) or {"items": []}
     if not isinstance(raw, dict) or "items" not in raw:
         return {"items": []}
+
+    if not purgar_expirados:
+        return raw
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TTL_DESCARTADO_DIAS)
+    antes = len(raw.get("items", []))
+    items_limpios = []
+    for v in raw.get("items", []):
+        if v.get("estado") == "descartado":
+            ts = _parse_fecha(v.get("actualizado_en") or v.get("fecha_veredicto") or "")
+            if ts and ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts and ts < cutoff:
+                continue   # Purgar
+        items_limpios.append(v)
+
+    if len(items_limpios) != antes:
+        raw["items"] = items_limpios
+        _save_json(_veredictos_path(data_dir), raw)
+        _logger.info("[veredicto] purgados %d descartados expirados (TTL %dd)",
+                     antes - len(items_limpios), TTL_DESCARTADO_DIAS)
+
     return raw
 
 
@@ -300,6 +326,80 @@ def descartar_veredicto(item_id: str, alias: str, data_dir: str,
     if cambio:
         _persistir_store(data_dir, store)
     return cambio
+
+
+# ── Historial / Reportes ─────────────────────────────────────────────────────
+
+def historial_veredictos(alias: str | None, data_dir: str,
+                         days: int = 90, incluir_descartados: bool = False) -> dict:
+    """Devuelve veredictos generados en los últimos N días con resumen agregado.
+
+    Args:
+      alias:               filtra por cuenta. None = todas.
+      days:                ventana de tiempo (default 90d).
+      incluir_descartados: si False, solo vigente + obsoleto.
+
+    Returns:
+      {
+        "items":   [veredicto, ...] ordenado más recientes primero,
+        "resumen": {
+          "count_total":      int,
+          "count_ganadora":   int,
+          "count_neutra":     int,
+          "count_perdedora":  int,
+          "score_promedio":   float,
+          "costo_total_usd":  float,
+          "ventana_dias":     int,
+        }
+      }
+    """
+    store = _cargar_store(data_dir)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    estados_validos = {"vigente", "obsoleto"}
+    if incluir_descartados:
+        estados_validos.add("descartado")
+
+    items: list[dict] = []
+    counts = {"ganadora": 0, "neutra": 0, "perdedora": 0}
+    score_acc = 0.0
+    score_n = 0
+    costo_acc = 0.0
+
+    for v in store.get("items", []):
+        if alias is not None and v.get("alias") != alias:
+            continue
+        if v.get("estado") not in estados_validos:
+            continue
+        ts = _parse_fecha(v.get("fecha_veredicto", ""))
+        if ts and ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        if not ts or ts < cutoff:
+            continue
+        items.append(v)
+        ver = v.get("veredicto")
+        if ver in counts:
+            counts[ver] += 1
+        sc = v.get("score_exito")
+        if isinstance(sc, (int, float)):
+            score_acc += float(sc)
+            score_n += 1
+        debug = v.get("_debug") or {}
+        costo_acc += float(debug.get("cost_usd") or 0)
+
+    items.sort(key=lambda d: d.get("fecha_veredicto", ""), reverse=True)
+    return {
+        "items": items,
+        "resumen": {
+            "count_total":     len(items),
+            "count_ganadora":  counts["ganadora"],
+            "count_neutra":    counts["neutra"],
+            "count_perdedora": counts["perdedora"],
+            "score_promedio":  round(score_acc / score_n, 1) if score_n else 0.0,
+            "costo_total_usd": round(costo_acc, 4),
+            "ventana_dias":    days,
+        },
+    }
 
 
 # ── Pendientes (helpers para el cron) ────────────────────────────────────────
@@ -514,11 +614,13 @@ __all__ = [
     "listar_pendientes",
     "obtener_veredicto",
     "descartar_veredicto",
+    "historial_veredictos",
     "fingerprint_veredicto",
     "threshold_aplicado",
     "DIAS_MINIMOS_VEREDICTO",
     "SNAPSHOTS_MINIMOS",
     "TTL_VEREDICTO_DIAS",
+    "TTL_DESCARTADO_DIAS",
     "PROMPT_VERSION",
     "MODELO_DEFAULT",
 ]
