@@ -49,6 +49,7 @@
       padding:14px 18px 4px;
       font-size:.6rem; text-transform:uppercase;
       letter-spacing:.1em; color:#374151; font-weight:700;
+      cursor:help;
     }
     .sec-account {
       padding:12px 18px 2px 18px;
@@ -184,8 +185,8 @@
 
   <nav>
 
-    <!-- ── CONTROL GLOBAL ─────────────────────────────────────── -->
-    <div class="sec">Control</div>
+    <!-- ── 🏠 CONTROL ─────────────────────────────────────────── -->
+    <div class="sec" title="Tu vista principal: dashboard, alertas, consultor">🏠 Control</div>
     <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
       <i class="bi bi-speedometer2"></i> Command Center
     </a>
@@ -197,7 +198,7 @@
     <!-- ── POR CUENTA ─────────────────────────────────────────── -->
     {% if accounts %}
 
-    <!-- Filtro de cuentas activas -->
+    <!-- Filtro de cuentas activas (solo si hay 2+) -->
     {% if accounts | length > 1 %}
     <div id="acc-filter" style="padding:6px 10px 4px;display:flex;flex-wrap:wrap;gap:4px">
       {% for acc in accounts %}
@@ -221,17 +222,18 @@
       <i class="bi bi-shop"></i>{{ acc.alias }}
     </div>
 
-    <!-- Publicaciones -->
-    <div class="sec">Publicaciones</div>
-    <a href="/ventas/{{ acc.alias }}" class="{{ 'active' if request.path == '/ventas/'~acc.alias else '' }}">
-      <i class="bi bi-bar-chart-line"></i> Ventas por Producto
+    <!-- Consultor IA (per-cuenta, primer item del acc-group) -->
+    <a href="/analisis-experto/{{ acc.alias }}" class="nav-primary {{ 'active' if request.path == '/analisis-experto/'~acc.alias else '' }}">
+      <i class="bi bi-stethoscope"></i> Consultor IA
     </a>
+
+    <!-- 📦 Catálogo -->
+    <div class="sec" title="Gestión de tus publicaciones: stock, ventas, posiciones, salud">📦 Catálogo</div>
     <a href="/stock/{{ acc.alias }}" class="{{ 'active' if request.path == '/stock/'~acc.alias else '' }}">
       <i class="bi bi-grid-1x2"></i> Mis Publicaciones
     </a>
-    <a href="/costos/wizard?alias={{ acc.alias | urlencode }}"
-       class="{{ 'active' if request.path == '/costos/wizard' and request.args.get('alias') == acc.alias else '' }}">
-      <i class="bi bi-cash-coin"></i> Cargar costos (top 10)
+    <a href="/ventas/{{ acc.alias }}" class="{{ 'active' if request.path == '/ventas/'~acc.alias else '' }}">
+      <i class="bi bi-bar-chart-line"></i> Ventas por Producto
     </a>
     <a href="/salud/{{ acc.alias }}" class="{{ 'active' if request.path == '/salud/'~acc.alias else '' }}">
       <i class="bi bi-heart-pulse"></i> Salud del Catálogo
@@ -250,8 +252,8 @@
                    padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
     </a>
 
-    <!-- Inteligencia -->
-    <div class="sec">Inteligencia</div>
+    <!-- 🧠 Inteligencia -->
+    <div class="sec" title="Optimizaciones IA y análisis de conversión">🧠 Inteligencia</div>
     <a href="/optimizaciones/{{ acc.alias }}"
        class="nav-primary {{ 'active' if request.path == '/optimizaciones/'~acc.alias else '' }}">
       <i class="bi bi-stars"></i> Optimizar IA
@@ -259,19 +261,9 @@
     <a href="/funnel/{{ acc.alias }}" class="{{ 'active' if request.path == '/funnel/'~acc.alias else '' }}">
       <i class="bi bi-funnel"></i> Funnel de Conversión
     </a>
-    <a href="/analisis-experto/{{ acc.alias }}" class="nav-primary {{ 'active' if request.path == '/analisis-experto/'~acc.alias else '' }}">
-      <i class="bi bi-stethoscope"></i> Consultor IA
-    </a>
 
-    <!-- Operaciones -->
-    <div class="sec">Operaciones</div>
-    <a href="/preguntas/{{ acc.alias }}" class="{{ 'active' if request.path == '/preguntas/'~acc.alias else '' }}"
-       id="nav-preguntas-{{ acc.alias | replace(' ','_') }}">
-      <i class="bi bi-chat-dots"></i> Preguntas IA
-      <span class="nav-q-badge" id="badge-{{ acc.alias | replace(' ','_') }}"
-            style="display:none;background:#dc2626;color:#fff;border-radius:12px;
-                   padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
-    </a>
+    <!-- 💰 Pricing -->
+    <div class="sec" title="Repricing automático y carga de costos">💰 Pricing</div>
     <a href="/repricing/{{ acc.alias }}" class="{{ 'active' if request.path == '/repricing/'~acc.alias else '' }}">
       <i class="bi bi-tags"></i> Repricing
     </a>
@@ -279,8 +271,25 @@
        class="{{ 'active' if request.path == '/repricing/wizard' and request.args.get('alias') == acc.alias else '' }}">
       <i class="bi bi-magic"></i> Wizard de repricing
     </a>
+    <a href="/costos/wizard?alias={{ acc.alias | urlencode }}"
+       class="{{ 'active' if request.path == '/costos/wizard' and request.args.get('alias') == acc.alias else '' }}">
+      <i class="bi bi-cash-coin"></i> Cargar costos (top 10)
+    </a>
+
+    <!-- 📦 Logística -->
+    <div class="sec" title="Mercado Full y reposición">📦 Logística</div>
     <a href="/full/{{ acc.alias }}" class="{{ 'active' if request.path == '/full/'~acc.alias else '' }}">
       <i class="bi bi-box-seam"></i> Mercado Full
+    </a>
+
+    <!-- 🤝 Postventa -->
+    <div class="sec" title="Preguntas y reputación">🤝 Postventa</div>
+    <a href="/preguntas/{{ acc.alias }}" class="{{ 'active' if request.path == '/preguntas/'~acc.alias else '' }}"
+       id="nav-preguntas-{{ acc.alias | replace(' ','_') }}">
+      <i class="bi bi-chat-dots"></i> Preguntas IA
+      <span class="nav-q-badge" id="badge-{{ acc.alias | replace(' ','_') }}"
+            style="display:none;background:#dc2626;color:#fff;border-radius:12px;
+                   padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
     </a>
     <a href="/reputacion/{{ acc.alias }}" class="{{ 'active' if request.path == '/reputacion/'~acc.alias else '' }}">
       <i class="bi bi-shield-check"></i> Reputación
@@ -290,26 +299,40 @@
     {% endfor %}
     {% endif %}
 
-    <!-- ── HERRAMIENTAS GLOBALES ──────────────────────────────── -->
+    <!-- ── SECCIONES GLOBALES ─────────────────────────────────── -->
     <div class="nav-divider"></div>
-    <div class="sec">Herramientas</div>
+
+    <!-- 🚀 Lanzamientos -->
+    <div class="sec" title="Crear publicaciones nuevas con IA">🚀 Lanzamientos</div>
     <a href="/lanzar-nuevo" class="{{ 'active' if request.path in ['/lanzar-nuevo','/lanzamientos','/evaluar-producto'] else '' }}">
       <i class="bi bi-rocket-takeoff"></i> Lanzar Producto
     </a>
+
+    <!-- 📣 Marketing -->
+    <div class="sec" title="Meli ADS">📣 Marketing</div>
     <a href="/meli-ads" class="nav-primary {{ 'active' if request.path == '/meli-ads' else '' }}">
       <i class="bi bi-megaphone"></i> Meli ADS
     </a>
-    <a href="/multicuenta" class="{{ 'active' if request.path == '/multicuenta' else '' }}">
-      <i class="bi bi-diagram-3"></i> Multicuenta
+
+    <!-- 📅 Planificación -->
+    <div class="sec" title="Calendario de eventos comerciales">📅 Planificación</div>
+    <a href="/calendario" class="{{ 'active' if request.path == '/calendario' else '' }}">
+      <i class="bi bi-calendar-event"></i> Calendario
     </a>
 
   </nav>
 
-  <!-- ── Admin (siempre visible, no scrollea) ───────────────── -->
+  <!-- ── ⚙️ Admin (siempre visible, no scrollea) ─────────────── -->
   <div class="nav-admin">
-    <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
-      <i class="bi bi-gear"></i> Configuración
+    {% if accounts and accounts | length >= 2 %}
+    <a href="/multicuenta" class="{{ 'active' if request.path == '/multicuenta' else '' }}">
+      <i class="bi bi-diagram-3"></i> Multicuenta
     </a>
+    {% else %}
+    <a href="/setup" class="{{ 'active' if request.path == '/setup' else '' }}" style="color:#60a5fa">
+      <i class="bi bi-plus-circle"></i> Agregar 2da cuenta
+    </a>
+    {% endif %}
     <a href="/settings/permisos" class="{{ 'active' if request.path == '/settings/permisos' else '' }}">
       <i class="bi bi-key"></i> Permisos API
     </a>
@@ -318,6 +341,9 @@
       <i class="bi bi-people"></i> Usuarios
     </a>
     {% endif %}
+    <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
+      <i class="bi bi-gear"></i> Configuración
+    </a>
     <a href="#" onclick="reiniciarServidor();return false;" style="color:#6b7280">
       <i class="bi bi-arrow-clockwise"></i> Reiniciar servidor
     </a>
