@@ -206,7 +206,7 @@ def _test_items_busqueda(token: str, user_id) -> dict:
     # 1) Búsqueda pública por keyword — debe funcionar sin token
     try:
         r1 = requests.get(f'{ML_BASE}/sites/MLA/search',
-                          headers={'Accept': 'application/json'},
+                          headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                           params={'q': 'iphone', 'limit': 1},
                           timeout=8)
         if r1.status_code != 200:
@@ -221,7 +221,7 @@ def _test_items_busqueda(token: str, user_id) -> dict:
                 'mensaje': 'Búsqueda pública del marketplace funciona. user_id no disponible para test específico.'}
     try:
         r2 = requests.get(f'{ML_BASE}/sites/MLA/search',
-                          headers={'Accept': 'application/json'},
+                          headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                           params={'seller_id': user_id, 'limit': 1},
                           timeout=8)
         if r2.status_code == 200:

@@ -137,7 +137,7 @@ def _capturar_visibilidad(item_id: str, headers: dict, top_kws: list[str],
                 api_calls += 1
                 # Hotfix 04/05/2026: /sites/MLA/search es PÚBLICO, no enviar Authorization
                 r = requests.get(f'{_ML}/sites/MLA/search',
-                                 headers={'Accept': 'application/json'},
+                                 headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                                  params={'q': kw, 'limit': 50}, timeout=8)
                 if r.ok:
                     results = r.json().get('results', [])

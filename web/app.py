@@ -994,7 +994,7 @@ def _fetch_competitors_full(keyword: str, token: str, exclude_id: str = '', limi
     try:
         resp = req_lib.get(
             'https://api.mercadolibre.com/sites/MLA/search',
-            headers={'Accept': 'application/json'},
+            headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
             params={'q': keyword, 'limit': 20},
             timeout=10,
         )
@@ -1153,7 +1153,7 @@ def _fetch_top_competitors_summary(keywords: list[str], item_id: str, token: str
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers={'Accept': 'application/json'},
+                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                 params={'q': kw, 'limit': 10},
                 timeout=10,
             )
@@ -6288,7 +6288,7 @@ def _check_keyword_position(item_id: str, keyword: str, token: str, max_results:
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers={'Accept': 'application/json'},
+                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                 params={'q': keyword, 'limit': PAGE_SIZE, 'offset': offset},
                 timeout=10,
             )
@@ -6376,7 +6376,7 @@ def api_buscar_posicion():
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers={'Accept': 'application/json'},
+                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                 params={'q': keyword, 'limit': PAGE_SIZE, 'offset': offset},
                 timeout=10
             )
@@ -7437,7 +7437,7 @@ def api_evaluar_producto():
             hdrs = {'Authorization': f'Bearer {token}'}
             sr = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers={'Accept': 'application/json'},
+                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                 params={'q': query, 'limit': 5, 'sort': 'sold_quantity_desc'},
                 timeout=10,
             )
@@ -7871,7 +7871,7 @@ def api_repricing_simulate(alias):
                 # Publicación fuera de catálogo → búsqueda por categoría (imprecisa)
                 try:
                     sr = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
-                                     headers={'Accept': 'application/json'},
+                                     headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                                      params={'category': cat_id, 'sort': 'price_asc', 'limit': 5},
                                      timeout=8)
                     if sr.ok:
@@ -10295,7 +10295,7 @@ def api_descubrir_competidores():
                 try:
                     sr = req_lib.get(
                         'https://api.mercadolibre.com/sites/MLA/search',
-                        headers={'Accept': 'application/json'},
+                        headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                         params={'q': kd['keyword'], 'limit': 10, 'sort': 'relevance'},
                         timeout=10
                     )
@@ -12039,7 +12039,7 @@ def api_lanzar():
 
             search_r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
                 params={'q': producto, 'sort': 'sold_quantity_desc', 'limit': 6},
-                headers={'Accept': 'application/json'}, timeout=12)
+                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'}, timeout=12)
 
             real_comps = []
             if search_r.ok:
@@ -12386,7 +12386,7 @@ def api_lanzar_producto():
             # Buscar top 5 competidores (ordenados por ventas)
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers={'Accept': 'application/json'},
+                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
                 params={'q': query, 'limit': 5, 'sort': 'sold_quantity_desc'},
                 timeout=10,
             )
@@ -14353,15 +14353,21 @@ def api_diagnostico_ml(alias):
             {'stage': 'claim', 'status': 'opened', 'limit': 1}, headers),
         ('claims_legacy',     'GET /v1/claims?role=respondent — endpoint VIEJO de Postventa (devolvía 404)',
             'GET', f'{base}/v1/claims', {'role': 'respondent', 'limit': 1}, headers),
-        ('items_search_publico', 'GET /sites/MLA/search?q=iphone — búsqueda pública SIN auth (debe ser 200)',
+        ('items_search_publico_ua', 'GET /sites/MLA/search?q=iphone + User-Agent (sin auth)',
+            'GET', f'{base}/sites/MLA/search',
+            {'q': 'iphone', 'limit': 1},
+            {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+             'Accept': 'application/json',
+             'Referer': 'https://www.mercadolibre.com.ar/'}),
+        ('items_search_seller_ua', 'GET /sites/MLA/search?seller_id=... + User-Agent (lo que ahora usa /posiciones)',
+            'GET', f'{base}/sites/MLA/search',
+            {'seller_id': user_id, 'limit': 1} if user_id else None,
+            {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+             'Accept': 'application/json',
+             'Referer': 'https://www.mercadolibre.com.ar/'}),
+        ('items_search_sin_ua', 'GET /sites/MLA/search SIN User-Agent SIN auth (test crudo, 403 esperado)',
             'GET', f'{base}/sites/MLA/search',
             {'q': 'iphone', 'limit': 1}, {'Accept': 'application/json'}),
-        ('items_search_seller_sin_auth', 'GET /sites/MLA/search?seller_id=... SIN auth (lo que /posiciones usa)',
-            'GET', f'{base}/sites/MLA/search',
-            {'seller_id': user_id, 'limit': 1} if user_id else None, {'Accept': 'application/json'}),
-        ('items_search_seller_con_auth', 'GET /sites/MLA/search?seller_id=... CON auth (test viejo, 403 esperado)',
-            'GET', f'{base}/sites/MLA/search',
-            {'seller_id': user_id, 'limit': 1} if user_id else None, headers),
         ('orders_search',     'GET /orders/search?seller=... — Órdenes',
             'GET', f'{base}/orders/search',
             {'seller': user_id, 'limit': 1} if user_id else None, headers),
@@ -15538,7 +15544,7 @@ def api_analisis_experto_run(alias):
                 if not _kw:
                     return None
                 _r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
-                    headers={'Accept': 'application/json'}, params={'q': _kw, 'limit': 10}, timeout=8)
+                    headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'}, params={'q': _kw, 'limit': 10}, timeout=8)
                 if not _r.ok:
                     return None
                 _res = _r.json().get('results', [])
