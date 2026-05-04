@@ -8651,15 +8651,145 @@ def api_alertas():
         except Exception:
             pass
 
-    orden = {'urgente': 0, 'importante': 1, 'info': 2}
-    all_alerts.sort(key=lambda a: orden.get(a['nivel'], 9))
+    # Sprint 4.4 — Mergear estado persistido + auto-resolución
+    from modules.alertas_estado import (
+        cargar_estados, estado_efectivo, auto_resolver_ausentes,
+    )
+
+    # Agrupar alertas por alias para hacer el diff de auto-resolución por cuenta
+    alerts_por_alias: dict = {}
+    for a in all_alerts:
+        alerts_por_alias.setdefault(a['alias'], []).append(a)
+
+    # Auto-resolver: alertas que estaban pendientes y ya no aparecen
+    auto_resueltas_por_alias: dict = {}
+    for alias_k, lista in alerts_por_alias.items():
+        fps_actuales = {a['fingerprint'] for a in lista}
+        auto_resueltas_por_alias[alias_k] = auto_resolver_ausentes(alias_k, fps_actuales)
+
+    # Mergear estado en cada alerta + filtrar las descartadas/pospuestas vigentes
+    visible_alerts = []
+    recien_resueltas = []   # para mostrar 24h con badge ✓
+    for a in all_alerts:
+        ee = estado_efectivo(a['alias'], a['fingerprint'])
+        a['estado'] = ee.get('estado', 'pendiente')
+        a['estado_meta'] = ee  # cliente puede leer detalles
+
+        if ee.get('es_descartada_vigente'):
+            continue  # oculta del centro mientras el TTL no expire
+        if ee.get('es_pospuesta_vigente'):
+            continue  # oculta hasta que llegue pospuesta_hasta
+        if ee.get('es_recien_resuelta'):
+            # Mantener visible 24h con badge "Resuelta" / "Auto-resuelta"
+            recien_resueltas.append(a)
+            continue
+        if a['estado'] in ('resuelta', 'auto_resuelta'):
+            continue  # > 24h ya, va al tab "Resueltas"
+        visible_alerts.append(a)
+
+    # Orden: por score_impacto desc → las cuantificables primero, las sin score al final
+    # Como criterio secundario, urgente antes que importante.
+    orden_nivel = {'urgente': 0, 'importante': 1, 'info': 2}
+    visible_alerts.sort(key=lambda a: (
+        -float(a.get('score_impacto_ars') or 0),
+        orden_nivel.get(a['nivel'], 9),
+    ))
+
+    # Las recién resueltas van al final con badge especial (cliente decide cómo
+    # mostrarlas — orden por más recientes primero).
+    recien_resueltas.sort(key=lambda a: (a.get('estado_meta') or {}).get('actualizada_en', ''),
+                          reverse=True)
+
+    impacto_total_pendiente = sum(float(a.get('score_impacto_ars') or 0)
+                                  for a in visible_alerts)
+
     return jsonify({
-        'ok': True,
-        'total': len(all_alerts),
-        'urgentes':   sum(1 for a in all_alerts if a['nivel'] == 'urgente'),
-        'importantes': sum(1 for a in all_alerts if a['nivel'] == 'importante'),
-        'alerts': all_alerts,
+        'ok':                  True,
+        'total':               len(visible_alerts),
+        'urgentes':            sum(1 for a in visible_alerts if a['nivel'] == 'urgente'),
+        'importantes':         sum(1 for a in visible_alerts if a['nivel'] == 'importante'),
+        'alerts':              visible_alerts,
+        'recien_resueltas':    recien_resueltas,
+        'impacto_total_ars':   round(impacto_total_pendiente, 2),
+        'auto_resueltas_pase': sum(len(v) for v in auto_resueltas_por_alias.values()),
     })
+
+
+# ── Endpoints POST para gestionar estado de alertas (Sprint 4.4) ─────────────
+
+def _accounts_aliases():
+    return {a['alias'] for a in get_accounts()}
+
+
+@app.route('/api/alertas/<alias>/resolver', methods=['POST'])
+def api_alertas_resolver(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    body = request.get_json(silent=True) or {}
+    fps = body.get('fingerprints') or []
+    if isinstance(fps, str):
+        fps = [fps]
+    razon = (body.get('razon') or 'manual desde centro de alertas').strip()
+    snapshots = body.get('snapshots') or {}  # opcional: dict[fp, dict]
+    if not fps:
+        return jsonify({'ok': False, 'error': 'fingerprints requerido'}), 400
+    from modules.alertas_estado import marcar_resuelta
+    for fp in fps:
+        marcar_resuelta(alias, fp, snapshot=snapshots.get(fp), razon=razon)
+    _audit('ALERTAS_RESOLVER', alias=alias, count=len(fps))
+    return jsonify({'ok': True, 'count': len(fps)})
+
+
+@app.route('/api/alertas/<alias>/posponer', methods=['POST'])
+def api_alertas_posponer(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    body = request.get_json(silent=True) or {}
+    fps = body.get('fingerprints') or []
+    if isinstance(fps, str):
+        fps = [fps]
+    horas = int(body.get('horas') or 24)
+    if horas not in (4, 24, 168):
+        return jsonify({'ok': False, 'error': 'horas debe ser 4, 24 o 168'}), 400
+    razon = (body.get('razon') or '').strip()
+    snapshots = body.get('snapshots') or {}
+    if not fps:
+        return jsonify({'ok': False, 'error': 'fingerprints requerido'}), 400
+    from modules.alertas_estado import marcar_pospuesta
+    for fp in fps:
+        marcar_pospuesta(alias, fp, horas, snapshot=snapshots.get(fp), razon=razon)
+    _audit('ALERTAS_POSPONER', alias=alias, horas=horas, count=len(fps))
+    return jsonify({'ok': True, 'count': len(fps), 'horas': horas})
+
+
+@app.route('/api/alertas/<alias>/descartar', methods=['POST'])
+def api_alertas_descartar(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    body = request.get_json(silent=True) or {}
+    fps = body.get('fingerprints') or []
+    if isinstance(fps, str):
+        fps = [fps]
+    razon = (body.get('razon') or 'no aplica').strip()
+    snapshots = body.get('snapshots') or {}
+    if not fps:
+        return jsonify({'ok': False, 'error': 'fingerprints requerido'}), 400
+    from modules.alertas_estado import marcar_descartada
+    for fp in fps:
+        marcar_descartada(alias, fp, snapshot=snapshots.get(fp), razon=razon)
+    _audit('ALERTAS_DESCARTAR', alias=alias, count=len(fps))
+    return jsonify({'ok': True, 'count': len(fps)})
+
+
+@app.route('/api/alertas/<alias>/historial')
+def api_alertas_historial(alias):
+    if alias not in _accounts_aliases():
+        return jsonify({'ok': False, 'error': f'Cuenta {alias!r} no encontrada'}), 404
+    days = int(request.args.get('days', 30))
+    days = max(1, min(days, 365))
+    from modules.alertas_estado import historial_resueltas
+    data = historial_resueltas(alias, days=days)
+    return jsonify({'ok': True, **data})
 
 
 @app.route('/multicuenta')
