@@ -327,9 +327,10 @@
     <a href="/multicuenta" class="{{ 'active' if request.path == '/multicuenta' else '' }}">
       <i class="bi bi-diagram-3"></i> Multicuenta
     </a>
-    {% else %}
-    <a href="/setup" class="{{ 'active' if request.path == '/setup' else '' }}" style="color:#60a5fa">
-      <i class="bi bi-plus-circle"></i> Agregar 2da cuenta
+    {% endif %}
+    {% if session.get('is_admin') %}
+    <a href="/admin/cuentas" class="{{ 'active' if request.path == '/admin/cuentas' else '' }}" style="color:#60a5fa">
+      <i class="bi bi-shop-window"></i> Gestión de cuentas
     </a>
     {% endif %}
     <a href="/settings/permisos" class="{{ 'active' if request.path == '/settings/permisos' else '' }}">
@@ -340,6 +341,9 @@
       <i class="bi bi-people"></i> Usuarios
     </a>
     {% endif %}
+    <a href="/perfil" class="{{ 'active' if request.path == '/perfil' else '' }}">
+      <i class="bi bi-person-circle"></i> Mi perfil
+    </a>
     <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
       <i class="bi bi-gear"></i> Configuración
     </a>
