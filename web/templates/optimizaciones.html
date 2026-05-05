@@ -125,6 +125,54 @@
 .btn-modal-confirm:disabled { background:#93c5fd; cursor:not-allowed; }
 .modal-char-warn { background:#fef9c3; border:1px solid #fde68a; border-radius:6px; padding:6px 10px; font-size:.75rem; color:#92400e; margin-top:8px; }
 
+/* ─── Sprint UX M3: Botón master "Aplicar TODO" + checkboxes ───── */
+.opt-apply-master {
+  display:flex; align-items:center; gap:.7rem; margin-left:auto;
+  padding:6px 14px; background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color:#fff; border:none; border-radius:8px; font-size:.82rem; font-weight:700;
+  cursor:pointer; box-shadow:0 2px 6px rgba(37,99,235,.25);
+  transition:transform .12s, box-shadow .12s;
+}
+.opt-apply-master:hover:not(:disabled) {
+  transform:translateY(-1px); box-shadow:0 4px 10px rgba(37,99,235,.35);
+}
+.opt-apply-master:disabled {
+  background:#cbd5e1; cursor:not-allowed; box-shadow:none;
+  transform:none;
+}
+.opt-apply-master .count-badge {
+  background:rgba(255,255,255,.25); border-radius:10px; padding:1px 8px;
+  font-size:.72rem; font-weight:800; min-width:22px; text-align:center;
+}
+.apply-checkbox {
+  width:18px; height:18px; cursor:pointer; accent-color:#2563eb;
+  flex-shrink:0; margin-right:.5rem;
+}
+.apply-checkbox:disabled { cursor:not-allowed; opacity:.5; }
+.apply-radio {
+  width:16px; height:16px; cursor:pointer; accent-color:#16a34a;
+  flex-shrink:0; margin-right:.5rem;
+}
+.opt-action-row {
+  display:flex; align-items:center; flex-wrap:wrap; gap:.5rem;
+}
+.master-progress-bar {
+  height:4px; background:#e2e8f0; border-radius:2px; overflow:hidden;
+  margin-top:.5rem;
+}
+.master-progress-fill {
+  height:100%; background:linear-gradient(90deg, #16a34a, #22c55e);
+  width:0%; transition:width .3s ease;
+}
+.master-step-status {
+  font-size:.72rem; padding:3px 8px; border-radius:8px; margin-right:.4rem;
+  font-weight:600;
+}
+.master-step-status.pending  { background:#f1f5f9; color:#64748b; }
+.master-step-status.running  { background:#dbeafe; color:#1d4ed8; }
+.master-step-status.success  { background:#dcfce7; color:#166534; }
+.master-step-status.error    { background:#fee2e2; color:#b91c1c; }
+
 /* ─── Sprint UX M2: Mini-tarjeta sticky con foto del producto ───── */
 .opt-card-flex          { display:flex; gap:14px; align-items:flex-start; }
 .opt-card-content       { flex:1; min-width:0; }
@@ -721,6 +769,19 @@
     </div>
     {% endif %}
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      {# Sprint UX M3: Botón master "Aplicar TODO seleccionado" #}
+      {% if not has_ventas or item.get('descripcion_nueva') or item.get('ficha_perfecta') %}
+      <button type="button" class="opt-apply-master"
+              id="btn-apply-master-{{ outer_idx }}"
+              data-item-id="{{ item.get('item_id', '') }}"
+              data-card-idx="{{ outer_idx }}"
+              onclick="aplicarTodoSeleccionado({{ outer_idx }}, '{{ item.get('item_id', '') }}')"
+              title="Aplica todos los cambios marcados con checkbox de una sola vez">
+        <i class="bi bi-magic"></i>
+        Aplicar TODO seleccionado
+        <span class="count-badge" id="count-master-{{ outer_idx }}">0</span>
+      </button>
+      {% endif %}
       {% if item.get('fecha') %}<span class="text-muted" style="font-size:.78rem">{{ item.fecha }}</span>{% endif %}
 
       {# ── Badge de resultado medido ──────────────────────────────── #}
@@ -904,6 +965,16 @@
         {% set is_rec = (tr_n == loop.index) %}
         <div class="t-opt {{ 'rec' if is_rec else 'nor' }}">
           <div class="t-opt-head">
+            {% if not has_ventas %}
+            {# Sprint UX M3: radio para elegir cuál título aplicar con el botón master #}
+            <input type="radio" class="apply-radio"
+                   name="title-pick-{{ outer_idx }}"
+                   data-card-idx="{{ outer_idx }}"
+                   data-target-id="titulo-{{ outer_idx }}-{{ loop.index }}"
+                   {% if is_rec %}checked{% endif %}
+                   onchange="actualizarMasterCount({{ outer_idx }})"
+                   title="Elegí este título para el botón 'Aplicar TODO'">
+            {% endif %}
             <span class="t-opt-num">{{ loop.index }}{% if is_rec %} <span class="badge ms-1" style="background:#16a34a;font-size:.58rem">★ RECOMENDADA</span>{% endif %}</span>
             <span id="titulo-{{ outer_idx }}-{{ loop.index }}" class="t-opt-text"
                   contenteditable="true" spellcheck="false"
@@ -1010,6 +1081,16 @@
   {% if _has_ficha %}
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.fchev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
+      {# Sprint UX M3: checkbox para incluir ficha en "Aplicar TODO" #}
+      <input type="checkbox" class="apply-checkbox"
+             id="check-ficha-{{ outer_idx }}"
+             data-card-idx="{{ outer_idx }}"
+             data-target="ficha"
+             data-target-id="ficha-{{ outer_idx }}"
+             checked
+             onclick="event.stopPropagation()"
+             onchange="actualizarMasterCount({{ outer_idx }})"
+             title="Incluir ficha técnica al aplicar TODO">
       <i class="bi bi-table" style="color:#9a3412;font-size:.88rem"></i>
       <span class="opt-sec-lbl" style="color:#9a3412">Ficha técnica perfecta</span>
       <span style="font-size:.65rem;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
@@ -1165,6 +1246,15 @@
   {% if _has_desc %}
   <div class="opt-sec">
     <div class="opt-sec-hdr">
+      {# Sprint UX M3: checkbox para incluir descripción en "Aplicar TODO" #}
+      <input type="checkbox" class="apply-checkbox"
+             id="check-desc-{{ outer_idx }}"
+             data-card-idx="{{ outer_idx }}"
+             data-target="descripcion"
+             data-target-id="desc-{{ outer_idx }}"
+             checked
+             onchange="actualizarMasterCount({{ outer_idx }})"
+             title="Incluir descripción al aplicar TODO">
       <i class="bi bi-file-richtext-fill" style="color:#14532d;font-size:.88rem"></i>
       <span class="opt-sec-lbl" style="color:#14532d">Descripción superadora — lista para pegar en ML</span>
       <span style="font-size:.65rem;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
@@ -3333,5 +3423,173 @@ function initMiniCards(scope) {
 
 document.addEventListener('DOMContentLoaded', () => initMiniCards());
 window.initMiniCards = initMiniCards;
+
+/* ─── Sprint UX M3 — Botón "Aplicar TODO" + checkboxes ───────────── */
+
+/**
+ * Recolecta lo que el usuario tiene marcado para aplicar en una card específica.
+ * Devuelve un objeto con la forma: {titulo, descripcion, attributes, summary}
+ */
+function recolectarSeleccion(cardIdx) {
+  const seleccion = { titulo: '', descripcion: '', attributes: [], summary: [] };
+
+  // 1) Título — radio elegido (puede no haber ninguno)
+  const titleRadio = document.querySelector(`input.apply-radio[name="title-pick-${cardIdx}"]:checked`);
+  if (titleRadio) {
+    const targetId = titleRadio.dataset.targetId;
+    const el = document.getElementById(targetId);
+    if (el) {
+      const titulo = (el.innerText || '').trim();
+      if (titulo && titulo.length <= 60) {
+        seleccion.titulo = titulo;
+        seleccion.summary.push(`Título (${titulo.length} chars)`);
+      } else if (titulo.length > 60) {
+        seleccion.summary.push(`<span style="color:#dc2626">Título excede 60 chars (${titulo.length}) — se omite</span>`);
+      }
+    }
+  }
+
+  // 2) Ficha técnica — checkbox marcado
+  const fichaCheck = document.getElementById(`check-ficha-${cardIdx}`);
+  if (fichaCheck && fichaCheck.checked) {
+    const fichaEl = document.getElementById(fichaCheck.dataset.targetId);
+    if (fichaEl && fichaEl.innerText.trim()) {
+      const lines = fichaEl.innerText.trim().split('\n');
+      for (const line of lines) {
+        const colon = line.indexOf(':');
+        if (colon < 1) continue;
+        const name  = line.slice(0, colon).trim();
+        const value = line.slice(colon + 1).trim();
+        if (name && value && !value.includes('[FALTANTE]') && !value.includes('[SUGERIR:')) {
+          seleccion.attributes.push({ name, value });
+        }
+      }
+      if (seleccion.attributes.length) {
+        seleccion.summary.push(`Ficha técnica (${seleccion.attributes.length} campos)`);
+      }
+    }
+  }
+
+  // 3) Descripción — checkbox marcado
+  const descCheck = document.getElementById(`check-desc-${cardIdx}`);
+  if (descCheck && descCheck.checked) {
+    const descEl = document.getElementById(descCheck.dataset.targetId);
+    if (descEl && descEl.innerText.trim()) {
+      let textoDesc = descEl.innerText.trim();
+      const clIdx = textoDesc.indexOf('### CHECKLIST DE VALIDACIÓN INTERNA');
+      if (clIdx > 0) textoDesc = textoDesc.slice(0, clIdx).trim();
+      if (textoDesc) {
+        seleccion.descripcion = textoDesc;
+        const words = textoDesc.split(/\s+/).filter(Boolean).length;
+        seleccion.summary.push(`Descripción (${words} palabras)`);
+      }
+    }
+  }
+
+  return seleccion;
+}
+
+/**
+ * Actualiza el contador del botón master según lo que está marcado.
+ */
+function actualizarMasterCount(cardIdx) {
+  const sel = recolectarSeleccion(cardIdx);
+  let count = 0;
+  if (sel.titulo) count++;
+  if (sel.attributes.length) count++;
+  if (sel.descripcion) count++;
+
+  const badge = document.getElementById(`count-master-${cardIdx}`);
+  const btn   = document.getElementById(`btn-apply-master-${cardIdx}`);
+  if (badge) badge.innerText = count;
+  if (btn) btn.disabled = (count === 0);
+}
+
+/**
+ * Aplica todos los cambios marcados en una sola llamada al endpoint.
+ */
+function aplicarTodoSeleccionado(cardIdx, itemId) {
+  const sel = recolectarSeleccion(cardIdx);
+  const totalCambios = (sel.titulo ? 1 : 0) + (sel.attributes.length ? 1 : 0) + (sel.descripcion ? 1 : 0);
+  if (totalCambios === 0) {
+    alert('No hay nada marcado para aplicar.');
+    return;
+  }
+
+  // Construir resumen visual para el modal
+  const summaryItems = sel.summary.map(s => `<li>${s}</li>`).join('');
+  const bodyHtml = `
+    <div class="modal-apply-section">
+      <div class="modal-apply-label">Vas a aplicar ${totalCambios} cambio${totalCambios !== 1 ? 's' : ''} a esta publicación:</div>
+      <ul style="margin:.5rem 0 0 1.2rem;padding:0;line-height:1.7">${summaryItems}</ul>
+      <div class="modal-apply-warn" style="margin-top:.8rem">
+        <i class="bi bi-info-circle flex-shrink-0"></i>
+        <div>Una vez aplicado, los cambios son inmediatos en MercadoLibre.
+        Vas a ser redirigido al monitor para ver evolución.</div>
+      </div>
+    </div>`;
+
+  _abrirModalAplicar(`Aplicar TODO seleccionado (${totalCambios} cambios)`, bodyHtml, () => {
+    const btn = document.getElementById(`btn-apply-master-${cardIdx}`);
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando…';
+    }
+
+    // Construir payload combinado
+    const payload = { alias: ALIAS_OPT, item_id: itemId };
+    if (sel.titulo) payload.titulo = sel.titulo;
+    if (sel.descripcion) payload.descripcion = sel.descripcion;
+    if (sel.attributes.length) payload.attributes = sel.attributes;
+
+    fetch('/api/aplicar-optimizacion', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        const aplicados = d.applied || [];
+        const errores = d.errors || [];
+        if (btn) {
+          btn.innerHTML = `<i class="bi bi-check-circle-fill"></i> ¡Aplicado! ${aplicados.length}/${totalCambios} OK${errores.length ? ` · ${errores.length} con error` : ''}`;
+          btn.style.background = errores.length ? '#f59e0b' : '#16a34a';
+        }
+        // Si todo OK, redirigir al monitor en 2s
+        if (!errores.length) {
+          setTimeout(() => { window.location.href = `/monitor/${ALIAS_OPT}`; }, 2000);
+        } else {
+          alert('Aplicado con errores parciales:\n\n' + errores.join('\n\n'));
+          setTimeout(() => { window.location.reload(); }, 500);
+        }
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-magic"></i> Aplicar TODO seleccionado <span class="count-badge" id="count-master-' + cardIdx + '">' + totalCambios + '</span>';
+        }
+        alert('Error al aplicar: ' + (d.error || (d.errors || []).join(', ') || 'desconocido'));
+      }
+    })
+    .catch(err => {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-magic"></i> Aplicar TODO seleccionado';
+      }
+      alert('Error de conexión: ' + err.message);
+    });
+  });
+}
+
+// Inicializar el contador en cada card al cargar la página
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[id^="btn-apply-master-"]').forEach(btn => {
+    const cardIdx = btn.dataset.cardIdx;
+    if (cardIdx) actualizarMasterCount(parseInt(cardIdx, 10));
+  });
+});
+
+window.aplicarTodoSeleccionado = aplicarTodoSeleccionado;
+window.actualizarMasterCount = actualizarMasterCount;
 </script>
 {% endblock %}
