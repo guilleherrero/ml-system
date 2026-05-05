@@ -74,6 +74,11 @@ class ItemCluster:
     visitas_30d: int
     conversion_pct: float
     es_ganadora: bool = False
+    # Sprint Detector v2 (05/05/2026): campos para distinguir duplicados reales
+    # vs combinaciones legítimas según política de ML.
+    listing_type: str = ''     # 'gold_special' (Clásica) | 'gold_pro' (Premium)
+    free_shipping: bool = False
+    es_legitimo: bool = False  # True si en el cluster hay diferenciación válida que cubre a este item
 
 
 @dataclass
@@ -95,13 +100,15 @@ class Recomendacion:
 class Cluster:
     """Un cluster de publicaciones potencialmente duplicadas."""
     cluster_id: str
-    severidad: str            # 'puro' | 'subperformante' | 'sano'
+    severidad: str            # 'puro' | 'subperformante' | 'sano' | 'legitimo' | 'mixto'
     items: list[ItemCluster] = field(default_factory=list)
     titulo_corto: str = ''
     visitas_perdidas_30d: int = 0
     impacto_monetario_estimado: float = 0.0
     recomendaciones: dict = field(default_factory=dict)   # {mla_id: Recomendacion}
     resumen_recomendacion: str = ''
+    # Sprint Detector v2: explicación de por qué es legítimo (cuando aplique)
+    nota_legitimidad: str = ''
 
 
 # ── Helpers de normalización ────────────────────────────────────────────────
@@ -284,15 +291,143 @@ def _construir_clusters(items: list[dict], ignorados: list[dict]) -> list[list[d
     return [g for g in grupos.values() if len(g) >= 2]
 
 
+# ── Sprint Detector v2: análisis de legitimidad por política ML ─────────────
+
+# Listing types de ML:
+#   'gold_special' → Clásica (comisión menor, sin cuotas SI)
+#   'gold_pro'     → Premium (comisión mayor, con cuotas sin interés)
+# Tener UNA Clásica + UNA Premium del mismo producto es estrategia LEGÍTIMA.
+# Tener DOS Clásicas idénticas es duplicado prohibido.
+_LISTING_CLASSIC = {'gold_special', 'free', 'bronze', 'silver'}
+_LISTING_PREMIUM = {'gold_pro', 'gold_premium', 'gold'}
+
+
+def _normalizar_listing(lt: str) -> str:
+    """Devuelve 'classic' o 'premium' o '' (desconocido)."""
+    lt = (lt or '').lower().strip()
+    if lt in _LISTING_PREMIUM:
+        return 'premium'
+    if lt in _LISTING_CLASSIC:
+        return 'classic'
+    return ''
+
+
+def _analizar_legitimidad(cluster_items: list[dict]) -> tuple[bool, str, dict]:
+    """Analiza si un cluster representa una combinación legítima según ML.
+
+    Combinaciones legítimas:
+      - Mix de Clásica + Premium del mismo producto → estrategia válida (segmenta
+        compradores que valoran precio vs cuotas sin interés)
+      - Mix de envío gratis + sin envío gratis → distintos modelos de logística
+
+    Returns: (es_completamente_legitimo, nota_explicativa, mapa_por_id)
+      mapa_por_id = {mla_id: True/False según si esa publicación está cubierta
+      por alguna diferenciación legítima en el cluster}
+    """
+    n = len(cluster_items)
+    if n < 2:
+        return False, '', {}
+
+    listings = [_normalizar_listing(it.get('listing_type', '')) for it in cluster_items]
+    shippings = [bool(it.get('free_shipping')) for it in cluster_items]
+    ids = [it.get('id', '') for it in cluster_items]
+
+    tipos_listing_distintos = len(set(t for t in listings if t)) > 1
+    tipos_envio_distintos = len(set(shippings)) > 1
+
+    # Caso 1: hay diferenciación de listing_type Y de shipping
+    if tipos_listing_distintos and tipos_envio_distintos:
+        nota = 'Combinación legítima: tipos de publicación + métodos de envío diferenciados.'
+        # Marcar como legítimas TODAS — están claramente diferenciadas
+        mapa = {iid: True for iid in ids}
+        return True, nota, mapa
+
+    # Caso 2: solo diferenciación por listing_type
+    if tipos_listing_distintos:
+        # Contar cuántas hay de cada tipo
+        clasicas = [(iid, it) for iid, lt, it in zip(ids, listings, cluster_items) if lt == 'classic']
+        premiums = [(iid, it) for iid, lt, it in zip(ids, listings, cluster_items) if lt == 'premium']
+
+        # Si hay UNA Clásica + UNA Premium → estrategia legítima 100%
+        if len(clasicas) == 1 and len(premiums) == 1:
+            mapa = {iid: True for iid in ids}
+            return True, 'Combinación legítima: 1 Clásica + 1 Premium (estrategia válida ML para segmentar compradores precio vs cuotas).', mapa
+
+        # Si hay UNA Premium pero MÚLTIPLES Clásicas → la Premium es legítima,
+        # las Clásicas múltiples son duplicados entre ellas
+        if len(premiums) == 1 and len(clasicas) > 1:
+            mapa = {iid: (iid == premiums[0][0]) for iid in ids}
+            return False, (f'Mixto: la Premium ({premiums[0][0]}) es legítima vs las Clásicas, '
+                          f'pero las {len(clasicas)} Clásicas son duplicados entre sí.'), mapa
+
+        # Caso simétrico: 1 Clásica + múltiples Premium
+        if len(clasicas) == 1 and len(premiums) > 1:
+            mapa = {iid: (iid == clasicas[0][0]) for iid in ids}
+            return False, (f'Mixto: la Clásica ({clasicas[0][0]}) es legítima vs las Premium, '
+                          f'pero las {len(premiums)} Premium son duplicados entre sí.'), mapa
+
+        # Múltiples de ambos lados — la mejor de cada tipo es legítima
+        # (estrategia 1 Clásica + 1 Premium es válida ML), las demás son duplicadas
+        # dentro de su subgrupo. Identificar la mejor por ventas y luego visitas.
+        def _best(grupo):
+            return max(grupo, key=lambda it: (
+                int((it[1].get('ventas_30d') or 0)),
+                int((it[1].get('visitas_30d') or 0)),
+            ))
+        best_classic = _best(clasicas)
+        best_premium = _best(premiums)
+        mapa = {iid: False for iid in ids}
+        mapa[best_classic[0]] = True
+        mapa[best_premium[0]] = True
+        nota = (f'Mixto: tenés {len(clasicas)} Clásicas + {len(premiums)} Premium del mismo producto. '
+                f'La mejor Clásica ({best_classic[0]}) y la mejor Premium ({best_premium[0]}) '
+                f'son la combinación legítima. Las demás ({len(clasicas) + len(premiums) - 2}) son duplicados.')
+        return False, nota, mapa
+
+    # Caso 3: solo diferenciación por shipping (ej: 1 con Full + 1 sin Full)
+    if tipos_envio_distintos and len(set(shippings)) == 2:
+        # Si hay UNA con free_shipping y UNA sin → legítimo
+        con_free = [iid for iid, fs in zip(ids, shippings) if fs]
+        sin_free = [iid for iid, fs in zip(ids, shippings) if not fs]
+        if len(con_free) == 1 and len(sin_free) == 1:
+            mapa = {iid: True for iid in ids}
+            return True, 'Combinación legítima: 1 con envío gratis + 1 sin envío gratis (modelos de logística distintos).', mapa
+
+    # Caso 4: nada está diferenciado — todos comparten listing y shipping
+    return False, '', {iid: False for iid in ids}
+
+
 # ── Clasificación de severidad ───────────────────────────────────────────────
 
-def _clasificar_cluster(cluster_items: list[dict]) -> str:
-    """Devuelve 'puro' | 'subperformante' | 'sano' según títulos y métricas."""
+def _clasificar_cluster(cluster_items: list[dict]) -> tuple[str, str, dict]:
+    """Devuelve (severidad, nota_legitimidad, mapa_legitimos_por_id).
+
+    Severidades:
+      'legitimo'        — todas las publicaciones están legítimamente diferenciadas
+                           (Clásica+Premium, distintos envíos, etc.). NO hay que hacer nada.
+      'mixto'           — algunas son legítimas, otras son duplicados reales.
+                           Hay que pausar solo las duplicadas.
+      'puro'            — todas idénticas + misma exposición → todas son duplicados prohibidos
+      'subperformante'  — variantes con tráfico desperdiciado
+      'sano'            — variantes funcionando bien, no preocupa
+    """
+    # 1) Análisis de legitimidad por política ML (Sprint Detector v2)
+    es_legitimo, nota_leg, mapa_leg = _analizar_legitimidad(cluster_items)
+
+    # Si es 100% legítimo → no es duplicado en absoluto
+    if es_legitimo:
+        return 'legitimo', nota_leg, mapa_leg
+
+    # Si es mixto (algunas legítimas + algunas duplicadas) → severidad 'mixto'
+    if mapa_leg and any(mapa_leg.values()) and not all(mapa_leg.values()):
+        return 'mixto', nota_leg, mapa_leg
+
+    # 2) Análisis tradicional por título y métricas (lógica original)
     norms = [_normalizar_titulo(it.get('titulo', '')) for it in cluster_items]
 
     # ¿Todos los títulos normalizados son idénticos? → duplicado puro
     if len(set(norms)) == 1:
-        return 'puro'
+        return 'puro', '', mapa_leg
 
     # ¿Las diferencias entre todos los pares son solo tokens variante?
     todas_son_variantes = True
@@ -306,9 +441,7 @@ def _clasificar_cluster(cluster_items: list[dict]) -> str:
             break
 
     if not todas_son_variantes:
-        # Diferencias significativas pero ratio >0.85 → tratamos como puro
-        # (productos casi iguales con cambios mínimos no-variante)
-        return 'puro'
+        return 'puro', '', mapa_leg
 
     # Es cluster de variantes — clasificar por métricas
     cuenta_con_ventas = sum(1 for it in cluster_items if (it.get('ventas_30d') or 0) > 0)
@@ -319,14 +452,11 @@ def _clasificar_cluster(cluster_items: list[dict]) -> str:
         if (it.get('ventas_30d') or 0) == 0
     )
 
-    # Sano: la mayoría vende (≥60%)
     if cuenta_con_ventas / total >= 0.60:
-        return 'sano'
-    # Subperformante: variantes con visitas perdiéndose
+        return 'sano', '', mapa_leg
     if visitas_sin_venta >= 10:
-        return 'subperformante'
-    # Pocas visitas perdidas, pocas ventas → sano (no genera ruido)
-    return 'sano'
+        return 'subperformante', '', mapa_leg
+    return 'sano', '', mapa_leg
 
 
 def _identificar_ganadora(cluster_items: list[dict]) -> str:
@@ -477,7 +607,9 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
 
     clusters: list[Cluster] = []
     for grupo in grupos:
-        severidad = _clasificar_cluster(grupo)
+        severidad, nota_leg, mapa_leg = _clasificar_cluster(grupo)
+
+        # Filtros: ocultar 'sano' por default; ocultar 'legitimo' a menos que se pida
         if not incluir_sanos and severidad == 'sano':
             continue
 
@@ -493,6 +625,9 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                 visitas_30d=int(it.get('visitas_30d') or 0),
                 conversion_pct=float(it.get('conversion_pct') or 0),
                 es_ganadora=(it.get('id') == ganadora_id),
+                listing_type=it.get('listing_type', ''),
+                free_shipping=bool(it.get('free_shipping')),
+                es_legitimo=bool(mapa_leg.get(it.get('id', ''), False)),
             )
             for it in grupo
         ]
@@ -500,33 +635,88 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
         items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
 
         cluster_id = _generar_cluster_id(it.id for it in items_cluster)
-        recomendaciones, resumen_rec = _generar_recomendaciones(grupo, ganadora_id)
+        # En clusters legítimos, no generar recomendaciones de pausar
+        if severidad == 'legitimo':
+            recomendaciones = {
+                it.id: Recomendacion(
+                    accion='mantener',
+                    motivo='Diferenciación legítima por política ML — no es duplicado.',
+                    pre_seleccionar=False,
+                ) for it in items_cluster
+            }
+            resumen_rec = nota_leg or 'Combinación legítima — mantené todas las publicaciones.'
+        elif severidad == 'mixto':
+            # Para clusters mixtos: en lugar de recomendar pausar TODAS, solo las
+            # que NO están cubiertas por diferenciación legítima.
+            recomendaciones = {}
+            for it in items_cluster:
+                if it.id == ganadora_id:
+                    recomendaciones[it.id] = Recomendacion(
+                        accion='mantener',
+                        motivo='Ganadora del cluster',
+                        pre_seleccionar=False,
+                    )
+                elif it.es_legitimo:
+                    recomendaciones[it.id] = Recomendacion(
+                        accion='mantener',
+                        motivo='Diferenciación legítima por política ML',
+                        pre_seleccionar=False,
+                    )
+                else:
+                    # Es duplicado real — recomendar pausar (si no tiene ventas)
+                    if it.ventas_30d == 0:
+                        recomendaciones[it.id] = Recomendacion(
+                            accion='pausar_sin_traf' if it.visitas_30d < 10 else 'pausar_traf',
+                            motivo='Duplicado real (mismo tipo de listing y envío que la ganadora)',
+                            pre_seleccionar=True,
+                        )
+                    else:
+                        recomendaciones[it.id] = Recomendacion(
+                            accion='revisar',
+                            motivo='Duplicado con ventas — revisá manualmente cuál mantener',
+                            pre_seleccionar=False,
+                        )
+            resumen_rec = nota_leg
+        else:
+            recomendaciones, resumen_rec = _generar_recomendaciones(grupo, ganadora_id)
+
         clusters.append(Cluster(
             cluster_id=cluster_id,
             severidad=severidad,
             items=items_cluster,
             titulo_corto=_titulo_corto(grupo),
-            visitas_perdidas_30d=visitas_perdidas,
-            impacto_monetario_estimado=impacto,
+            visitas_perdidas_30d=visitas_perdidas if severidad not in ('legitimo',) else 0,
+            impacto_monetario_estimado=impacto if severidad not in ('legitimo',) else 0.0,
             recomendaciones=recomendaciones,
             resumen_recomendacion=resumen_rec,
+            nota_legitimidad=nota_leg,
         ))
 
-    # Ordenar: puro primero, luego subperformante, dentro de cada nivel por impacto desc
-    orden_severidad = {'puro': 0, 'subperformante': 1, 'sano': 2}
-    clusters.sort(key=lambda c: (orden_severidad[c.severidad], -c.impacto_monetario_estimado))
+    # Ordenar: puro primero (más urgente), luego mixto, sub, sano, legitimo
+    orden_severidad = {'puro': 0, 'mixto': 1, 'subperformante': 2, 'sano': 3, 'legitimo': 4}
+    clusters.sort(key=lambda c: (orden_severidad.get(c.severidad, 9), -c.impacto_monetario_estimado))
     return clusters
 
 
 def resumen_para_alertas(clusters: list[Cluster]) -> dict:
-    """Devuelve resumen agregable al centro de alertas existente."""
-    puros = [c for c in clusters if c.severidad == 'puro']
-    subs  = [c for c in clusters if c.severidad == 'subperformante']
-    impacto_total = sum(c.impacto_monetario_estimado for c in puros + subs)
-    visitas_total = sum(c.visitas_perdidas_30d for c in puros + subs)
+    """Devuelve resumen agregable al centro de alertas existente.
+
+    Sprint Detector v2: incluye 'legitimos' y 'mixtos' como categorías separadas
+    para que el usuario entienda qué es realmente un problema vs qué está bien.
+    """
+    puros     = [c for c in clusters if c.severidad == 'puro']
+    mixtos    = [c for c in clusters if c.severidad == 'mixto']
+    subs      = [c for c in clusters if c.severidad == 'subperformante']
+    legitimos = [c for c in clusters if c.severidad == 'legitimo']
+
+    # Solo los puros + subs + parte mixta del cluster representan impacto real
+    impacto_total = sum(c.impacto_monetario_estimado for c in puros + subs + mixtos)
+    visitas_total = sum(c.visitas_perdidas_30d for c in puros + subs + mixtos)
     return {
         'puros':          len(puros),
+        'mixtos':         len(mixtos),
         'subperformantes': len(subs),
+        'legitimos':      len(legitimos),
         'visitas_perdidas_30d': visitas_total,
         'impacto_monetario_estimado': impacto_total,
     }
