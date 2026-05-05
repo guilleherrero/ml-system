@@ -125,6 +125,95 @@
 .btn-modal-confirm:disabled { background:#93c5fd; cursor:not-allowed; }
 .modal-char-warn { background:#fef9c3; border:1px solid #fde68a; border-radius:6px; padding:6px 10px; font-size:.75rem; color:#92400e; margin-top:8px; }
 
+/* ─── Sprint UX M4: Vista previa "como se ve en ML" ───────────── */
+.ml-preview-container { padding:18px 20px; background:#f5f5f5; max-height:none; }
+.ml-preview-header {
+  display:flex; justify-content:space-between; align-items:flex-start; gap:1rem;
+  margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #e2e8f0;
+}
+.ml-preview-block { margin-bottom:24px; }
+.ml-preview-block-label {
+  font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase;
+  letter-spacing:.05em; margin-bottom:8px;
+}
+.ml-preview-disclaimer {
+  font-size:.75rem; color:#64748b; padding:10px 14px; background:#fff;
+  border:1px solid #e2e8f0; border-radius:8px; display:flex; gap:8px;
+  align-items:flex-start; line-height:1.5;
+}
+
+/* Card de búsqueda — imita el listing card de ML */
+.ml-search-card {
+  display:flex; gap:14px; background:#fff; border:1px solid #e6e6e6;
+  border-radius:6px; padding:14px; box-shadow:0 1px 2px rgba(0,0,0,.04);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+.ml-search-img { flex-shrink:0; }
+.ml-search-img img,
+.ml-search-img-placeholder {
+  width:160px; height:160px; object-fit:contain; border-radius:4px;
+  background:#fafafa; display:flex; align-items:center; justify-content:center;
+  color:#cbd5e1; font-size:2rem;
+}
+.ml-search-info { flex:1; min-width:0; }
+.ml-search-title {
+  font-size:14px; line-height:1.4; color:#333; margin-bottom:8px;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; max-height:2.8em;
+}
+.ml-search-price-row { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+.ml-search-price { font-size:24px; font-weight:300; color:#333; }
+.ml-search-shipping {
+  background:#00a650; color:#fff; font-size:11px; font-weight:600;
+  padding:2px 6px; border-radius:2px;
+}
+.ml-search-meta { font-size:12px; color:#666; }
+
+/* Página de detalle — imita la pantalla de producto de ML */
+.ml-detail-card {
+  background:#fff; border:1px solid #e6e6e6; border-radius:6px; overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+.ml-detail-grid { display:grid; grid-template-columns: 1.4fr 1fr; gap:24px; padding:20px; }
+@media (max-width: 720px) { .ml-detail-grid { grid-template-columns: 1fr; } }
+.ml-detail-img img,
+.ml-detail-img-placeholder {
+  width:100%; aspect-ratio:1; object-fit:contain; border-radius:6px;
+  background:#fafafa; display:flex; align-items:center; justify-content:center;
+  color:#cbd5e1; font-size:3rem;
+}
+.ml-detail-condition { font-size:14px; color:#666; margin-bottom:6px; }
+.ml-detail-title {
+  font-size:22px; line-height:1.25; color:#333; margin:0 0 12px; font-weight:600;
+}
+.ml-detail-price { font-size:36px; font-weight:300; color:#333; margin-bottom:6px; }
+.ml-detail-shipping { font-size:14px; color:#00a650; font-weight:600; margin:8px 0 16px; }
+.ml-detail-buybtn, .ml-detail-cartbtn {
+  display:block; width:100%; padding:12px; border:none; border-radius:6px;
+  font-size:14px; font-weight:600; cursor:not-allowed; opacity:.85; margin-bottom:8px;
+}
+.ml-detail-buybtn { background:#3483fa; color:#fff; }
+.ml-detail-cartbtn { background:#e3edfb; color:#3483fa; }
+.ml-detail-section { padding:18px 20px; border-top:1px solid #ebebeb; }
+.ml-detail-section-title {
+  font-size:18px; color:#333; margin:0 0 14px; font-weight:400;
+}
+.ml-detail-attrs {
+  display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#ebebeb;
+  border:1px solid #ebebeb; border-radius:4px; overflow:hidden;
+}
+.ml-detail-attr-row {
+  display:flex; gap:14px; padding:10px 14px; background:#fff; font-size:13px;
+}
+.ml-detail-attr-row:nth-child(odd) { background:#fafafa; }
+.ml-detail-attr-name { color:#666; min-width:120px; }
+.ml-detail-attr-value { color:#333; font-weight:500; }
+.ml-detail-desc {
+  font-size:14px; line-height:1.6; color:#333; white-space:pre-wrap;
+  max-height:400px; overflow-y:auto;
+}
+
 /* ─── Sprint UX M3: Botón master "Aplicar TODO" + checkboxes ───── */
 .opt-apply-master {
   display:flex; align-items:center; gap:.7rem; margin-left:auto;
@@ -933,6 +1022,7 @@
       <button type="button" data-opt-tab="ficha-{{ outer_idx }}"    {% if not _has_ficha %}disabled{% endif %}><i class="bi bi-table"></i> Ficha técnica</button>
       <button type="button" data-opt-tab="desc-{{ outer_idx }}"     {% if not _has_desc %}disabled{% endif %}><i class="bi bi-file-text"></i> Descripción</button>
       <button type="button" data-opt-tab="analisis-{{ outer_idx }}" {% if not _has_analisis %}disabled{% endif %}><i class="bi bi-graph-up"></i> Análisis</button>
+      <button type="button" data-opt-tab="preview-{{ outer_idx }}"  {% if not (_has_titulo or _has_desc or _has_ficha) %}disabled{% endif %}><i class="bi bi-eye"></i> Vista previa</button>
     </div>
     <div class="opt-tabs-content">
 
@@ -1299,6 +1389,82 @@
   <div class="opt-tab-empty"><i class="bi bi-info-circle"></i>Sin descripción optimizada para esta publicación.</div>
   {% endif %}
   </div><!-- /tab-pane Descripción -->
+
+  <!-- ─ Tab: Vista previa "como se ve en ML" (Sprint UX M4) ────────── -->
+  <div class="opt-tab-pane" data-opt-tab-content="preview-{{ outer_idx }}">
+    <div class="ml-preview-container" data-card-idx="{{ outer_idx }}" data-item-id="{{ item.get('item_id', '') }}">
+      <div class="ml-preview-header">
+        <div>
+          <strong>Vista previa simulada</strong>
+          <div style="font-size:.75rem;color:#64748b;margin-top:2px">
+            Mockup aproximado de cómo se vería tu publicación en MercadoLibre con los cambios marcados.
+            Editá título / descripción / ficha en sus tabs y volvé acá para ver el resultado actualizado.
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary"
+                onclick="actualizarPreviewML({{ outer_idx }})"
+                style="font-size:.75rem;padding:4px 10px">
+          <i class="bi bi-arrow-clockwise"></i> Refrescar
+        </button>
+      </div>
+
+      <!-- Card de búsqueda (cómo aparece en resultados de ML) -->
+      <div class="ml-preview-block">
+        <div class="ml-preview-block-label"><i class="bi bi-search"></i> En resultados de búsqueda</div>
+        <div class="ml-search-card">
+          <div class="ml-search-img">
+            <div class="ml-search-img-placeholder" id="ml-preview-img-{{ outer_idx }}"><i class="bi bi-image"></i></div>
+          </div>
+          <div class="ml-search-info">
+            <div class="ml-search-title" id="ml-preview-title-{{ outer_idx }}">—</div>
+            <div class="ml-search-price-row">
+              <span class="ml-search-price" id="ml-preview-price-{{ outer_idx }}">—</span>
+              <span class="ml-search-shipping" id="ml-preview-ship-{{ outer_idx }}"></span>
+            </div>
+            <div class="ml-search-meta" id="ml-preview-meta-{{ outer_idx }}">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Página de detalle (cómo se ve cuando alguien clickea) -->
+      <div class="ml-preview-block">
+        <div class="ml-preview-block-label"><i class="bi bi-file-earmark-text"></i> Página de detalle</div>
+        <div class="ml-detail-card">
+          <div class="ml-detail-grid">
+            <div class="ml-detail-img">
+              <div class="ml-detail-img-placeholder" id="ml-preview-detail-img-{{ outer_idx }}"><i class="bi bi-image"></i></div>
+            </div>
+            <div class="ml-detail-info">
+              <div class="ml-detail-condition">Nuevo · <span id="ml-preview-detail-sold-{{ outer_idx }}">— vendidos</span></div>
+              <h2 class="ml-detail-title" id="ml-preview-detail-title-{{ outer_idx }}">—</h2>
+              <div class="ml-detail-price" id="ml-preview-detail-price-{{ outer_idx }}">—</div>
+              <div class="ml-detail-shipping" id="ml-preview-detail-ship-{{ outer_idx }}"></div>
+              <button class="ml-detail-buybtn" disabled>Comprar ahora</button>
+              <button class="ml-detail-cartbtn" disabled>Agregar al carrito</button>
+            </div>
+          </div>
+          <div class="ml-detail-section">
+            <h3 class="ml-detail-section-title">Características principales</h3>
+            <div class="ml-detail-attrs" id="ml-preview-attrs-{{ outer_idx }}">
+              <em style="color:#94a3b8;font-size:.85rem">Sin ficha técnica generada o el checkbox está desmarcado.</em>
+            </div>
+          </div>
+          <div class="ml-detail-section">
+            <h3 class="ml-detail-section-title">Descripción</h3>
+            <div class="ml-detail-desc" id="ml-preview-desc-{{ outer_idx }}">
+              <em style="color:#94a3b8;font-size:.85rem">Sin descripción nueva o el checkbox está desmarcado.</em>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml-preview-disclaimer">
+        <i class="bi bi-info-circle"></i>
+        Este es un mockup aproximado. La apariencia real puede variar según el dispositivo,
+        la categoría del producto y experimentos visuales que ML aplique a cada usuario.
+      </div>
+    </div>
+  </div><!-- /tab-pane Vista previa -->
 
     </div><!-- /opt-tabs-content -->
   </div><!-- /opt-tabs Sprint UX M1 -->
@@ -3591,5 +3757,147 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.aplicarTodoSeleccionado = aplicarTodoSeleccionado;
 window.actualizarMasterCount = actualizarMasterCount;
+
+/* ─── Sprint UX M4 — Vista previa "como se ve en ML" ─────────────── */
+
+function _escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
+function _formatMlPrice(price) {
+  if (price == null || isNaN(price)) return '—';
+  const n = Math.round(price);
+  return '$ ' + n.toLocaleString('es-AR');
+}
+
+/**
+ * Renderiza el mockup ML en la tab "Vista previa" usando los datos actuales:
+ *  - Título: el seleccionado por radio en la tab Título (con tu edición)
+ *  - Descripción: el contenido editado en la tab Descripción
+ *  - Ficha técnica: la editada en la tab Ficha técnica
+ *  - Foto + precio + sold: vienen de la mini-tarjeta (cache _miniCardCache)
+ */
+function actualizarPreviewML(cardIdx) {
+  const container = document.querySelector(`.ml-preview-container[data-card-idx="${cardIdx}"]`);
+  if (!container) return;
+  const itemId = container.dataset.itemId;
+
+  // Recolectar datos del producto desde el cache de mini-tarjeta
+  const miniData = (typeof _miniCardCache !== 'undefined' && _miniCardCache[itemId]) || {};
+  const thumbnail = miniData.thumbnail || '';
+  const price = miniData.price;
+  const sold = miniData.sold || 0;
+  const currency = miniData.currency || 'ARS';
+
+  // Título seleccionado por radio
+  let titulo = '—';
+  const titleRadio = document.querySelector(`input.apply-radio[name="title-pick-${cardIdx}"]:checked`);
+  if (titleRadio) {
+    const el = document.getElementById(titleRadio.dataset.targetId);
+    if (el) titulo = (el.innerText || '').trim() || '—';
+  }
+
+  // Descripción (si checkbox marcado)
+  let descripcion = '';
+  const descCheck = document.getElementById(`check-desc-${cardIdx}`);
+  if (descCheck && descCheck.checked) {
+    const descEl = document.getElementById(descCheck.dataset.targetId);
+    if (descEl) {
+      let texto = (descEl.innerText || '').trim();
+      const clIdx = texto.indexOf('### CHECKLIST DE VALIDACIÓN INTERNA');
+      if (clIdx > 0) texto = texto.slice(0, clIdx).trim();
+      descripcion = texto;
+    }
+  }
+
+  // Ficha técnica (si checkbox marcado)
+  const attrs = [];
+  const fichaCheck = document.getElementById(`check-ficha-${cardIdx}`);
+  if (fichaCheck && fichaCheck.checked) {
+    const fichaEl = document.getElementById(fichaCheck.dataset.targetId);
+    if (fichaEl && fichaEl.innerText.trim()) {
+      const lines = fichaEl.innerText.trim().split('\n');
+      for (const line of lines) {
+        const colon = line.indexOf(':');
+        if (colon < 1) continue;
+        const name = line.slice(0, colon).trim();
+        const value = line.slice(colon + 1).trim();
+        if (name && value && !value.includes('[FALTANTE]') && !value.includes('[SUGERIR:')) {
+          attrs.push({ name, value });
+        }
+      }
+    }
+  }
+
+  // ── Render search card ──────────────────────────────────────
+  const imgEl = document.getElementById(`ml-preview-img-${cardIdx}`);
+  if (imgEl) {
+    if (thumbnail) {
+      imgEl.outerHTML = `<img id="ml-preview-img-${cardIdx}" src="${_escapeHtml(thumbnail)}" alt="" loading="lazy">`;
+    }
+  }
+  const titleEl = document.getElementById(`ml-preview-title-${cardIdx}`);
+  if (titleEl) titleEl.innerText = titulo;
+  const priceEl = document.getElementById(`ml-preview-price-${cardIdx}`);
+  if (priceEl) priceEl.innerText = _formatMlPrice(price);
+  const shipEl = document.getElementById(`ml-preview-ship-${cardIdx}`);
+  if (shipEl) shipEl.innerText = miniData.thumbnail ? 'ENVÍO GRATIS' : '';
+  const metaEl = document.getElementById(`ml-preview-meta-${cardIdx}`);
+  if (metaEl) metaEl.innerText = sold > 0 ? `${sold} vendidos` : 'Nuevo';
+
+  // ── Render página de detalle ────────────────────────────────
+  const dImgEl = document.getElementById(`ml-preview-detail-img-${cardIdx}`);
+  if (dImgEl && thumbnail) {
+    dImgEl.outerHTML = `<img id="ml-preview-detail-img-${cardIdx}" src="${_escapeHtml(thumbnail)}" alt="" loading="lazy">`;
+  }
+  const dSoldEl = document.getElementById(`ml-preview-detail-sold-${cardIdx}`);
+  if (dSoldEl) dSoldEl.innerText = sold > 0 ? `${sold} vendidos` : 'Sin ventas aún';
+  const dTitleEl = document.getElementById(`ml-preview-detail-title-${cardIdx}`);
+  if (dTitleEl) dTitleEl.innerText = titulo;
+  const dPriceEl = document.getElementById(`ml-preview-detail-price-${cardIdx}`);
+  if (dPriceEl) dPriceEl.innerText = _formatMlPrice(price);
+  const dShipEl = document.getElementById(`ml-preview-detail-ship-${cardIdx}`);
+  if (dShipEl) dShipEl.innerText = '✓ Llega gratis con Mercado Envíos';
+
+  // Atributos
+  const attrsEl = document.getElementById(`ml-preview-attrs-${cardIdx}`);
+  if (attrsEl) {
+    if (attrs.length) {
+      attrsEl.innerHTML = attrs.slice(0, 16).map(a => `
+        <div class="ml-detail-attr-row">
+          <div class="ml-detail-attr-name">${_escapeHtml(a.name)}</div>
+          <div class="ml-detail-attr-value">${_escapeHtml(a.value)}</div>
+        </div>`).join('');
+    } else {
+      attrsEl.innerHTML = '<em style="color:#94a3b8;font-size:.85rem;padding:14px">Sin ficha técnica seleccionada (marcá el checkbox en la tab Ficha técnica).</em>';
+    }
+  }
+
+  // Descripción
+  const descEl = document.getElementById(`ml-preview-desc-${cardIdx}`);
+  if (descEl) {
+    if (descripcion) {
+      descEl.innerText = descripcion;
+    } else {
+      descEl.innerHTML = '<em style="color:#94a3b8;font-size:.85rem">Sin descripción seleccionada (marcá el checkbox en la tab Descripción).</em>';
+    }
+  }
+}
+
+// Auto-actualizar el preview cuando se activa la tab "Vista previa"
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-opt-tab]');
+  if (!btn) return;
+  const tab = btn.dataset.optTab;
+  if (tab && tab.startsWith('preview-')) {
+    const cardIdx = parseInt(tab.replace('preview-', ''), 10);
+    // Pequeño delay para que la tab termine de mostrarse
+    setTimeout(() => actualizarPreviewML(cardIdx), 50);
+  }
+});
+
+window.actualizarPreviewML = actualizarPreviewML;
 </script>
 {% endblock %}
