@@ -178,30 +178,27 @@ fetch(`/api/funnel/${encodeURIComponent(alias)}`)
             <div class="f-lbl">Visitas 30d</div>
           </div>
           <div class="f-arrow">→</div>
-          <div class="f-step">
-            <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_preg) : ''}">
-              ${item.vis_to_preg}%
-            </span>
-            <div class="f-lbl" style="font-size:.62rem;color:#94a3b8">preguntaron</div>
-          </div>
-          <div class="f-arrow">→</div>
-          <div class="f-step">
-            <div class="f-val">${(item.preguntas_30d||0)}</div>
-            <div class="f-lbl">Preguntas</div>
-          </div>
-          <div class="f-arrow">→</div>
-          <div class="f-step">
-            <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_vta) : ''}">
+          <div class="f-step" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:6px 14px;min-width:90px">
+            <span class="f-rate ${item.visitas_30d > 0 ? rateClass(item.vis_to_vta) : ''}"
+                  style="font-size:1.15rem;font-weight:800">
               ${item.vis_to_vta}%
             </span>
-            <div class="f-lbl" style="font-size:.62rem;color:#94a3b8">compraron</div>
+            <div class="f-lbl" style="font-size:.66rem;color:#1d4ed8;font-weight:700;letter-spacing:.04em;text-transform:uppercase">
+              Conversión real
+            </div>
           </div>
           <div class="f-arrow">→</div>
           <div class="f-step">
-            <div class="f-val" style="color:#2563eb">${(item.ventas_30d||0)}</div>
-            <div class="f-lbl">Ventas</div>
+            <div class="f-val" style="color:#2563eb;font-size:1.15rem">${(item.ventas_30d||0)}</div>
+            <div class="f-lbl">Ventas 30d</div>
           </div>
         </div>
+        ${(item.preguntas_30d || 0) > 0 ? `
+        <div style="font-size:.72rem;color:#94a3b8;margin-top:.3rem">
+          <i class="bi bi-chat-dots me-1"></i>
+          ${item.preguntas_30d} pregunta${item.preguntas_30d !== 1 ? 's' : ''} en 30d
+          ${item.vis_to_preg > 0 ? `(${item.vis_to_preg}% de las visitas preguntaron)` : ''}
+        </div>` : ''}
 
         <div class="accion-box">
           <i class="bi bi-lightbulb me-1 text-warning"></i>${item.accion}
