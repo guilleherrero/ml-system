@@ -121,12 +121,24 @@ def _strip_accents(text: str) -> str:
 
 
 def _normalizar_titulo(titulo: str) -> str:
-    """Lowercase, sin tildes, sin promo words, tokens >2 chars."""
+    """Lowercase, sin tildes, sin promo words.
+
+    Hotfix detector v2.1 (05/05/2026): preservar tokens de VARIANTE aunque
+    tengan ≤2 chars (talles 's', 'm', 'l', 'xl', etc., y dígitos cortos).
+    Antes los filtraba por length>2, lo que hacía invisible el diff de talle
+    entre publicaciones y las marcaba como duplicado puro.
+    """
     s = _strip_accents((titulo or '').lower())
-    tokens = [
-        t for t in re.findall(r'[a-z0-9]+', s)
-        if len(t) > 2 and t not in _PROMO_WORDS
-    ]
+    tokens = []
+    for t in re.findall(r'[a-z0-9]+', s):
+        # Caso 1: token significativo (>2 chars) y no es promo word
+        if len(t) > 2 and t not in _PROMO_WORDS:
+            tokens.append(t)
+            continue
+        # Caso 2: token corto pero ES variante conocida (talle/color/dígito)
+        # → preservar para que el diff entre títulos con distinta variante NO sea vacío
+        if t in _TOKENS_VARIANTE or _DIGITOS_RE.match(t):
+            tokens.append(t)
     return ' '.join(tokens)
 
 
@@ -422,28 +434,39 @@ def _clasificar_cluster(cluster_items: list[dict]) -> tuple[str, str, dict]:
     if mapa_leg and any(mapa_leg.values()) and not all(mapa_leg.values()):
         return 'mixto', nota_leg, mapa_leg
 
-    # 2) Análisis tradicional por título y métricas (lógica original)
+    # 2) Análisis tradicional por título y métricas (lógica original + v2.1 fix)
     norms = [_normalizar_titulo(it.get('titulo', '')) for it in cluster_items]
 
-    # ¿Todos los títulos normalizados son idénticos? → duplicado puro
+    # ¿Todos los títulos normalizados son IDÉNTICOS? → duplicado puro
     if len(set(norms)) == 1:
         return 'puro', '', mapa_leg
 
-    # ¿Las diferencias entre todos los pares son solo tokens variante?
-    todas_son_variantes = True
+    # Hotfix v2.1 (05/05/2026): la lógica anterior marcaba como 'puro' cuando
+    # encontraba UN par con diff vacío (= 1 par de duplicados reales) aunque
+    # los OTROS pares fueran variantes legítimas. Eso era falso positivo.
+    #
+    # Lógica nueva: sumar cada par como (variante, idéntico, no_variante).
+    # - Si hay AL MENOS 1 par no_variante → cluster puro (hay diferencia real
+    #   de producto que no se explica por variante).
+    # - Si todos los pares son variantes O idénticos → es cluster de variantes
+    #   legítimas con posibles duplicados internos (clasificar por métricas).
+    hay_no_variante = False
     for i in range(len(norms)):
         for j in range(i + 1, len(norms)):
             diff = _tokens_diferencia(norms[i], norms[j])
+            if not diff:
+                continue   # par idéntico — no cuenta como "no variante"
             if not _diferencias_son_solo_variantes(diff):
-                todas_son_variantes = False
+                hay_no_variante = True
                 break
-        if not todas_son_variantes:
+        if hay_no_variante:
             break
 
-    if not todas_son_variantes:
+    if hay_no_variante:
         return 'puro', '', mapa_leg
 
-    # Es cluster de variantes — clasificar por métricas
+    # Es cluster de variantes legítimas (con posibles duplicados internos)
+    # → clasificar por métricas
     cuenta_con_ventas = sum(1 for it in cluster_items if (it.get('ventas_30d') or 0) > 0)
     total = len(cluster_items)
     visitas_sin_venta = sum(
