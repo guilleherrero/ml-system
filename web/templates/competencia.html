@@ -11,6 +11,23 @@
   </button>
 </div>
 
+<!-- ── Aviso API search bloqueada (hotfix 04/05/2026) ───────────── -->
+<div class="alert alert-warning d-flex gap-2 align-items-start mb-4">
+  <i class="bi bi-cloud-slash mt-1 flex-shrink-0" style="font-size:1.3rem"></i>
+  <div>
+    <strong>Análisis automático de competidores temporalmente limitado.</strong><br>
+    El endpoint <code>/sites/MLA/search</code> de MercadoLibre está devolviendo HTTP 403 a nivel
+    global de CloudFront — no es problema de tu cuenta ni de tus permisos. Los análisis de
+    competencia automáticos pueden devolver datos parciales hasta que ML resuelva el bug.<br>
+    <span style="font-size:.85rem;color:#92400e">
+      <i class="bi bi-info-circle"></i>
+      Mientras tanto, podés capturar competidores manualmente desde
+      <a href="/optimizar/{{ alias }}" class="alert-link">Optimizar IA → Capturar competidor desde ML</a>
+      o pegar links directos.
+    </span>
+  </div>
+</div>
+
 <!-- ── Selector de publicación ─────────────────────────────────── -->
 <div class="card mb-4">
   <div class="card-header"><i class="bi bi-search me-2 text-primary"></i>Elegí una publicación para analizar</div>
