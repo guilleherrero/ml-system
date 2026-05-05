@@ -208,9 +208,15 @@ def get_done_history(alias: str, days: int = 7) -> list:
 # ── Detectors ─────────────────────────────────────────────────────────────────
 
 def _candidates_duplicados(alias: str) -> list[Oportunidad]:
-    """A — clusters duplicados con impacto monetario ya calculado por el módulo."""
+    """A — clusters duplicados con impacto monetario ya calculado por el módulo.
+
+    Sprint Detector v2 (05/05/2026): respeta la nueva clasificación —
+    los clusters 'legitimo' se filtran completamente (no son duplicados según
+    política ML); los 'mixto' solo cuentan como duplicados los items NO marcados
+    como legítimos (es_legitimo=False); los 'puro' siguen como antes.
+    """
     out: list[Oportunidad] = []
-    skipped: dict = {"sin_impacto": 0, "sano": 0}
+    skipped: dict = {"sin_impacto": 0, "sano": 0, "legitimo": 0, "mixto_sin_dups": 0}
 
     src_path = _stock_path(alias)
     stock = _load_json(src_path)
@@ -230,28 +236,61 @@ def _candidates_duplicados(alias: str) -> list[Oportunidad]:
         return out
 
     for cl in clusters:
+        # Filtro #1: NUNCA recomendar pausar si el cluster es 100% legítimo
+        if cl.severidad == "legitimo":
+            skipped["legitimo"] += 1
+            continue
+
         impacto = float(getattr(cl, "impacto_monetario_estimado", 0) or 0)
         if impacto <= 0:
             skipped["sin_impacto"] += 1
             continue
 
         items_ids = sorted([it.id for it in cl.items])
-        n_dup = len(items_ids)
+        n_total = len(items_ids)
         canonico = (cl.titulo_corto or "").strip() or items_ids[0]
-        fp = _fingerprint("pausar_duplicados", *items_ids)
 
+        # Calcular cuántos REALMENTE deberían pausarse según la severidad
+        if cl.severidad == "mixto":
+            # En cluster mixto: pausan SOLO los que NO son legítimos NI ganadora.
+            # Las publicaciones legítimas (1 mejor Clásica + 1 mejor Premium) se mantienen.
+            items_a_pausar = [it for it in cl.items
+                              if not getattr(it, "es_legitimo", False)
+                              and not getattr(it, "es_ganadora", False)]
+            n_pausar = len(items_a_pausar)
+            if n_pausar == 0:
+                skipped["mixto_sin_dups"] += 1
+                continue
+            descripcion = (f"PAUSAR {n_pausar} duplicado{'s' if n_pausar != 1 else ''} de "
+                           f"{canonico[:60]} (manteniendo combinación Clásica + Premium)")
+            urgencia = "media"
+        elif cl.severidad == "puro":
+            # En cluster puro: pausan TODOS menos la ganadora
+            n_pausar = max(0, n_total - 1)
+            if n_pausar == 0:
+                continue
+            descripcion = f"PAUSAR {n_pausar} duplicado{'s' if n_pausar != 1 else ''} prohibido{'s' if n_pausar != 1 else ''} de {canonico[:60]}"
+            urgencia = "alta"
+        else:
+            # subperformante u otros — recomendación más suave
+            n_pausar = max(0, n_total - 1)
+            descripcion = f"REVISAR {n_total} variantes de {canonico[:60]} (rendimiento bajo)"
+            urgencia = "media"
+
+        fp = _fingerprint("pausar_duplicados", cl.severidad, *items_ids)
         out.append(Oportunidad(
             fingerprint=fp,
             tipo="pausar_duplicados",
-            descripcion=f"PAUSAR {max(0, n_dup-1)} publicaciones canibalizando {canonico[:60]}",
+            descripcion=descripcion,
             impacto_mensual_ars=impacto,
-            urgencia="alta" if cl.severidad == "puro" else "media",
+            urgencia=urgencia,
             cta_label="Ver detalle →",
             cta_url=f"/duplicados/{alias}",
             fuente="duplicados",
             snapshot={
                 "cluster_severidad":     cl.severidad,
-                "items_count":           n_dup,
+                "items_count":           n_total,
+                "items_a_pausar_count":  n_pausar,
                 "items_ids":             items_ids,
                 "visitas_perdidas_30d":  cl.visitas_perdidas_30d,
             },
