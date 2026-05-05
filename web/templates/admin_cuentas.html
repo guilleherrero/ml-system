@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %} — Gestión de Cuentas{% endblock %}
+
+{% block content %}
+<style>
+.cuenta-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1.1rem 1.3rem; margin-bottom:1rem; display:flex;
+  gap:1.2rem; align-items:flex-start; flex-wrap:wrap;
+}
+.cuenta-card.paused { background:#fafafa; border-style:dashed; opacity:.85; }
+.cuenta-card-info { flex:1; min-width:240px; }
+.cuenta-card-titulo {
+  font-size:1.05rem; font-weight:700; color:#0f172a; display:flex;
+  align-items:center; gap:.5rem; flex-wrap:wrap;
+}
+.cuenta-card-meta { font-size:.78rem; color:#64748b; margin-top:.3rem; line-height:1.5; }
+.cuenta-card-actions { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
+.cuenta-status {
+  font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:10px;
+  text-transform:uppercase; letter-spacing:.04em;
+}
+.cuenta-status.ok      { background:#dcfce7; color:#166534; }
+.cuenta-status.warning { background:#fef3c7; color:#92400e; }
+.cuenta-status.error   { background:#fee2e2; color:#991b1b; }
+.cuenta-status.paused  { background:#f1f5f9; color:#64748b; }
+.btn-cuenta-action {
+  font-size:.74rem; padding:5px 11px; border-radius:6px; border:1px solid;
+  background:transparent; cursor:pointer; font-weight:600;
+}
+.btn-cuenta-action.primary   { color:#2563eb; border-color:#bfdbfe; background:#eff6ff; }
+.btn-cuenta-action.primary:hover   { background:#dbeafe; }
+.btn-cuenta-action.warning   { color:#92400e; border-color:#fde68a; background:#fef3c7; }
+.btn-cuenta-action.warning:hover   { background:#fde68a; }
+.btn-cuenta-action.success   { color:#166534; border-color:#86efac; background:#dcfce7; }
+.btn-cuenta-action.success:hover   { background:#bbf7d0; }
+.btn-cuenta-action.danger    { color:#991b1b; border-color:#fca5a5; background:#fee2e2; }
+.btn-cuenta-action.danger:hover    { background:#fecaca; }
+.form-nueva {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1.5rem; margin-top:2rem;
+}
+.form-nueva-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+@media (max-width: 720px) { .form-nueva-grid { grid-template-columns:1fr; } }
+.form-help {
+  font-size:.78rem; color:#475569; background:#f0f9ff; border-left:3px solid #38bdf8;
+  padding:.7rem 1rem; border-radius:6px; margin-bottom:1rem; line-height:1.55;
+}
+.form-help a { color:#0284c7; font-weight:600; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-shop-window me-2 text-primary"></i>Gestión de Cuentas ML</h1>
+    <div class="sub">
+      Administrá las cuentas de MercadoLibre conectadas al sistema.
+      <span class="badge ms-2" style="background:#1e3a8a;font-size:.7rem">Solo admin</span>
+    </div>
+  </div>
+</div>
+
+<div class="form-help">
+  <i class="bi bi-info-circle me-1"></i>
+  <strong>Multi-tenant:</strong> podés agregar cuentas de distintos vendedores.
+  Cada cuenta requiere su propia app en
+  <a href="https://developers.mercadolibre.com.ar/devcenter" target="_blank" rel="noopener">developers.mercadolibre.com.ar</a>
+  con sus credenciales (Client ID + Secret).
+  Después del registro, te redirigimos a ML para autorizar el OAuth.
+  <strong>Sin límite de cuentas.</strong>
+</div>
+
+{% if cuentas %}
+<h5 class="mt-3 mb-2" style="font-size:1rem;color:#475569">
+  <i class="bi bi-list-ul me-1"></i> Cuentas configuradas ({{ cuentas|length }})
+</h5>
+{% for c in cuentas %}
+<div class="cuenta-card {{ 'paused' if not c.active else '' }}">
+  <div class="cuenta-card-info">
+    <div class="cuenta-card-titulo">
+      <i class="bi bi-{{ 'pause-circle' if not c.active else ('check-circle-fill text-success' if c.token_valid else 'exclamation-circle-fill text-warning') }}"></i>
+      {{ c.alias }}
+      {% if c.nickname %}<small class="text-muted" style="font-weight:400">— {{ c.nickname }}</small>{% endif %}
+      {% if not c.active %}
+        <span class="cuenta-status paused">Pausada</span>
+      {% elif c.token_valid %}
+        <span class="cuenta-status ok">Conectada</span>
+      {% elif c.has_token %}
+        <span class="cuenta-status warning">Token expirado</span>
+      {% else %}
+        <span class="cuenta-status error">Sin OAuth</span>
+      {% endif %}
+    </div>
+    <div class="cuenta-card-meta">
+      <div><strong>Client ID:</strong> {{ c.client_id }}</div>
+      {% if c.user_id %}<div><strong>User ID ML:</strong> {{ c.user_id }}</div>{% endif %}
+      {% if c.created_at %}<div><strong>Creada:</strong> {{ c.created_at[:10] }}</div>{% endif %}
+      {% if not c.active %}
+        <div style="color:#92400e;margin-top:.4rem">
+          <strong>Pausada el {{ c.paused_at[:10] }}.</strong>
+          {% if c.paused_reason %}Razón: {{ c.paused_reason }}{% endif %}
+          <br><span style="font-size:.7rem">Se purga automáticamente en 90 días si no se reactiva.</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="cuenta-card-actions">
+    <a href="/settings/permisos" class="btn-cuenta-action primary"
+       title="Ver permisos API de esta cuenta">
+      <i class="bi bi-key"></i> Permisos
+    </a>
+    {% if c.active %}
+      <a href="/oauth/connect/{{ c.alias }}" class="btn-cuenta-action primary"
+         title="Reconectar OAuth (si el token expiró o agregaste permisos)">
+        <i class="bi bi-arrow-clockwise"></i> Reconectar OAuth
+      </a>
+      <button class="btn-cuenta-action warning" onclick="pausarCuenta('{{ c.alias }}')"
+              title="Pausa la cuenta (no se eliminan datos, podés reactivar)">
+        <i class="bi bi-pause-circle"></i> Pausar
+      </button>
+    {% else %}
+      <button class="btn-cuenta-action success" onclick="reactivarCuenta('{{ c.alias }}')"
+              title="Vuelve a activar esta cuenta">
+        <i class="bi bi-play-circle"></i> Reactivar
+      </button>
+    {% endif %}
+    <button class="btn-cuenta-action danger" onclick="eliminarCuenta('{{ c.alias }}')"
+            title="Elimina permanentemente la cuenta del sistema (no toca data histórica)">
+      <i class="bi bi-trash"></i> Eliminar
+    </button>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="text-center py-5" style="color:#64748b">
+  <i class="bi bi-shop" style="font-size:3rem;opacity:.3"></i>
+  <p style="margin-top:1rem">Todavía no hay cuentas configuradas. Agregá la primera abajo.</p>
+</div>
+{% endif %}
+
+<!-- ── Formulario para agregar nueva cuenta ─────────────────────────── -->
+<div class="form-nueva">
+  <h5 style="margin:0 0 1rem;color:#0f172a">
+    <i class="bi bi-plus-circle me-2 text-primary"></i>Agregar nueva cuenta
+  </h5>
+  <details style="margin-bottom:1.2rem;border:1px solid #bae6fd;background:#f0f9ff;border-radius:8px;padding:.7rem 1rem">
+    <summary style="cursor:pointer;font-weight:700;color:#0369a1">
+      <i class="bi bi-book me-1"></i> Instructivo paso a paso (click para expandir)
+    </summary>
+    <div style="margin-top:.8rem;line-height:1.7;font-size:.85rem;color:#0c4a6e">
+      <p><strong>Paso 1 — Crear app en developers ML</strong></p>
+      <ol style="margin-bottom:.8rem">
+        <li>Andá a <a href="https://developers.mercadolibre.com.ar/devcenter" target="_blank" rel="noopener"><strong>developers.mercadolibre.com.ar/devcenter</strong></a></li>
+        <li>Iniciá sesión con la cuenta ML del vendedor que vas a conectar</li>
+        <li>Click "Crear nueva app"</li>
+        <li>Nombre y descripción (ej: "Sistema ML — [vendedor]")</li>
+        <li><strong>Redirect URI</strong> (importantísimo, copiala exacta):
+          <pre style="background:#fff;padding:.4rem .7rem;border-radius:4px;border:1px solid #e2e8f0;margin:.3rem 0;font-size:.8rem;color:#0f172a;user-select:all">{{ request.host_url }}oauth/exchange</pre>
+        </li>
+        <li>Activá los permisos (toggles): <strong>Items y búsqueda, Órdenes, Postventa, Publicidad Read, Publicidad Write</strong></li>
+        <li>Guardá la app y copiá el <strong>Client ID</strong> y <strong>Client Secret</strong></li>
+      </ol>
+
+      <p><strong>Paso 2 — Llená el form de abajo</strong></p>
+      <ul style="margin-bottom:.8rem">
+        <li>Alias: identificador interno corto (ej: <code>Cliente_Acme</code>)</li>
+        <li>Nickname: nombre legible opcional</li>
+        <li>Pegá el Client ID y Client Secret que copiaste</li>
+        <li>Click "Crear y conectar OAuth"</li>
+      </ul>
+
+      <p><strong>Paso 3 — Autorizar en MercadoLibre</strong></p>
+      <ul style="margin-bottom:.5rem">
+        <li>El sistema te redirige a ML</li>
+        <li>Click "Permitir"</li>
+        <li>Volvés al sistema con la cuenta ya activa</li>
+      </ul>
+
+      <p style="margin-top:.8rem;font-size:.78rem;color:#0369a1">
+        <i class="bi bi-file-earmark-text me-1"></i>
+        Documentación completa: <code>docs/INSTRUCTIVO_AGREGAR_CUENTA_ML.md</code> en el repo.
+      </p>
+    </div>
+  </details>
+  <div class="form-help" style="margin-bottom:0">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>Resumen rápido:</strong> creá una app en
+    <a href="https://developers.mercadolibre.com.ar/devcenter" target="_blank" rel="noopener">developers ML</a>
+    con Redirect URI <code>{{ request.host_url }}oauth/exchange</code>,
+    luego pegá Client ID + Secret abajo.
+  </div>
+  <form id="formNuevaCuenta" onsubmit="crearCuenta(event)">
+    <div class="form-nueva-grid">
+      <div>
+        <label class="form-label fw-semibold">Alias <span class="text-danger">*</span></label>
+        <input type="text" id="nuevo-alias" class="form-control" required
+               pattern="[a-zA-Z0-9_-]+" maxlength="40"
+               placeholder="Ej: Cliente_Acme o NovaraSur">
+        <div class="form-text">Identificador interno. Solo letras, números, guiones y guiones bajos.</div>
+      </div>
+      <div>
+        <label class="form-label fw-semibold">Nickname / Descripción <small class="text-muted">(opcional)</small></label>
+        <input type="text" id="nuevo-nickname" class="form-control" maxlength="80"
+               placeholder="Ej: Acme S.A. — cuenta principal">
+      </div>
+      <div>
+        <label class="form-label fw-semibold">Client ID <span class="text-danger">*</span></label>
+        <input type="text" id="nuevo-client-id" class="form-control" required
+               placeholder="123456789012345" inputmode="numeric">
+      </div>
+      <div>
+        <label class="form-label fw-semibold">Client Secret <span class="text-danger">*</span></label>
+        <input type="password" id="nuevo-client-secret" class="form-control" required
+               placeholder="••••••••••••••" autocomplete="new-password">
+        <div class="form-text">Se guarda hasheado en la sesión. No queda visible.</div>
+      </div>
+    </div>
+    <div class="d-flex gap-2 mt-3">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-check-circle me-1"></i> Crear y conectar OAuth
+      </button>
+      <button type="reset" class="btn btn-outline-secondary">Limpiar</button>
+    </div>
+    <div id="formError" class="text-danger mt-2" style="display:none;font-size:.88rem"></div>
+  </form>
+</div>
+
+<script>
+async function crearCuenta(ev) {
+  ev.preventDefault();
+  const errEl = document.getElementById('formError');
+  errEl.style.display = 'none';
+  const data = {
+    alias:         document.getElementById('nuevo-alias').value.trim(),
+    nickname:      document.getElementById('nuevo-nickname').value.trim(),
+    client_id:     document.getElementById('nuevo-client-id').value.trim(),
+    client_secret: document.getElementById('nuevo-client-secret').value.trim(),
+  };
+  try {
+    const r = await fetch('/api/admin/cuentas/crear', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(d.mensaje || 'Cuenta creada. Te redirigimos a ML para autorizar.');
+      window.location.href = d.oauth_url;
+    } else {
+      errEl.innerText = d.error || 'Error desconocido';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.innerText = 'Error de conexión: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function pausarCuenta(alias) {
+  const razon = prompt(`Pausar cuenta "${alias}"?\n\nLa cuenta no se elimina, podés reactivarla más tarde.\nLa data se mantiene 90 días por si querés volver.\n\nRazón opcional:`);
+  if (razon === null) return;
+  try {
+    const r = await fetch(`/api/admin/cuentas/${encodeURIComponent(alias)}/pausar`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({razon}),
+    });
+    const d = await r.json();
+    if (d.ok) { alert(d.mensaje); location.reload(); }
+    else { alert('Error: ' + d.error); }
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function reactivarCuenta(alias) {
+  if (!confirm(`Reactivar cuenta "${alias}"?`)) return;
+  try {
+    const r = await fetch(`/api/admin/cuentas/${encodeURIComponent(alias)}/reactivar`, {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) { alert(d.mensaje); location.reload(); }
+    else { alert('Error: ' + d.error); }
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function eliminarCuenta(alias) {
+  const conf = prompt(`ELIMINAR cuenta "${alias}" del sistema.\n\nEsto NO borra los JSON de data históricos (eso se hace 90 días después).\nPero la cuenta deja de aparecer en el sistema y no se podrá usar.\n\nPara confirmar, escribí el alias exacto: ${alias}`);
+  if (conf !== alias) {
+    if (conf !== null) alert('Alias no coincide. Eliminación cancelada.');
+    return;
+  }
+  try {
+    const r = await fetch(`/api/admin/cuentas/${encodeURIComponent(alias)}/eliminar`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirm: alias}),
+    });
+    const d = await r.json();
+    if (d.ok) { alert(d.mensaje); location.reload(); }
+    else { alert('Error: ' + d.error); }
+  } catch (e) { alert('Error: ' + e.message); }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %} — Mi perfil{% endblock %}
+
+{% block content %}
+<style>
+.perfil-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  padding:1.5rem; max-width:560px; margin-bottom:1.5rem;
+}
+.perfil-info { display:grid; gap:.6rem; }
+.perfil-info-row {
+  display:flex; gap:.7rem; padding:.5rem .7rem; border-radius:6px;
+  background:#f8fafc; font-size:.88rem;
+}
+.perfil-info-row .label { color:#64748b; min-width:130px; }
+.perfil-info-row .value { color:#0f172a; font-weight:600; }
+.perfil-form-row { margin-bottom:1rem; }
+.perfil-form-row label { font-weight:600; color:#475569; font-size:.85rem; margin-bottom:.3rem; display:block; }
+.perfil-msg { padding:.75rem 1rem; border-radius:6px; margin-top:1rem; font-size:.88rem; }
+.perfil-msg.ok    { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+.perfil-msg.error { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-person-circle me-2 text-primary"></i>Mi perfil</h1>
+    <div class="sub">Datos de tu cuenta y cambio de contraseña.</div>
+  </div>
+</div>
+
+<!-- ── Datos del usuario ───────────────────────────────────────────── -->
+<div class="perfil-card">
+  <h5 style="margin:0 0 1rem"><i class="bi bi-info-circle me-2 text-secondary"></i>Datos de tu cuenta</h5>
+  <div class="perfil-info">
+    <div class="perfil-info-row">
+      <span class="label">Usuario</span>
+      <span class="value">{{ user.username }}</span>
+    </div>
+    <div class="perfil-info-row">
+      <span class="label">Rol</span>
+      <span class="value">
+        {% if user.is_admin %}
+          <span class="badge" style="background:#1e3a8a">Administrador</span>
+        {% else %}
+          <span class="badge bg-secondary">Usuario estándar</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="perfil-info-row">
+      <span class="label">Cuentas asignadas</span>
+      <span class="value">
+        {% if user.is_admin %}
+          <em style="color:#64748b;font-weight:400">Todas (admin)</em>
+        {% elif user.accounts %}
+          {{ user.accounts | join(', ') }}
+        {% else %}
+          <em style="color:#dc2626">Ninguna asignada — pedile al admin que te asigne cuentas</em>
+        {% endif %}
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cambio de contraseña ────────────────────────────────────────── -->
+<div class="perfil-card">
+  <h5 style="margin:0 0 1rem"><i class="bi bi-key me-2 text-warning"></i>Cambiar mi contraseña</h5>
+  <form id="formCambiarPassword" onsubmit="cambiarPassword(event)">
+    <div class="perfil-form-row">
+      <label for="current-password">Contraseña actual</label>
+      <input type="password" id="current-password" class="form-control" required
+             autocomplete="current-password" placeholder="Tu contraseña actual">
+    </div>
+    <div class="perfil-form-row">
+      <label for="new-password">Nueva contraseña</label>
+      <input type="password" id="new-password" class="form-control" required
+             autocomplete="new-password" minlength="6" placeholder="Mínimo 6 caracteres">
+    </div>
+    <div class="perfil-form-row">
+      <label for="new-password-confirm">Confirmar nueva contraseña</label>
+      <input type="password" id="new-password-confirm" class="form-control" required
+             autocomplete="new-password" minlength="6" placeholder="Repetí la nueva contraseña">
+    </div>
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-check-circle me-1"></i> Cambiar contraseña
+    </button>
+    <div id="passwordMsg" style="display:none"></div>
+  </form>
+</div>
+
+<script>
+async function cambiarPassword(ev) {
+  ev.preventDefault();
+  const msgEl = document.getElementById('passwordMsg');
+  const current = document.getElementById('current-password').value;
+  const newPass = document.getElementById('new-password').value;
+  const confirm = document.getElementById('new-password-confirm').value;
+
+  if (newPass !== confirm) {
+    msgEl.className = 'perfil-msg error';
+    msgEl.innerText = 'Las contraseñas nuevas no coinciden.';
+    msgEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const r = await fetch('/api/perfil/cambiar-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({current_password: current, new_password: newPass}),
+    });
+    const d = await r.json();
+    msgEl.style.display = 'block';
+    if (d.ok) {
+      msgEl.className = 'perfil-msg ok';
+      msgEl.innerText = '✓ ' + (d.mensaje || 'Contraseña actualizada');
+      document.getElementById('formCambiarPassword').reset();
+    } else {
+      msgEl.className = 'perfil-msg error';
+      msgEl.innerText = '✗ ' + (d.error || 'Error desconocido');
+    }
+  } catch (e) {
+    msgEl.className = 'perfil-msg error';
+    msgEl.innerText = '✗ Error de conexión: ' + e.message;
+    msgEl.style.display = 'block';
+  }
+}
+</script>
+{% endblock %}

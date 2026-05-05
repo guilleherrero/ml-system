@@ -78,6 +78,11 @@
       <button class="btn-edit" onclick='abrirModalEditar({{ u | tojson }})'>
         <i class="bi bi-pencil me-1"></i>Editar
       </button>
+      <button class="btn-edit" style="background:#fef3c7;color:#92400e"
+              onclick="resetearPasswordUsuario('{{ u.id }}', '{{ u.username }}')"
+              title="Resetear la contraseña de este usuario">
+        <i class="bi bi-key"></i>
+      </button>
       <button class="btn-del" onclick="eliminarUsuario('{{ u.id }}', '{{ u.username }}')">
         <i class="bi bi-trash3"></i>
       </button>
@@ -293,6 +298,34 @@ async function cambiarPassAdmin() {
   const data = await r.json();
   if (data.ok) { cerrarModales(); alert('Contraseña actualizada correctamente.'); }
   else { errEl.textContent = data.error || 'Error desconocido'; errEl.style.display='block'; }
+}
+
+/* ─── Sprint Admin — Resetear contraseña de OTRO usuario ─────────── */
+async function resetearPasswordUsuario(userId, username) {
+  const nueva = prompt(
+    `Resetear contraseña de "${username}".\n\n` +
+    `Vas a generar una contraseña nueva para este usuario.\n` +
+    `El usuario debería cambiarla la próxima vez que entre.\n\n` +
+    `Nueva contraseña (mínimo 6 caracteres):`
+  );
+  if (!nueva) return;
+  if (nueva.length < 6) {
+    alert('La contraseña debe tener al menos 6 caracteres.');
+    return;
+  }
+  try {
+    const r = await fetch(`/api/usuarios/${encodeURIComponent(userId)}/resetear-password`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: nueva}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert(`✓ ${d.mensaje}\n\nAvisale al usuario la nueva contraseña por un canal seguro.`);
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) { alert('Error: ' + e.message); }
 }
 </script>
 {% endblock %}

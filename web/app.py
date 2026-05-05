@@ -513,12 +513,182 @@ def api_usuarios_crear():
     accounts = body.get('accounts', [])
     if not username or not password:
         return jsonify({'ok': False, 'error': 'Faltan datos'})
+    if len(password) < 6:
+        return jsonify({'ok': False, 'error': 'La contraseña debe tener al menos 6 caracteres'})
     from core.auth import get_user_by_username
     if get_user_by_username(username):
         return jsonify({'ok': False, 'error': 'Ese nombre de usuario ya existe'})
     user = create_user(username, password, is_admin=False, accounts=accounts)
     _audit('CREAR_USUARIO', nuevo_usuario=username, cuentas=','.join(accounts))
     return jsonify({'ok': True, 'id': user['id']})
+
+
+# ── Sprint Admin (05/05/2026): cambio de contraseña ───────────────────────
+
+@app.route('/api/usuarios/<user_id>/resetear-password', methods=['POST'])
+def api_usuarios_resetear_password(user_id):
+    """Admin resetea la contraseña de cualquier usuario."""
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Solo admin puede resetear contraseñas'}), 403
+    from core.auth import update_user, get_user_by_id
+    body = request.get_json() or {}
+    new_pass = body.get('password', '')
+    if len(new_pass) < 6:
+        return jsonify({'ok': False, 'error': 'La contraseña debe tener al menos 6 caracteres'})
+    target = get_user_by_id(user_id)
+    if not target:
+        return jsonify({'ok': False, 'error': 'Usuario no encontrado'}), 404
+    update_user(user_id, password=new_pass)
+    _audit('RESETEAR_PASSWORD', target_user=target.get('username'), by_admin=session.get('username'))
+    return jsonify({'ok': True, 'mensaje': f'Contraseña reseteada para {target.get("username")}'})
+
+
+@app.route('/perfil')
+def perfil():
+    """Página del usuario actual para cambiar su propia contraseña."""
+    user = get_current_user()
+    if not user:
+        return redirect('/login')
+    return render_template('perfil.html', user=user, accounts=get_accounts())
+
+
+@app.route('/api/perfil/cambiar-password', methods=['POST'])
+def api_perfil_cambiar_password():
+    """El usuario actual cambia SU PROPIA contraseña — requiere validar la actual."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'ok': False, 'error': 'No autenticado'}), 401
+    from core.auth import update_user
+    from werkzeug.security import check_password_hash
+    body = request.get_json() or {}
+    current = body.get('current_password', '')
+    new_pass = body.get('new_password', '')
+    if not check_password_hash(user.get('password_hash', ''), current):
+        return jsonify({'ok': False, 'error': 'La contraseña actual es incorrecta'}), 400
+    if len(new_pass) < 6:
+        return jsonify({'ok': False, 'error': 'La nueva contraseña debe tener al menos 6 caracteres'})
+    if current == new_pass:
+        return jsonify({'ok': False, 'error': 'La nueva contraseña debe ser distinta de la actual'})
+    update_user(user['id'], password=new_pass)
+    _audit('CAMBIAR_PASSWORD_PROPIA', user=user.get('username'))
+    return jsonify({'ok': True, 'mensaje': 'Contraseña actualizada correctamente'})
+
+
+# Nota: /api/usuarios/eliminar (existente) maneja el delete por body={id}.
+# Mantenemos esa convención y NO duplicamos la ruta.
+
+
+# ── Sprint Admin: Gestión de Cuentas ML ─────────────────────────────────
+
+@app.route('/admin/cuentas')
+def admin_cuentas():
+    """Vista admin: lista cuentas ML + form para agregar nueva. Solo admin."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+    from core.account_manager import AccountManager as _AM
+    mgr = _AM()
+    cuentas = []
+    for a in mgr.list_accounts():
+        cuentas.append({
+            'alias':         a.alias,
+            'nickname':      a.nickname or '',
+            'client_id':     (a.client_id or '')[:8] + '…' if a.client_id else '',  # ofuscar
+            'active':        a.active,
+            'has_token':     bool(a.refresh_token and a.access_token),
+            'token_valid':   a.is_token_valid(),
+            'created_at':    a.created_at or '',
+            'paused_at':     a.paused_at or '',
+            'paused_reason': a.paused_reason or '',
+            'user_id':       a.user_id,
+        })
+    return render_template('admin_cuentas.html',
+                           user=user,
+                           cuentas=cuentas,
+                           accounts=get_accounts())
+
+
+@app.route('/api/admin/cuentas/crear', methods=['POST'])
+def api_admin_cuentas_crear():
+    """Admin crea una nueva cuenta ML. Después se conecta vía OAuth."""
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Solo admin'}), 403
+    body = request.get_json() or {}
+    alias         = (body.get('alias') or '').strip()
+    client_id     = (body.get('client_id') or '').strip()
+    client_secret = (body.get('client_secret') or '').strip()
+    nickname      = (body.get('nickname') or '').strip()
+
+    if not alias or not client_id or not client_secret:
+        return jsonify({'ok': False, 'error': 'Alias, client_id y client_secret son obligatorios'}), 400
+    if not alias.replace('_', '').replace('-', '').isalnum():
+        return jsonify({'ok': False, 'error': 'El alias solo puede tener letras, números, guiones y guiones bajos'}), 400
+    if len(alias) > 40:
+        return jsonify({'ok': False, 'error': 'Alias demasiado largo (máx 40 chars)'}), 400
+
+    from core.account_manager import AccountManager as _AM
+    mgr = _AM()
+    try:
+        acc = mgr.add_account(alias=alias, client_id=client_id,
+                              client_secret=client_secret, refresh_token='')
+        if nickname:
+            acc.nickname = nickname
+            mgr._save()
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    _audit('CREAR_CUENTA_ML', alias=alias, by_admin=session.get('username'))
+    return jsonify({'ok': True, 'alias': alias,
+                    'oauth_url': f'/oauth/connect/{alias}',
+                    'mensaje': 'Cuenta creada. Te redirigimos a MercadoLibre para autorizar OAuth.'})
+
+
+@app.route('/api/admin/cuentas/<alias>/pausar', methods=['POST'])
+def api_admin_cuentas_pausar(alias):
+    """Soft-delete: marca cuenta como inactiva pero conserva data."""
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Solo admin'}), 403
+    body = request.get_json(silent=True) or {}
+    razon = (body.get('razon') or '').strip()
+    from core.account_manager import AccountManager as _AM
+    try:
+        _AM().pause_account(alias, reason=razon)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    _audit('PAUSAR_CUENTA_ML', alias=alias, razon=razon, by_admin=session.get('username'))
+    return jsonify({'ok': True, 'mensaje': f'Cuenta {alias} pausada. Data conservada por 90 días.'})
+
+
+@app.route('/api/admin/cuentas/<alias>/reactivar', methods=['POST'])
+def api_admin_cuentas_reactivar(alias):
+    """Revierte el soft-delete."""
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Solo admin'}), 403
+    from core.account_manager import AccountManager as _AM
+    try:
+        _AM().reactivate_account(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    _audit('REACTIVAR_CUENTA_ML', alias=alias, by_admin=session.get('username'))
+    return jsonify({'ok': True, 'mensaje': f'Cuenta {alias} reactivada.'})
+
+
+@app.route('/api/admin/cuentas/<alias>/eliminar', methods=['POST'])
+def api_admin_cuentas_eliminar(alias):
+    """HARD delete: borra la cuenta del config. NO borra los JSON de data
+    (eso lo hace el cron de purga después de 90 días) — esta acción solo
+    saca el access del sistema."""
+    if not session.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Solo admin'}), 403
+    body = request.get_json(silent=True) or {}
+    if body.get('confirm') != alias:
+        return jsonify({'ok': False, 'error': f'Para confirmar eliminación, mandá {{"confirm": "{alias}"}}'}), 400
+    from core.account_manager import AccountManager as _AM
+    try:
+        _AM().remove_account(alias)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    _audit('ELIMINAR_CUENTA_ML', alias=alias, by_admin=session.get('username'))
+    return jsonify({'ok': True, 'mensaje': f'Cuenta {alias} eliminada del sistema.'})
 
 
 @app.route('/api/usuarios/actualizar', methods=['POST'])
@@ -13931,6 +14101,48 @@ def _job_weekly_reopt():
     print(f'[job_weekly_reopt] Re-optimización manual completada — {procesadas} publicaciones procesadas.')
 
 
+def _job_purga_cuentas_pausadas():
+    """Job 9 — Sprint Admin: purga cuentas pausadas hace >90 días.
+
+    Elimina del config/accounts.json + borra los JSON de data/ asociados al alias.
+    Solo afecta cuentas en soft-delete vencido. Auditoría completa en data/audit.log.
+    """
+    import glob
+    from core.account_manager import AccountManager
+    mgr = AccountManager()
+    candidatas = mgr.cuentas_para_purgar(dias=90)
+    if not candidatas:
+        print('[job_purga] sin cuentas para purgar')
+        return
+
+    eliminadas = 0
+    for cuenta in candidatas:
+        alias = cuenta.alias
+        try:
+            # 1) Eliminar de config (hard delete del JSON de cuentas)
+            mgr.remove_account(alias)
+            # 2) Borrar JSON históricos de data/ que tienen el alias en el nombre
+            safe_alias = alias.replace(' ', '_').replace('/', '-')
+            pattern = os.path.join(DATA_DIR, f'*_{safe_alias}.json')
+            archivos_a_borrar = glob.glob(pattern)
+            for archivo in archivos_a_borrar:
+                try:
+                    os.remove(archivo)
+                except Exception as e:
+                    app.logger.warning('[job_purga] no pude borrar %s: %s', archivo, e)
+            _audit('PURGAR_CUENTA_AUTO', alias=alias,
+                   pausada_desde=cuenta.paused_at,
+                   archivos_borrados=len(archivos_a_borrar))
+            print(f'[job_purga] {alias} eliminada (pausada desde {cuenta.paused_at}, '
+                  f'{len(archivos_a_borrar)} archivos borrados)')
+            eliminadas += 1
+        except Exception as e:
+            app.logger.error('[job_purga] error eliminando %s: %s', alias, e)
+            continue
+
+    print(f'[job_purga] terminado — {eliminadas}/{len(candidatas)} cuentas purgadas')
+
+
 def _job_top_acciones_daily():
     """Job 6 — Sprint 4.1: precomputa el Top 3 acciones del día para cada cuenta.
 
@@ -14240,10 +14452,23 @@ def _start_scheduler():
                          'Alimenta al Veredicto IA semanal con timeline completa.'),
         )
 
+        # Job 9 — Purga de cuentas pausadas (Sprint Admin) — Domingo 03:00 ART
+        # Elimina cuentas pausadas hace >90 días (soft delete vencido).
+        # Borra del config + JSON históricos asociados.
+        jm.register_job(
+            'purga_cuentas_pausadas', _job_purga_cuentas_pausadas,
+            CronTrigger(day_of_week='sun', hour=3, minute=0,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Purga cuentas pausadas',
+            description=('Elimina definitivamente las cuentas que estuvieron pausadas '
+                         'hace más de 90 días. Borra config/accounts.json + data/ asociada. '
+                         'Solo afecta cuentas en soft-delete vencido.'),
+        )
+
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 8 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 9 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')
