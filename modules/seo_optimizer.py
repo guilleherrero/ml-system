@@ -2279,7 +2279,8 @@ CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
 □ Sin datos que ML ya muestra arriba
 □ Sin características inventadas
 □ Sin frases genéricas
-□ Títulos: sin símbolos, sin CAPS, sin prohibidos, ≤60 chars cada uno (contados)
+□ Títulos: sin símbolos, sin CAPS, sin prohibidos, ≤60 chars cada uno (contados), ÚLTIMA PALABRA COMPLETA (no truncada)
+□ Ancla del producto (sustantivo central) ≤8 apariciones en TODA la descripción + FAQs — contadas
 □ Título recomendado indicado con justificación
 
 ═══ AUTO-VERIFICACIÓN OBLIGATORIA ANTES DE ENTREGAR ═══
@@ -2289,6 +2290,8 @@ Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
 3. Contá caracteres totales del bloque 1 → ≤300.
 4. Verificá que los tokens principales del TÍTULO RECOMENDADO
    aparezcan en los primeros 2 párrafos.
+5. Releé cada título y verificá que la ÚLTIMA PALABRA esté COMPLETA (no truncada). Si está cortada, remové palabras enteras hasta que entre con palabras completas dentro de los 60 chars.
+6. Contá apariciones del SUSTANTIVO CENTRAL del producto (ancla) en la descripción incluyendo FAQs → debe ser ≤8. Si excede, rotá con sinónimos contextuales y volvé a contar.
 
 Si alguno falla, REESCRIBÍ esa parte antes de entregar la respuesta
 final. No marques el checklist como aprobado si algún ítem no cumple.
