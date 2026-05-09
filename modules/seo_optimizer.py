@@ -2114,6 +2114,11 @@ Formato: CANTIDAD SUGERIDA: [N] | Tipos: [fondo blanco, lifestyle, detalle, comp
 
 ──── TÍTULOS — REGLAS DEL ALGORITMO ML (PROHIBICIONES ABSOLUTAS) ────
 ✗ Más de 60 caracteres — contar exactamente antes de escribir
+✗ Cortar una palabra a la mitad para llegar a 60 chars — si excedés, REMOVER palabras enteras
+  → Ejemplo PROHIBIDO: "Faja Reductora Postparto Cesárea Mujer Abdominal Doble Ajust" (palabra "Ajuste" truncada a "Ajust")
+  → Ejemplo CORRECTO: "Faja Reductora Postparto Cesárea Mujer Doble Ajuste" (51 chars, todas las palabras completas)
+  → Mejor un título de 55 chars con palabras completas que uno de 60 con la última truncada
+  → Después de generar cada título, releé carácter por carácter la última palabra y verificá que esté completa
 ✗ Signos de puntuación o símbolos: @ # * - ! _ + / | ; : . , ( ) [ ]
 ✗ Palabras en MAYÚSCULAS SOSTENIDAS
 ✗ Palabras prohibidas por ML: "envío gratis", "cuotas", "nuevo", "usado", "oferta", "promo", "oficial"
