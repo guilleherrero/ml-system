@@ -1316,6 +1316,69 @@ _TITLE_STOPWORDS_START = {"de", "para", "con", "el", "la", "los", "las", "un", "
                            "y", "o", "a", "en", "por", "al", "del"}
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Anti-truncamiento de título — agregado en hotfix #2 del 09/05/2026
+# ──────────────────────────────────────────────────────────────────────
+
+# Sufijos sospechosos de truncamiento — palabras españolas casi nunca
+# terminan así. Si la última palabra del título termina en uno de estos
+# sufijos Y el título está en zona de riesgo (≥58 chars), se asume
+# truncamiento y se remueve la palabra.
+_SUFIJOS_TRUNCAMIENTO: tuple = (
+    "st", "bl", "pr", "tr", "ct", "pt", "rb", "mn", "mp",
+    "rt", "ng", "rs", "zh", "br",
+)
+
+# Lista blanca de palabras españolas (o préstamos comunes) cortas que
+# legítimamente terminan en consonante atípica. Excepciones a la regla
+# de _SUFIJOS_TRUNCAMIENTO. Mantener acotada — agregar caso por caso
+# si aparece falso positivo.
+_PALABRAS_CONSONANTE_OK: frozenset = frozenset({
+    "club", "stop", "test", "fast", "post", "kit", "set", "play",
+    "rock", "punk", "art", "cult", "loft", "mp3", "mp4",
+    "ml", "kg", "cm", "mm", "lt",
+})
+
+
+def _palabra_truncada(palabra: str) -> bool:
+    """Detecta si una palabra parece haber sido cortada al alcanzar el
+    límite de caracteres del título.
+
+    Heurística conservadora — solo flagea casos claros de truncamiento.
+    Falsos positivos: bajos. Falsos negativos: posibles pero aceptables.
+    """
+    palabra = (palabra or "").strip().lower()
+    # Palabras muy cortas (1-2 chars) o muy largas (>8 chars) no se evalúan
+    if len(palabra) > 8 or len(palabra) < 3:
+        return False
+    if palabra in _PALABRAS_CONSONANTE_OK:
+        return False
+    return palabra.endswith(_SUFIJOS_TRUNCAMIENTO)
+
+
+def _limpiar_titulo_truncado(titulo: str) -> tuple:
+    """Si detecta que la última palabra del título fue truncada al
+    chocar con el límite de chars, la remueve.
+
+    Solo aplica si el título está en zona de riesgo (≥58 chars) Y tiene
+    al menos 4 palabras (para no destruir títulos cortos).
+
+    Returns:
+        (titulo_limpio: str, fue_corregido: bool)
+    """
+    titulo = (titulo or "").strip()
+    if len(titulo) < 58:
+        return titulo, False
+    palabras = titulo.split()
+    if len(palabras) < 4:
+        return titulo, False
+    ultima = palabras[-1]
+    if _palabra_truncada(ultima):
+        nuevo = " ".join(palabras[:-1]).strip()
+        return nuevo, True
+    return titulo, False
+
+
 def audit_title(title: str) -> list:
     """Audita el título actual contra las reglas de ML.
     Devuelve lista de dicts con {nivel, regla, detalle, sugerencia}.
