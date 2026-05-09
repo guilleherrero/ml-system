@@ -968,17 +968,23 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                      como 'sano' antes de devolver. La UI no los muestra.
 
     Returns:
-      Lista de Cluster ordenada por severidad (puro → subperformante → sano)
-      y dentro de cada nivel por impacto_monetario_estimado descendente.
+      Lista de Cluster (todos severidad 'puro' por definición de la regla
+      estricta del usuario, 09/05/2026), ordenada por impacto_monetario_estimado
+      descendente. Cada Cluster contiene ≥2 items idénticos en precio +
+      listing_type + free_shipping + color + talle.
+
+    Nota: el parámetro `incluir_sanos` quedó vestigial — la subdivisión por
+    clave de duplicación filtra automáticamente las variantes legítimas
+    (sub-clusters de 1 item) sin necesidad de la severidad 'sano'.
     """
     ignorados = cargar_pares_ignorados(alias, data_dir)
     grupos = _construir_clusters(stock_items, ignorados)
 
     # Sprint Detector v3: pre-fetch de attributes oficiales para todos los items
     # que están en clusters sospechosos. Esto permite la comparación precisa
-    # por attributes oficiales de ML (color, talle, capacidad, etc.) en lugar
-    # de inferir desde el título. Tolerante a fallas — si no hay attributes,
-    # cae al análisis v2.2 por título.
+    # por attributes oficiales de ML (color, talle) en lugar de inferir desde
+    # el título. Tolerante a fallas — si no hay attributes, cae al fallback
+    # de tokens de título dentro de _clave_duplicacion.
     attrs_por_item: dict = {}
     try:
         ids_en_clusters = []
@@ -993,95 +999,60 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
         attrs_por_item = {}
 
     clusters: list[Cluster] = []
-    for grupo in grupos:
-        severidad, nota_leg, mapa_leg = _clasificar_cluster(grupo, attrs_por_item)
+    for grupo_original in grupos:
+        # Subdivisión por clave de duplicación (regla del usuario, 09/05/2026):
+        # cada sub-cluster resultante contiene items idénticos en precio,
+        # listing_type, free_shipping, color y talle. Sub-clusters de tamaño 1
+        # NO son duplicados — se descartan.
+        sub_grupos = _subdividir_cluster(grupo_original, attrs_por_item)
+        for grupo in sub_grupos:
+            if len(grupo) < 2:
+                continue   # 1 item solo NO es duplicado de nadie
 
-        # Filtros: ocultar 'sano' por default; ocultar 'legitimo' a menos que se pida
-        if not incluir_sanos and severidad == 'sano':
-            continue
+            # Por construcción de la subdivisión, los items son duplicados
+            # estrictos entre sí → severidad 'puro' por definición.
+            severidad = 'puro'
+            nota_leg = ''
+            mapa_leg = {it.get('id', ''): False for it in grupo}
 
-        ganadora_id = _identificar_ganadora(grupo)
-        visitas_perdidas, impacto = _calcular_impacto_monetario(grupo, ganadora_id)
+            ganadora_id = _identificar_ganadora(grupo)
+            visitas_perdidas, impacto = _calcular_impacto_monetario(grupo, ganadora_id)
 
-        items_cluster = [
-            ItemCluster(
-                id=it.get('id', ''),
-                titulo=it.get('titulo', ''),
-                precio=float(it.get('precio') or 0),
-                ventas_30d=int(it.get('ventas_30d') or 0),
-                visitas_30d=int(it.get('visitas_30d') or 0),
-                conversion_pct=float(it.get('conversion_pct') or 0),
-                es_ganadora=(it.get('id') == ganadora_id),
-                listing_type=it.get('listing_type', ''),
-                free_shipping=bool(it.get('free_shipping')),
-                es_legitimo=bool(mapa_leg.get(it.get('id', ''), False)),
-            )
-            for it in grupo
-        ]
-        # Ordenar dentro del cluster: ganadora primero, luego por ventas desc
-        items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
+            items_cluster = [
+                ItemCluster(
+                    id=it.get('id', ''),
+                    titulo=it.get('titulo', ''),
+                    precio=float(it.get('precio') or 0),
+                    ventas_30d=int(it.get('ventas_30d') or 0),
+                    visitas_30d=int(it.get('visitas_30d') or 0),
+                    conversion_pct=float(it.get('conversion_pct') or 0),
+                    es_ganadora=(it.get('id') == ganadora_id),
+                    listing_type=it.get('listing_type', ''),
+                    free_shipping=bool(it.get('free_shipping')),
+                    es_legitimo=bool(mapa_leg.get(it.get('id', ''), False)),
+                )
+                for it in grupo
+            ]
+            # Ordenar dentro del cluster: ganadora primero, luego por ventas desc
+            items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
 
-        cluster_id = _generar_cluster_id(it.id for it in items_cluster)
-        # En clusters legítimos, no generar recomendaciones de pausar
-        if severidad == 'legitimo':
-            recomendaciones = {
-                it.id: Recomendacion(
-                    accion='mantener',
-                    motivo='Diferenciación legítima por política ML — no es duplicado.',
-                    pre_seleccionar=False,
-                ) for it in items_cluster
-            }
-            resumen_rec = nota_leg or 'Combinación legítima — mantené todas las publicaciones.'
-        elif severidad == 'mixto':
-            # Para clusters mixtos: en lugar de recomendar pausar TODAS, solo las
-            # que NO están cubiertas por diferenciación legítima.
-            recomendaciones = {}
-            for it in items_cluster:
-                if it.id == ganadora_id:
-                    recomendaciones[it.id] = Recomendacion(
-                        accion='mantener',
-                        motivo='Ganadora del cluster',
-                        pre_seleccionar=False,
-                    )
-                elif it.es_legitimo:
-                    recomendaciones[it.id] = Recomendacion(
-                        accion='mantener',
-                        motivo='Diferenciación legítima por política ML',
-                        pre_seleccionar=False,
-                    )
-                else:
-                    # Es duplicado real — recomendar pausar (si no tiene ventas)
-                    if it.ventas_30d == 0:
-                        recomendaciones[it.id] = Recomendacion(
-                            accion='pausar_sin_traf' if it.visitas_30d < 10 else 'pausar_traf',
-                            motivo='Duplicado real (mismo tipo de listing y envío que la ganadora)',
-                            pre_seleccionar=True,
-                        )
-                    else:
-                        recomendaciones[it.id] = Recomendacion(
-                            accion='revisar',
-                            motivo='Duplicado con ventas — revisá manualmente cuál mantener',
-                            pre_seleccionar=False,
-                        )
-            resumen_rec = nota_leg
-        else:
+            cluster_id = _generar_cluster_id(it.id for it in items_cluster)
             recomendaciones, resumen_rec = _generar_recomendaciones(grupo, ganadora_id)
 
-        clusters.append(Cluster(
-            cluster_id=cluster_id,
-            severidad=severidad,
-            items=items_cluster,
-            titulo_corto=_titulo_corto(grupo),
-            visitas_perdidas_30d=visitas_perdidas if severidad not in ('legitimo',) else 0,
-            impacto_monetario_estimado=impacto if severidad not in ('legitimo',) else 0.0,
-            recomendaciones=recomendaciones,
-            resumen_recomendacion=resumen_rec,
-            nota_legitimidad=nota_leg,
-        ))
+            clusters.append(Cluster(
+                cluster_id=cluster_id,
+                severidad=severidad,
+                items=items_cluster,
+                titulo_corto=_titulo_corto(grupo),
+                visitas_perdidas_30d=visitas_perdidas,
+                impacto_monetario_estimado=impacto,
+                recomendaciones=recomendaciones,
+                resumen_recomendacion=resumen_rec,
+                nota_legitimidad=nota_leg,
+            ))
 
-    # Ordenar: puro primero (más urgente), luego mixto, sub, sano, legitimo
-    orden_severidad = {'puro': 0, 'mixto': 1, 'subperformante': 2, 'sano': 3, 'legitimo': 4}
-    clusters.sort(key=lambda c: (orden_severidad.get(c.severidad, 9), -c.impacto_monetario_estimado))
+    # Ordenar por impacto monetario descendente (todos son 'puro' ahora)
+    clusters.sort(key=lambda c: -c.impacto_monetario_estimado)
     return clusters
 
 
