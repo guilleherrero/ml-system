@@ -2114,6 +2114,11 @@ Formato: CANTIDAD SUGERIDA: [N] | Tipos: [fondo blanco, lifestyle, detalle, comp
 
 ──── TÍTULOS — REGLAS DEL ALGORITMO ML (PROHIBICIONES ABSOLUTAS) ────
 ✗ Más de 60 caracteres — contar exactamente antes de escribir
+✗ Cortar una palabra a la mitad para llegar a 60 chars — si excedés, REMOVER palabras enteras
+  → Ejemplo PROHIBIDO: "Faja Reductora Postparto Cesárea Mujer Abdominal Doble Ajust" (palabra "Ajuste" truncada a "Ajust")
+  → Ejemplo CORRECTO: "Faja Reductora Postparto Cesárea Mujer Doble Ajuste" (51 chars, todas las palabras completas)
+  → Mejor un título de 55 chars con palabras completas que uno de 60 con la última truncada
+  → Después de generar cada título, releé carácter por carácter la última palabra y verificá que esté completa
 ✗ Signos de puntuación o símbolos: @ # * - ! _ + / | ; : . , ( ) [ ]
 ✗ Palabras en MAYÚSCULAS SOSTENIDAS
 ✗ Palabras prohibidas por ML: "envío gratis", "cuotas", "nuevo", "usado", "oferta", "promo", "oficial"
@@ -2172,6 +2177,21 @@ DISTRIBUCIÓN DE KEYWORDS:
 - keyword_principal: 2–3 apariciones en total — densidad objetivo ~1.5%
 - keywords_secundarias: 2–3 apariciones cada una
 - long_tail: mínimo 5 frases distribuidas naturalmente — nunca forzadas
+- ANCLA DEL PRODUCTO (sustantivo central, ej: "faja", "cortador", "lente"): MÁXIMO 8 apariciones en TODA la descripción incluyendo FAQs
+  → La keyword_principal ya está limitada a 2-3 apariciones; ESTA regla es para el sustantivo del producto
+  → El sustantivo central tiende a sobre-aparecer porque es el ancla semántica del producto
+  → Si excedés 8 apariciones, ROTAR con sinónimos contextuales o variantes semánticas
+  → Estrategia de rotación obligatoria por tercios de la descripción:
+     · Tercio 1 (apertura + qué es + cómo funciona): usar ancla directamente — máximo 4-5 apariciones
+     · Tercio 2 (beneficios + diferenciación): rotar entre ancla y 2-3 sinónimos contextuales
+     · Tercio 3 + FAQs (objeciones + cierre + preguntas): privilegiar sinónimos
+  → Ejemplos de sinónimos por categoría (usar el más natural del contexto):
+     · "faja" → "prenda", "soporte", "compresión", "diseño", "pieza"
+     · "cortador" → "herramienta", "dispositivo", "accesorio"
+     · "lente" → "óptica", "accesorio fotográfico", "pieza"
+     · "crema" → "fórmula", "tratamiento", "producto", "textura"
+     · "auricular" → "dispositivo", "modelo", "diseño"
+  → Antes de devolver la descripción, contar manualmente las apariciones del sustantivo principal del producto. Si superan 8, reescribir el bloque más cargado con sinónimos.
 - PRIMERA ORACIÓN: keyword_principal exacta en la oración inicial.
   PRIMEROS 500 CHARS: incluir la keyword_principal una vez + al menos
   una variante semántica del cluster.
@@ -2259,7 +2279,8 @@ CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
 □ Sin datos que ML ya muestra arriba
 □ Sin características inventadas
 □ Sin frases genéricas
-□ Títulos: sin símbolos, sin CAPS, sin prohibidos, ≤60 chars cada uno (contados)
+□ Títulos: sin símbolos, sin CAPS, sin prohibidos, ≤60 chars cada uno (contados), ÚLTIMA PALABRA COMPLETA (no truncada)
+□ Ancla del producto (sustantivo central) ≤8 apariciones en TODA la descripción + FAQs — contadas
 □ Título recomendado indicado con justificación
 
 ═══ AUTO-VERIFICACIÓN OBLIGATORIA ANTES DE ENTREGAR ═══
@@ -2269,6 +2290,8 @@ Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
 3. Contá caracteres totales del bloque 1 → ≤300.
 4. Verificá que los tokens principales del TÍTULO RECOMENDADO
    aparezcan en los primeros 2 párrafos.
+5. Releé cada título y verificá que la ÚLTIMA PALABRA esté COMPLETA (no truncada). Si está cortada, remové palabras enteras hasta que entre con palabras completas dentro de los 60 chars.
+6. Contá apariciones del SUSTANTIVO CENTRAL del producto (ancla) en la descripción incluyendo FAQs → debe ser ≤8. Si excede, rotá con sinónimos contextuales y volvé a contar.
 
 Si alguno falla, REESCRIBÍ esa parte antes de entregar la respuesta
 final. No marques el checklist como aprobado si algún ítem no cumple.
