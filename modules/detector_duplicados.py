@@ -620,6 +620,109 @@ def _son_variantes_por_attributes(items_attrs: list) -> tuple:
     return False, ''
 
 
+# ── Subdivisión por clave de duplicación (regla del usuario, 09/05/2026) ─────
+#
+# Regla estricta: dos publicaciones son duplicado SI Y SOLO SI son idénticas en
+# TODOS estos ejes: precio (±$50 por redondeo), listing_type, free_shipping,
+# color, talle. Si difieren en cualquiera → NO son duplicado, no aparecen en la
+# sección /duplicados.
+#
+# Esto reemplaza la lógica anterior basada en clusters de similitud de título +
+# clasificación por severidad (puro/mixto/legitimo/subperformante/sano), que
+# generaba 47% de falsos positivos por no comparar precio y por agrupar items
+# con variantes legítimas en clusters "puros".
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _extraer_token_variante(titulo: str, tokens_set: frozenset) -> str:
+    """Devuelve el primer token de variante (color o talle) encontrado en el
+    título normalizado, o cadena vacía si no hay match.
+
+    Fallback usado cuando los attributes oficiales de ML no devuelven el dato.
+    """
+    norm = _normalizar_titulo(titulo)
+    for tok in norm.split():
+        if tok in tokens_set:
+            return tok
+    return ''
+
+
+def _clave_duplicacion(item: dict, attrs_oficiales: list) -> tuple:
+    """Devuelve la clave que identifica el item para detección de duplicados
+    estricta según la regla del usuario.
+
+    Items con la misma clave son duplicados entre sí (violan política ML).
+    Items con clave distinta NO son duplicados (variación legítima).
+
+    La clave se compone de:
+      - precio_bucket: precio redondeado a múltiplo de 100 (tolerancia ±$50)
+      - listing: 'classic' / 'premium' / '' (vía _normalizar_listing)
+      - free_shipping: True / False
+      - color: extraído de attribute oficial COLOR/COLOR_NAME/MAIN_COLOR, o
+               como fallback del título (matchea _TOKENS_COLOR)
+      - talle: extraído de attribute oficial SIZE/SIZE_NAME/SIZE_GRID_ID, o
+               como fallback del título (matchea _TOKENS_TALLE)
+    """
+    precio = float(item.get('precio') or 0)
+    precio_bucket = int(round(precio / 100.0)) * 100
+
+    listing = _normalizar_listing(item.get('listing_type', ''))
+    free_shipping = bool(item.get('free_shipping'))
+
+    attrs_idx = _attrs_index_por_id(attrs_oficiales or [])
+    color = (
+        attrs_idx.get('COLOR')
+        or attrs_idx.get('COLOR_NAME')
+        or attrs_idx.get('MAIN_COLOR')
+        or ''
+    ).strip().lower()
+    if not color:
+        color = _extraer_token_variante(item.get('titulo', ''), _TOKENS_COLOR)
+
+    talle = (
+        attrs_idx.get('SIZE')
+        or attrs_idx.get('SIZE_NAME')
+        or attrs_idx.get('SIZE_GRID_ID')
+        or ''
+    ).strip().lower()
+    if not talle:
+        talle = _extraer_token_variante(item.get('titulo', ''), _TOKENS_TALLE)
+
+    return (precio_bucket, listing, free_shipping, color, talle)
+
+
+def _subdividir_cluster(cluster_items: list[dict],
+                        attrs_por_item: dict | None = None) -> list[list[dict]]:
+    """Subdivide un cluster en sub-clusters según la clave de duplicación.
+
+    Cada sub-cluster devuelto contiene items con clave idéntica → son duplicados
+    estrictos entre sí (mismo precio, listing, free_shipping, color, talle).
+    Items con clave única quedan en sub-clusters de tamaño 1 (no son duplicados
+    por sí mismos y deben filtrarse después).
+
+    Args:
+        cluster_items: items del cluster original (output de _construir_clusters).
+        attrs_por_item: dict {item_id: list_attributes} con los attributes
+                        oficiales de ML. Si vacío, usa fallback de título.
+
+    Returns:
+        list[list[dict]] — uno por clave única encontrada.
+    """
+    if not cluster_items:
+        return []
+    if len(cluster_items) == 1:
+        return [cluster_items]
+
+    grupos: dict[tuple, list[dict]] = {}
+    for it in cluster_items:
+        iid = it.get('id', '')
+        attrs = (attrs_por_item or {}).get(iid, [])
+        clave = _clave_duplicacion(it, attrs)
+        grupos.setdefault(clave, []).append(it)
+
+    return list(grupos.values())
+
+
 # ── Clasificación de severidad ───────────────────────────────────────────────
 
 def _clasificar_cluster(cluster_items: list[dict],
