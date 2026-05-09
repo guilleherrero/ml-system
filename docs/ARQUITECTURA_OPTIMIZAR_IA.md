@@ -598,7 +598,7 @@ keywords, distribución de longitudes, scoring, clustering, prompts de Haiku.
 
 **Autorizado por:** usuario (Guille) en sesión Cowork del 07/05/2026, aplicado el 09/05/2026.
 **Hash antes:** `74783469aeae1d4c12bec279d034dff3`
-**Hash después:** _(regenerar después del cambio)_
+**Hash después:** `5bc4888d59ed6fd2a4d1eea95d607372`
 **Función modificada:** `_build_synthesis_prompt` (única función tocada).
 **Diff:** +25 líneas, +1 modificada, 0 borradas.
 
@@ -640,8 +640,9 @@ mínimo 5), distribución de longitudes, scoring, clustering, prompts de
 Haiku, jerarquía de keywords en títulos, estructura de FAQs.
 
 **Validación:**
-- `tests/run_regresion.sh` PASS (warning de hash, esperado y autorizado).
-- Hash baseline regenerado a _(completar después del cambio)_.
+- `tests/run_regresion.sh` PASS limpio (sin warning, hash baseline
+  regenerado y commiteado en el mismo hotfix).
+- Hash baseline regenerado a `5bc4888d59ed6fd2a4d1eea95d607372`.
 - Pendiente: validación manual en producción de 1 optimización (verificar
   que no hay palabras truncadas en títulos generados y que el sustantivo
   central de la descripción aparece ≤8 veces).
