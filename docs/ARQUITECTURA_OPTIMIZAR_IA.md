@@ -593,3 +593,55 @@ keywords, distribución de longitudes, scoring, clustering, prompts de Haiku.
 - Hash baseline regenerado a `74783469aeae1d4c12bec279d034dff3`.
 - Pendiente: validación manual en producción de 1 optimización (verificar
   ausencia de emojis en descripción y de líneas con `□` o "CHECKLIST").
+
+### 2026-05-09 — hotfix prompt: anti-truncamiento de título + densidad de ancla del producto
+
+**Autorizado por:** usuario (Guille) en sesión Cowork del 07/05/2026, aplicado el 09/05/2026.
+**Hash antes:** `74783469aeae1d4c12bec279d034dff3`
+**Hash después:** _(regenerar después del cambio)_
+**Función modificada:** `_build_synthesis_prompt` (única función tocada).
+**Diff:** +25 líneas, +1 modificada, 0 borradas.
+
+**Motivación:** auditoría de output real del 07/05/2026 detectó dos defectos:
+- Caso "Faja Reductora Postparto Cesárea Mujer Abdominal Doble Ajust" — palabra
+  "Ajuste" truncada a "Ajust" para cumplir 60 chars. Genera erosión visual de
+  profesionalismo y posible bajada de conversión.
+- Caso descripción de la misma faja — sustantivo "faja" usado 16 veces en
+  ~750 palabras (densidad ~2.1%). Aunque la keyword_principal completa
+  ("faja reductora") cumple las 2-3 apariciones, el sustantivo central
+  (ancla del producto) generaba fatiga de lectura sin que el prompt lo
+  regulara.
+
+**Cambios al prompt (todos en `_build_synthesis_prompt`):**
+
+1. En el bloque `── TÍTULOS — REGLAS DEL ALGORITMO ML (PROHIBICIONES ABSOLUTAS) ──`
+   se agregó una nueva prohibición explícita contra cortar palabras a la
+   mitad para llegar a 60 chars, con ejemplo prohibido y ejemplo correcto.
+
+2. En el bloque `DISTRIBUCIÓN DE KEYWORDS` (sección DESCRIPCIÓN) se agregó
+   una nueva regla "ANCLA DEL PRODUCTO" con:
+   - Límite máximo de 8 apariciones del sustantivo central
+   - Estrategia de rotación obligatoria por tercios
+   - Ejemplos de sinónimos contextuales por categoría
+   - Instrucción de conteo manual antes de devolver la descripción
+
+3. Se actualizó el CHECKLIST DE VALIDACIÓN INTERNA con dos nuevos ítems:
+   - Última palabra del título completa (no truncada)
+   - Ancla del producto ≤8 apariciones
+
+4. Se agregaron dos pasos a la AUTO-VERIFICACIÓN OBLIGATORIA (pasos 5 y 6)
+   para verificar truncamiento de título y conteo de ancla.
+
+**No modificado:** lógica de los 7 sub-módulos (M1-M7), constantes
+(`_ML_SCORE_WEIGHTS`, `_CATEGORY_CONTEXT`, `_PROMO_WORDS_SEO`, etc.),
+reglas de los 9 bloques de descripción, política de keywords originales
+(keyword_principal sigue limitada a 2-3 apariciones, long_tail sigue en
+mínimo 5), distribución de longitudes, scoring, clustering, prompts de
+Haiku, jerarquía de keywords en títulos, estructura de FAQs.
+
+**Validación:**
+- `tests/run_regresion.sh` PASS (warning de hash, esperado y autorizado).
+- Hash baseline regenerado a _(completar después del cambio)_.
+- Pendiente: validación manual en producción de 1 optimización (verificar
+  que no hay palabras truncadas en títulos generados y que el sustantivo
+  central de la descripción aparece ≤8 veces).
