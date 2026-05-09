@@ -1470,6 +1470,22 @@ def audit_title(title: str) -> list:
             "sugerencia": "Limpiar el título — pueden afectar el parsing del algoritmo",
         })
 
+    # ──────────────────────────────────────────────────────────────────
+    # Regla 9 — Última palabra posiblemente truncada (hotfix #2 09/05/2026)
+    # Solo flagea cuando el título está en zona de riesgo (≥58 chars)
+    # Y la última palabra termina en sufijo sospechoso de truncamiento.
+    # ──────────────────────────────────────────────────────────────────
+    palabras_titulo = (title or "").strip().split()
+    if palabras_titulo and len(title or "") >= 58:
+        ultima_palabra = palabras_titulo[-1]
+        if _palabra_truncada(ultima_palabra):
+            violations.append({
+                "nivel":      "critico",
+                "regla":      "Última palabra posiblemente truncada",
+                "detalle":    f"El título termina en '{ultima_palabra}', que parece cortado al alcanzar 60 chars",
+                "sugerencia": "Remover la última palabra y reformular para que el título entre con palabras completas (mejor 55 chars completos que 60 con la última cortada)",
+            })
+
     return violations
 
 
