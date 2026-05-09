@@ -2177,6 +2177,21 @@ DISTRIBUCIÓN DE KEYWORDS:
 - keyword_principal: 2–3 apariciones en total — densidad objetivo ~1.5%
 - keywords_secundarias: 2–3 apariciones cada una
 - long_tail: mínimo 5 frases distribuidas naturalmente — nunca forzadas
+- ANCLA DEL PRODUCTO (sustantivo central, ej: "faja", "cortador", "lente"): MÁXIMO 8 apariciones en TODA la descripción incluyendo FAQs
+  → La keyword_principal ya está limitada a 2-3 apariciones; ESTA regla es para el sustantivo del producto
+  → El sustantivo central tiende a sobre-aparecer porque es el ancla semántica del producto
+  → Si excedés 8 apariciones, ROTAR con sinónimos contextuales o variantes semánticas
+  → Estrategia de rotación obligatoria por tercios de la descripción:
+     · Tercio 1 (apertura + qué es + cómo funciona): usar ancla directamente — máximo 4-5 apariciones
+     · Tercio 2 (beneficios + diferenciación): rotar entre ancla y 2-3 sinónimos contextuales
+     · Tercio 3 + FAQs (objeciones + cierre + preguntas): privilegiar sinónimos
+  → Ejemplos de sinónimos por categoría (usar el más natural del contexto):
+     · "faja" → "prenda", "soporte", "compresión", "diseño", "pieza"
+     · "cortador" → "herramienta", "dispositivo", "accesorio"
+     · "lente" → "óptica", "accesorio fotográfico", "pieza"
+     · "crema" → "fórmula", "tratamiento", "producto", "textura"
+     · "auricular" → "dispositivo", "modelo", "diseño"
+  → Antes de devolver la descripción, contar manualmente las apariciones del sustantivo principal del producto. Si superan 8, reescribir el bloque más cargado con sinónimos.
 - PRIMERA ORACIÓN: keyword_principal exacta en la oración inicial.
   PRIMEROS 500 CHARS: incluir la keyword_principal una vez + al menos
   una variante semántica del cluster.
