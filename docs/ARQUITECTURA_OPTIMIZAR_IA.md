@@ -652,7 +652,7 @@ Haiku, jerarquía de keywords en títulos, estructura de FAQs.
 **Autorizado por:** usuario (Guille) en sesión Cowork del 09/05/2026, después de validación post-deploy del hotfix anterior.
 
 **Hash antes:** `5bc4888d59ed6fd2a4d1eea95d607372`
-**Hash después:** _(regenerar después del cambio)_
+**Hash después:** `965c1c0698c58663e0d59679b0e1acde`
 
 **Funciones modificadas / agregadas:**
 - `_build_synthesis_prompt` (modificada — bloque PROHIBICIONES ABSOLUTAS de TÍTULOS reforzado)
@@ -712,7 +712,9 @@ estructura de FAQs.
 
 **Validación post-deploy:**
 - `tests/run_regresion.sh` PASS limpio.
-- Hash baseline regenerado a _(completar después del cambio)_.
+- Hash baseline regenerado a `965c1c0698c58663e0d59679b0e1acde`.
+- Asserts unitarios de `_palabra_truncada` y `_limpiar_titulo_truncado`
+  ejecutados en REPL antes del deploy: todos OK.
 - Caso testigo: regenerar optimización del MLA1699336163 y verificar que el
   TÍTULO RECOMENDADO no contenga "Ajust" o similar truncamiento. Si el LLM
   vuelve a generar truncamiento, el log debe mostrar "Título recomendado
