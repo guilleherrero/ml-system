@@ -2113,12 +2113,30 @@ Formato: CANTIDAD SUGERIDA: [N] | Tipos: [fondo blanco, lifestyle, detalle, comp
 {"──── ALERTA CATÁLOGO ────" + chr(10) + "Explicar concisamente: ventajas de vincularse (mejor posicionamiento, comparte reseñas) y desventajas (precio igualado al catálogo). ¿Conviene en este caso?" if catalog_available and not catalog_linked else ""}
 
 ──── TÍTULOS — REGLAS DEL ALGORITMO ML (PROHIBICIONES ABSOLUTAS) ────
+✗✗✗ REGLA #1 INVIOLABLE — INTEGRIDAD DE PALABRA ✗✗✗
+   La última palabra del título SIEMPRE debe estar completa.
+   Cortar una palabra para llegar a 60 chars está PROHIBIDO sin excepciones, incluso si eso te hace perder cobertura SEO.
+   El sistema TIENE post-procesamiento determinístico que detecta y elimina palabras truncadas — si dejás una truncada, el código la borrará y vas a perder CONTROL del título final.
+
+   EJEMPLOS PROHIBIDOS (casos reales detectados en producción):
+   - "Faja Reductora Postparto Cesárea Mujer Abdominal Doble Ajust"  → "Ajuste" cortado a "Ajust" (60/60)
+   - "Faja Postparto Reductora Mujer Bambu Lumbar Ajustabl"          → "Ajustable" cortado a "Ajustabl" (60/60)
+   - "Cortador Pelo Profesional Inalambrico Recargable Compres"     → "Compresión" cortado a "Compres"
+   - Cualquier palabra que termine en sufijos sospechosos como -st, -bl, -pr, -tr, -ct, -mn, -mp, -rt, -rs
+
+   EJEMPLOS CORRECTOS:
+   - "Faja Reductora Postparto Cesárea Mujer Doble Ajuste"           (51 chars, palabras completas)
+   - "Faja Postparto Cesárea Bambú Doble Ajuste Reductora"           (52 chars, palabras completas)
+
+   PROCEDIMIENTO OBLIGATORIO ANTES DE DEVOLVER CUALQUIER TÍTULO:
+   1. Generá el título.
+   2. Contá los caracteres exactos.
+   3. Si el conteo da 58, 59 o 60: leé la ÚLTIMA PALABRA letra por letra.
+   4. Si la última palabra termina en consonante atípica española (-st, -bl, -pr, -tr, -ct, -pt, -rb, -mn, -mp, -rs, -rt, -ng) → ESTÁ TRUNCADA → REGENERÁ removiendo una palabra completa.
+   5. PRIORIDAD: 55 chars con palabras completas > 60 chars con la última cortada.
+   6. El SEO de 5 chars extra NUNCA compensa la pérdida de profesionalismo + el rechazo del post-procesamiento.
+
 ✗ Más de 60 caracteres — contar exactamente antes de escribir
-✗ Cortar una palabra a la mitad para llegar a 60 chars — si excedés, REMOVER palabras enteras
-  → Ejemplo PROHIBIDO: "Faja Reductora Postparto Cesárea Mujer Abdominal Doble Ajust" (palabra "Ajuste" truncada a "Ajust")
-  → Ejemplo CORRECTO: "Faja Reductora Postparto Cesárea Mujer Doble Ajuste" (51 chars, todas las palabras completas)
-  → Mejor un título de 55 chars con palabras completas que uno de 60 con la última truncada
-  → Después de generar cada título, releé carácter por carácter la última palabra y verificá que esté completa
 ✗ Signos de puntuación o símbolos: @ # * - ! _ + / | ; : . , ( ) [ ]
 ✗ Palabras en MAYÚSCULAS SOSTENIDAS
 ✗ Palabras prohibidas por ML: "envío gratis", "cuotas", "nuevo", "usado", "oferta", "promo", "oficial"
