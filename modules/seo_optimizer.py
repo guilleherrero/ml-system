@@ -1316,6 +1316,69 @@ _TITLE_STOPWORDS_START = {"de", "para", "con", "el", "la", "los", "las", "un", "
                            "y", "o", "a", "en", "por", "al", "del"}
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Anti-truncamiento de título — agregado en hotfix #2 del 09/05/2026
+# ──────────────────────────────────────────────────────────────────────
+
+# Sufijos sospechosos de truncamiento — palabras españolas casi nunca
+# terminan así. Si la última palabra del título termina en uno de estos
+# sufijos Y el título está en zona de riesgo (≥58 chars), se asume
+# truncamiento y se remueve la palabra.
+_SUFIJOS_TRUNCAMIENTO: tuple = (
+    "st", "bl", "pr", "tr", "ct", "pt", "rb", "mn", "mp",
+    "rt", "ng", "rs", "zh", "br",
+)
+
+# Lista blanca de palabras españolas (o préstamos comunes) cortas que
+# legítimamente terminan en consonante atípica. Excepciones a la regla
+# de _SUFIJOS_TRUNCAMIENTO. Mantener acotada — agregar caso por caso
+# si aparece falso positivo.
+_PALABRAS_CONSONANTE_OK: frozenset = frozenset({
+    "club", "stop", "test", "fast", "post", "kit", "set", "play",
+    "rock", "punk", "art", "cult", "loft", "mp3", "mp4",
+    "ml", "kg", "cm", "mm", "lt",
+})
+
+
+def _palabra_truncada(palabra: str) -> bool:
+    """Detecta si una palabra parece haber sido cortada al alcanzar el
+    límite de caracteres del título.
+
+    Heurística conservadora — solo flagea casos claros de truncamiento.
+    Falsos positivos: bajos. Falsos negativos: posibles pero aceptables.
+    """
+    palabra = (palabra or "").strip().lower()
+    # Palabras muy cortas (1-2 chars) o muy largas (>8 chars) no se evalúan
+    if len(palabra) > 8 or len(palabra) < 3:
+        return False
+    if palabra in _PALABRAS_CONSONANTE_OK:
+        return False
+    return palabra.endswith(_SUFIJOS_TRUNCAMIENTO)
+
+
+def _limpiar_titulo_truncado(titulo: str) -> tuple:
+    """Si detecta que la última palabra del título fue truncada al
+    chocar con el límite de chars, la remueve.
+
+    Solo aplica si el título está en zona de riesgo (≥58 chars) Y tiene
+    al menos 4 palabras (para no destruir títulos cortos).
+
+    Returns:
+        (titulo_limpio: str, fue_corregido: bool)
+    """
+    titulo = (titulo or "").strip()
+    if len(titulo) < 58:
+        return titulo, False
+    palabras = titulo.split()
+    if len(palabras) < 4:
+        return titulo, False
+    ultima = palabras[-1]
+    if _palabra_truncada(ultima):
+        nuevo = " ".join(palabras[:-1]).strip()
+        return nuevo, True
+    return titulo, False
+
+
 def audit_title(title: str) -> list:
     """Audita el título actual contra las reglas de ML.
     Devuelve lista de dicts con {nivel, regla, detalle, sugerencia}.
@@ -1406,6 +1469,22 @@ def audit_title(title: str) -> list:
             "detalle":    "Espacios dobles o tabulaciones detectados",
             "sugerencia": "Limpiar el título — pueden afectar el parsing del algoritmo",
         })
+
+    # ──────────────────────────────────────────────────────────────────
+    # Regla 9 — Última palabra posiblemente truncada (hotfix #2 09/05/2026)
+    # Solo flagea cuando el título está en zona de riesgo (≥58 chars)
+    # Y la última palabra termina en sufijo sospechoso de truncamiento.
+    # ──────────────────────────────────────────────────────────────────
+    palabras_titulo = (title or "").strip().split()
+    if palabras_titulo and len(title or "") >= 58:
+        ultima_palabra = palabras_titulo[-1]
+        if _palabra_truncada(ultima_palabra):
+            violations.append({
+                "nivel":      "critico",
+                "regla":      "Última palabra posiblemente truncada",
+                "detalle":    f"El título termina en '{ultima_palabra}', que parece cortado al alcanzar 60 chars",
+                "sugerencia": "Remover la última palabra y reformular para que el título entre con palabras completas (mejor 55 chars completos que 60 con la última cortada)",
+            })
 
     return violations
 
@@ -2113,12 +2192,30 @@ Formato: CANTIDAD SUGERIDA: [N] | Tipos: [fondo blanco, lifestyle, detalle, comp
 {"──── ALERTA CATÁLOGO ────" + chr(10) + "Explicar concisamente: ventajas de vincularse (mejor posicionamiento, comparte reseñas) y desventajas (precio igualado al catálogo). ¿Conviene en este caso?" if catalog_available and not catalog_linked else ""}
 
 ──── TÍTULOS — REGLAS DEL ALGORITMO ML (PROHIBICIONES ABSOLUTAS) ────
+✗✗✗ REGLA #1 INVIOLABLE — INTEGRIDAD DE PALABRA ✗✗✗
+   La última palabra del título SIEMPRE debe estar completa.
+   Cortar una palabra para llegar a 60 chars está PROHIBIDO sin excepciones, incluso si eso te hace perder cobertura SEO.
+   El sistema TIENE post-procesamiento determinístico que detecta y elimina palabras truncadas — si dejás una truncada, el código la borrará y vas a perder CONTROL del título final.
+
+   EJEMPLOS PROHIBIDOS (casos reales detectados en producción):
+   - "Faja Reductora Postparto Cesárea Mujer Abdominal Doble Ajust"  → "Ajuste" cortado a "Ajust" (60/60)
+   - "Faja Postparto Reductora Mujer Bambu Lumbar Ajustabl"          → "Ajustable" cortado a "Ajustabl" (60/60)
+   - "Cortador Pelo Profesional Inalambrico Recargable Compres"     → "Compresión" cortado a "Compres"
+   - Cualquier palabra que termine en sufijos sospechosos como -st, -bl, -pr, -tr, -ct, -mn, -mp, -rt, -rs
+
+   EJEMPLOS CORRECTOS:
+   - "Faja Reductora Postparto Cesárea Mujer Doble Ajuste"           (51 chars, palabras completas)
+   - "Faja Postparto Cesárea Bambú Doble Ajuste Reductora"           (52 chars, palabras completas)
+
+   PROCEDIMIENTO OBLIGATORIO ANTES DE DEVOLVER CUALQUIER TÍTULO:
+   1. Generá el título.
+   2. Contá los caracteres exactos.
+   3. Si el conteo da 58, 59 o 60: leé la ÚLTIMA PALABRA letra por letra.
+   4. Si la última palabra termina en consonante atípica española (-st, -bl, -pr, -tr, -ct, -pt, -rb, -mn, -mp, -rs, -rt, -ng) → ESTÁ TRUNCADA → REGENERÁ removiendo una palabra completa.
+   5. PRIORIDAD: 55 chars con palabras completas > 60 chars con la última cortada.
+   6. El SEO de 5 chars extra NUNCA compensa la pérdida de profesionalismo + el rechazo del post-procesamiento.
+
 ✗ Más de 60 caracteres — contar exactamente antes de escribir
-✗ Cortar una palabra a la mitad para llegar a 60 chars — si excedés, REMOVER palabras enteras
-  → Ejemplo PROHIBIDO: "Faja Reductora Postparto Cesárea Mujer Abdominal Doble Ajust" (palabra "Ajuste" truncada a "Ajust")
-  → Ejemplo CORRECTO: "Faja Reductora Postparto Cesárea Mujer Doble Ajuste" (51 chars, todas las palabras completas)
-  → Mejor un título de 55 chars con palabras completas que uno de 60 con la última truncada
-  → Después de generar cada título, releé carácter por carácter la última palabra y verificá que esté completa
 ✗ Signos de puntuación o símbolos: @ # * - ! _ + / | ; : . , ( ) [ ]
 ✗ Palabras en MAYÚSCULAS SOSTENIDAS
 ✗ Palabras prohibidas por ML: "envío gratis", "cuotas", "nuevo", "usado", "oferta", "promo", "oficial"
@@ -2396,8 +2493,16 @@ def _parse_synthesis(text: str) -> dict:
             (l.replace("Estrategia:", "").strip() for l in lines if l.lower().startswith("estrategia")), ""
         )
         if titulo:
+            titulo_capped = (titulo or "").strip()[:60].strip()
+            titulo_limpio, fue_corregido = _limpiar_titulo_truncado(titulo_capped)
+            if fue_corregido:
+                _logger.warning(
+                    "[seo_optimizer] Título alternativo %s venía truncado del LLM "
+                    "(o el cap a 60 lo cortó), palabra removida automáticamente: '%s' → '%s'",
+                    n, titulo_capped, titulo_limpio
+                )
             titulos.append({
-                "titulo":     titulo[:60],
+                "titulo":     titulo_limpio,
                 "estrategia": estrategia,
             })
 

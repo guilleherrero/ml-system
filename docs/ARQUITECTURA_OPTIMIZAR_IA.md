@@ -646,3 +646,77 @@ Haiku, jerarquía de keywords en títulos, estructura de FAQs.
 - Pendiente: validación manual en producción de 1 optimización (verificar
   que no hay palabras truncadas en títulos generados y que el sustantivo
   central de la descripción aparece ≤8 veces).
+
+### 2026-05-09 (segunda autorización del día) — hotfix #2: 3 capas anti-truncamiento de título
+
+**Autorizado por:** usuario (Guille) en sesión Cowork del 09/05/2026, después de validación post-deploy del hotfix anterior.
+
+**Hash antes:** `5bc4888d59ed6fd2a4d1eea95d607372`
+**Hash después:** `965c1c0698c58663e0d59679b0e1acde`
+
+**Funciones modificadas / agregadas:**
+- `_build_synthesis_prompt` (modificada — bloque PROHIBICIONES ABSOLUTAS de TÍTULOS reforzado)
+- `_palabra_truncada` (NUEVA — helper de detección heurística)
+- `_limpiar_titulo_truncado` (NUEVA — helper de corrección determinística)
+- `_parse_synthesis` (modificada — aplica `_limpiar_titulo_truncado` a cada título extraído)
+- `audit_title` (modificada — nueva regla 9 "Última palabra posiblemente truncada")
+
+**Constantes nuevas:**
+- `_SUFIJOS_TRUNCAMIENTO` — sufijos consonánticos atípicos en español
+- `_PALABRAS_CONSONANTE_OK` — lista blanca de excepciones (club, stop, test, etc.)
+
+**Diff aproximado:** +110 líneas, +6 modificadas, 0 borradas.
+
+**Motivación:** validación post-deploy del hotfix anterior (a79ebfc del 09/05/2026)
+detectó que la regla anti-truncamiento del prompt no era suficiente. En el caso
+testigo (MLA1699336163, Faja Postparto Cesárea, optimización 14:45), el TÍTULO
+RECOMENDADO devolvió "Faja Postparto Cesarea Abdominal Reductora Bambu Doble
+Ajust" (60/60 chars, "Ajuste" cortado a "Ajust"). Los títulos 2 y 3 sí
+respetaron la regla, pero el RECOMENDADO falló — y es justamente el que el
+usuario aplica.
+
+El razonamiento del LLM mostró priorización de densidad de keywords sobre
+integridad de palabra. La solución requería garantía determinística en el
+código además del refuerzo en el prompt.
+
+**Estrategia de 3 capas:**
+
+1. **Capa 1 (LLM)** — Reforzamiento del prompt: regla movida a posición #1
+   del bloque PROHIBICIONES, con énfasis visual ("✗✗✗"), 3 ejemplos reales
+   de truncamiento detectados, lista de sufijos sospechosos en español, y
+   procedimiento obligatorio paso a paso. La regla ahora menciona explícitamente
+   que existe post-procesamiento — esto presiona al LLM a no perder control
+   del título final.
+
+2. **Capa 2 (parser)** — Detección y corrección automática en `_parse_synthesis`.
+   Para cada título extraído (3 alternativos + 1 recomendado), se aplica
+   `_limpiar_titulo_truncado` que:
+   - Si el título tiene <58 chars → no toca (no hay riesgo)
+   - Si tiene ≥58 chars Y la última palabra coincide con `_palabra_truncada`
+     (sufijo sospechoso, no en lista blanca, longitud 3-8) → remueve la
+     última palabra y loggea warning
+   - Falsos positivos esperados: bajos (lista blanca cubre los casos comunes).
+   - Falsos negativos: posibles (palabras truncadas que terminan en vocales
+     o "n"/"s" no se detectan, pero esos casos son raros en la práctica).
+
+3. **Capa 3 (auditor)** — Nueva regla 9 en `audit_title()` que detecta
+   truncamiento en el TÍTULO ACTUAL del producto (no solo en los generados),
+   permitiendo al usuario ver en UI si su título publicado tiene este problema.
+
+**No modificado:** lógica de los 7 sub-módulos M1-M7, constantes existentes
+(`_ML_SCORE_WEIGHTS`, `_CATEGORY_CONTEXT`, `_PROMO_WORDS_SEO`, `_TITLE_*`),
+reglas de los 9 bloques de descripción, política de keywords (incluyendo la
+regla "ANCLA DEL PRODUCTO" del hotfix anterior), distribución de longitudes,
+scoring, clustering, prompts de Haiku, jerarquía de keywords en títulos,
+estructura de FAQs.
+
+**Validación post-deploy:**
+- `tests/run_regresion.sh` PASS limpio.
+- Hash baseline regenerado a `965c1c0698c58663e0d59679b0e1acde`.
+- Asserts unitarios de `_palabra_truncada` y `_limpiar_titulo_truncado`
+  ejecutados en REPL antes del deploy: todos OK.
+- Caso testigo: regenerar optimización del MLA1699336163 y verificar que el
+  TÍTULO RECOMENDADO no contenga "Ajust" o similar truncamiento. Si el LLM
+  vuelve a generar truncamiento, el log debe mostrar "Título recomendado
+  venía truncado del LLM, última palabra removida automáticamente" y el
+  título devuelto al frontend debe tener todas las palabras completas.
