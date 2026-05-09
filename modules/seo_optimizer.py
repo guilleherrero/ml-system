@@ -2477,8 +2477,16 @@ def _parse_synthesis(text: str) -> dict:
             (l.replace("Estrategia:", "").strip() for l in lines if l.lower().startswith("estrategia")), ""
         )
         if titulo:
+            titulo_capped = (titulo or "").strip()[:60].strip()
+            titulo_limpio, fue_corregido = _limpiar_titulo_truncado(titulo_capped)
+            if fue_corregido:
+                _logger.warning(
+                    "[seo_optimizer] Título alternativo %s venía truncado del LLM "
+                    "(o el cap a 60 lo cortó), palabra removida automáticamente: '%s' → '%s'",
+                    n, titulo_capped, titulo_limpio
+                )
             titulos.append({
-                "titulo":     titulo[:60],
+                "titulo":     titulo_limpio,
                 "estrategia": estrategia,
             })
 
