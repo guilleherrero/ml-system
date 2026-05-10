@@ -177,10 +177,10 @@
 <div class="dup-card severidad-{{ c.severidad }}" id="cluster-{{ c.cluster_id }}">
   <div class="dup-header">
     <span class="severidad-badge {{ c.severidad }}">
-      {% if c.severidad == 'puro' %}Duplicado prohibido
-      {% elif c.severidad == 'mixto' %}Mixto (parcialmente legítimo)
-      {% elif c.severidad == 'legitimo' %}Combinación legítima
-      {% else %}Subperformante{% endif %}
+      {% if c.severidad == 'puro' %}DUPLICADO PROHIBIDO
+      {% elif c.severidad == 'mixto' %}DUPLICADO MIXTO
+      {% elif c.severidad == 'legitimo' %}VARIANTES LEGÍTIMAS
+      {% else %}SUB-PERFORMANTE{% endif %}
     </span>
     <span class="titulo">{{ c.titulo_corto or 'Cluster sin nombre' }}</span>
     <span class="meta">{{ c.items|length }} MLAs</span>
@@ -197,6 +197,15 @@
   </div>
 
   {% if c.resumen_recomendacion %}
+  {% if c.severidad == 'legitimo' %}
+  <div class="recomendacion-banner" style="background:#ecfdf5;border-color:#a7f3d0">
+    <i class="bi bi-info-circle-fill" style="color:#059669;flex-shrink:0;margin-top:.1rem"></i>
+    <div>
+      <div style="font-weight:600;color:#065f46;margin-bottom:.15rem">Variantes legítimas — no requieren acción</div>
+      <div style="color:#047857;line-height:1.45">{{ c.resumen_recomendacion }}</div>
+    </div>
+  </div>
+  {% else %}
   <div class="recomendacion-banner">
     <i class="bi bi-lightbulb-fill" style="color:#d97706;flex-shrink:0;margin-top:.1rem"></i>
     <div>
@@ -205,14 +214,17 @@
     </div>
   </div>
   {% endif %}
+  {% endif %}
 
   <table class="dup-table">
     <thead>
       <tr>
         <th style="width:36px">
+          {% if c.severidad != 'legitimo' %}
           <input type="checkbox" class="select-all-cluster"
                  onclick="toggleAll('{{ c.cluster_id }}', this.checked)"
                  title="Seleccionar todas (excepto ganadora)">
+          {% endif %}
         </th>
         <th>Publicación</th>
         <th class="text-end">Precio</th>
@@ -229,7 +241,10 @@
       <tr class="{{ 'ganadora' if it.es_ganadora else '' }}"
           data-mla="{{ it.id }}" data-ventas="{{ it.ventas_30d }}">
         <td class="text-center">
-          {% if it.es_ganadora %}
+          {% if c.severidad == 'legitimo' %}
+            <i class="bi bi-check-circle-fill" style="color:#059669;font-size:.95rem"
+               title="Variante legítima — segmenta compradores"></i>
+          {% elif it.es_ganadora %}
             <i class="bi bi-shield-fill-check" style="color:#15803d;font-size:1rem"
                title="Ganadora — protegida (no se puede pausar)"></i>
           {% else %}
@@ -288,6 +303,13 @@
   </table>
 
   <div class="action-row">
+    {% if c.severidad == 'legitimo' %}
+    <span style="font-size:.78rem;color:#065f46;background:#ecfdf5;padding:.4rem .7rem;border-radius:6px;border:1px solid #a7f3d0">
+      <i class="bi bi-check-circle-fill me-1"></i>
+      <strong>NO requiere acción.</strong>
+      Estas publicaciones segmentan compradores legítimamente — no se pueden marcar para pausa.
+    </span>
+    {% else %}
     <button class="btn-pause-batch" onclick="abrirModalPausar('{{ c.cluster_id }}')">
       <i class="bi bi-pause-circle me-1"></i>Pausar seleccionadas
       <span class="count-pill" id="count-{{ c.cluster_id }}">0</span>
@@ -297,6 +319,7 @@
       Las publicaciones con ventas en 30d están protegidas (checkbox bloqueado).
       Para cerrar definitivamente una publicación, hacelo desde ML directamente.
     </span>
+    {% endif %}
     <button class="btn-ignore ms-auto" onclick="abrirModalIgnorar('{{ c.cluster_id }}')">
       <i class="bi bi-eye-slash me-1"></i>Ignorar este cluster
     </button>
