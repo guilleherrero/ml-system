@@ -418,6 +418,17 @@ def require_login():
             pass
     if request.path in _AUTH_EXEMPT:
         return
+    # MCP API token: si Authorization: Bearer <MCP_API_TOKEN> matchea, bypassa el flujo
+    # de login. Pensado para el wrapper MCP que consume el sistema desde Claude.ai/Desktop.
+    # Si MCP_API_TOKEN no está seteado en env, el bypass queda inactivo y el flujo sigue normal.
+    _mcp_token = os.environ.get('MCP_API_TOKEN', '').strip()
+    if _mcp_token:
+        import secrets as _secrets
+        _auth_header = request.headers.get('Authorization', '')
+        _parts = _auth_header.split(None, 1)
+        if len(_parts) == 2 and _parts[0].lower() == 'bearer' \
+                and _secrets.compare_digest(_parts[1], _mcp_token):
+            return
     # Si no existe ningún admin todavía, el sistema funciona sin login
     if needs_setup():
         return
