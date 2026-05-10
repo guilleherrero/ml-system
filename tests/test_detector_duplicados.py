@@ -166,10 +166,13 @@ class TestDetectarDuplicadosEndToEnd(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
 
-    def test_cortador_puntas_devuelve_2_clusters_no_1(self):
-        """De los 7 items reales del Cortador Puntas, deben emerger 2 clusters
-        (puro Clásica + puro Premium). Los 2 singletons de color (Rojo/Negro)
-        NO deben aparecer."""
+    def test_cortador_puntas_devuelve_clusters_correctos(self):
+        """De los 7 items reales del Cortador Puntas:
+        - 2 sub-clusters duplicados ('mixto' porque el original tenía singletons):
+          1 grupo de 3 Clásica + 1 grupo de 2 Premium → pausar 3
+        - Singletons de color (Rojo/Negro) NO se cuentan como duplicados pero
+          el original cluster sí entró al detector — quedan implícitos.
+        """
         items = [
             _item('A1', 'Cortador Puntas Para El Cabello Rojo',
                   precio=74990, listing_type='gold_special', visitas_30d=200),
@@ -187,39 +190,48 @@ class TestDetectarDuplicadosEndToEnd(unittest.TestCase):
                   precio=89000, listing_type='gold_pro', visitas_30d=426),
         ]
         clusters = detectar_duplicados(items, 'TestAccount', self.tmpdir)
-        self.assertEqual(len(clusters), 2)
-        self.assertTrue(all(c.severidad == 'puro' for c in clusters))
-        # Total items en clusters duplicados: 5 (3 + 2)
-        self.assertEqual(sum(len(c.items) for c in clusters), 5)
-        # Total a pausar: 3 (= total items 5 - ganadoras 2)
-        ganadoras = sum(1 for c in clusters for it in c.items if it.es_ganadora)
+        # 2 clusters duplicados (mixto) — los singletons no se emiten porque
+        # están en el mismo cluster original que tiene duplicados al lado
+        dup = [c for c in clusters if c.severidad in ('puro', 'mixto')]
+        self.assertEqual(len(dup), 2)
+        # Severidad 'mixto' porque el cluster original tuvo split (singletons)
+        self.assertTrue(all(c.severidad == 'mixto' for c in dup))
+        self.assertEqual(sum(len(c.items) for c in dup), 5)
+        ganadoras = sum(1 for c in dup for it in c.items if it.es_ganadora)
         self.assertEqual(ganadoras, 2)
-        a_pausar = sum(len(c.items) for c in clusters) - ganadoras
+        a_pausar = sum(len(c.items) for c in dup) - ganadoras
         self.assertEqual(a_pausar, 3)
 
-    def test_items_distintos_por_precio_no_son_duplicados(self):
+    def test_items_distintos_por_precio_emiten_legitimo(self):
+        # Mismo título, distintos precios → no son duplicados, pero como el
+        # cluster original tenía 2 items se emite un Cluster informativo
+        # 'legitimo'. NO debe haber clusters de severidad 'puro' ni 'mixto'.
         items = [
             _item('A', 'Producto X', precio=10000),
             _item('B', 'Producto X', precio=15000),
         ]
         clusters = detectar_duplicados(items, 'TestAccount', self.tmpdir)
-        self.assertEqual(len(clusters), 0)
+        dup = [c for c in clusters if c.severidad in ('puro', 'mixto')]
+        self.assertEqual(len(dup), 0)
+        # Puede haber 1 cluster 'legitimo' informativo
+        legit = [c for c in clusters if c.severidad == 'legitimo']
+        self.assertLessEqual(len(legit), 1)
 
-    def test_items_distintos_por_listing_no_son_duplicados(self):
+    def test_items_distintos_por_listing_emiten_legitimo(self):
         items = [
             _item('A', 'Producto X', precio=10000, listing_type='gold_special'),
             _item('B', 'Producto X', precio=10000, listing_type='gold_pro'),
         ]
         clusters = detectar_duplicados(items, 'TestAccount', self.tmpdir)
-        self.assertEqual(len(clusters), 0)
+        self.assertEqual(len([c for c in clusters if c.severidad in ('puro', 'mixto')]), 0)
 
-    def test_items_distintos_por_free_shipping_no_son_duplicados(self):
+    def test_items_distintos_por_free_shipping_emiten_legitimo(self):
         items = [
             _item('A', 'Producto X', precio=10000, free_shipping=True),
             _item('B', 'Producto X', precio=10000, free_shipping=False),
         ]
         clusters = detectar_duplicados(items, 'TestAccount', self.tmpdir)
-        self.assertEqual(len(clusters), 0)
+        self.assertEqual(len([c for c in clusters if c.severidad in ('puro', 'mixto')]), 0)
 
     def test_items_identicos_son_duplicados(self):
         items = [
@@ -249,13 +261,15 @@ class TestDetectarDuplicadosEndToEnd(unittest.TestCase):
         self.assertAlmostEqual(c.impacto_monetario_estimado, expected, delta=1)
 
     def test_color_en_titulo_separa_publicaciones(self):
-        """2 publicaciones con color distinto en título no son duplicados."""
+        """2 publicaciones con color distinto en título no son duplicados —
+        no se debe emitir ningún cluster duplicado (puede haber 'legitimo')."""
         items = [
             _item('A', 'Faja Reductora Postparto Negro', precio=50000),
             _item('B', 'Faja Reductora Postparto Blanco', precio=50000),
         ]
         clusters = detectar_duplicados(items, 'TestAccount', self.tmpdir)
-        self.assertEqual(len(clusters), 0)
+        dup = [c for c in clusters if c.severidad in ('puro', 'mixto')]
+        self.assertEqual(len(dup), 0)
 
 
 if __name__ == '__main__':

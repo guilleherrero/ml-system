@@ -815,6 +815,45 @@ def _subdividir_cluster(cluster_items: list[dict],
     return list(grupos.values())
 
 
+# Hotfix #3 (09/05/2026): nombres legibles de los 7 ejes de la clave de
+# duplicación, en el mismo orden que el tuple devuelto por _clave_duplicacion.
+_NOMBRES_EJES_CLAVE = (
+    'precio',
+    'tipo de listing (Clásica/Premium)',
+    'envío gratis',
+    'color',
+    'talle',
+    'cuotas',
+    'tipo de envío (Full vs no Full)',
+)
+
+
+def _detectar_ejes_diferentes(sub_grupos: list[list[dict]],
+                               attrs_por_item: dict | None) -> list[str]:
+    """Devuelve los nombres legibles de los ejes en los que difieren los
+    sub-clusters entre sí. Sirve para construir el mensaje de "Las publicaciones
+    segmentan compradores legítimamente — difieren en: ..." en la UI.
+    """
+    if len(sub_grupos) < 2:
+        return []
+    claves = []
+    for s in sub_grupos:
+        if not s:
+            continue
+        it = s[0]
+        meta = (attrs_por_item or {}).get(it.get('id', ''))
+        claves.append(_clave_duplicacion(it, meta))
+    if len(claves) < 2:
+        return []
+    ejes_dif: set[int] = set()
+    for i in range(len(claves)):
+        for j in range(i + 1, len(claves)):
+            for k in range(len(claves[i])):
+                if claves[i][k] != claves[j][k]:
+                    ejes_dif.add(k)
+    return [_NOMBRES_EJES_CLAVE[k] for k in sorted(ejes_dif) if k < len(_NOMBRES_EJES_CLAVE)]
+
+
 # ── Clasificación de severidad ───────────────────────────────────────────────
 
 def _clasificar_cluster(cluster_items: list[dict],
@@ -1060,14 +1099,22 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                      como 'sano' antes de devolver. La UI no los muestra.
 
     Returns:
-      Lista de Cluster (todos severidad 'puro' por definición de la regla
-      estricta del usuario, 09/05/2026), ordenada por impacto_monetario_estimado
-      descendente. Cada Cluster contiene ≥2 items idénticos en precio +
-      listing_type + free_shipping + color + talle.
+      Lista de Cluster ordenada por severidad ('puro' → 'mixto' → 'legitimo')
+      y dentro de cada nivel por impacto_monetario_estimado descendente.
+
+    Severidades emitidas (hotfix #3 09/05/2026):
+      - 'puro':     todos los items del cluster original son duplicados estrictos
+                    entre sí (la subdivisión no encontró diferenciadores).
+      - 'mixto':    el cluster original tenía variantes legítimas Y duplicados.
+                    Se emite un Cluster por cada sub-cluster duplicado, marcado
+                    como 'mixto' para indicar que existen variantes válidas
+                    al lado.
+      - 'legitimo': el cluster original era 100% variantes legítimas (todas las
+                    publicaciones segmentan compradores correctamente). Se emite
+                    1 Cluster informativo por cluster original, sin acción.
 
     Nota: el parámetro `incluir_sanos` quedó vestigial — la subdivisión por
-    clave de duplicación filtra automáticamente las variantes legítimas
-    (sub-clusters de 1 item) sin necesidad de la severidad 'sano'.
+    clave de duplicación filtra automáticamente las variantes legítimas.
     """
     ignorados = cargar_pares_ignorados(alias, data_dir)
     grupos = _construir_clusters(stock_items, ignorados)
@@ -1092,21 +1139,74 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
 
     clusters: list[Cluster] = []
     for grupo_original in grupos:
-        # Subdivisión por clave de duplicación (regla del usuario, 09/05/2026):
-        # cada sub-cluster resultante contiene items idénticos en precio,
-        # listing_type, free_shipping, color y talle. Sub-clusters de tamaño 1
-        # NO son duplicados — se descartan.
+        # Subdivisión por clave de duplicación (7 ejes, hotfix #3 del 09/05/2026):
+        # precio + listing + free_shipping + color + talle + cuotas + logistic.
+        # Sub-clusters de tamaño 1 = variantes legítimas (no duplicados).
         sub_grupos = _subdividir_cluster(grupo_original, attrs_por_item)
-        for grupo in sub_grupos:
-            if len(grupo) < 2:
-                continue   # 1 item solo NO es duplicado de nadie
+        dup_groups = [s for s in sub_grupos if len(s) >= 2]
+        hubo_split = len(sub_grupos) > 1
 
-            # Por construcción de la subdivisión, los items son duplicados
-            # estrictos entre sí → severidad 'puro' por definición.
-            severidad = 'puro'
-            nota_leg = ''
+        # Caso A: el cluster original quedó 100% en variantes legítimas
+        # (no hay sub-cluster con ≥2 items). Si tenía ≥2 items originalmente,
+        # emitir un Cluster informativo 'legitimo' con todos los items.
+        if not dup_groups and len(grupo_original) >= 2:
+            ejes_diff = _detectar_ejes_diferentes(sub_grupos, attrs_por_item)
+            razon = 'Las publicaciones segmentan compradores legítimamente'
+            if ejes_diff:
+                razon += ' — difieren en: ' + ', '.join(ejes_diff)
+            razon += '. NO requieren acción.'
+            ganadora_id = _identificar_ganadora(grupo_original)
+            items_cluster = [
+                ItemCluster(
+                    id=it.get('id', ''),
+                    titulo=it.get('titulo', ''),
+                    precio=float(it.get('precio') or 0),
+                    ventas_30d=int(it.get('ventas_30d') or 0),
+                    visitas_30d=int(it.get('visitas_30d') or 0),
+                    conversion_pct=float(it.get('conversion_pct') or 0),
+                    es_ganadora=(it.get('id') == ganadora_id),
+                    listing_type=it.get('listing_type', ''),
+                    free_shipping=bool(it.get('free_shipping')),
+                    es_legitimo=True,
+                )
+                for it in grupo_original
+            ]
+            items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
+            cluster_id = _generar_cluster_id(it.id for it in items_cluster)
+            clusters.append(Cluster(
+                cluster_id=cluster_id,
+                severidad='legitimo',
+                items=items_cluster,
+                titulo_corto=_titulo_corto(grupo_original),
+                visitas_perdidas_30d=0,
+                impacto_monetario_estimado=0.0,
+                recomendaciones={
+                    it.id: Recomendacion(
+                        accion='mantener',
+                        motivo='Variante legítima — segmenta compradores correctamente.',
+                        pre_seleccionar=False,
+                    ) for it in items_cluster
+                },
+                resumen_recomendacion=razon,
+                nota_legitimidad=razon,
+            ))
+            continue
+
+        # Caso B: hay sub-clusters duplicados. Emitir uno por cada uno con
+        # severidad 'puro' (sin split — todo el original era idéntico) o
+        # 'mixto' (hubo split — había variantes legítimas al lado).
+        ejes_diff = _detectar_ejes_diferentes(sub_grupos, attrs_por_item) if hubo_split else []
+        for grupo in dup_groups:
+            severidad = 'mixto' if hubo_split else 'puro'
+            if severidad == 'puro':
+                nota_leg = 'Coinciden en los 7 ejes (precio, listing, envío, color, talle, cuotas, logistic). Duplicado prohibido por ML.'
+            else:
+                nota_leg = 'Duplicado dentro de un cluster con variantes legítimas'
+                if ejes_diff:
+                    nota_leg += f' (las otras publicaciones del cluster difieren en: {", ".join(ejes_diff)})'
+                nota_leg += '. Pausá las extras de este sub-cluster.'
+
             mapa_leg = {it.get('id', ''): False for it in grupo}
-
             ganadora_id = _identificar_ganadora(grupo)
             visitas_perdidas, impacto = _calcular_impacto_monetario(grupo, ganadora_id)
 
@@ -1125,7 +1225,6 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                 )
                 for it in grupo
             ]
-            # Ordenar dentro del cluster: ganadora primero, luego por ventas desc
             items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
 
             cluster_id = _generar_cluster_id(it.id for it in items_cluster)
@@ -1143,8 +1242,10 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                 nota_legitimidad=nota_leg,
             ))
 
-    # Ordenar por impacto monetario descendente (todos son 'puro' ahora)
-    clusters.sort(key=lambda c: -c.impacto_monetario_estimado)
+    # Ordenar: puro (urgente) → mixto (acción con caveat) → legitimo (informativo)
+    orden_severidad = {'puro': 0, 'mixto': 1, 'legitimo': 2}
+    clusters.sort(key=lambda c: (orden_severidad.get(c.severidad, 9),
+                                  -c.impacto_monetario_estimado))
     return clusters
 
 
