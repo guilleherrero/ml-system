@@ -478,7 +478,14 @@ def _attrs_cache_path(alias: str, data_dir: str) -> str:
 
 
 def _cargar_cache_attrs(alias: str, data_dir: str) -> dict:
-    """Carga el cache de attributes. Devuelve {item_id: {fetched_at, attributes}}."""
+    """Carga el cache de metadata por item.
+
+    Schema (hotfix #3 09/05/2026 — formato extendido):
+      {item_id: {fetched_at, attributes, installments, shipping}}
+
+    Schema legacy (anterior al hotfix #3, todavía soportado en read):
+      {item_id: {fetched_at, attributes}}
+    """
     path = _attrs_cache_path(alias, data_dir)
     if not os.path.exists(path):
         return {}
@@ -499,8 +506,15 @@ def _guardar_cache_attrs(alias: str, data_dir: str, cache: dict) -> None:
 
 
 def _attrs_cache_vigente(entry: dict) -> bool:
-    """True si la entry del cache está fresca (<TTL)."""
+    """True si la entry del cache está fresca (<TTL) Y tiene los campos
+    nuevos del hotfix #3 (installments + shipping). Si tiene formato legacy
+    (solo attributes), se considera vencida para forzar re-fetch enriquecido.
+    """
     if not entry or 'fetched_at' not in entry:
+        return False
+    # Hotfix #3: si la entry no tiene los campos nuevos, está en formato
+    # legacy y hay que re-fetchear con el multiget enriquecido.
+    if 'installments' not in entry or 'shipping' not in entry:
         return False
     try:
         ts = datetime.fromisoformat(entry['fetched_at'].replace('Z', '+00:00'))
@@ -513,42 +527,55 @@ def _attrs_cache_vigente(entry: dict) -> bool:
 
 
 def fetch_items_attributes(item_ids: list, alias: str, data_dir: str) -> dict:
-    """Trae los attributes de cada item via API pública de ML (/items multiget).
+    """Trae metadata por item via API pública de ML (/items multiget).
 
     Cachea localmente con TTL 24h. Solo fetchea los que faltan o están vencidos.
 
-    Returns: {item_id: list[{id, value_name, value_id}]}
+    Returns:
+        {item_id: {
+            'attributes':   list[{id, value_name, value_id}],
+            'installments': dict | None,   # {quantity, rate, amount} o None
+            'shipping':     dict | None,   # {free_shipping, mode, logistic_type} o None
+        }}
+
+    Hotfix #3 (09/05/2026): el multiget ahora también trae installments y
+    shipping para que _clave_duplicacion pueda usar cuotas y logistic_type
+    como ejes de subdivisión.
     """
     import requests as _rq
     cache = _cargar_cache_attrs(alias, data_dir)
 
-    # Identificar qué items necesitamos fetchear
     a_fetchear = []
-    resultado = {}
+    resultado: dict = {}
     for iid in item_ids:
         if iid in cache and _attrs_cache_vigente(cache[iid]):
-            resultado[iid] = cache[iid].get('attributes', [])
+            resultado[iid] = {
+                'attributes':   cache[iid].get('attributes', []),
+                'installments': cache[iid].get('installments'),
+                'shipping':     cache[iid].get('shipping'),
+            }
         else:
             a_fetchear.append(iid)
 
     if not a_fetchear:
         return resultado
 
-    # Headers tipo browser para evitar bloqueo de CloudFront
     headers = {
         'User-Agent': ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'),
         'Accept': 'application/json',
     }
 
-    # Fetch en chunks de 20 (máx permitido por /items multiget)
     now_iso = datetime.now().astimezone().isoformat(timespec='seconds')
     for i in range(0, len(a_fetchear), 20):
         chunk = a_fetchear[i:i + 20]
         try:
             r = _rq.get(
                 'https://api.mercadolibre.com/items',
-                params={'ids': ','.join(chunk), 'attributes': 'id,attributes'},
+                params={
+                    'ids': ','.join(chunk),
+                    'attributes': 'id,attributes,installments,shipping',
+                },
                 headers=headers, timeout=10,
             )
             if r.status_code != 200:
@@ -559,23 +586,42 @@ def fetch_items_attributes(item_ids: list, alias: str, data_dir: str) -> dict:
                 if not iid:
                     continue
                 attrs = body.get('attributes') or []
-                # Guardar solo lo esencial
                 attrs_compact = [
                     {'id': a.get('id'),
                      'value_name': a.get('value_name'),
                      'value_id': a.get('value_id')}
                     for a in attrs if a.get('id')
                 ]
-                resultado[iid] = attrs_compact
-                cache[iid] = {
-                    'fetched_at': now_iso,
-                    'attributes': attrs_compact,
+                # Compactar installments — solo los campos relevantes para la clave
+                inst = body.get('installments') or {}
+                inst_compact = {
+                    'quantity': inst.get('quantity'),
+                    'rate':     inst.get('rate'),
+                    'amount':   inst.get('amount'),
+                } if inst else None
+                # Compactar shipping — free_shipping ya viene en stock, pero
+                # mode/logistic_type SOLO vienen acá
+                ship = body.get('shipping') or {}
+                ship_compact = {
+                    'free_shipping':  ship.get('free_shipping'),
+                    'mode':           ship.get('mode'),
+                    'logistic_type':  ship.get('logistic_type'),
+                } if ship else None
+
+                resultado[iid] = {
+                    'attributes':   attrs_compact,
+                    'installments': inst_compact,
+                    'shipping':     ship_compact,
                 }
-        except Exception as e:
-            # Si falla la API, los items quedan sin attributes → fallback a v2.2
+                cache[iid] = {
+                    'fetched_at':   now_iso,
+                    'attributes':   attrs_compact,
+                    'installments': inst_compact,
+                    'shipping':     ship_compact,
+                }
+        except Exception:
             continue
 
-    # Persistir cache
     try:
         _guardar_cache_attrs(alias, data_dir, cache)
     except Exception:
@@ -647,14 +693,14 @@ def _extraer_token_variante(titulo: str, tokens_set: frozenset) -> str:
     return ''
 
 
-def _clave_duplicacion(item: dict, attrs_oficiales: list) -> tuple:
+def _clave_duplicacion(item: dict, metadata) -> tuple:
     """Devuelve la clave que identifica el item para detección de duplicados
     estricta según la regla del usuario.
 
     Items con la misma clave son duplicados entre sí (violan política ML).
     Items con clave distinta NO son duplicados (variación legítima).
 
-    La clave se compone de:
+    La clave se compone de 7 ejes:
       - precio_bucket: precio redondeado a múltiplo de 100 (tolerancia ±$50)
       - listing: 'classic' / 'premium' / '' (vía _normalizar_listing)
       - free_shipping: True / False
@@ -662,7 +708,35 @@ def _clave_duplicacion(item: dict, attrs_oficiales: list) -> tuple:
                como fallback del título (matchea _TOKENS_COLOR)
       - talle: extraído de attribute oficial SIZE/SIZE_NAME/SIZE_GRID_ID, o
                como fallback del título (matchea _TOKENS_TALLE)
+      - cuotas: tupla (cantidad, sin_interes) extraída de installments del
+                multiget. Si no hay datos, queda (0, False) — todos los items
+                sin API caen en el mismo bucket (compat).
+      - logistic_type: 'fulfillment' (Full) / 'cross_docking' / 'self_service'
+                       / etc., extraído de shipping del multiget. Si no hay
+                       datos, queda '' (todos los items sin API caen en el
+                       mismo bucket).
+
+    Args:
+        item: dict del item (de stock_Cuenta_1.json, con campos básicos).
+        metadata: puede ser dict con shape de hotfix #3:
+                    {'attributes', 'installments', 'shipping'},
+                  o list legacy con solo attributes (compat retro),
+                  o None/empty (cuotas y logistic quedan en bucket default).
     """
+    # Normalizar metadata input — soporta dict (hotfix #3) y list (legacy)
+    if isinstance(metadata, dict):
+        attrs_oficiales = metadata.get('attributes', [])
+        installments    = metadata.get('installments') or {}
+        shipping_extra  = metadata.get('shipping') or {}
+    elif isinstance(metadata, list):
+        attrs_oficiales = metadata
+        installments    = {}
+        shipping_extra  = {}
+    else:
+        attrs_oficiales = []
+        installments    = {}
+        shipping_extra  = {}
+
     precio = float(item.get('precio') or 0)
     precio_bucket = int(round(precio / 100.0)) * 100
 
@@ -688,7 +762,18 @@ def _clave_duplicacion(item: dict, attrs_oficiales: list) -> tuple:
     if not talle:
         talle = _extraer_token_variante(item.get('titulo', ''), _TOKENS_TALLE)
 
-    return (precio_bucket, listing, free_shipping, color, talle)
+    # Eje 6: cuotas — (cantidad, sin_interes). Items sin metadata API quedan
+    # en (0, False) y por lo tanto comparten bucket entre sí (compat).
+    qty_cuotas = int(installments.get('quantity') or 0)
+    rate_cuotas = float(installments.get('rate') or 0)
+    sin_interes = (rate_cuotas == 0.0)
+    cuotas_clave = (qty_cuotas, sin_interes)
+
+    # Eje 7: logistic_type (Full vs no Full vs cross_docking, etc.). Items
+    # sin metadata API quedan en '' (mismo bucket entre sí).
+    logistic = (shipping_extra.get('logistic_type') or '').strip().lower()
+
+    return (precio_bucket, listing, free_shipping, color, talle, cuotas_clave, logistic)
 
 
 def _subdividir_cluster(cluster_items: list[dict],
@@ -702,8 +787,12 @@ def _subdividir_cluster(cluster_items: list[dict],
 
     Args:
         cluster_items: items del cluster original (output de _construir_clusters).
-        attrs_por_item: dict {item_id: list_attributes} con los attributes
-                        oficiales de ML. Si vacío, usa fallback de título.
+        attrs_por_item: dict {item_id: metadata} con los datos enriquecidos
+                        de ML. Acepta dos formatos:
+                          - Hotfix #3: {item_id: {'attributes', 'installments',
+                                                  'shipping'}}
+                          - Legacy:    {item_id: list[attributes]}
+                        Si vacío, _clave_duplicacion usa fallback de título.
 
     Returns:
         list[list[dict]] — uno por clave única encontrada.
@@ -716,11 +805,53 @@ def _subdividir_cluster(cluster_items: list[dict],
     grupos: dict[tuple, list[dict]] = {}
     for it in cluster_items:
         iid = it.get('id', '')
-        attrs = (attrs_por_item or {}).get(iid, [])
-        clave = _clave_duplicacion(it, attrs)
+        # Pasamos la metadata completa (dict o list) — _clave_duplicacion la
+        # normaliza internamente. Si no hay datos, queda None y la clave usa
+        # solo los 5 ejes locales (precio, listing, free_shipping, color, talle).
+        metadata = (attrs_por_item or {}).get(iid)
+        clave = _clave_duplicacion(it, metadata)
         grupos.setdefault(clave, []).append(it)
 
     return list(grupos.values())
+
+
+# Hotfix #3 (09/05/2026): nombres legibles de los 7 ejes de la clave de
+# duplicación, en el mismo orden que el tuple devuelto por _clave_duplicacion.
+_NOMBRES_EJES_CLAVE = (
+    'precio',
+    'tipo de listing (Clásica/Premium)',
+    'envío gratis',
+    'color',
+    'talle',
+    'cuotas',
+    'tipo de envío (Full vs no Full)',
+)
+
+
+def _detectar_ejes_diferentes(sub_grupos: list[list[dict]],
+                               attrs_por_item: dict | None) -> list[str]:
+    """Devuelve los nombres legibles de los ejes en los que difieren los
+    sub-clusters entre sí. Sirve para construir el mensaje de "Las publicaciones
+    segmentan compradores legítimamente — difieren en: ..." en la UI.
+    """
+    if len(sub_grupos) < 2:
+        return []
+    claves = []
+    for s in sub_grupos:
+        if not s:
+            continue
+        it = s[0]
+        meta = (attrs_por_item or {}).get(it.get('id', ''))
+        claves.append(_clave_duplicacion(it, meta))
+    if len(claves) < 2:
+        return []
+    ejes_dif: set[int] = set()
+    for i in range(len(claves)):
+        for j in range(i + 1, len(claves)):
+            for k in range(len(claves[i])):
+                if claves[i][k] != claves[j][k]:
+                    ejes_dif.add(k)
+    return [_NOMBRES_EJES_CLAVE[k] for k in sorted(ejes_dif) if k < len(_NOMBRES_EJES_CLAVE)]
 
 
 # ── Clasificación de severidad ───────────────────────────────────────────────
@@ -968,14 +1099,22 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                      como 'sano' antes de devolver. La UI no los muestra.
 
     Returns:
-      Lista de Cluster (todos severidad 'puro' por definición de la regla
-      estricta del usuario, 09/05/2026), ordenada por impacto_monetario_estimado
-      descendente. Cada Cluster contiene ≥2 items idénticos en precio +
-      listing_type + free_shipping + color + talle.
+      Lista de Cluster ordenada por severidad ('puro' → 'mixto' → 'legitimo')
+      y dentro de cada nivel por impacto_monetario_estimado descendente.
+
+    Severidades emitidas (hotfix #3 09/05/2026):
+      - 'puro':     todos los items del cluster original son duplicados estrictos
+                    entre sí (la subdivisión no encontró diferenciadores).
+      - 'mixto':    el cluster original tenía variantes legítimas Y duplicados.
+                    Se emite un Cluster por cada sub-cluster duplicado, marcado
+                    como 'mixto' para indicar que existen variantes válidas
+                    al lado.
+      - 'legitimo': el cluster original era 100% variantes legítimas (todas las
+                    publicaciones segmentan compradores correctamente). Se emite
+                    1 Cluster informativo por cluster original, sin acción.
 
     Nota: el parámetro `incluir_sanos` quedó vestigial — la subdivisión por
-    clave de duplicación filtra automáticamente las variantes legítimas
-    (sub-clusters de 1 item) sin necesidad de la severidad 'sano'.
+    clave de duplicación filtra automáticamente las variantes legítimas.
     """
     ignorados = cargar_pares_ignorados(alias, data_dir)
     grupos = _construir_clusters(stock_items, ignorados)
@@ -1000,21 +1139,74 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
 
     clusters: list[Cluster] = []
     for grupo_original in grupos:
-        # Subdivisión por clave de duplicación (regla del usuario, 09/05/2026):
-        # cada sub-cluster resultante contiene items idénticos en precio,
-        # listing_type, free_shipping, color y talle. Sub-clusters de tamaño 1
-        # NO son duplicados — se descartan.
+        # Subdivisión por clave de duplicación (7 ejes, hotfix #3 del 09/05/2026):
+        # precio + listing + free_shipping + color + talle + cuotas + logistic.
+        # Sub-clusters de tamaño 1 = variantes legítimas (no duplicados).
         sub_grupos = _subdividir_cluster(grupo_original, attrs_por_item)
-        for grupo in sub_grupos:
-            if len(grupo) < 2:
-                continue   # 1 item solo NO es duplicado de nadie
+        dup_groups = [s for s in sub_grupos if len(s) >= 2]
+        hubo_split = len(sub_grupos) > 1
 
-            # Por construcción de la subdivisión, los items son duplicados
-            # estrictos entre sí → severidad 'puro' por definición.
-            severidad = 'puro'
-            nota_leg = ''
+        # Caso A: el cluster original quedó 100% en variantes legítimas
+        # (no hay sub-cluster con ≥2 items). Si tenía ≥2 items originalmente,
+        # emitir un Cluster informativo 'legitimo' con todos los items.
+        if not dup_groups and len(grupo_original) >= 2:
+            ejes_diff = _detectar_ejes_diferentes(sub_grupos, attrs_por_item)
+            razon = 'Las publicaciones segmentan compradores legítimamente'
+            if ejes_diff:
+                razon += ' — difieren en: ' + ', '.join(ejes_diff)
+            razon += '. NO requieren acción.'
+            ganadora_id = _identificar_ganadora(grupo_original)
+            items_cluster = [
+                ItemCluster(
+                    id=it.get('id', ''),
+                    titulo=it.get('titulo', ''),
+                    precio=float(it.get('precio') or 0),
+                    ventas_30d=int(it.get('ventas_30d') or 0),
+                    visitas_30d=int(it.get('visitas_30d') or 0),
+                    conversion_pct=float(it.get('conversion_pct') or 0),
+                    es_ganadora=(it.get('id') == ganadora_id),
+                    listing_type=it.get('listing_type', ''),
+                    free_shipping=bool(it.get('free_shipping')),
+                    es_legitimo=True,
+                )
+                for it in grupo_original
+            ]
+            items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
+            cluster_id = _generar_cluster_id(it.id for it in items_cluster)
+            clusters.append(Cluster(
+                cluster_id=cluster_id,
+                severidad='legitimo',
+                items=items_cluster,
+                titulo_corto=_titulo_corto(grupo_original),
+                visitas_perdidas_30d=0,
+                impacto_monetario_estimado=0.0,
+                recomendaciones={
+                    it.id: Recomendacion(
+                        accion='mantener',
+                        motivo='Variante legítima — segmenta compradores correctamente.',
+                        pre_seleccionar=False,
+                    ) for it in items_cluster
+                },
+                resumen_recomendacion=razon,
+                nota_legitimidad=razon,
+            ))
+            continue
+
+        # Caso B: hay sub-clusters duplicados. Emitir uno por cada uno con
+        # severidad 'puro' (sin split — todo el original era idéntico) o
+        # 'mixto' (hubo split — había variantes legítimas al lado).
+        ejes_diff = _detectar_ejes_diferentes(sub_grupos, attrs_por_item) if hubo_split else []
+        for grupo in dup_groups:
+            severidad = 'mixto' if hubo_split else 'puro'
+            if severidad == 'puro':
+                nota_leg = 'Coinciden en los 7 ejes (precio, listing, envío, color, talle, cuotas, logistic). Duplicado prohibido por ML.'
+            else:
+                nota_leg = 'Duplicado dentro de un cluster con variantes legítimas'
+                if ejes_diff:
+                    nota_leg += f' (las otras publicaciones del cluster difieren en: {", ".join(ejes_diff)})'
+                nota_leg += '. Pausá las extras de este sub-cluster.'
+
             mapa_leg = {it.get('id', ''): False for it in grupo}
-
             ganadora_id = _identificar_ganadora(grupo)
             visitas_perdidas, impacto = _calcular_impacto_monetario(grupo, ganadora_id)
 
@@ -1033,7 +1225,6 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                 )
                 for it in grupo
             ]
-            # Ordenar dentro del cluster: ganadora primero, luego por ventas desc
             items_cluster.sort(key=lambda x: (not x.es_ganadora, -x.ventas_30d, -x.visitas_30d))
 
             cluster_id = _generar_cluster_id(it.id for it in items_cluster)
@@ -1051,8 +1242,10 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                 nota_legitimidad=nota_leg,
             ))
 
-    # Ordenar por impacto monetario descendente (todos son 'puro' ahora)
-    clusters.sort(key=lambda c: -c.impacto_monetario_estimado)
+    # Ordenar: puro (urgente) → mixto (acción con caveat) → legitimo (informativo)
+    orden_severidad = {'puro': 0, 'mixto': 1, 'legitimo': 2}
+    clusters.sort(key=lambda c: (orden_severidad.get(c.severidad, 9),
+                                  -c.impacto_monetario_estimado))
     return clusters
 
 
