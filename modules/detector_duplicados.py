@@ -478,7 +478,14 @@ def _attrs_cache_path(alias: str, data_dir: str) -> str:
 
 
 def _cargar_cache_attrs(alias: str, data_dir: str) -> dict:
-    """Carga el cache de attributes. Devuelve {item_id: {fetched_at, attributes}}."""
+    """Carga el cache de metadata por item.
+
+    Schema (hotfix #3 09/05/2026 — formato extendido):
+      {item_id: {fetched_at, attributes, installments, shipping}}
+
+    Schema legacy (anterior al hotfix #3, todavía soportado en read):
+      {item_id: {fetched_at, attributes}}
+    """
     path = _attrs_cache_path(alias, data_dir)
     if not os.path.exists(path):
         return {}
@@ -499,8 +506,15 @@ def _guardar_cache_attrs(alias: str, data_dir: str, cache: dict) -> None:
 
 
 def _attrs_cache_vigente(entry: dict) -> bool:
-    """True si la entry del cache está fresca (<TTL)."""
+    """True si la entry del cache está fresca (<TTL) Y tiene los campos
+    nuevos del hotfix #3 (installments + shipping). Si tiene formato legacy
+    (solo attributes), se considera vencida para forzar re-fetch enriquecido.
+    """
     if not entry or 'fetched_at' not in entry:
+        return False
+    # Hotfix #3: si la entry no tiene los campos nuevos, está en formato
+    # legacy y hay que re-fetchear con el multiget enriquecido.
+    if 'installments' not in entry or 'shipping' not in entry:
         return False
     try:
         ts = datetime.fromisoformat(entry['fetched_at'].replace('Z', '+00:00'))
@@ -513,42 +527,55 @@ def _attrs_cache_vigente(entry: dict) -> bool:
 
 
 def fetch_items_attributes(item_ids: list, alias: str, data_dir: str) -> dict:
-    """Trae los attributes de cada item via API pública de ML (/items multiget).
+    """Trae metadata por item via API pública de ML (/items multiget).
 
     Cachea localmente con TTL 24h. Solo fetchea los que faltan o están vencidos.
 
-    Returns: {item_id: list[{id, value_name, value_id}]}
+    Returns:
+        {item_id: {
+            'attributes':   list[{id, value_name, value_id}],
+            'installments': dict | None,   # {quantity, rate, amount} o None
+            'shipping':     dict | None,   # {free_shipping, mode, logistic_type} o None
+        }}
+
+    Hotfix #3 (09/05/2026): el multiget ahora también trae installments y
+    shipping para que _clave_duplicacion pueda usar cuotas y logistic_type
+    como ejes de subdivisión.
     """
     import requests as _rq
     cache = _cargar_cache_attrs(alias, data_dir)
 
-    # Identificar qué items necesitamos fetchear
     a_fetchear = []
-    resultado = {}
+    resultado: dict = {}
     for iid in item_ids:
         if iid in cache and _attrs_cache_vigente(cache[iid]):
-            resultado[iid] = cache[iid].get('attributes', [])
+            resultado[iid] = {
+                'attributes':   cache[iid].get('attributes', []),
+                'installments': cache[iid].get('installments'),
+                'shipping':     cache[iid].get('shipping'),
+            }
         else:
             a_fetchear.append(iid)
 
     if not a_fetchear:
         return resultado
 
-    # Headers tipo browser para evitar bloqueo de CloudFront
     headers = {
         'User-Agent': ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'),
         'Accept': 'application/json',
     }
 
-    # Fetch en chunks de 20 (máx permitido por /items multiget)
     now_iso = datetime.now().astimezone().isoformat(timespec='seconds')
     for i in range(0, len(a_fetchear), 20):
         chunk = a_fetchear[i:i + 20]
         try:
             r = _rq.get(
                 'https://api.mercadolibre.com/items',
-                params={'ids': ','.join(chunk), 'attributes': 'id,attributes'},
+                params={
+                    'ids': ','.join(chunk),
+                    'attributes': 'id,attributes,installments,shipping',
+                },
                 headers=headers, timeout=10,
             )
             if r.status_code != 200:
@@ -559,23 +586,42 @@ def fetch_items_attributes(item_ids: list, alias: str, data_dir: str) -> dict:
                 if not iid:
                     continue
                 attrs = body.get('attributes') or []
-                # Guardar solo lo esencial
                 attrs_compact = [
                     {'id': a.get('id'),
                      'value_name': a.get('value_name'),
                      'value_id': a.get('value_id')}
                     for a in attrs if a.get('id')
                 ]
-                resultado[iid] = attrs_compact
-                cache[iid] = {
-                    'fetched_at': now_iso,
-                    'attributes': attrs_compact,
+                # Compactar installments — solo los campos relevantes para la clave
+                inst = body.get('installments') or {}
+                inst_compact = {
+                    'quantity': inst.get('quantity'),
+                    'rate':     inst.get('rate'),
+                    'amount':   inst.get('amount'),
+                } if inst else None
+                # Compactar shipping — free_shipping ya viene en stock, pero
+                # mode/logistic_type SOLO vienen acá
+                ship = body.get('shipping') or {}
+                ship_compact = {
+                    'free_shipping':  ship.get('free_shipping'),
+                    'mode':           ship.get('mode'),
+                    'logistic_type':  ship.get('logistic_type'),
+                } if ship else None
+
+                resultado[iid] = {
+                    'attributes':   attrs_compact,
+                    'installments': inst_compact,
+                    'shipping':     ship_compact,
                 }
-        except Exception as e:
-            # Si falla la API, los items quedan sin attributes → fallback a v2.2
+                cache[iid] = {
+                    'fetched_at':   now_iso,
+                    'attributes':   attrs_compact,
+                    'installments': inst_compact,
+                    'shipping':     ship_compact,
+                }
+        except Exception:
             continue
 
-    # Persistir cache
     try:
         _guardar_cache_attrs(alias, data_dir, cache)
     except Exception:
@@ -702,8 +748,12 @@ def _subdividir_cluster(cluster_items: list[dict],
 
     Args:
         cluster_items: items del cluster original (output de _construir_clusters).
-        attrs_por_item: dict {item_id: list_attributes} con los attributes
-                        oficiales de ML. Si vacío, usa fallback de título.
+        attrs_por_item: dict {item_id: metadata} con los datos enriquecidos
+                        de ML. Acepta dos formatos:
+                          - Hotfix #3: {item_id: {'attributes', 'installments',
+                                                  'shipping'}}
+                          - Legacy:    {item_id: list[attributes]}
+                        Si vacío, _clave_duplicacion usa fallback de título.
 
     Returns:
         list[list[dict]] — uno por clave única encontrada.
@@ -716,7 +766,14 @@ def _subdividir_cluster(cluster_items: list[dict],
     grupos: dict[tuple, list[dict]] = {}
     for it in cluster_items:
         iid = it.get('id', '')
-        attrs = (attrs_por_item or {}).get(iid, [])
+        attrs_data = (attrs_por_item or {}).get(iid)
+        # Hotfix #3: el shape nuevo es dict; legacy era list. Extraer attributes.
+        if isinstance(attrs_data, dict):
+            attrs = attrs_data.get('attributes', [])
+        elif isinstance(attrs_data, list):
+            attrs = attrs_data
+        else:
+            attrs = []
         clave = _clave_duplicacion(it, attrs)
         grupos.setdefault(clave, []).append(it)
 
