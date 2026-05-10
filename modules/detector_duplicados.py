@@ -693,14 +693,14 @@ def _extraer_token_variante(titulo: str, tokens_set: frozenset) -> str:
     return ''
 
 
-def _clave_duplicacion(item: dict, attrs_oficiales: list) -> tuple:
+def _clave_duplicacion(item: dict, metadata) -> tuple:
     """Devuelve la clave que identifica el item para detección de duplicados
     estricta según la regla del usuario.
 
     Items con la misma clave son duplicados entre sí (violan política ML).
     Items con clave distinta NO son duplicados (variación legítima).
 
-    La clave se compone de:
+    La clave se compone de 7 ejes:
       - precio_bucket: precio redondeado a múltiplo de 100 (tolerancia ±$50)
       - listing: 'classic' / 'premium' / '' (vía _normalizar_listing)
       - free_shipping: True / False
@@ -708,7 +708,35 @@ def _clave_duplicacion(item: dict, attrs_oficiales: list) -> tuple:
                como fallback del título (matchea _TOKENS_COLOR)
       - talle: extraído de attribute oficial SIZE/SIZE_NAME/SIZE_GRID_ID, o
                como fallback del título (matchea _TOKENS_TALLE)
+      - cuotas: tupla (cantidad, sin_interes) extraída de installments del
+                multiget. Si no hay datos, queda (0, False) — todos los items
+                sin API caen en el mismo bucket (compat).
+      - logistic_type: 'fulfillment' (Full) / 'cross_docking' / 'self_service'
+                       / etc., extraído de shipping del multiget. Si no hay
+                       datos, queda '' (todos los items sin API caen en el
+                       mismo bucket).
+
+    Args:
+        item: dict del item (de stock_Cuenta_1.json, con campos básicos).
+        metadata: puede ser dict con shape de hotfix #3:
+                    {'attributes', 'installments', 'shipping'},
+                  o list legacy con solo attributes (compat retro),
+                  o None/empty (cuotas y logistic quedan en bucket default).
     """
+    # Normalizar metadata input — soporta dict (hotfix #3) y list (legacy)
+    if isinstance(metadata, dict):
+        attrs_oficiales = metadata.get('attributes', [])
+        installments    = metadata.get('installments') or {}
+        shipping_extra  = metadata.get('shipping') or {}
+    elif isinstance(metadata, list):
+        attrs_oficiales = metadata
+        installments    = {}
+        shipping_extra  = {}
+    else:
+        attrs_oficiales = []
+        installments    = {}
+        shipping_extra  = {}
+
     precio = float(item.get('precio') or 0)
     precio_bucket = int(round(precio / 100.0)) * 100
 
@@ -734,7 +762,18 @@ def _clave_duplicacion(item: dict, attrs_oficiales: list) -> tuple:
     if not talle:
         talle = _extraer_token_variante(item.get('titulo', ''), _TOKENS_TALLE)
 
-    return (precio_bucket, listing, free_shipping, color, talle)
+    # Eje 6: cuotas — (cantidad, sin_interes). Items sin metadata API quedan
+    # en (0, False) y por lo tanto comparten bucket entre sí (compat).
+    qty_cuotas = int(installments.get('quantity') or 0)
+    rate_cuotas = float(installments.get('rate') or 0)
+    sin_interes = (rate_cuotas == 0.0)
+    cuotas_clave = (qty_cuotas, sin_interes)
+
+    # Eje 7: logistic_type (Full vs no Full vs cross_docking, etc.). Items
+    # sin metadata API quedan en '' (mismo bucket entre sí).
+    logistic = (shipping_extra.get('logistic_type') or '').strip().lower()
+
+    return (precio_bucket, listing, free_shipping, color, talle, cuotas_clave, logistic)
 
 
 def _subdividir_cluster(cluster_items: list[dict],
@@ -766,15 +805,11 @@ def _subdividir_cluster(cluster_items: list[dict],
     grupos: dict[tuple, list[dict]] = {}
     for it in cluster_items:
         iid = it.get('id', '')
-        attrs_data = (attrs_por_item or {}).get(iid)
-        # Hotfix #3: el shape nuevo es dict; legacy era list. Extraer attributes.
-        if isinstance(attrs_data, dict):
-            attrs = attrs_data.get('attributes', [])
-        elif isinstance(attrs_data, list):
-            attrs = attrs_data
-        else:
-            attrs = []
-        clave = _clave_duplicacion(it, attrs)
+        # Pasamos la metadata completa (dict o list) — _clave_duplicacion la
+        # normaliza internamente. Si no hay datos, queda None y la clave usa
+        # solo los 5 ejes locales (precio, listing, free_shipping, color, talle).
+        metadata = (attrs_por_item or {}).get(iid)
+        clave = _clave_duplicacion(it, metadata)
         grupos.setdefault(clave, []).append(it)
 
     return list(grupos.values())
