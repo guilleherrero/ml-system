@@ -6887,14 +6887,30 @@ def api_item_info_minicard(alias, item_id):
     Endpoint lazy: el frontend lo llama por cada card de optimización para mostrar
     la mini-tarjeta sticky. Cacheable en frontend (item_id no cambia).
 
-    No requiere auth — el endpoint /items/<id> de ML es público.
+    Fix 11/05/2026: usa el token OAuth de la cuenta (mismo patrón que
+    /api/item-health). La asunción previa de que /items/<id> era público
+    era falsa — ML devolvía 403 a llamadas sin auth para muchos items
+    (especialmente pausados o con restricciones del owner).
     """
     item_id = (item_id or '').strip().upper()
     if not item_id.startswith('MLA'):
         return jsonify({'ok': False, 'error': 'item_id inválido'}), 400
     try:
+        from core.account_manager import AccountManager
+        mgr = AccountManager()
+        client = mgr.get_client(alias)
+        client._ensure_token()
+        token = client.account.access_token
+        heads = {
+            'Authorization': f'Bearer {token}',
+            'User-Agent': ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                           'AppleWebKit/537.36 (KHTML, like Gecko) '
+                           'Chrome/120.0.0.0 Safari/537.36'),
+            'Accept': 'application/json',
+        }
         import requests as _rq
         r = _rq.get(f'https://api.mercadolibre.com/items/{item_id}',
+                    headers=heads,
                     params={'attributes': 'id,title,thumbnail,secure_thumbnail,pictures,price,currency_id,sold_quantity,available_quantity,status,permalink'},
                     timeout=6)
         if r.status_code != 200:
