@@ -2674,15 +2674,14 @@ def api_item_health(alias, item_id):
     - tags de calidad: good_quality_thumbnail, poor_quality_thumbnail, etc.
     - atributos vacíos: cuántos atributos requeridos están sin completar
     - métricas de vendedor: reclamos, demoras, cancelaciones (60 días)
+
+    Fix 11/05/2026: migrado de AccountManager() directo a _ml_auth(alias)
+    para usar el patrón canónico ya probado por 25+ endpoints. Esto evita
+    la regresión "Account 'Novara' not found" reportada por el usuario
+    cuando llama desde MCP.
     """
     try:
-        from core.account_manager import AccountManager
-        mgr = AccountManager()
-        client = mgr.get_client(alias)
-        client._ensure_token()
-        token = client.account.access_token
-        heads = {'Authorization': f'Bearer {token}'}
-        user_id = client.account.user_id
+        token, user_id, heads = _ml_auth(alias)
 
         import concurrent.futures
         from datetime import datetime, timedelta
@@ -6887,22 +6886,21 @@ def api_item_info_minicard(alias, item_id):
     Endpoint lazy: el frontend lo llama por cada card de optimización para mostrar
     la mini-tarjeta sticky. Cacheable en frontend (item_id no cambia).
 
-    Fix 11/05/2026: usa el token OAuth de la cuenta (mismo patrón que
-    /api/item-health). La asunción previa de que /items/<id> era público
-    era falsa — ML devolvía 403 a llamadas sin auth para muchos items
-    (especialmente pausados o con restricciones del owner).
+    Fix 11/05/2026 (segundo intento): usa _ml_auth(alias) — el helper
+    canónico ya usado por 25+ endpoints. Pasa primero por _resolve_alias
+    que valida case-insensitive contra la MISMA fuente que /api/list-aliases,
+    evitando la regresión "Account 'Novara' not found" del fix anterior
+    que instanciaba AccountManager() directamente.
     """
     item_id = (item_id or '').strip().upper()
     if not item_id.startswith('MLA'):
         return jsonify({'ok': False, 'error': 'item_id inválido'}), 400
     try:
-        from core.account_manager import AccountManager
-        mgr = AccountManager()
-        client = mgr.get_client(alias)
-        client._ensure_token()
-        token = client.account.access_token
+        token, _user_id, heads = _ml_auth(alias)
+        # Sumar User-Agent realista — defensa contra bloqueo de CloudFront
+        # que devolvía 403 al patrón anterior sin Bearer + sin UA.
         heads = {
-            'Authorization': f'Bearer {token}',
+            **heads,
             'User-Agent': ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                            'AppleWebKit/537.36 (KHTML, like Gecko) '
                            'Chrome/120.0.0.0 Safari/537.36'),
