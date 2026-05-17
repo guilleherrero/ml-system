@@ -4,53 +4,53 @@
 {% block content %}
 <style>
 /* ── Stat boxes ───────────────────────────────────────────── */
-.stat-box { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1rem 1.1rem; text-align:center; height:100%; }
+.stat-box { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; padding:1rem 1.1rem; text-align:center; height:100%; }
 .stat-box .num  { font-size:1.7rem; font-weight:700; line-height:1.1; }
-.stat-box .lbl  { font-size:.72rem; color:#64748b; margin-top:3px; }
-.stat-box.blue  .num { color:#2563eb; }
-.stat-box.ok    .num { color:#16a34a; }
-.stat-box.warn  .num { color:#d97706; }
-.stat-box.crit  .num { color:#dc2626; }
-.stat-box.dim   .num { color:#94a3b8; }
+.stat-box .lbl  { font-size:.72rem; color:var(--color-neutral-600); margin-top:3px; }
+.stat-box.blue  .num { color:var(--color-info-600); }
+.stat-box.ok    .num { color:var(--color-success-500); }
+.stat-box.warn  .num { color:var(--color-warning-500); }
+.stat-box.crit  .num { color:var(--color-critical-500); }
+.stat-box.dim   .num { color:var(--color-neutral-400); }
 
 /* ── Nivel badge ──────────────────────────────────────────── */
 .nivel-badge {
   display:inline-flex; align-items:center; gap:.5rem;
   padding:.45rem 1rem; border-radius:30px; font-weight:700;
-  font-size:.95rem; color:#fff;
+  font-size:.95rem; color:var(--color-neutral-0);
 }
 .nivel-badge.platinum { background: linear-gradient(135deg,#7c3aed,#6d28d9); }
-.nivel-badge.gold     { background: linear-gradient(135deg,#d97706,#b45309); }
-.nivel-badge.leader   { background: linear-gradient(135deg,#2563eb,#1d4ed8); }
-.nivel-badge.good     { background: linear-gradient(135deg,#16a34a,#15803d); }
-.nivel-badge.new      { background: linear-gradient(135deg,#94a3b8,#64748b); }
-.nivel-badge.nd       { background: linear-gradient(135deg,#cbd5e1,#94a3b8); }
+.nivel-badge.gold     { background: linear-gradient(135deg,var(--color-warning-500),#b45309); }
+.nivel-badge.leader   { background: linear-gradient(135deg,var(--color-info-600),var(--color-info-700)); }
+.nivel-badge.good     { background: linear-gradient(135deg,var(--color-success-500),var(--color-success-700)); }
+.nivel-badge.new      { background: linear-gradient(135deg,var(--color-neutral-400),var(--color-neutral-600)); }
+.nivel-badge.nd       { background: linear-gradient(135deg,#cbd5e1,var(--color-neutral-400)); }
 
 /* ── Gauge metric ─────────────────────────────────────────── */
 .metric-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
   padding:1rem 1.1rem; position:relative; overflow:hidden;
 }
 .metric-card .metric-val  { font-size:1.8rem; font-weight:700; line-height:1; }
-.metric-card .metric-lbl  { font-size:.72rem; color:#64748b; margin-top:2px; }
-.metric-card .metric-bar  { height:4px; border-radius:2px; margin-top:.7rem; background:#e2e8f0; }
+.metric-card .metric-lbl  { font-size:.72rem; color:var(--color-neutral-600); margin-top:2px; }
+.metric-card .metric-bar  { height:4px; border-radius:2px; margin-top:.7rem; background:var(--color-neutral-200); }
 .metric-card .metric-fill { height:4px; border-radius:2px; transition:width .4s; }
-.metric-card .threshold   { font-size:.62rem; color:#94a3b8; margin-top:.2rem; }
+.metric-card .threshold   { font-size:.62rem; color:var(--color-neutral-400); margin-top:.2rem; }
 .metric-card.ok-card   { border-left:3px solid #22c55e; }
-.metric-card.warn-card { border-left:3px solid #f59e0b; }
-.metric-card.crit-card { border-left:3px solid #ef4444; }
+.metric-card.warn-card { border-left:3px solid var(--color-warning-400); }
+.metric-card.crit-card { border-left:3px solid var(--color-critical-400); }
 
 /* ── Claims table ─────────────────────────────────────────── */
-.claim-row { border-left:3px solid #ef4444; }
+.claim-row { border-left:3px solid var(--color-critical-400); }
 
 /* ── Dashboard ventas ─────────────────────────────────────── */
 .dash-period {
-  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
   padding:1rem 1.2rem; text-align:center;
 }
-.dash-period .period-lbl { font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem; }
+.dash-period .period-lbl { font-size:.7rem; font-weight:700; color:var(--color-neutral-600); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem; }
 .dash-period .period-amount { font-size:1.4rem; font-weight:700; color:#1e3a8a; line-height:1.1; }
-.dash-period .period-units  { font-size:.78rem; color:#16a34a; font-weight:600; margin-top:2px; }
+.dash-period .period-units  { font-size:.78rem; color:var(--color-success-500); font-weight:600; margin-top:2px; }
 
 /* ── Top products ─────────────────────────────────────────── */
 .rank-badge {
@@ -58,14 +58,14 @@
   display:inline-flex; align-items:center; justify-content:center;
   font-size:.68rem; font-weight:700; flex-shrink:0;
 }
-.rank-1 { background:#fde68a; color:#92400e; }
-.rank-2 { background:#e2e8f0; color:#374151; }
+.rank-1 { background:#fde68a; color:var(--color-warning-700); }
+.rank-2 { background:var(--color-neutral-200); color:var(--color-neutral-700); }
 .rank-3 { background:#fed7aa; color:#9a3412; }
-.rank-n { background:#f1f5f9; color:#64748b; }
+.rank-n { background:var(--color-neutral-100); color:var(--color-neutral-600); }
 
 /* ── Historial chart ──────────────────────────────────────── */
 .section-title {
-  font-size:.78rem; font-weight:700; color:#374151;
+  font-size:.78rem; font-weight:700; color:var(--color-neutral-700);
   text-transform:uppercase; letter-spacing:.05em;
   display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem;
 }
@@ -125,7 +125,7 @@
     {% macro metric_card(label, rate, verde, amarillo, unit='%', invert=true) %}
     {% set pct = (rate * 100) if rate is not none else 0 %}
     {% set card_class = 'crit-card' if pct > amarillo else ('warn-card' if pct > verde else 'ok-card') %}
-    {% set fill_color = '#ef4444' if pct > amarillo else ('#f59e0b' if pct > verde else '#22c55e') %}
+    {% set fill_color = 'var(--color-critical-400)' if pct > amarillo else ('var(--color-warning-400)' if pct > verde else '#22c55e') %}
     {% set bar_width = [([pct / (amarillo * 1.5) * 100, 100] | min), 2] | max %}
     <div class="metric-card {{ card_class }}">
       <div class="metric-val" style="color:{{ fill_color }}">{{ '%.1f' | format(pct) }}{{ unit }}</div>
@@ -185,22 +185,22 @@
     {% set claims_rate = (claims_m.get('rate') or 0) * 100 %}
     {% set claims_total = claims_m.get('value') or 0 %}
     <div class="d-flex align-items-center gap-3 mb-3 p-3 rounded"
-         style="background:{{ '#fee2e2' if claims_rate > 2 else ('#fef3c7' if claims_rate > 1 else '#f0fdf4') }};border:1px solid {{ '#fca5a5' if claims_rate > 2 else ('#fde68a' if claims_rate > 1 else '#bbf7d0') }}">
-      <div style="font-size:2rem;font-weight:800;color:{{ '#dc2626' if claims_rate > 2 else ('#d97706' if claims_rate > 1 else '#16a34a') }}">
+         style="background:{{ 'var(--color-critical-100)' if claims_rate > 2 else ('var(--color-warning-100)' if claims_rate > 1 else '#f0fdf4') }};border:1px solid {{ '#fca5a5' if claims_rate > 2 else ('#fde68a' if claims_rate > 1 else '#bbf7d0') }}">
+      <div style="font-size:2rem;font-weight:800;color:{{ 'var(--color-critical-500)' if claims_rate > 2 else ('var(--color-warning-500)' if claims_rate > 1 else 'var(--color-success-500)') }}">
         {{ '%.1f' | format(claims_rate) }}%
       </div>
       <div>
         <div style="font-size:.85rem;font-weight:600">
           {{ claims_total }} reclamo{{ 's' if claims_total != 1 else '' }} en los últimos 60 días
         </div>
-        <div style="font-size:.72rem;color:#64748b">
+        <div style="font-size:.72rem;color:var(--color-neutral-600)">
           Límite ML: ≤1% óptimo · ≤2% máximo antes de afectar tu nivel
         </div>
       </div>
       <a href="https://www.mercadolibre.com.ar/mis-ventas/reclamos"
          target="_blank"
          class="btn btn-sm ms-auto"
-         style="background:#2563eb;color:#fff;font-size:.78rem;white-space:nowrap">
+         style="background:var(--color-info-600);color:var(--color-neutral-0);font-size:.78rem;white-space:nowrap">
         <i class="bi bi-box-arrow-up-right me-1"></i>Ver todos en ML
       </a>
     </div>
@@ -216,7 +216,7 @@
         <thead><tr><th>Publicación</th><th>Fecha</th><th>Ir a resolver</th></tr></thead>
         <tbody>
           {% for c in claims %}
-          <tr style="border-left:3px solid #f59e0b">
+          <tr style="border-left:3px solid var(--color-warning-400)">
             <td class="small fw-semibold">{{ (c.get('item_title') or '—') | truncate(60) }}</td>
             <td class="text-muted small">{{ c.get('date_created','')[:10] }}</td>
             <td>
@@ -235,7 +235,7 @@
 
     {# Mini aviso — detalle en /settings/permisos (Sprint 4.5) #}
     <div class="mt-3 p-2 rounded d-flex align-items-center gap-2"
-         style="background:#f8fafc;border:1px solid #e2e8f0;font-size:.72rem;color:#64748b">
+         style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);font-size:.72rem;color:var(--color-neutral-600)">
       <i class="bi bi-key-fill text-primary"></i>
       <span>
         Para el detalle de reclamos (motivo, mensajes) se requiere el permiso <strong>Postventa</strong>.
@@ -303,7 +303,7 @@
         <div class="row g-3">
           <div class="col-md-3">
             <div class="section-title" style="color:#b91c1c"><i class="bi bi-shield-x me-1"></i>Mediaciones ML (reclamos)</div>
-            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">Órdenes donde el comprador escaló a ML · afectan tu reputación</div>
+            <div style="font-size:.65rem;color:var(--color-neutral-600);margin-bottom:.4rem">Órdenes donde el comprador escaló a ML · afectan tu reputación</div>
             <div class="table-responsive">
               <table class="table table-sm mb-0">
                 <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
@@ -313,7 +313,7 @@
           </div>
           <div class="col-md-3">
             <div class="section-title" style="color:#b91c1c"><i class="bi bi-x-circle text-danger me-1"></i>Canceladas por vos</div>
-            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">Afectan tu % de cancelaciones en reputación</div>
+            <div style="font-size:.65rem;color:var(--color-neutral-600);margin-bottom:.4rem">Afectan tu % de cancelaciones en reputación</div>
             <div class="table-responsive">
               <table class="table table-sm mb-0">
                 <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
@@ -323,7 +323,7 @@
           </div>
           <div class="col-md-3">
             <div class="section-title"><i class="bi bi-person me-1 text-secondary"></i>Canceladas por el comprador</div>
-            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">No afectan tu reputación · solo informativo</div>
+            <div style="font-size:.65rem;color:var(--color-neutral-600);margin-bottom:.4rem">No afectan tu reputación · solo informativo</div>
             <div class="table-responsive">
               <table class="table table-sm mb-0">
                 <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
@@ -333,7 +333,7 @@
           </div>
           <div class="col-md-3">
             <div class="section-title"><i class="bi bi-truck me-1 text-warning"></i>Canceladas por envío</div>
-            <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem">Canceladas por ML por problema de envío o fraude</div>
+            <div style="font-size:.65rem;color:var(--color-neutral-600);margin-bottom:.4rem">Canceladas por ML por problema de envío o fraude</div>
             <div class="table-responsive">
               <table class="table table-sm mb-0">
                 <thead><tr><th style="width:50px">Cant.</th><th>Publicación</th><th></th></tr></thead>
@@ -370,7 +370,7 @@
           <div class="num">{{ '%.1f' | format((del_m.get('rate', 0) or 0) * 100) }}%</div>
           <div class="lbl">Envíos demorados<br><small class="text-muted">Límite óptimo: ≤10% · Máximo: ≤15%</small></div>
           {% if del_m.get('value') %}
-          <div style="font-size:.7rem;color:#94a3b8;margin-top:4px">{{ del_m.get('value') }} envíos demorados</div>
+          <div style="font-size:.7rem;color:var(--color-neutral-400);margin-top:4px">{{ del_m.get('value') }} envíos demorados</div>
           {% endif %}
         </div>
       </div>
@@ -399,7 +399,7 @@
           <div class="num">{{ '%.1f' | format((can_m.get('rate', 0) or 0) * 100) }}%</div>
           <div class="lbl">Cancelaciones por vendedor<br><small class="text-muted">Límite óptimo: ≤2% · Máximo: ≤5%</small></div>
           {% if can_m.get('value') %}
-          <div style="font-size:.7rem;color:#94a3b8;margin-top:4px">{{ can_m.get('value') }} cancelaciones</div>
+          <div style="font-size:.7rem;color:var(--color-neutral-400);margin-top:4px">{{ can_m.get('value') }} cancelaciones</div>
           {% endif %}
         </div>
       </div>
@@ -422,7 +422,7 @@
     {% if dashboard %}
     <div class="row g-3 mb-3">
       <div class="col-md-3">
-        <div class="dash-period" style="border-top:3px solid #2563eb">
+        <div class="dash-period" style="border-top:3px solid var(--color-info-600)">
           <div class="period-lbl"><i class="bi bi-calendar-day me-1"></i>Hoy</div>
           <div class="period-amount">
             {% if dashboard.hoy.amount > 0 %}
@@ -448,7 +448,7 @@
         </div>
       </div>
       <div class="col-md-3">
-        <div class="dash-period" style="border-top:3px solid #16a34a">
+        <div class="dash-period" style="border-top:3px solid var(--color-success-500)">
           <div class="period-lbl"><i class="bi bi-calendar-month me-1"></i>Últimos 30 días</div>
           <div class="period-amount">
             {% if dashboard.mes.amount > 0 %}
@@ -461,7 +461,7 @@
         </div>
       </div>
       <div class="col-md-3">
-        <div class="dash-period" style="border-top:3px solid #f59e0b">
+        <div class="dash-period" style="border-top:3px solid var(--color-warning-400)">
           <div class="period-lbl"><i class="bi bi-shield-check me-1"></i>Últimos 60 días <small style="font-weight:400">(período ML)</small></div>
           <div class="period-amount" style="color:#b45309">
             {% if dashboard.sesenta.amount > 0 %}
@@ -589,16 +589,16 @@
 
 <style>
 .trend-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
   padding:1rem 1.1rem;
 }
-.trend-card .t-label { font-size:.7rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+.trend-card .t-label { font-size:.7rem; font-weight:700; color:var(--color-neutral-600); text-transform:uppercase; letter-spacing:.04em; }
 .trend-card .t-val   { font-size:1.9rem; font-weight:800; line-height:1.1; margin:.2rem 0; }
 .trend-card .t-delta { font-size:.8rem; font-weight:600; }
-.trend-card .t-limit { font-size:.65rem; color:#94a3b8; margin-top:2px; }
+.trend-card .t-limit { font-size:.65rem; color:var(--color-neutral-400); margin-top:2px; }
 .trend-card.ok-card   { border-left:4px solid #22c55e; }
-.trend-card.warn-card { border-left:4px solid #f59e0b; }
-.trend-card.crit-card { border-left:4px solid #ef4444; }
+.trend-card.warn-card { border-left:4px solid var(--color-warning-400); }
+.trend-card.crit-card { border-left:4px solid var(--color-critical-400); }
 
 /* Sparkline CSS */
 .spark { display:flex; align-items:flex-end; gap:2px; height:36px; margin-top:.5rem; }
@@ -609,19 +609,19 @@
 
 /* Fila de historial compacto */
 .hist-row { display:flex; align-items:center; gap:.75rem; padding:.45rem .6rem; border-radius:6px; }
-.hist-row:hover { background:#f8fafc; }
-.hist-row .h-fecha { font-size:.7rem; color:#94a3b8; width:80px; flex-shrink:0; }
+.hist-row:hover { background:var(--color-neutral-50); }
+.hist-row .h-fecha { font-size:.7rem; color:var(--color-neutral-400); width:80px; flex-shrink:0; }
 .hist-row .h-pill  {
   font-size:.72rem; font-weight:700; padding:.15rem .55rem;
   border-radius:20px; white-space:nowrap;
 }
-.pill-ok   { background:#dcfce7; color:#15803d; }
+.pill-ok   { background:var(--color-success-100); color:var(--color-success-700); }
 .pill-warn { background:#fef9c3; color:#a16207; }
-.pill-crit { background:#fee2e2; color:#b91c1c; }
+.pill-crit { background:var(--color-critical-100); color:#b91c1c; }
 .h-arrow   { font-size:.75rem; font-weight:700; }
-.arrow-up  { color:#ef4444; }
-.arrow-dn  { color:#16a34a; }
-.arrow-eq  { color:#94a3b8; }
+.arrow-up  { color:var(--color-critical-400); }
+.arrow-dn  { color:var(--color-success-500); }
+.arrow-eq  { color:var(--color-neutral-400); }
 </style>
 
 <div class="card mb-4">
@@ -716,7 +716,7 @@
     </div>
     {% endfor %}
 
-    <div class="mt-2" style="font-size:.65rem;color:#94a3b8">
+    <div class="mt-2" style="font-size:.65rem;color:var(--color-neutral-400)">
       ↑ sube = empeora · ↓ baja = mejora &nbsp;|&nbsp; Rec = reclamos · Dem = demoras · Can = cancelaciones
     </div>
 
@@ -741,7 +741,7 @@
       const bar = document.createElement('div');
       bar.className = 'spark-b';
       bar.style.height = Math.max(4, (v / max) * 36) + 'px';
-      bar.style.background = v > limWarn ? '#ef4444' : v > limOk ? '#f59e0b' : '#22c55e';
+      bar.style.background = v > limWarn ? 'var(--color-critical-400)' : v > limOk ? 'var(--color-warning-400)' : '#22c55e';
       bar.style.opacity = i === vals.length - 1 ? '1' : '0.55';
       el.appendChild(bar);
     });

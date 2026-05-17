@@ -3,32 +3,32 @@
 
 {% block content %}
 <style>
-.rank-num { font-size:1.1rem; font-weight:800; color:#94a3b8; width:28px; text-align:right; flex-shrink:0; }
-.rank-1 { color:#f59e0b; }
-.rank-2 { color:#94a3b8; }
+.rank-num { font-size:1.1rem; font-weight:800; color:var(--color-neutral-400); width:28px; text-align:right; flex-shrink:0; }
+.rank-1 { color:var(--color-warning-400); }
+.rank-2 { color:var(--color-neutral-400); }
 .rank-3 { color:#cd7c3a; }
-.ing-bar { height:6px; border-radius:3px; background:#e2e8f0; overflow:hidden; margin-top:4px; }
-.ing-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#2563eb,#7c3aed); }
+.ing-bar { height:6px; border-radius:3px; background:var(--color-neutral-200); overflow:hidden; margin-top:4px; }
+.ing-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,var(--color-info-600),#7c3aed); }
 .margen-ok   { color:#059669; font-weight:700; }
-.margen-bajo { color:#d97706; font-weight:700; }
-.margen-neg  { color:#dc2626; font-weight:700; }
+.margen-bajo { color:var(--color-warning-500); font-weight:700; }
+.margen-neg  { color:var(--color-critical-500); font-weight:700; }
 .pill-7d { background:#ede9fe; color:#5b21b6; font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:20px; white-space:nowrap; }
-.summary-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1rem 1.25rem; text-align:center; }
+.summary-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; padding:1rem 1.25rem; text-align:center; }
 .summary-val { font-size:1.6rem; font-weight:800; line-height:1.1; }
-.summary-lbl { font-size:.68rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-top:.2rem; }
-.prod-row { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.85rem 1rem; margin-bottom:.6rem; display:flex; gap:.85rem; align-items:center; }
-.prod-row:hover { border-color:#93c5fd; background:#f8faff; }
+.summary-lbl { font-size:.68rem; font-weight:700; color:var(--color-neutral-600); text-transform:uppercase; letter-spacing:.05em; margin-top:.2rem; }
+.prod-row { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px; padding:.85rem 1rem; margin-bottom:.6rem; display:flex; gap:.85rem; align-items:center; }
+.prod-row:hover { border-color:var(--color-info-300); background:#f8faff; }
 .prod-info { flex:1; min-width:0; }
-.prod-title { font-weight:600; font-size:.88rem; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.prod-meta { font-size:.72rem; color:#64748b; margin-top:.2rem; }
+.prod-title { font-weight:600; font-size:.88rem; color:var(--color-neutral-800); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.prod-meta { font-size:.72rem; color:var(--color-neutral-600); margin-top:.2rem; }
 .prod-nums { display:flex; flex-direction:column; align-items:flex-end; gap:.2rem; flex-shrink:0; text-align:right; }
-.ing-val { font-size:1.05rem; font-weight:800; color:#1d4ed8; }
-.ing-lbl { font-size:.65rem; color:#94a3b8; }
-.period-pill { border:1px solid #e5e7eb; border-radius:20px; padding:.28rem .85rem; font-size:.78rem; cursor:pointer; color:#374151; background:#fff; transition:all .15s; font-weight:500; }
-.period-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
-.period-pill.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:700; }
-.badge-total { background:#fef3c7; color:#92400e; font-size:.65rem; font-weight:700; padding:1px 6px; border-radius:10px; }
-.skel { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:shimmer 1.3s infinite; border-radius:6px; }
+.ing-val { font-size:1.05rem; font-weight:800; color:var(--color-info-700); }
+.ing-lbl { font-size:.65rem; color:var(--color-neutral-400); }
+.period-pill { border:1px solid #e5e7eb; border-radius:20px; padding:.28rem .85rem; font-size:.78rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0); transition:all .15s; font-weight:500; }
+.period-pill:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
+.period-pill.active { background:var(--color-info-600); border-color:var(--color-info-600); color:var(--color-neutral-0); font-weight:700; }
+.badge-total { background:var(--color-warning-100); color:var(--color-warning-700); font-size:.65rem; font-weight:700; padding:1px 6px; border-radius:10px; }
+.skel { background:linear-gradient(90deg,var(--color-neutral-100) 25%,var(--color-neutral-200) 50%,var(--color-neutral-100) 75%); background-size:200% 100%; animation:shimmer 1.3s infinite; border-radius:6px; }
 @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 </style>
 
@@ -55,7 +55,7 @@
 <!-- ══ RESUMEN ══════════════════════════════════════════════════ -->
 <div class="row g-3 mb-4" id="summary-row">
   <div class="col-6 col-md-3">
-    <div class="summary-card" style="border-top:3px solid #2563eb">
+    <div class="summary-card" style="border-top:3px solid var(--color-info-600)">
       <div class="summary-val text-primary" id="sum-ingresos">
         <span class="skel d-inline-block" style="width:90px;height:30px">&nbsp;</span>
       </div>
@@ -71,16 +71,16 @@
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="summary-card" style="border-top:3px solid #16a34a">
-      <div class="summary-val" style="color:#16a34a" id="sum-ordenes">
+    <div class="summary-card" style="border-top:3px solid var(--color-success-500)">
+      <div class="summary-val" style="color:var(--color-success-500)" id="sum-ordenes">
         <span class="skel d-inline-block" style="width:50px;height:30px">&nbsp;</span>
       </div>
       <div class="summary-lbl" id="lbl-ordenes">Órdenes</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="summary-card" style="border-top:3px solid #f59e0b">
-      <div class="summary-val" style="color:#d97706" id="sum-productos">
+    <div class="summary-card" style="border-top:3px solid var(--color-warning-400)">
+      <div class="summary-val" style="color:var(--color-warning-500)" id="sum-productos">
         <span class="skel d-inline-block" style="width:40px;height:30px">&nbsp;</span>
       </div>
       <div class="summary-lbl">Productos con ventas</div>
@@ -119,7 +119,7 @@ function fmt(n) {
 }
 
 function margenHtml(pct) {
-  if (pct === null || pct === undefined) return '<span style="color:#94a3b8;font-size:.72rem">Sin costo</span>';
+  if (pct === null || pct === undefined) return '<span style="color:var(--color-neutral-400);font-size:.72rem">Sin costo</span>';
   const cls = pct < 0 ? 'margen-neg' : pct < 10 ? 'margen-bajo' : 'margen-ok';
   return `<span class="${cls}" style="font-size:.78rem">${pct.toFixed(1)}% margen</span>`;
 }
@@ -255,8 +255,8 @@ function buildRow(item, rank, maxIng, period) {
       <div>${margenHtml(item.margen_pct)}</div>
       <div>
         <a href="${mlUrl}" target="_blank"
-           style="font-size:.68rem;color:#64748b;text-decoration:none"
-           onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#64748b'">
+           style="font-size:.68rem;color:var(--color-neutral-600);text-decoration:none"
+           onmouseover="this.style.color='var(--color-info-600)'" onmouseout="this.style.color='var(--color-neutral-600)'">
           Ver pub →
         </a>
       </div>

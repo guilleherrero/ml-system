@@ -3,15 +3,15 @@
 
 {% block content %}
 <style>
-  .wiz-header { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  .wiz-header { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
                 padding:1.4rem 1.6rem; margin-bottom:1.2rem; }
   .wiz-header h1 { font-size:1.2rem; font-weight:700; margin:0 0 .3rem; }
-  .wiz-header .sub { font-size:.84rem; color:#64748b; }
+  .wiz-header .sub { font-size:.84rem; color:var(--color-neutral-600); }
   .breadcrumb-steps { display:flex; gap:.4rem; margin-top:.9rem; }
   .step-pill { padding:.3rem .85rem; border-radius:14px; font-size:.74rem;
-               background:#f1f5f9; color:#94a3b8; font-weight:600; }
-  .step-pill.active { background:#dc2626; color:#fff; }
-  .step-pill.done   { background:#dcfce7; color:#15803d; }
+               background:var(--color-neutral-100); color:var(--color-neutral-400); font-weight:600; }
+  .step-pill.active { background:var(--color-critical-500); color:var(--color-neutral-0); }
+  .step-pill.done   { background:var(--color-success-100); color:var(--color-success-700); }
 
   .wiz-section { display:none; }
   .wiz-section.active { display:block; }
@@ -24,64 +24,64 @@
 
   /* Paso 1 — tabla candidatos */
   .cand-table { width:100%; border-collapse:collapse; font-size:.85rem;
-                background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+                background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
                 overflow:hidden; }
-  .cand-table th { background:#f8fafc; font-size:.66rem; font-weight:700;
-                   text-transform:uppercase; letter-spacing:.04em; color:#64748b;
-                   padding:.65rem .8rem; text-align:left; border-bottom:1px solid #e2e8f0; }
-  .cand-table td { padding:.7rem .8rem; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+  .cand-table th { background:var(--color-neutral-50); font-size:.66rem; font-weight:700;
+                   text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-600);
+                   padding:.65rem .8rem; text-align:left; border-bottom:1px solid var(--color-neutral-200); }
+  .cand-table td { padding:.7rem .8rem; border-bottom:1px solid var(--color-neutral-100); vertical-align:top; }
   .cand-table tr.viable    td { background:#f0fdf4; }
   .cand-table tr.ajustado  td { background:#fffbeb; }
   .cand-table tr.sin_margen td { background:#fef2f2; opacity:.7; }
   .cat-pill { font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:10px; }
-  .cat-pill.viable    { background:#dcfce7; color:#15803d; }
-  .cat-pill.ajustado  { background:#fef3c7; color:#b45309; }
-  .cat-pill.sin_margen { background:#fee2e2; color:#b91c1c; }
+  .cat-pill.viable    { background:var(--color-success-100); color:var(--color-success-700); }
+  .cat-pill.ajustado  { background:var(--color-warning-100); color:#b45309; }
+  .cat-pill.sin_margen { background:var(--color-critical-100); color:#b91c1c; }
 
   .min-input { width:90px; padding:.25rem .45rem; font-size:.78rem;
                border:1px solid #cbd5e1; border-radius:5px; }
 
   /* Paso 2 — reglas */
-  .rule-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+  .rule-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
                padding:1rem 1.2rem; margin-bottom:.85rem; }
   .rule-card h6 { font-size:.85rem; font-weight:700; color:#0f172a;
                   margin:0 0 .55rem; display:flex; align-items:center; gap:.4rem; }
   .rule-card .opts { display:flex; gap:.5rem; flex-wrap:wrap; }
   .opt-radio { display:flex; align-items:center; gap:.35rem; padding:.35rem .8rem;
                border:1.5px solid #cbd5e1; border-radius:7px; cursor:pointer;
-               font-size:.8rem; font-weight:600; color:#475569; background:#fff; }
-  .opt-radio.selected { border-color:#dc2626; background:#fef2f2; color:#b91c1c; }
+               font-size:.8rem; font-weight:600; color:#475569; background:var(--color-neutral-0); }
+  .opt-radio.selected { border-color:var(--color-critical-500); background:#fef2f2; color:#b91c1c; }
   .opt-radio input { display:none; }
   .breaker-row { display:flex; align-items:center; gap:.55rem; padding:.4rem 0;
                  font-size:.82rem; color:#334155; }
-  .breaker-row code { background:#f1f5f9; padding:1px 5px; border-radius:4px;
-                      font-size:.74rem; color:#64748b; }
+  .breaker-row code { background:var(--color-neutral-100); padding:1px 5px; border-radius:4px;
+                      font-size:.74rem; color:var(--color-neutral-600); }
 
   /* Paso 3 — simulación */
   .sim-table { width:100%; border-collapse:collapse; font-size:.84rem;
-               background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+               background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
                overflow:hidden; }
-  .sim-table th, .sim-table td { padding:.6rem .8rem; border-bottom:1px solid #f1f5f9; }
-  .sim-table th { background:#f8fafc; font-size:.66rem; font-weight:700;
-                  text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .sim-table th, .sim-table td { padding:.6rem .8rem; border-bottom:1px solid var(--color-neutral-100); }
+  .sim-table th { background:var(--color-neutral-50); font-size:.66rem; font-weight:700;
+                  text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-600); }
   .sim-table tr.alerta td { background:#fef2f2; }
   .totals-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
                 gap:.7rem; margin-bottom:1rem; }
-  .total-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+  .total-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
                 padding:.95rem 1.1rem; }
   .total-card .num { font-size:1.4rem; font-weight:800; }
-  .total-card .lbl { font-size:.7rem; color:#64748b; text-transform:uppercase;
+  .total-card .lbl { font-size:.7rem; color:var(--color-neutral-600); text-transform:uppercase;
                      letter-spacing:.04em; font-weight:600; margin-top:.15rem; }
 
   .nav-buttons { display:flex; gap:.6rem; justify-content:space-between;
-                 margin-top:1.4rem; padding-top:1.2rem; border-top:1px solid #e2e8f0; }
-  .btn-prev { background:transparent; color:#64748b; border:1px solid #cbd5e1;
+                 margin-top:1.4rem; padding-top:1.2rem; border-top:1px solid var(--color-neutral-200); }
+  .btn-prev { background:transparent; color:var(--color-neutral-600); border:1px solid #cbd5e1;
               padding:.55rem 1.2rem; border-radius:7px; cursor:pointer; }
-  .btn-next { background:#3b82f6; color:#fff; border:none;
+  .btn-next { background:var(--color-info-500); color:var(--color-neutral-0); border:none;
               padding:.55rem 1.5rem; border-radius:7px; font-weight:600; cursor:pointer; }
-  .btn-next:hover { background:#2563eb; }
+  .btn-next:hover { background:var(--color-info-600); }
   .btn-next:disabled { background:#cbd5e1; cursor:not-allowed; }
-  .btn-final { background:#dc2626; }
+  .btn-final { background:var(--color-critical-500); }
   .btn-final:hover { background:#b91c1c; }
   .btn-final:disabled { background:#fca5a5; cursor:not-allowed; }
 </style>
@@ -103,7 +103,7 @@
   desde <a href="/settings" style="color:#b91c1c;text-decoration:underline">Settings</a> en cualquier momento.
 </div>
 
-<div id="wiz-loading" style="text-align:center; padding:3rem; color:#94a3b8">
+<div id="wiz-loading" style="text-align:center; padding:3rem; color:var(--color-neutral-400)">
   <i class="bi bi-hourglass-split"></i> Detectando publicaciones perdiendo Buy Box… (5-15 segundos)
 </div>
 
@@ -112,7 +112,7 @@
   <!-- ── PASO 1 ─────────────────────────────────────────────── -->
   <div class="wiz-section active" id="sec-1">
     <h5 style="margin-bottom:.7rem">Candidatos detectados</h5>
-    <p style="font-size:.86rem; color:#64748b; margin-bottom:1rem">
+    <p style="font-size:.86rem; color:var(--color-neutral-600); margin-bottom:1rem">
       Items perdiendo el Buy Box CON costo cargado. Las que aparecen en
       <span class="cat-pill viable">viable</span> tienen margen sano al precio sugerido.
       Las <span class="cat-pill ajustado">ajustadas</span> requieren confirmación manual.
@@ -137,7 +137,7 @@
 
     <div id="sin-costo-section" style="display:none; margin-top:1.5rem">
       <h6 style="font-weight:700; color:#b45309">⚠ Necesitan costo cargado para poder activarse</h6>
-      <p style="font-size:.82rem; color:#64748b; margin-bottom:.6rem">
+      <p style="font-size:.82rem; color:var(--color-neutral-600); margin-bottom:.6rem">
         Estos items están perdiendo Buy Box pero no podemos calcular margen sin su costo.
       </p>
       <div id="sin-costo-list"></div>
@@ -191,7 +191,7 @@
       </div>
       <div class="breaker-row">
         <input type="checkbox" id="b-min-rev" disabled title="Próximamente — requiere tracking de reseñas por seller">
-        <label style="color:#94a3b8">Solo competir contra vendedores con ≥5 reseñas <em>(próximamente)</em></label>
+        <label style="color:var(--color-neutral-400)">Solo competir contra vendedores con ≥5 reseñas <em>(próximamente)</em></label>
       </div>
       <div class="breaker-row">
         <input type="checkbox" id="b-max-changes">
@@ -199,7 +199,7 @@
       </div>
     </div>
 
-    <p style="font-size:.78rem; color:#64748b">
+    <p style="font-size:.78rem; color:var(--color-neutral-600)">
       Frecuencia: <strong>cada 1 hora entre 8 y 22 ART</strong> (cron <code>repricing_hourly</code> del Sprint 2.3).
     </p>
 
@@ -212,7 +212,7 @@
   <!-- ── PASO 3 ─────────────────────────────────────────────── -->
   <div class="wiz-section" id="sec-3">
     <h5 style="margin-bottom:.7rem">Simulación — qué haría el cron en su próxima corrida</h5>
-    <div id="sim-loading" style="text-align:center; padding:1.5rem; color:#94a3b8">
+    <div id="sim-loading" style="text-align:center; padding:1.5rem; color:var(--color-neutral-400)">
       <i class="bi bi-hourglass-split"></i> Calculando…
     </div>
     <div id="sim-content" style="display:none">
@@ -242,7 +242,7 @@
   <!-- ── PASO 4 ─────────────────────────────────────────────── -->
   <div class="wiz-section" id="sec-4">
     <h5 style="margin-bottom:.7rem">Confirmación final</h5>
-    <div style="background:#fef2f2; border:2px solid #dc2626; border-radius:10px;
+    <div style="background:#fef2f2; border:2px solid var(--color-critical-500); border-radius:10px;
                 padding:1.2rem 1.4rem; margin-bottom:1.2rem">
       <p style="font-weight:600; color:#b91c1c; margin:0 0 .4rem">
         Vas a ACTIVAR repricing automático en <span id="final-count">0</span> publicaciones.
@@ -292,7 +292,7 @@ async function loadCandidates() {
     document.getElementById('wiz-content').style.display = 'block';
     renderPaso1(d);
   } catch (e) {
-    document.getElementById('wiz-loading').innerHTML = `<div style="color:#dc2626"><strong>Error:</strong> ${e.message}</div>`;
+    document.getElementById('wiz-loading').innerHTML = `<div style="color:var(--color-critical-500)"><strong>Error:</strong> ${e.message}</div>`;
   }
 }
 
@@ -313,15 +313,15 @@ function renderPaso1(data) {
         </td>
         <td>
           <div style="font-weight:600">${escHTML(c.titulo)}</div>
-          <div style="font-size:.7rem; color:#94a3b8">${c.id} · stock ${c.stock} · v30d ${c.ventas_30d}</div>
+          <div style="font-size:.7rem; color:var(--color-neutral-400)">${c.id} · stock ${c.stock} · v30d ${c.ventas_30d}</div>
         </td>
         <td class="text-end">$${c.precio_actual.toLocaleString('es-AR')}</td>
-        <td class="text-end" style="color:#dc2626;font-weight:600">
+        <td class="text-end" style="color:var(--color-critical-500);font-weight:600">
           $${c.precio_buy_box.toLocaleString('es-AR')}
           <div style="font-size:.7rem">${c.diferencia_pct}%</div>
         </td>
         <td class="text-end">${c.margen_actual_pct}%</td>
-        <td class="text-end" style="font-weight:700; color:${c.categoria === 'viable' ? '#15803d' : c.categoria === 'ajustado' ? '#b45309' : '#b91c1c'}">
+        <td class="text-end" style="font-weight:700; color:${c.categoria === 'viable' ? 'var(--color-success-700)' : c.categoria === 'ajustado' ? '#b45309' : '#b91c1c'}">
           ${c.margen_sugerido_pct}%
         </td>
         <td class="text-end">
@@ -338,7 +338,7 @@ function renderPaso1(data) {
   if ((data.sin_costo || []).length) {
     document.getElementById('sin-costo-section').style.display = 'block';
     document.getElementById('sin-costo-list').innerHTML = data.sin_costo.map(s =>
-      `<div style="font-size:.78rem; color:#64748b; padding:.2rem 0">
+      `<div style="font-size:.78rem; color:var(--color-neutral-600); padding:.2rem 0">
         • <code>${s.id}</code> ${escHTML(s.titulo)}
       </div>`
     ).join('');
@@ -427,7 +427,7 @@ async function simular() {
     _simulacion = d;
     renderSimulacion(d);
   } catch (e) {
-    document.getElementById('sim-loading').innerHTML = `<div style="color:#dc2626">Error: ${e.message}</div>`;
+    document.getElementById('sim-loading').innerHTML = `<div style="color:var(--color-critical-500)">Error: ${e.message}</div>`;
   }
 }
 
@@ -437,19 +437,19 @@ function renderSimulacion(d) {
   const t = d.totales;
   document.getElementById('sim-totals').innerHTML = `
     <div class="total-card"><div class="num">${t.items_n}</div><div class="lbl">items</div></div>
-    <div class="total-card"><div class="num" style="color:${t.items_con_alerta ? '#b91c1c' : '#15803d'}">${t.items_con_alerta}</div><div class="lbl">con alerta</div></div>
-    <div class="total-card"><div class="num" style="color:#15803d">+$${(t.impacto_margen_pos||0).toLocaleString('es-AR')}</div><div class="lbl">impacto margen positivo/mes</div></div>
-    <div class="total-card"><div class="num" style="color:${t.impacto_neto < 0 ? '#b91c1c' : '#15803d'}">${t.impacto_neto >= 0 ? '+' : ''}$${t.impacto_neto.toLocaleString('es-AR')}</div><div class="lbl">impacto neto/mes</div></div>
+    <div class="total-card"><div class="num" style="color:${t.items_con_alerta ? '#b91c1c' : 'var(--color-success-700)'}">${t.items_con_alerta}</div><div class="lbl">con alerta</div></div>
+    <div class="total-card"><div class="num" style="color:var(--color-success-700)">+$${(t.impacto_margen_pos||0).toLocaleString('es-AR')}</div><div class="lbl">impacto margen positivo/mes</div></div>
+    <div class="total-card"><div class="num" style="color:${t.impacto_neto < 0 ? '#b91c1c' : 'var(--color-success-700)'}">${t.impacto_neto >= 0 ? '+' : ''}$${t.impacto_neto.toLocaleString('es-AR')}</div><div class="lbl">impacto neto/mes</div></div>
   `;
   document.getElementById('sim-tbody').innerHTML = (d.simulacion || []).map(s => {
     const cls = s.alerta ? 'alerta' : '';
-    const deltaCol = s.delta_pct < 0 ? '#dc2626' : (s.delta_pct > 0 ? '#15803d' : '#64748b');
+    const deltaCol = s.delta_pct < 0 ? 'var(--color-critical-500)' : (s.delta_pct > 0 ? 'var(--color-success-700)' : 'var(--color-neutral-600)');
     return `<tr class="${cls}">
-      <td>${escHTML(s.titulo)}<div style="font-size:.7rem;color:#94a3b8">${s.id}</div></td>
+      <td>${escHTML(s.titulo)}<div style="font-size:.7rem;color:var(--color-neutral-400)">${s.id}</div></td>
       <td class="text-end">$${s.precio_actual.toLocaleString('es-AR')}</td>
       <td class="text-end" style="font-weight:700">$${s.precio_nuevo.toLocaleString('es-AR')}</td>
       <td class="text-end" style="color:${deltaCol}">${s.delta_pct >= 0 ? '+' : ''}${s.delta_pct}%</td>
-      <td class="text-end" style="font-weight:600;color:${s.margen_nuevo < 0 ? '#b91c1c' : s.margen_nuevo < 15 ? '#b45309' : '#15803d'}">${s.margen_nuevo}%</td>
+      <td class="text-end" style="font-weight:600;color:${s.margen_nuevo < 0 ? '#b91c1c' : s.margen_nuevo < 15 ? '#b45309' : 'var(--color-success-700)'}">${s.margen_nuevo}%</td>
       <td class="text-end">${s.impacto_margen >= 0 ? '+' : ''}$${(s.impacto_margen||0).toLocaleString('es-AR')}</td>
       <td>${s.alerta ? `<span style="color:#b91c1c;font-size:.74rem">⚠ ${s.alerta}</span>` : ''}</td>
     </tr>`;

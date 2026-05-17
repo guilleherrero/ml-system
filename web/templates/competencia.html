@@ -19,7 +19,7 @@
     El endpoint <code>/sites/MLA/search</code> de MercadoLibre está devolviendo HTTP 403 a nivel
     global de CloudFront — no es problema de tu cuenta ni de tus permisos. Los análisis de
     competencia automáticos pueden devolver datos parciales hasta que ML resuelva el bug.<br>
-    <span style="font-size:.85rem;color:#92400e">
+    <span style="font-size:.85rem;color:var(--color-warning-700)">
       <i class="bi bi-info-circle"></i>
       Mientras tanto, podés capturar competidores manualmente desde
       <a href="/optimizar/{{ alias }}" class="alert-link">Optimizar IA → Capturar competidor desde ML</a>
@@ -134,7 +134,7 @@
       </div>
       {% endif %}
       <div class="p-3 rounded"
-           style="background:#f8fafc;white-space:pre-wrap;font-size:.85rem;
+           style="background:var(--color-neutral-50);white-space:pre-wrap;font-size:.85rem;
                   line-height:1.7;max-height:350px;overflow-y:auto">{{ an.analisis }}</div>
     </div>
   </div>
@@ -410,12 +410,12 @@ function loadSavedAnalysis(itemId, text) {
 // ── Renderizado Markdown básico ──────────────────────────────────
 function renderMd(text) {
   return text
-    .replace(/^## (.+)$/gm, '<strong style="font-size:1rem;display:block;margin-top:1.2em;margin-bottom:.3em;color:#1d4ed8">$1</strong>')
+    .replace(/^## (.+)$/gm, '<strong style="font-size:1rem;display:block;margin-top:1.2em;margin-bottom:.3em;color:var(--color-info-700)">$1</strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/^• /gm, '&nbsp;&nbsp;• ')
-    .replace(/🔴/g, '<span style="color:#dc2626">🔴</span>')
-    .replace(/🟡/g, '<span style="color:#d97706">🟡</span>')
-    .replace(/🟢/g, '<span style="color:#16a34a">🟢</span>');
+    .replace(/🔴/g, '<span style="color:var(--color-critical-500)">🔴</span>')
+    .replace(/🟡/g, '<span style="color:var(--color-warning-500)">🟡</span>')
+    .replace(/🟢/g, '<span style="color:var(--color-success-500)">🟢</span>');
 }
 </script>
 {% endblock %}

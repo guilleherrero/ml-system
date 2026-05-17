@@ -4,7 +4,7 @@
 {% block content %}
 <style>
 .perm-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
   padding:1.25rem 1.5rem; margin-bottom:1.25rem;
 }
 .perm-card-header {
@@ -16,23 +16,23 @@
   display:flex; align-items:center; gap:.5rem;
 }
 .perm-checked-at {
-  font-size:.72rem; color:#94a3b8;
+  font-size:.72rem; color:var(--color-neutral-400);
 }
 .perm-table { width:100%; border-collapse:collapse; font-size:.85rem; }
 .perm-table th {
-  text-align:left; font-size:.66rem; font-weight:700; color:#94a3b8;
+  text-align:left; font-size:.66rem; font-weight:700; color:var(--color-neutral-400);
   text-transform:uppercase; letter-spacing:.04em;
-  padding:.5rem .75rem; background:#fafafa; border-bottom:1px solid #e2e8f0;
+  padding:.5rem .75rem; background:#fafafa; border-bottom:1px solid var(--color-neutral-200);
 }
 .perm-table td {
-  padding:.85rem .75rem; border-bottom:1px solid #f1f5f9; vertical-align:top;
+  padding:.85rem .75rem; border-bottom:1px solid var(--color-neutral-100); vertical-align:top;
 }
 .perm-name { font-weight:600; color:#0f172a; }
-.perm-desc { font-size:.76rem; color:#64748b; margin-top:.2rem; line-height:1.5; }
+.perm-desc { font-size:.76rem; color:var(--color-neutral-600); margin-top:.2rem; line-height:1.5; }
 .perm-section-tags { margin-top:.35rem; display:flex; flex-wrap:wrap; gap:.25rem; }
 .perm-section-tag {
-  display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0;
-  border-radius:4px; padding:.1rem .4rem; font-size:.66rem; color:#64748b;
+  display:inline-block; background:var(--color-neutral-100); border:1px solid var(--color-neutral-200);
+  border-radius:4px; padding:.1rem .4rem; font-size:.66rem; color:var(--color-neutral-600);
   font-family:monospace;
 }
 .perm-state {
@@ -40,20 +40,20 @@
   font-weight:700; font-size:.78rem; padding:.25rem .65rem;
   border-radius:20px; white-space:nowrap;
 }
-.perm-state.activo      { background:#dcfce7; color:#15803d; }
-.perm-state.faltante    { background:#fee2e2; color:#b91c1c; }
-.perm-state.parcial     { background:#fef3c7; color:#92400e; }
-.perm-state.desconocido { background:#f1f5f9; color:#64748b; }
+.perm-state.activo      { background:var(--color-success-100); color:var(--color-success-700); }
+.perm-state.faltante    { background:var(--color-critical-100); color:#b91c1c; }
+.perm-state.parcial     { background:var(--color-warning-100); color:var(--color-warning-700); }
+.perm-state.desconocido { background:var(--color-neutral-100); color:var(--color-neutral-600); }
 .perm-state.error       { background:#ede9fe; color:#6d28d9; }
 
 .perm-state.faltante.critico {
-  background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5;
+  background:var(--color-critical-100); color:#b91c1c; border:1px solid #fca5a5;
 }
 
-.perm-checked { font-size:.7rem; color:#94a3b8; margin-top:.25rem; }
+.perm-checked { font-size:.7rem; color:var(--color-neutral-400); margin-top:.25rem; }
 .perm-message {
-  font-size:.74rem; color:#64748b; margin-top:.5rem; line-height:1.5;
-  background:#f8fafc; border-left:3px solid #e2e8f0;
+  font-size:.74rem; color:var(--color-neutral-600); margin-top:.5rem; line-height:1.5;
+  background:var(--color-neutral-50); border-left:3px solid var(--color-neutral-200);
   padding:.45rem .65rem; border-radius:0 6px 6px 0;
 }
 .perm-message.faltante { border-left-color:#fca5a5; color:#7f1d1d; }
@@ -61,13 +61,13 @@
 
 .perm-action {
   display:inline-flex; align-items:center; gap:.35rem;
-  background:#2563eb; color:#fff; border:none; border-radius:7px;
+  background:var(--color-info-600); color:var(--color-neutral-0); border:none; border-radius:7px;
   padding:.45rem .85rem; font-size:.78rem; font-weight:600;
   text-decoration:none; white-space:nowrap;
 }
-.perm-action:hover { background:#1d4ed8; color:#fff; text-decoration:none; }
-.perm-action.secondary { background:#fff; color:#374151; border:1px solid #cbd5e1; }
-.perm-action.secondary:hover { background:#f8fafc; color:#0f172a; }
+.perm-action:hover { background:var(--color-info-700); color:var(--color-neutral-0); text-decoration:none; }
+.perm-action.secondary { background:var(--color-neutral-0); color:var(--color-neutral-700); border:1px solid #cbd5e1; }
+.perm-action.secondary:hover { background:var(--color-neutral-50); color:#0f172a; }
 
 .summary-row {
   display:flex; gap:.7rem; flex-wrap:wrap; margin-bottom:1rem;
@@ -75,15 +75,15 @@
 .summary-pill {
   display:inline-flex; align-items:center; gap:.4rem;
   padding:.4rem .85rem; border-radius:20px; font-size:.78rem; font-weight:600;
-  border:1px solid #e2e8f0; background:#fff;
+  border:1px solid var(--color-neutral-200); background:var(--color-neutral-0);
 }
 .summary-pill .num { font-weight:800; font-size:.95rem; }
-.summary-pill.activo .num    { color:#15803d; }
+.summary-pill.activo .num    { color:var(--color-success-700); }
 .summary-pill.faltante .num  { color:#b91c1c; }
-.summary-pill.desconocido .num { color:#64748b; }
+.summary-pill.desconocido .num { color:var(--color-neutral-600); }
 
 .empty-state {
-  text-align:center; padding:2rem 1rem; color:#94a3b8; font-size:.9rem;
+  text-align:center; padding:2rem 1rem; color:var(--color-neutral-400); font-size:.9rem;
 }
 </style>
 

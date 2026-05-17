@@ -4,37 +4,37 @@
 {% block content %}
 <style>
 .diag-pill { font-size:.68rem; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
-.diag-trafico_sin_venta { background:#fee2e2; color:#dc2626; }
-.diag-conversion_baja   { background:#fef3c7; color:#d97706; }
-.diag-preguntas_sin_venta { background:#fef3c7; color:#d97706; }
-.diag-sin_trafico       { background:#f1f5f9; color:#64748b; }
-.diag-revisar           { background:#dbeafe; color:#2563eb; }
-.diag-normal            { background:#dcfce7; color:#15803d; }
-.diag-excelente         { background:#dcfce7; color:#15803d; }
+.diag-trafico_sin_venta { background:var(--color-critical-100); color:var(--color-critical-500); }
+.diag-conversion_baja   { background:var(--color-warning-100); color:var(--color-warning-500); }
+.diag-preguntas_sin_venta { background:var(--color-warning-100); color:var(--color-warning-500); }
+.diag-sin_trafico       { background:var(--color-neutral-100); color:var(--color-neutral-600); }
+.diag-revisar           { background:var(--color-info-100); color:var(--color-info-600); }
+.diag-normal            { background:var(--color-success-100); color:var(--color-success-700); }
+.diag-excelente         { background:var(--color-success-100); color:var(--color-success-700); }
 
-.funnel-row { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.85rem 1rem; margin-bottom:.6rem; }
-.funnel-row.critico { border-left:4px solid #ef4444; }
-.funnel-row.advertencia { border-left:4px solid #f59e0b; }
-.funnel-row.ok { border-left:4px solid #10b981; }
+.funnel-row { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px; padding:.85rem 1rem; margin-bottom:.6rem; }
+.funnel-row.critico { border-left:4px solid var(--color-critical-400); }
+.funnel-row.advertencia { border-left:4px solid var(--color-warning-400); }
+.funnel-row.ok { border-left:4px solid var(--color-success-400); }
 .funnel-row.gris { border-left:4px solid #cbd5e1; }
 
 .funnel-steps { display:flex; align-items:center; gap:.3rem; flex-wrap:wrap; margin:.5rem 0; }
 .f-step { text-align:center; min-width:70px; }
-.f-step .f-val { font-size:1rem; font-weight:800; color:#1e293b; }
-.f-step .f-lbl { font-size:.62rem; color:#94a3b8; }
+.f-step .f-val { font-size:1rem; font-weight:800; color:var(--color-neutral-800); }
+.f-step .f-lbl { font-size:.62rem; color:var(--color-neutral-400); }
 .f-arrow { color:#cbd5e1; font-size:.8rem; }
 .f-rate  { font-size:.7rem; font-weight:700; padding:1px 6px; border-radius:10px; }
-.f-rate.ok  { background:#dcfce7; color:#15803d; }
-.f-rate.warn { background:#fef3c7; color:#d97706; }
-.f-rate.bad  { background:#fee2e2; color:#dc2626; }
+.f-rate.ok  { background:var(--color-success-100); color:var(--color-success-700); }
+.f-rate.warn { background:var(--color-warning-100); color:var(--color-warning-500); }
+.f-rate.bad  { background:var(--color-critical-100); color:var(--color-critical-500); }
 
-.accion-box { font-size:.78rem; color:#4b5563; background:#f8fafc; border-radius:6px; padding:.4rem .65rem; margin-top:.4rem; }
+.accion-box { font-size:.78rem; color:#4b5563; background:var(--color-neutral-50); border-radius:6px; padding:.4rem .65rem; margin-top:.4rem; }
 
-.filter-pill { border:1px solid #e5e7eb; border-radius:20px; padding:.28rem .75rem; font-size:.75rem; cursor:pointer; color:#374151; background:#fff; transition:all .15s; white-space:nowrap; }
-.filter-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
-.filter-pill.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
+.filter-pill { border:1px solid #e5e7eb; border-radius:20px; padding:.28rem .75rem; font-size:.75rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0); transition:all .15s; white-space:nowrap; }
+.filter-pill:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
+.filter-pill.active { background:var(--color-info-600); border-color:var(--color-info-600); color:var(--color-neutral-0); font-weight:600; }
 
-.skel { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:shimmer 1.3s infinite; border-radius:6px; display:block; }
+.skel { background:linear-gradient(90deg,var(--color-neutral-100) 25%,var(--color-neutral-200) 50%,var(--color-neutral-100) 75%); background-size:200% 100%; animation:shimmer 1.3s infinite; border-radius:6px; display:block; }
 @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 </style>
 
@@ -51,27 +51,27 @@
 <!-- ══ RESUMEN ══════════════════════════════════════════════════ -->
 <div class="row g-3 mb-3" id="resumen-funnel">
   <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #ef4444">
-      <div style="font-size:1.8rem;font-weight:800;color:#dc2626" id="cnt-critico"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
-      <div style="font-size:.72rem;color:#64748b;font-weight:600">TRÁFICO SIN VENTA</div>
+    <div class="card text-center p-3" style="border-top:3px solid var(--color-critical-400)">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--color-critical-500)" id="cnt-critico"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
+      <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">TRÁFICO SIN VENTA</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #f59e0b">
-      <div style="font-size:1.8rem;font-weight:800;color:#d97706" id="cnt-warn"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
-      <div style="font-size:.72rem;color:#64748b;font-weight:600">CONVERSIÓN BAJA</div>
+    <div class="card text-center p-3" style="border-top:3px solid var(--color-warning-400)">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--color-warning-500)" id="cnt-warn"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
+      <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">CONVERSIÓN BAJA</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #10b981">
+    <div class="card text-center p-3" style="border-top:3px solid var(--color-success-400)">
       <div style="font-size:1.8rem;font-weight:800;color:#059669" id="cnt-ok"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
-      <div style="font-size:.72rem;color:#64748b;font-weight:600">CONVIRTIENDO BIEN</div>
+      <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">CONVIRTIENDO BIEN</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
-    <div class="card text-center p-3" style="border-top:3px solid #2563eb">
-      <div style="font-size:1.8rem;font-weight:800;color:#1d4ed8" id="cnt-total"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
-      <div style="font-size:.72rem;color:#64748b;font-weight:600">PUBLICACIONES</div>
+    <div class="card text-center p-3" style="border-top:3px solid var(--color-info-600)">
+      <div style="font-size:1.8rem;font-weight:800;color:var(--color-info-700)" id="cnt-total"><span class="skel" style="width:40px;height:28px;display:inline-block">&nbsp;</span></div>
+      <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">PUBLICACIONES</div>
     </div>
   </div>
 </div>
@@ -162,12 +162,12 @@ fetch(`/api/funnel/${encodeURIComponent(alias)}`)
         <div class="d-flex align-items-start gap-2 flex-wrap">
           <span class="diag-pill diag-${item.diagnostico}">${diagLabel}</span>
           <div class="flex-grow-1 min-w-0">
-            <div style="font-weight:600;font-size:.88rem;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            <div style="font-weight:600;font-size:.88rem;color:var(--color-neutral-800);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                  title="${item.titulo}">${item.titulo}</div>
           </div>
           <a href="${mlUrl(item.item_id)}" target="_blank"
-             style="font-size:.7rem;color:#64748b;text-decoration:none;flex-shrink:0"
-             onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color='#64748b'">
+             style="font-size:.7rem;color:var(--color-neutral-600);text-decoration:none;flex-shrink:0"
+             onmouseover="this.style.color='var(--color-info-600)'" onmouseout="this.style.color='var(--color-neutral-600)'">
             ML →
           </a>
         </div>
@@ -183,18 +183,18 @@ fetch(`/api/funnel/${encodeURIComponent(alias)}`)
                   style="font-size:1.15rem;font-weight:800">
               ${item.vis_to_vta}%
             </span>
-            <div class="f-lbl" style="font-size:.66rem;color:#1d4ed8;font-weight:700;letter-spacing:.04em;text-transform:uppercase">
+            <div class="f-lbl" style="font-size:.66rem;color:var(--color-info-700);font-weight:700;letter-spacing:.04em;text-transform:uppercase">
               Conversión real
             </div>
           </div>
           <div class="f-arrow">→</div>
           <div class="f-step">
-            <div class="f-val" style="color:#2563eb;font-size:1.15rem">${(item.ventas_30d||0)}</div>
+            <div class="f-val" style="color:var(--color-info-600);font-size:1.15rem">${(item.ventas_30d||0)}</div>
             <div class="f-lbl">Ventas 30d</div>
           </div>
         </div>
         ${(item.preguntas_30d || 0) > 0 ? `
-        <div style="font-size:.72rem;color:#94a3b8;margin-top:.3rem">
+        <div style="font-size:.72rem;color:var(--color-neutral-400);margin-top:.3rem">
           <i class="bi bi-chat-dots me-1"></i>
           ${item.preguntas_30d} pregunta${item.preguntas_30d !== 1 ? 's' : ''} en 30d
           ${item.vis_to_preg > 0 ? `(${item.vis_to_preg}% de las visitas preguntaron)` : ''}
@@ -203,7 +203,7 @@ fetch(`/api/funnel/${encodeURIComponent(alias)}`)
         <div class="accion-box">
           <i class="bi bi-lightbulb me-1 text-warning"></i>${item.accion}
           ${grupo === 'critico' || grupo === 'advertencia' ?
-            `<a href="/optimizaciones/${encodeURIComponent(alias)}" class="ms-2" style="font-size:.73rem;color:#2563eb;font-weight:600">Optimizar →</a>` : ''}
+            `<a href="/optimizaciones/${encodeURIComponent(alias)}" class="ms-2" style="font-size:.73rem;color:var(--color-info-600);font-weight:600">Optimizar →</a>` : ''}
         </div>
       </div>`;
     });

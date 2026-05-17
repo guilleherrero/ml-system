@@ -3,34 +3,34 @@
 
 {% block content %}
 <style>
-.badge-sin    { background:#fef2f2; color:#dc2626; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.badge-urg    { background:#fee2e2; color:#dc2626; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.badge-muerto { background:#fef3c7; color:#d97706; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.badge-sinmov { background:#f1f5f9; color:#475569; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.badge-escalar{ background:#dcfce7; color:#16a34a; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.badge-ok     { background:#f1f5f9; color:#64748b; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.filter-pill  { border:1px solid #e5e7eb; border-radius:20px; padding:.3rem .85rem; font-size:.78rem; cursor:pointer; color:#374151; background:#fff; transition:all .15s; white-space:nowrap; }
-.filter-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
-.filter-pill.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
-.full-row { border-bottom:1px solid #f1f5f9; transition:background .1s; }
-.full-row:hover { background:#f8fafc; }
-.dias-ok     { color:#16a34a; font-weight:600; }
-.dias-warn   { color:#d97706; font-weight:600; }
+.badge-sin    { background:#fef2f2; color:var(--color-critical-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-urg    { background:var(--color-critical-100); color:var(--color-critical-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-muerto { background:var(--color-warning-100); color:var(--color-warning-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-sinmov { background:var(--color-neutral-100); color:#475569; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-escalar{ background:var(--color-success-100); color:var(--color-success-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-ok     { background:var(--color-neutral-100); color:var(--color-neutral-600); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.filter-pill  { border:1px solid #e5e7eb; border-radius:20px; padding:.3rem .85rem; font-size:.78rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0); transition:all .15s; white-space:nowrap; }
+.filter-pill:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
+.filter-pill.active { background:var(--color-info-600); border-color:var(--color-info-600); color:var(--color-neutral-0); font-weight:600; }
+.full-row { border-bottom:1px solid var(--color-neutral-100); transition:background .1s; }
+.full-row:hover { background:var(--color-neutral-50); }
+.dias-ok     { color:var(--color-success-500); font-weight:600; }
+.dias-warn   { color:var(--color-warning-500); font-weight:600; }
 .dias-orange { color:#ea580c; font-weight:600; }
-.dias-red    { color:#dc2626; font-weight:600; }
-.section-title { font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; padding:.5rem 1rem; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
-.pedido-card { border:1px solid #e2e8f0; border-radius:10px; padding:1rem; margin-bottom:.75rem; }
-.pedido-card.pendiente   { border-left:4px solid #94a3b8; }
-.pedido-card.en_transito { border-left:4px solid #f59e0b; }
+.dias-red    { color:var(--color-critical-500); font-weight:600; }
+.section-title { font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-600); padding:.5rem 1rem; background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-200); }
+.pedido-card { border:1px solid var(--color-neutral-200); border-radius:10px; padding:1rem; margin-bottom:.75rem; }
+.pedido-card.pendiente   { border-left:4px solid var(--color-neutral-400); }
+.pedido-card.en_transito { border-left:4px solid var(--color-warning-400); }
 .pedido-card.en_deposito { border-left:4px solid #6366f1; }
-.pedido-card.enviado_full{ border-left:4px solid #3b82f6; }
-.pedido-card.ingresado   { border-left:4px solid #10b981; }
+.pedido-card.enviado_full{ border-left:4px solid var(--color-info-500); }
+.pedido-card.ingresado   { border-left:4px solid var(--color-success-400); }
 .estado-pill { font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; }
-.ep-pendiente   { background:#f1f5f9; color:#64748b; }
-.ep-en_transito { background:#fef3c7; color:#d97706; }
+.ep-pendiente   { background:var(--color-neutral-100); color:var(--color-neutral-600); }
+.ep-en_transito { background:var(--color-warning-100); color:var(--color-warning-500); }
 .ep-en_deposito { background:#ede9fe; color:#7c3aed; }
-.ep-enviado_full{ background:#dbeafe; color:#1d4ed8; }
-.ep-ingresado   { background:#dcfce7; color:#16a34a; }
+.ep-enviado_full{ background:var(--color-info-100); color:var(--color-info-700); }
+.ep-ingresado   { background:var(--color-success-100); color:var(--color-success-500); }
 </style>
 
 <div class="page-header">
@@ -57,7 +57,7 @@
 <!-- ══ PEDIDOS EN CURSO ══════════════════════════════════════════════ -->
 <div id="pedidos-section" class="mb-4" style="display:none">
   <div class="d-flex align-items-center justify-content-between mb-2">
-    <h6 class="mb-0" style="font-weight:700;color:#1e293b">
+    <h6 class="mb-0" style="font-weight:700;color:var(--color-neutral-800)">
       <i class="bi bi-truck me-2 text-primary"></i>Pedidos de reposición en curso
     </h6>
   </div>
@@ -88,7 +88,7 @@
 <div class="card mb-4">
   <div class="table-responsive">
     <table class="table mb-0" style="font-size:.84rem">
-      <thead style="background:#f8fafc;font-size:.73rem;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em">
+      <thead style="background:var(--color-neutral-50);font-size:.73rem;color:var(--color-neutral-600);font-weight:700;text-transform:uppercase;letter-spacing:.04em">
         <tr>
           <th style="padding:.7rem 1rem">Publicación</th>
           <th class="text-end" style="padding:.7rem .7rem;white-space:nowrap">Precio</th>
@@ -119,7 +119,7 @@
     </div>
     <div class="card-body p-0">
       <table class="table mb-0" style="font-size:.84rem">
-        <thead style="background:#fffbeb;font-size:.73rem;color:#92400e;font-weight:700;text-transform:uppercase">
+        <thead style="background:#fffbeb;font-size:.73rem;color:var(--color-warning-700);font-weight:700;text-transform:uppercase">
           <tr>
             <th style="padding:.6rem 1rem">Publicación</th>
             <th class="text-end" style="padding:.6rem .7rem">Stock Full</th>
@@ -204,7 +204,7 @@
         <p class="text-muted small mb-3">Seleccioná los productos a reponer y ajustá las cantidades. Las cantidades sugeridas se calculan para cubrir el tránsito + 14 días de buffer.</p>
         <div class="table-responsive">
           <table class="table table-sm" style="font-size:.84rem">
-            <thead style="background:#f8fafc;font-size:.73rem;font-weight:700;text-transform:uppercase;color:#64748b">
+            <thead style="background:var(--color-neutral-50);font-size:.73rem;font-weight:700;text-transform:uppercase;color:var(--color-neutral-600)">
               <tr>
                 <th style="width:36px"><input type="checkbox" id="check-all" onchange="toggleCheckAll(this)"></th>
                 <th>Producto</th>
@@ -344,45 +344,45 @@ fetch(`/api/full-data/${encodeURIComponent(ALIAS)}`)
 function renderCards(r) {
   const fmt = v => v != null ? '$' + Math.round(v).toLocaleString('es-AR') : '—';
   const costoStr = r.costo_muerto > 0
-    ? `<div style="font-size:.65rem;color:#94a3b8">~${fmt(r.costo_muerto)} almac.</div>` : '';
+    ? `<div style="font-size:.65rem;color:var(--color-neutral-400)">~${fmt(r.costo_muerto)} almac.</div>` : '';
   document.getElementById('cards-resumen').innerHTML = `
     <div class="col-6 col-md-2">
       <div class="card text-center p-3" style="border-top:3px solid #6366f1">
         <div style="font-size:2rem;font-weight:800;color:#6366f1">${r.total}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600">EN FULL</div>
+        <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">EN FULL</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card text-center p-3" style="border-top:3px solid #ef4444">
-        <div style="font-size:2rem;font-weight:800;color:#dc2626">${r.sin_stock}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600">SIN STOCK</div>
+      <div class="card text-center p-3" style="border-top:3px solid var(--color-critical-400)">
+        <div style="font-size:2rem;font-weight:800;color:var(--color-critical-500)">${r.sin_stock}</div>
+        <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">SIN STOCK</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
       <div class="card text-center p-3" style="border-top:3px solid #f87171">
-        <div style="font-size:2rem;font-weight:800;color:#dc2626">${r.urgente}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600">REPONER YA</div>
+        <div style="font-size:2rem;font-weight:800;color:var(--color-critical-500)">${r.urgente}</div>
+        <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">REPONER YA</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card text-center p-3" style="border-top:3px solid #f59e0b">
-        <div style="font-size:2rem;font-weight:800;color:#d97706">${r.muerto}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600">MUERTO EN FULL</div>
+      <div class="card text-center p-3" style="border-top:3px solid var(--color-warning-400)">
+        <div style="font-size:2rem;font-weight:800;color:var(--color-warning-500)">${r.muerto}</div>
+        <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">MUERTO EN FULL</div>
         ${costoStr}
       </div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card text-center p-3" style="border-top:3px solid #2563eb">
-        <div style="font-size:1.1rem;font-weight:800;color:#1d4ed8;line-height:1.2">${fmt(r.valor_venta_total)}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600;margin-top:.15rem">VALOR STOCK</div>
-        <div style="font-size:.65rem;color:#94a3b8">${r.valor_costo_total > 0 ? 'costo: ' + fmt(r.valor_costo_total) : 'precio de venta'}</div>
+      <div class="card text-center p-3" style="border-top:3px solid var(--color-info-600)">
+        <div style="font-size:1.1rem;font-weight:800;color:var(--color-info-700);line-height:1.2">${fmt(r.valor_venta_total)}</div>
+        <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600;margin-top:.15rem">VALOR STOCK</div>
+        <div style="font-size:.65rem;color:var(--color-neutral-400)">${r.valor_costo_total > 0 ? 'costo: ' + fmt(r.valor_costo_total) : 'precio de venta'}</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card text-center p-3" style="border-top:3px solid #10b981">
+      <div class="card text-center p-3" style="border-top:3px solid var(--color-success-400)">
         <div style="font-size:1.1rem;font-weight:800;color:#059669;line-height:1.2">${fmt(r.revenue_30d_total)}</div>
-        <div style="font-size:.72rem;color:#64748b;font-weight:600;margin-top:.15rem">REVENUE 30D</div>
-        <div style="font-size:.65rem;color:#94a3b8">facturación estimada</div>
+        <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600;margin-top:.15rem">REVENUE 30D</div>
+        <div style="font-size:.65rem;color:var(--color-neutral-400)">facturación estimada</div>
       </div>
     </div>`;
 }
@@ -394,9 +394,9 @@ function renderFiltros(r) {
     <button class="filter-pill" onclick="filtrar('SIN_STOCK',this)" style="border-color:#fecaca"><i class="bi bi-x-octagon me-1 text-danger"></i>Sin stock <span class="badge bg-danger ms-1">${r.sin_stock}</span></button>
     <button class="filter-pill" onclick="filtrar('REPONER_URGENTE',this)" style="border-color:#fecaca"><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Reponer ya <span class="badge bg-danger ms-1">${r.urgente}</span></button>
     <button class="filter-pill" onclick="filtrar('STOCK_MUERTO',this)" style="border-color:#fde68a"><i class="bi bi-archive me-1 text-warning"></i>Stock muerto Full <span class="badge bg-warning text-dark ms-1">${r.muerto}</span></button>
-    <button class="filter-pill" onclick="filtrar('SIN_MOVIMIENTO',this)" style="border-color:#e2e8f0"><i class="bi bi-pause-circle me-1 text-secondary"></i>Sin movimiento <span class="badge bg-secondary ms-1">${r.sin_movimiento || 0}</span></button>
+    <button class="filter-pill" onclick="filtrar('SIN_MOVIMIENTO',this)" style="border-color:var(--color-neutral-200)"><i class="bi bi-pause-circle me-1 text-secondary"></i>Sin movimiento <span class="badge bg-secondary ms-1">${r.sin_movimiento || 0}</span></button>
     <button class="filter-pill" onclick="filtrar('ESCALAR',this)" style="border-color:#bbf7d0"><i class="bi bi-rocket-takeoff me-1 text-success"></i>Escalar <span class="badge bg-success ms-1">${r.escalar}</span></button>
-    <button class="filter-pill" onclick="filtrar('OK',this)" style="border-color:#e2e8f0"><i class="bi bi-check-circle me-1 text-secondary"></i>OK <span class="badge bg-secondary ms-1">${r.ok}</span></button>`;
+    <button class="filter-pill" onclick="filtrar('OK',this)" style="border-color:var(--color-neutral-200)"><i class="bi bi-check-circle me-1 text-secondary"></i>OK <span class="badge bg-secondary ms-1">${r.ok}</span></button>`;
 }
 
 function filtrar(tipo, btn) {
@@ -440,32 +440,32 @@ function renderTabla(items) {
   tbody.innerHTML = items.map(it => `
     <tr class="full-row" data-alerta="${it.alerta}">
       <td style="padding:.7rem 1rem;max-width:260px">
-        <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
-        <div style="font-size:.68rem;color:#94a3b8">${it.id}</div>
+        <div style="font-weight:600;color:var(--color-neutral-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
+        <div style="font-size:.68rem;color:var(--color-neutral-400)">${it.id}</div>
       </td>
       <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">
         <span style="font-weight:600">${fmtPeso(it.precio)}</span>
-        ${it.valor_venta ? `<div style="font-size:.65rem;color:#94a3b8">stock: ${fmtPeso(it.valor_venta)}</div>` : ''}
+        ${it.valor_venta ? `<div style="font-size:.65rem;color:var(--color-neutral-400)">stock: ${fmtPeso(it.valor_venta)}</div>` : ''}
       </td>
       <td class="text-end" style="padding:.7rem .7rem">
         <span style="font-weight:700;color:#6366f1">${it.stock_full_real}</span>
         ${(function(){
           if (!it.dias_full) return '';
           const d = Math.round(it.dias_full);
-          const cls = d <= it.lead_days ? 'color:#dc2626' : (d <= it.lead_days*1.5 ? 'color:#d97706' : 'color:#94a3b8');
+          const cls = d <= it.lead_days ? 'color:var(--color-critical-500)' : (d <= it.lead_days*1.5 ? 'color:var(--color-warning-500)' : 'color:var(--color-neutral-400)');
           return `<div style="font-size:.63rem;${cls}">${d}d en Full</div>`;
         })()}
       </td>
       <td class="text-end" style="padding:.7rem .7rem">
-        <span class="dep-display" data-id="${it.id}" title="Click para editar" style="cursor:pointer;border-bottom:1px dashed #94a3b8;color:#64748b;font-weight:${it.deposito > 0 ? '600' : '400'}">${it.deposito !== null && it.deposito !== undefined ? it.deposito : '—'}</span>
+        <span class="dep-display" data-id="${it.id}" title="Click para editar" style="cursor:pointer;border-bottom:1px dashed var(--color-neutral-400);color:var(--color-neutral-600);font-weight:${it.deposito > 0 ? '600' : '400'}">${it.deposito !== null && it.deposito !== undefined ? it.deposito : '—'}</span>
       </td>
-      <td class="text-end" style="padding:.7rem .7rem">${it.en_transito > 0 ? `<span style="color:#f59e0b;font-weight:600">${it.en_transito}</span><div style="font-size:.65rem;color:#94a3b8">en camino</div>` : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem">${it.en_transito > 0 ? `<span style="color:var(--color-warning-400);font-weight:600">${it.en_transito}</span><div style="font-size:.65rem;color:var(--color-neutral-400)">en camino</div>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.vel_30 > 0 ? it.vel_30.toFixed(1) : '<span class="text-muted">0</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">${it.revenue_30d > 0 ? `<span style="font-weight:600;color:#059669">${fmtPeso(it.revenue_30d)}</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${diasClass(it.dias_stock, it.lead_days)}</td>
-      <td class="text-end" style="padding:.7rem .7rem;font-size:.82rem">${it.sin_ventas_dias != null ? `<span style="color:${it.sin_ventas_dias>=21?'#dc2626':it.sin_ventas_dias>=10?'#d97706':'#64748b'}">${it.sin_ventas_dias}d</span>` : '<span class="text-muted">—</span>'}</td>
-      <td class="text-end" style="padding:.7rem .7rem">${it.margen_pct !== null ? `<span style="color:${it.margen_pct>=15?'#16a34a':it.margen_pct>=0?'#d97706':'#dc2626'};font-weight:600">${it.margen_pct}%</span>` : '<span class="text-muted">—</span>'}</td>
-      <td class="text-end" style="padding:.7rem .7rem">${it.unidades_pedir > 0 ? `<span style="font-weight:600;color:#2563eb">${it.unidades_pedir} u.</span>` : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem;font-size:.82rem">${it.sin_ventas_dias != null ? `<span style="color:${it.sin_ventas_dias>=21?'var(--color-critical-500)':it.sin_ventas_dias>=10?'var(--color-warning-500)':'var(--color-neutral-600)'}">${it.sin_ventas_dias}d</span>` : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem">${it.margen_pct !== null ? `<span style="color:${it.margen_pct>=15?'var(--color-success-500)':it.margen_pct>=0?'var(--color-warning-500)':'var(--color-critical-500)'};font-weight:600">${it.margen_pct}%</span>` : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem">${it.unidades_pedir > 0 ? `<span style="font-weight:600;color:var(--color-info-600)">${it.unidades_pedir} u.</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-center" style="padding:.7rem .7rem">${BADGE[it.alerta] || it.alerta}</td>
       <td style="padding:.7rem .7rem">
         <div class="d-flex gap-1 flex-wrap">
@@ -517,11 +517,11 @@ function renderRetirar(items) {
     <tr>
       <td style="padding:.65rem 1rem;font-weight:600;max-width:260px">
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
-        <div style="font-size:.68rem;color:#94a3b8">${it.id}</div>
+        <div style="font-size:.68rem;color:var(--color-neutral-400)">${it.id}</div>
       </td>
       <td class="text-end" style="padding:.65rem .7rem;font-weight:700;color:#6366f1">${it.stock_full_real}</td>
-      <td class="text-end" style="padding:.65rem .7rem;color:#d97706;font-weight:600">${it.sin_ventas_dias !== null ? it.sin_ventas_dias + ' días' : '—'}</td>
-      <td class="text-end" style="padding:.65rem .7rem;color:#dc2626;font-weight:600">${it.costo_almac ? '$' + Math.round(it.costo_almac).toLocaleString('es-AR') : '—'}</td>
+      <td class="text-end" style="padding:.65rem .7rem;color:var(--color-warning-500);font-weight:600">${it.sin_ventas_dias !== null ? it.sin_ventas_dias + ' días' : '—'}</td>
+      <td class="text-end" style="padding:.65rem .7rem;color:var(--color-critical-500);font-weight:600">${it.costo_almac ? '$' + Math.round(it.costo_almac).toLocaleString('es-AR') : '—'}</td>
       <td style="padding:.65rem .7rem">
         ${it.permalink ? `<a href="${it.permalink}" target="_blank" class="btn btn-xs btn-outline-warning" style="font-size:.7rem;padding:2px 8px">Gestionar →</a>` : ''}
       </td>
@@ -537,10 +537,10 @@ function renderEscalar(items) {
     <tr>
       <td style="padding:.65rem 1rem;font-weight:600">${it.titulo}</td>
       <td class="text-end" style="padding:.65rem .7rem">${it.stock}</td>
-      <td class="text-end" style="padding:.65rem .7rem;font-weight:600;color:#2563eb">${it.vel_30.toFixed(1)}/día</td>
+      <td class="text-end" style="padding:.65rem .7rem;font-weight:600;color:var(--color-info-600)">${it.vel_30.toFixed(1)}/día</td>
       <td class="text-end" style="padding:.65rem .7rem" class="dias-ok">${it.dias_stock !== null ? Math.round(it.dias_stock) + 'd' : '—'}</td>
-      <td class="text-end" style="padding:.65rem .7rem;color:#16a34a;font-weight:600">${it.margen_pct !== null ? it.margen_pct + '%' : '—'}</td>
-      <td style="padding:.65rem .7rem;font-size:.8rem;color:#374151">Aumentá stock, activá ads, revisá precio.</td>
+      <td class="text-end" style="padding:.65rem .7rem;color:var(--color-success-500);font-weight:600">${it.margen_pct !== null ? it.margen_pct + '%' : '—'}</td>
+      <td style="padding:.65rem .7rem;font-size:.8rem;color:var(--color-neutral-700)">Aumentá stock, activá ads, revisá precio.</td>
     </tr>`).join('');
 }
 
@@ -552,21 +552,21 @@ function renderSugeridos(items) {
   document.getElementById('sugeridos-tbody').innerHTML = items.map(it => `
     <tr>
       <td style="padding:.65rem 1rem;max-width:260px">
-        <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
-        <div style="font-size:.68rem;color:#94a3b8">${it.id}</div>
+        <div style="font-weight:600;color:var(--color-neutral-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titulo}</div>
+        <div style="font-size:.68rem;color:var(--color-neutral-400)">${it.id}</div>
       </td>
       <td class="text-end" style="padding:.65rem .7rem;white-space:nowrap">$${Math.round(it.precio).toLocaleString('es-AR')}</td>
       <td class="text-end" style="padding:.65rem .7rem;font-weight:600">${it.stock}</td>
-      <td class="text-end" style="padding:.65rem .7rem;font-weight:700;color:#2563eb">${it.vel_30.toFixed(1)}/día</td>
+      <td class="text-end" style="padding:.65rem .7rem;font-weight:700;color:var(--color-info-600)">${it.vel_30.toFixed(1)}/día</td>
       <td class="text-end" style="padding:.65rem .7rem">
         ${it.margen_full !== null
-          ? `<span style="font-weight:600;color:${it.margen_full >= 15 ? '#16a34a' : it.margen_full >= 0 ? '#d97706' : '#dc2626'}">${it.margen_full}%</span>`
+          ? `<span style="font-weight:600;color:${it.margen_full >= 15 ? 'var(--color-success-500)' : it.margen_full >= 0 ? 'var(--color-warning-500)' : 'var(--color-critical-500)'}">${it.margen_full}%</span>`
           : '<span class="text-muted">—</span>'}
       </td>
       <td class="text-center" style="padding:.65rem .7rem">
         ${it.free_ship
-          ? '<span style="color:#16a34a;font-size:.8rem"><i class="bi bi-check-circle-fill"></i></span>'
-          : '<span style="color:#dc2626;font-size:.8rem"><i class="bi bi-x-circle-fill"></i></span>'}
+          ? '<span style="color:var(--color-success-500);font-size:.8rem"><i class="bi bi-check-circle-fill"></i></span>'
+          : '<span style="color:var(--color-critical-500);font-size:.8rem"><i class="bi bi-x-circle-fill"></i></span>'}
       </td>
       <td style="padding:.65rem .7rem;font-size:.78rem;color:#475569">
         ${it.razones.map(r => `<div><i class="bi bi-arrow-right me-1 text-primary" style="font-size:.7rem"></i>${r}</div>`).join('')}
@@ -601,11 +601,11 @@ function renderPedidoCard(p) {
         <div class="flex-grow-1">
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="estado-pill ${e.cls}"><i class="bi ${e.icon} me-1"></i>${e.label}</span>
-            <span style="font-size:.75rem;color:#94a3b8">Pedido #${p.id} · ${p.fecha_creacion}</span>
+            <span style="font-size:.75rem;color:var(--color-neutral-400)">Pedido #${p.id} · ${p.fecha_creacion}</span>
           </div>
-          <div style="font-size:.84rem;color:#1e293b;font-weight:600">${p.items.length} producto${p.items.length !== 1 ? 's' : ''} · ${total} unidades totales</div>
-          ${p.notas ? `<div style="font-size:.78rem;color:#64748b;margin-top:.2rem"><i class="bi bi-chat-text me-1"></i>${p.notas}</div>` : ''}
-          <div style="font-size:.76rem;color:#94a3b8;margin-top:.4rem">
+          <div style="font-size:.84rem;color:var(--color-neutral-800);font-weight:600">${p.items.length} producto${p.items.length !== 1 ? 's' : ''} · ${total} unidades totales</div>
+          ${p.notas ? `<div style="font-size:.78rem;color:var(--color-neutral-600);margin-top:.2rem"><i class="bi bi-chat-text me-1"></i>${p.notas}</div>` : ''}
+          <div style="font-size:.76rem;color:var(--color-neutral-400);margin-top:.4rem">
             ${p.items.slice(0, 3).map(i => `${i.titulo.substring(0,40)}… (${i.unidades}u)`).join(' · ')}
             ${p.items.length > 3 ? ` + ${p.items.length - 3} más` : ''}
           </div>
@@ -639,15 +639,15 @@ function verDetalle(pedidoId) {
       document.getElementById('detalle-body').innerHTML = `
         <div class="mb-3 text-muted small">Creado: ${p.fecha_creacion}${p.notas ? ' · ' + p.notas : ''}</div>
         <table class="table table-sm" style="font-size:.84rem">
-          <thead style="background:#f8fafc;font-size:.73rem;font-weight:700;text-transform:uppercase;color:#64748b">
+          <thead style="background:var(--color-neutral-50);font-size:.73rem;font-weight:700;text-transform:uppercase;color:var(--color-neutral-600)">
             <tr><th>Producto</th><th class="text-center">Unidades</th><th>Notas</th></tr>
           </thead>
           <tbody>
             ${p.items.map(i => `
               <tr>
                 <td style="font-weight:600">${i.titulo}</td>
-                <td class="text-center" style="font-weight:700;color:#2563eb">${i.unidades}</td>
-                <td style="color:#64748b;font-size:.78rem">${i.notas || '—'}</td>
+                <td class="text-center" style="font-weight:700;color:var(--color-info-600)">${i.unidades}</td>
+                <td style="color:var(--color-neutral-600);font-size:.78rem">${i.notas || '—'}</td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -691,11 +691,11 @@ function abrirNuevoPedido() {
   document.getElementById('pedido-items-tbody').innerHTML = ordenados.map(it => `
     <tr>
       <td><input type="checkbox" class="pedido-check" data-id="${it.id}" ${sugeridos.find(s => s.id === it.id) ? 'checked' : ''}></td>
-      <td style="font-size:.82rem;font-weight:600">${it.titulo}<div style="font-size:.68rem;color:#94a3b8">${it.id}</div></td>
+      <td style="font-size:.82rem;font-weight:600">${it.titulo}<div style="font-size:.68rem;color:var(--color-neutral-400)">${it.id}</div></td>
       <td class="text-center">${it.stock}</td>
-      <td class="text-center" style="${it.dias_stock !== null && it.dias_stock <= it.lead_days ? 'color:#dc2626;font-weight:600' : ''}">${it.dias_stock !== null ? Math.round(it.dias_stock) + 'd' : '—'}</td>
+      <td class="text-center" style="${it.dias_stock !== null && it.dias_stock <= it.lead_days ? 'color:var(--color-critical-500);font-weight:600' : ''}">${it.dias_stock !== null ? Math.round(it.dias_stock) + 'd' : '—'}</td>
       <td class="text-center">${it.vel_30 > 0 ? it.vel_30.toFixed(1) : '—'}</td>
-      <td class="text-center" style="color:#94a3b8;font-size:.8rem">${it.unidades_pedir > 0 ? it.unidades_pedir : '—'}</td>
+      <td class="text-center" style="color:var(--color-neutral-400);font-size:.8rem">${it.unidades_pedir > 0 ? it.unidades_pedir : '—'}</td>
       <td class="text-center"><input type="number" class="form-control form-control-sm text-center pedido-cant" data-id="${it.id}" value="${it.unidades_pedir > 0 ? it.unidades_pedir : ''}" min="1" style="width:80px;margin:auto"></td>
       <td><input type="text" class="form-control form-control-sm pedido-nota" data-id="${it.id}" placeholder="opcional" style="font-size:.78rem"></td>
     </tr>`).join('');
@@ -799,7 +799,7 @@ function abrirConfig() {
       if (_fullItems.length) {
         container.innerHTML = `
           <table class="table table-sm" style="font-size:.82rem">
-            <thead style="background:#f8fafc">
+            <thead style="background:var(--color-neutral-50)">
               <tr>
                 <th>Producto</th>
                 <th class="text-center" style="width:130px">Lead Full (días)</th>
