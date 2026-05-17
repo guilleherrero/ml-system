@@ -4,12 +4,12 @@
 <style>
 /* ── Cards de resultado ───────────────────────────── */
 .ev-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; margin-bottom:.85rem;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; overflow:hidden; margin-bottom:.85rem;
 }
 .ev-card-header {
-  background:#f8fafc; border-bottom:1px solid #f1f5f9;
+  background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-100);
   padding:.55rem 1rem; display:flex; align-items:center; gap:.4rem;
-  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#374151;
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-700);
 }
 .ev-card-body { padding:.85rem 1rem; }
 
@@ -19,31 +19,31 @@
   border-radius:10px; padding:.55rem 1.1rem; font-size:1rem; font-weight:800;
 }
 .decision-lanzar        { background:#d1fae5; color:#065f46; }
-.decision-cautela       { background:#fef3c7; color:#92400e; }
-.decision-no            { background:#fee2e2; color:#991b1b; }
+.decision-cautela       { background:var(--color-warning-100); color:var(--color-warning-700); }
+.decision-no            { background:var(--color-critical-100); color:var(--color-critical-700); }
 
 /* ── Score bars ───────────────────────────────────── */
 .score-row { display:flex; align-items:center; gap:.75rem; margin-bottom:.5rem; }
-.score-label { width:11rem; font-size:.78rem; color:#374151; flex-shrink:0; }
-.score-bar-wrap { flex:1; background:#f1f5f9; border-radius:20px; height:8px; overflow:hidden; }
+.score-label { width:11rem; font-size:.78rem; color:var(--color-neutral-700); flex-shrink:0; }
+.score-bar-wrap { flex:1; background:var(--color-neutral-100); border-radius:20px; height:8px; overflow:hidden; }
 .score-bar { height:100%; border-radius:20px; transition:width .4s; }
-.score-val { width:2.5rem; text-align:right; font-size:.75rem; font-weight:700; color:#374151; }
+.score-val { width:2.5rem; text-align:right; font-size:.75rem; font-weight:700; color:var(--color-neutral-700); }
 
 /* ── Chips ────────────────────────────────────────── */
 .kw-chip {
-  display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0;
+  display:inline-block; background:var(--color-neutral-100); border:1px solid var(--color-neutral-200);
   border-radius:20px; padding:.2rem .6rem; font-size:.72rem; color:#334155;
   margin:.15rem .15rem 0 0;
 }
 .comp-row {
   display:flex; align-items:center; gap:.5rem; padding:.45rem 0;
-  border-bottom:1px solid #f1f5f9; font-size:.8rem;
+  border-bottom:1px solid var(--color-neutral-100); font-size:.8rem;
 }
 .comp-row:last-child { border-bottom:none; }
 .risk-item {
   display:flex; align-items:flex-start; gap:.5rem;
-  padding:.4rem 0; font-size:.82rem; color:#374151;
-  border-bottom:1px solid #f8fafc;
+  padding:.4rem 0; font-size:.82rem; color:var(--color-neutral-700);
+  border-bottom:1px solid var(--color-neutral-50);
 }
 .risk-item:last-child { border-bottom:none; }
 .angle-box {
@@ -62,11 +62,11 @@
 
 <div class="d-flex gap-2 mb-4 flex-wrap">
   <a href="/lanzar-nuevo" class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
-     style="background:#fff;border:1px solid #e2e8f0;color:#374151;font-size:.85rem">
+     style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);color:var(--color-neutral-700);font-size:.85rem">
     <i class="bi bi-stars text-primary"></i> Analizar y lanzar
   </a>
   <a href="/evaluar-producto" class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
-     style="background:#2563eb;color:#fff;font-size:.85rem">
+     style="background:var(--color-info-600);color:var(--color-neutral-0);font-size:.85rem">
     <i class="bi bi-clipboard2-pulse"></i> Evaluar entrada al mercado
   </a>
 </div>
@@ -100,9 +100,9 @@
   </div>
   <div class="card-body py-2 px-3">
     <div class="d-flex gap-3" style="font-size:.78rem">
-      <div id="step1" style="color:#94a3b8"><i class="bi bi-circle me-1"></i>Keywords</div>
-      <div id="step2" style="color:#94a3b8"><i class="bi bi-circle me-1"></i>Competidores</div>
-      <div id="step3" style="color:#94a3b8"><i class="bi bi-circle me-1"></i>Dictamen IA</div>
+      <div id="step1" style="color:var(--color-neutral-400)"><i class="bi bi-circle me-1"></i>Keywords</div>
+      <div id="step2" style="color:var(--color-neutral-400)"><i class="bi bi-circle me-1"></i>Competidores</div>
+      <div id="step3" style="color:var(--color-neutral-400)"><i class="bi bi-circle me-1"></i>Dictamen IA</div>
     </div>
   </div>
 </div>
@@ -142,14 +142,14 @@
     </div>
     {% endif %}
     {% if item.scores %}
-    <div class="d-flex flex-wrap gap-3" style="color:#64748b">
+    <div class="d-flex flex-wrap gap-3" style="color:var(--color-neutral-600)">
       <span><i class="bi bi-graph-up me-1"></i>Demanda: <strong>{{ item.scores.demand_score }}</strong></span>
       <span><i class="bi bi-people me-1"></i>Saturación: <strong>{{ item.scores.saturation_score }}</strong></span>
       <span><i class="bi bi-shield me-1"></i>Dificultad: <strong>{{ item.scores.difficulty_score }}</strong></span>
     </div>
     {% endif %}
     {% if item.ai_eval and item.ai_eval.main_risks %}
-    <div class="mt-2" style="color:#92400e">
+    <div class="mt-2" style="color:var(--color-warning-700)">
       <i class="bi bi-exclamation-triangle me-1"></i>{{ item.ai_eval.main_risks[0] }}
     </div>
     {% endif %}
@@ -182,13 +182,13 @@ document.getElementById('evalBtn').addEventListener('click', function() {
     ['step1','step2','step3'].forEach((id, i) => {
       const el = document.getElementById(id);
       if (i + 1 < n) {
-        el.style.color = '#16a34a';
+        el.style.color = 'var(--color-success-500)';
         el.querySelector('i').className = 'bi bi-check-circle-fill me-1';
       } else if (i + 1 === n) {
-        el.style.color = '#2563eb';
+        el.style.color = 'var(--color-info-600)';
         el.querySelector('i').className = 'bi bi-arrow-right-circle-fill me-1';
       } else {
-        el.style.color = '#94a3b8';
+        el.style.color = 'var(--color-neutral-400)';
         el.querySelector('i').className = 'bi bi-circle me-1';
       }
     });
@@ -237,7 +237,7 @@ function renderEval(d) {
   const decIcon = dec === 'LANZAR' ? 'bi-rocket-takeoff' : dec.includes('CAUTELA') ? 'bi-exclamation-triangle' : 'bi-x-circle';
 
   // Score bars
-  const scoreColor = v => v >= 65 ? '#16a34a' : v >= 40 ? '#d97706' : '#dc2626';
+  const scoreColor = v => v >= 65 ? 'var(--color-success-500)' : v >= 40 ? 'var(--color-warning-500)' : 'var(--color-critical-500)';
   const scoreRow = (label, val) => `
     <div class="score-row">
       <div class="score-label">${label}</div>
@@ -251,8 +251,8 @@ function renderEval(d) {
   const compsHtml = comps.map(c => `
     <div class="comp-row">
       <div style="flex:1;font-weight:500">${c.title}</div>
-      <div style="color:#1d4ed8;font-weight:700;white-space:nowrap">$${(c.price||0).toLocaleString('es-AR')}</div>
-      <div style="color:#16a34a;font-size:.74rem;white-space:nowrap"><i class="bi bi-bag me-1"></i>${c.sold_quantity||0}</div>
+      <div style="color:var(--color-info-700);font-weight:700;white-space:nowrap">$${(c.price||0).toLocaleString('es-AR')}</div>
+      <div style="color:var(--color-success-500);font-size:.74rem;white-space:nowrap"><i class="bi bi-bag me-1"></i>${c.sold_quantity||0}</div>
       ${c.free_shipping ? '<span style="color:#0891b2;font-size:.72rem"><i class="bi bi-truck"></i></span>' : ''}
       ${listingLabel(c.listing_type_id||'')}
     </div>`).join('') || '<div class="text-muted small">Sin datos</div>';
@@ -274,9 +274,9 @@ function renderEval(d) {
       <div class="ev-card-header"><i class="bi bi-stars"></i>Dictamen IA</div>
       <div class="ev-card-body d-flex flex-wrap align-items-start gap-3">
         <div class="decision-badge ${decCls}"><i class="bi ${decIcon}"></i>${dec}</div>
-        ${d.category ? `<div style="font-size:.8rem;color:#64748b;margin-top:.35rem"><i class="bi bi-tag me-1"></i>Categoría: <strong>${d.category}</strong></div>` : ''}
+        ${d.category ? `<div style="font-size:.8rem;color:var(--color-neutral-600);margin-top:.35rem"><i class="bi bi-tag me-1"></i>Categoría: <strong>${d.category}</strong></div>` : ''}
       </div>
-      ${whyHtml ? `<div class="ev-card-body border-top pt-2"><ul class="mb-0 ps-3" style="font-size:.83rem;color:#374151">${whyHtml}</ul></div>` : ''}
+      ${whyHtml ? `<div class="ev-card-body border-top pt-2"><ul class="mb-0 ps-3" style="font-size:.83rem;color:var(--color-neutral-700)">${whyHtml}</ul></div>` : ''}
     </div>
 
     <!-- Ángulo recomendado -->
@@ -326,7 +326,7 @@ function renderEval(d) {
         <div class="ev-card-body d-flex align-items-center justify-content-between flex-wrap gap-2"
              style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5)">
           <div>
-            <div style="font-weight:700;color:#15803d;font-size:.95rem">
+            <div style="font-weight:700;color:var(--color-success-700);font-size:.95rem">
               <i class="bi bi-rocket-takeoff me-2"></i>Este producto tiene potencial — pasá a lanzarlo
             </div>
             <div style="font-size:.78rem;color:#166534;margin-top:.2rem">
@@ -345,7 +345,7 @@ function renderEval(d) {
         <div class="ev-card-body d-flex align-items-center justify-content-between flex-wrap gap-2"
              style="background:linear-gradient(135deg,#fffbeb,#fef9c3)">
           <div>
-            <div style="font-weight:700;color:#92400e;font-size:.95rem">
+            <div style="font-weight:700;color:var(--color-warning-700);font-size:.95rem">
               <i class="bi bi-exclamation-triangle me-2"></i>Podés lanzar, pero considerá los riesgos primero
             </div>
             <div style="font-size:.78rem;color:#78350f;margin-top:.2rem">
@@ -361,8 +361,8 @@ function renderEval(d) {
   } else {
     ctaHtml = `
       <div class="ev-card" style="border-color:#fca5a5">
-        <div class="ev-card-body" style="background:linear-gradient(135deg,#fff1f2,#fee2e2)">
-          <div style="font-weight:700;color:#991b1b;font-size:.9rem">
+        <div class="ev-card-body" style="background:linear-gradient(135deg,#fff1f2,var(--color-critical-100))">
+          <div style="font-weight:700;color:var(--color-critical-700);font-size:.9rem">
             <i class="bi bi-x-circle me-2"></i>No recomendado para lanzar en este momento
           </div>
           <div style="font-size:.78rem;color:#7f1d1d;margin-top:.3rem">

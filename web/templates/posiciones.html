@@ -5,26 +5,26 @@
 <style>
 /* ── Variables de color ───────────────────────────────────── */
 :root {
-  --sube-bg: #f0fdf4; --sube-border: #86efac; --sube-text: #15803d;
+  --sube-bg: #f0fdf4; --sube-border: #86efac; --sube-text: var(--color-success-700);
   --cae-bg:  #fef2f2; --cae-border:  #fca5a5; --cae-text:  #b91c1c;
-  --flat-bg: #f8fafc; --flat-border: #e2e8f0; --flat-text: #64748b;
-  --ia-bg:   #eff6ff; --ia-border:   #bfdbfe; --ia-text:   #1d4ed8;
+  --flat-bg: var(--color-neutral-50); --flat-border: var(--color-neutral-200); --flat-text: var(--color-neutral-600);
+  --ia-bg:   #eff6ff; --ia-border:   #bfdbfe; --ia-text:   var(--color-info-700);
 }
 
 /* ── Stat cards ───────────────────────────────────────────── */
 .mon-stat {
   border-radius:12px; padding:16px 18px; text-align:center;
-  border:1px solid #e2e8f0; background:#fff;
+  border:1px solid var(--color-neutral-200); background:var(--color-neutral-0);
 }
 .mon-stat .num { font-size:2rem; font-weight:800; line-height:1; }
 .mon-stat .lbl { font-size:.7rem; font-weight:600; text-transform:uppercase;
-                  letter-spacing:.05em; color:#64748b; margin-top:4px; }
+                  letter-spacing:.05em; color:var(--color-neutral-600); margin-top:4px; }
 .mon-stat.sube { background:#f0fdf4; border-color:#86efac; }
-.mon-stat.sube .num { color:#15803d; }
+.mon-stat.sube .num { color:var(--color-success-700); }
 .mon-stat.cae  { background:#fef2f2; border-color:#fca5a5; }
 .mon-stat.cae  .num { color:#b91c1c; }
 .mon-stat.top  { background:#eff6ff; border-color:#bfdbfe; }
-.mon-stat.top  .num { color:#1d4ed8; }
+.mon-stat.top  .num { color:var(--color-info-700); }
 .mon-stat.ia   { background:#fdf4ff; border-color:#e9d5ff; }
 .mon-stat.ia   .num { color:#7c3aed; }
 
@@ -32,28 +32,28 @@
 .f-pill {
   border:1px solid #e5e7eb; border-radius:20px;
   padding:.28rem .85rem; font-size:.78rem; cursor:pointer;
-  background:#fff; color:#374151; transition:all .15s; white-space:nowrap;
+  background:var(--color-neutral-0); color:var(--color-neutral-700); transition:all .15s; white-space:nowrap;
   font-weight:500;
 }
-.f-pill:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
-.f-pill.active { background:#1d4ed8; border-color:#1d4ed8; color:#fff; font-weight:600; }
-.f-pill.sube.active { background:#15803d; border-color:#15803d; }
+.f-pill:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
+.f-pill.active { background:var(--color-info-700); border-color:var(--color-info-700); color:var(--color-neutral-0); font-weight:600; }
+.f-pill.sube.active { background:var(--color-success-700); border-color:var(--color-success-700); }
 .f-pill.cae.active  { background:#b91c1c; border-color:#b91c1c; }
 .f-pill.ia.active   { background:#7c3aed; border-color:#7c3aed; }
 
 /* ── Publication cards ────────────────────────────────────── */
 .pub-card {
-  background:#fff; border-radius:14px;
-  border:1px solid #e2e8f0; overflow:hidden;
+  background:var(--color-neutral-0); border-radius:14px;
+  border:1px solid var(--color-neutral-200); overflow:hidden;
   transition:box-shadow .15s, border-color .15s;
 }
-.pub-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.08); border-color:#93c5fd; }
+.pub-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.08); border-color:var(--color-info-300); }
 .pub-card.trend-sube       { border-left:4px solid #22c55e; }
-.pub-card.trend-sube-fuerte{ border-left:4px solid #16a34a; box-shadow:0 0 0 1px #86efac; }
+.pub-card.trend-sube-fuerte{ border-left:4px solid var(--color-success-500); box-shadow:0 0 0 1px #86efac; }
 .pub-card.trend-cae        { border-left:4px solid #f87171; }
-.pub-card.trend-cae-fuerte { border-left:4px solid #dc2626; box-shadow:0 0 0 1px #fca5a5; }
+.pub-card.trend-cae-fuerte { border-left:4px solid var(--color-critical-500); box-shadow:0 0 0 1px #fca5a5; }
 .pub-card.trend-estable    { border-left:4px solid #cbd5e1; }
-.pub-card.trend-sin-dato   { border-left:4px solid #e2e8f0; opacity:.7; }
+.pub-card.trend-sin-dato   { border-left:4px solid var(--color-neutral-200); opacity:.7; }
 
 .pub-card-head {
   padding:11px 14px 8px;
@@ -73,10 +73,10 @@
 .pub-pos-badge .pos-num  { font-size:1.3rem; font-weight:800; line-height:1; }
 .pub-pos-badge .pos-lbl  { font-size:.55rem; font-weight:700; text-transform:uppercase;
                              letter-spacing:.05em; margin-top:1px; }
-.pub-pos-badge.top10  { background:#dcfce7; color:#15803d; }
+.pub-pos-badge.top10  { background:var(--color-success-100); color:var(--color-success-700); }
 .pub-pos-badge.mid    { background:#fef9c3; color:#854d0e; }
-.pub-pos-badge.low    { background:#fee2e2; color:#b91c1c; }
-.pub-pos-badge.na     { background:#f1f5f9; color:#94a3b8; }
+.pub-pos-badge.low    { background:var(--color-critical-100); color:#b91c1c; }
+.pub-pos-badge.na     { background:var(--color-neutral-100); color:var(--color-neutral-400); }
 
 /* ── Sparkline container ──────────────────────────────────── */
 .sparkline-wrap {
@@ -89,28 +89,28 @@
   padding:6px 14px; font-size:.78rem; font-weight:600;
   display:flex; align-items:center; gap:6px;
 }
-.veredicto-line.sube-fuerte { background:#dcfce7; color:#14532d; }
-.veredicto-line.sube        { background:#f0fdf4; color:#15803d; }
-.veredicto-line.cae-fuerte  { background:#fee2e2; color:#991b1b; }
+.veredicto-line.sube-fuerte { background:var(--color-success-100); color:#14532d; }
+.veredicto-line.sube        { background:#f0fdf4; color:var(--color-success-700); }
+.veredicto-line.cae-fuerte  { background:var(--color-critical-100); color:var(--color-critical-700); }
 .veredicto-line.cae         { background:#fef2f2; color:#b91c1c; }
-.veredicto-line.estable     { background:#f8fafc; color:#475569; }
-.veredicto-line.sin-dato    { background:#f8fafc; color:#94a3b8; font-weight:400; }
+.veredicto-line.estable     { background:var(--color-neutral-50); color:#475569; }
+.veredicto-line.sin-dato    { background:var(--color-neutral-50); color:var(--color-neutral-400); font-weight:400; }
 
 /* ── Metrics row ──────────────────────────────────────────── */
 .pub-metrics {
   padding:8px 14px 10px;
   display:flex; gap:14px; flex-wrap:wrap;
-  border-top:1px solid #f1f5f9;
+  border-top:1px solid var(--color-neutral-100);
 }
 .pub-metric { display:flex; flex-direction:column; gap:1px; }
 .pub-metric .m-val { font-size:.82rem; font-weight:700; color:#0f172a; }
-.pub-metric .m-lbl { font-size:.62rem; color:#94a3b8; font-weight:500; text-transform:uppercase; letter-spacing:.04em; }
+.pub-metric .m-lbl { font-size:.62rem; color:var(--color-neutral-400); font-weight:500; text-transform:uppercase; letter-spacing:.04em; }
 
 /* ── IA impact strip ──────────────────────────────────────── */
 .ia-strip {
   padding:5px 14px; font-size:.73rem; font-weight:600;
   background:#eff6ff; border-top:1px solid #bfdbfe;
-  color:#1d4ed8; display:flex; align-items:center; gap:6px;
+  color:var(--color-info-700); display:flex; align-items:center; gap:6px;
 }
 
 /* ── Alerta caída ─────────────────────────────────────────── */
@@ -123,18 +123,18 @@
 /* ── Trend arrow ──────────────────────────────────────────── */
 .trend-arrow { font-size:.72rem; font-weight:700; padding:2px 7px;
                border-radius:20px; white-space:nowrap; }
-.trend-arrow.up   { background:#dcfce7; color:#15803d; }
-.trend-arrow.down { background:#fee2e2; color:#b91c1c; }
-.trend-arrow.flat { background:#f1f5f9; color:#64748b; }
+.trend-arrow.up   { background:var(--color-success-100); color:var(--color-success-700); }
+.trend-arrow.down { background:var(--color-critical-100); color:#b91c1c; }
+.trend-arrow.flat { background:var(--color-neutral-100); color:var(--color-neutral-600); }
 
 /* ── Section divider ──────────────────────────────────────── */
 .sec-divider {
   font-size:.68rem; font-weight:800; text-transform:uppercase;
-  letter-spacing:.08em; color:#94a3b8;
+  letter-spacing:.08em; color:var(--color-neutral-400);
   padding:4px 0; margin:16px 0 10px;
   display:flex; align-items:center; gap:8px;
 }
-.sec-divider::after { content:''; flex:1; height:1px; background:#e2e8f0; }
+.sec-divider::after { content:''; flex:1; height:1px; background:var(--color-neutral-200); }
 </style>
 
 <!-- ── PAGE HEADER ──────────────────────────────────────────── -->
@@ -151,9 +151,9 @@
 
 {% if not items %}
 <!-- ── ESTADO VACÍO ──────────────────────────────────────────── -->
-<div style="background:#fff;border-radius:14px;padding:48px 32px;text-align:center;border:2px dashed #e2e8f0">
+<div style="background:var(--color-neutral-0);border-radius:14px;padding:48px 32px;text-align:center;border:2px dashed var(--color-neutral-200)">
   <i class="bi bi-graph-up" style="font-size:3rem;color:#cbd5e1;display:block;margin-bottom:14px"></i>
-  <div style="font-size:1.1rem;font-weight:700;color:#1e293b;margin-bottom:8px">Sin datos de posición todavía</div>
+  <div style="font-size:1.1rem;font-weight:700;color:var(--color-neutral-800);margin-bottom:8px">Sin datos de posición todavía</div>
   <div class="text-muted" style="font-size:.88rem;margin-bottom:20px">
     Hacé clic en <strong>Actualizar posiciones</strong> para registrar el día de hoy.<br>
     Con al menos 3 días de datos el monitor empieza a mostrar tendencias.
@@ -172,7 +172,7 @@
     El endpoint <code>/sites/MLA/search</code> está devolviendo HTTP 403 a nivel global de CloudFront —
     no es problema de tu cuenta ni de tus permisos (la verificamos: tu app está OK).
     Esta sección vuelve sola cuando ML resuelva el bug.<br>
-    <span style="font-size:.85rem;color:#92400e">
+    <span style="font-size:.85rem;color:var(--color-warning-700)">
       <i class="bi bi-info-circle"></i>
       Mientras tanto, podés ver el <strong>score de popularidad de tus keywords</strong>
       en <a href="/optimizar/{{ alias }}" class="alert-link">Optimizar IA</a> (autosuggest sí funciona).
@@ -198,7 +198,7 @@
          title="{{ ventas_rastread }} son las ventas de las publicaciones que tenés en seguimiento de posiciones. {{ ventas_total }} es el total de tu cuenta. La diferencia ({{ ventas_gap }}) son ventas de publicaciones que no están en el monitor de posiciones (pueden ser items pausados, sin tracking, etc.).">
       <div class="num" style="white-space:nowrap">
         {{ ventas_rastread }}<span style="color:#cbd5e1;font-weight:300;margin:0 .15em">/</span>{{ ventas_total }}
-        <i class="bi bi-info-circle" style="font-size:.6em;color:#94a3b8;vertical-align:super;margin-left:2px"></i>
+        <i class="bi bi-info-circle" style="font-size:.6em;color:var(--color-neutral-400);vertical-align:super;margin-left:2px"></i>
       </div>
       <div class="lbl">Ventas 30d (rastreadas / total cuenta)</div>
     </div>
@@ -206,10 +206,10 @@
 </div>
 {% if ventas_gap > 50 %}
 <div class="alert d-flex align-items-center gap-2 py-2 px-3 mb-4"
-     style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:.85rem">
+     style="background:#eff6ff;border:1px solid #bfdbfe;color:var(--color-info-700);font-size:.85rem">
   <span style="font-size:1rem">💡</span>
   <span><strong>{{ ventas_gap }} ventas en publicaciones sin rastreo de posición.</strong></span>
-  <a href="/stock/{{ alias }}" class="ms-auto" style="color:#1d4ed8;font-weight:600;font-size:.82rem;text-decoration:none">
+  <a href="/stock/{{ alias }}" class="ms-auto" style="color:var(--color-info-700);font-weight:600;font-size:.82rem;text-decoration:none">
     Ver cuáles <i class="bi bi-arrow-right ms-1"></i>
   </a>
 </div>
@@ -272,14 +272,14 @@
 <!-- ── ALERTAS DE CAÍDA RÁPIDA ───────────────────────────────── -->
 {% if items_cayendo %}
 <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:14px 18px;margin-bottom:18px">
-  <div style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#991b1b;margin-bottom:8px">
+  <div style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--color-critical-700);margin-bottom:8px">
     <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ items_cayendo|length }} publicación{{ 'es' if items_cayendo|length > 1 }} cayendo rápido
   </div>
   {% for item in items_cayendo %}
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:.82rem">
     <span style="color:#b91c1c;font-weight:700;flex-shrink:0">▼ {{ item.trend_7d | abs }} pos</span>
-    <span style="color:#374151;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ item.title }}</span>
-    <a href="/optimizaciones/{{ alias }}" style="font-size:.72rem;color:#1d4ed8;font-weight:600;flex-shrink:0">Optimizar →</a>
+    <span style="color:var(--color-neutral-700);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ item.title }}</span>
+    <a href="/optimizaciones/{{ alias }}" style="font-size:.72rem;color:var(--color-info-700);font-weight:600;flex-shrink:0">Optimizar →</a>
   </div>
   {% endfor %}
 </div>
@@ -288,18 +288,18 @@
 <!-- ── FILTER PILLS ───────────────────────────────────────────── -->
 <div class="d-flex gap-2 flex-wrap mb-4">
   <button class="f-pill active" onclick="filtrar('todos',this)">
-    Todos <span style="background:#e2e8f0;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px">{{ items_con_pos|length }}</span>
+    Todos <span style="background:var(--color-neutral-200);border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px">{{ items_con_pos|length }}</span>
   </button>
   <button class="f-pill sube" onclick="filtrar('sube',this)" {% if not items_subiendo %}style="opacity:.5"{% endif %}>
     <i class="bi bi-arrow-up-short"></i>Subiendo
-    <span style="background:#bbf7d0;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:#15803d">{{ items_subiendo|length }}</span>
+    <span style="background:#bbf7d0;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:var(--color-success-700)">{{ items_subiendo|length }}</span>
   </button>
   <button class="f-pill cae" onclick="filtrar('cae',this)" {% if not items_cayendo %}style="opacity:.5"{% endif %}>
     <i class="bi bi-arrow-down-short"></i>Cayendo
     <span style="background:#fecaca;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:#b91c1c">{{ items_cayendo|length }}</span>
   </button>
   <button class="f-pill" onclick="filtrar('top10',this)" {% if not items_top10 %}style="opacity:.5"{% endif %}>
-    ★ Top 10 <span style="background:#bfdbfe;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:#1d4ed8">{{ items_top10|length }}</span>
+    ★ Top 10 <span style="background:#bfdbfe;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:4px;color:var(--color-info-700)">{{ items_top10|length }}</span>
   </button>
   {% if items_opt %}
   <button class="f-pill ia" onclick="filtrar('ia',this)">
@@ -369,13 +369,13 @@
           <span class="m-val">
             {% if item.trend_7d is not none %}
               {% if item.trend_7d > 0 %}
-                <span style="color:#15803d">↑{{ item.trend_7d }}</span>
+                <span style="color:var(--color-success-700)">↑{{ item.trend_7d }}</span>
               {% elif item.trend_7d < 0 %}
                 <span style="color:#b91c1c">↓{{ item.trend_7d | abs }}</span>
               {% else %}
-                <span style="color:#64748b">=</span>
+                <span style="color:var(--color-neutral-600)">=</span>
               {% endif %}
-            {% else %}<span style="color:#94a3b8">—</span>{% endif %}
+            {% else %}<span style="color:var(--color-neutral-400)">—</span>{% endif %}
           </span>
           <span class="m-lbl">7 días</span>
         </div>
@@ -401,7 +401,7 @@
         {% endif %}
         <div class="pub-metric ms-auto">
           <a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] }}"
-             target="_blank" style="font-size:.72rem;color:#64748b;text-decoration:none">
+             target="_blank" style="font-size:.72rem;color:var(--color-neutral-600);text-decoration:none">
             ML <i class="bi bi-box-arrow-up-right"></i>
           </a>
           {% if item.optimizado %}
@@ -409,7 +409,7 @@
             <i class="bi bi-stars"></i> IA
           </a>
           {% else %}
-          <a href="/optimizaciones/{{ alias }}" style="font-size:.72rem;color:#2563eb;text-decoration:none">
+          <a href="/optimizaciones/{{ alias }}" style="font-size:.72rem;color:var(--color-info-600);text-decoration:none">
             Optimizar
           </a>
           {% endif %}
@@ -436,8 +436,8 @@
 {% if items_sin_pos %}
 <details class="mt-3" id="sin-pos-section">
   <summary style="cursor:pointer;list-style:none;padding:.7rem 1rem;
-                  background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
-                  color:#64748b;font-size:.82rem;user-select:none">
+                  background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:10px;
+                  color:var(--color-neutral-600);font-size:.82rem;user-select:none">
     <i class="bi bi-eye-slash me-2"></i>
     {{ items_sin_pos|length }} publicaciones fuera del top 200 (sin posición rastreable)
     <i class="bi bi-chevron-down ms-2" style="font-size:.7rem"></i>
@@ -451,7 +451,7 @@
         {% for item in items_sin_pos | sort(attribute='ventas_30d', reverse=True) %}
         <tr>
           <td>
-            <div style="font-size:.82rem;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px" title="{{ item.title }}">
+            <div style="font-size:.82rem;color:var(--color-neutral-600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px" title="{{ item.title }}">
               {% if item.optimizado %}<span style="color:#7c3aed;font-size:.7rem;margin-right:4px"><i class="bi bi-stars"></i></span>{% endif %}
               {{ item.title }}
             </div>
@@ -512,13 +512,13 @@ function buildSparkline(itemId) {
     gradient.addColorStop(1, 'rgba(59,130,246,.02)');
   }
 
-  const lineColor = improving ? '#22c55e' : dropping ? '#ef4444' : '#3b82f6';
+  const lineColor = improving ? '#22c55e' : dropping ? 'var(--color-critical-400)' : 'var(--color-info-500)';
 
   // Puntos de optimización
   const optSet = new Set(d.opt_dates || []);
   const ptColors = d.data.map((v, i) =>
-    optSet.has(d.labels[i]) ? '#f59e0b' :
-    (v !== null && v <= 10 ? '#16a34a' : lineColor)
+    optSet.has(d.labels[i]) ? 'var(--color-warning-400)' :
+    (v !== null && v <= 10 ? 'var(--color-success-500)' : lineColor)
   );
   const ptRadius = d.data.map((v, i) =>
     optSet.has(d.labels[i]) ? 7 :
@@ -557,7 +557,7 @@ function buildSparkline(itemId) {
         tooltip: {
           mode: 'index',
           intersect: false,
-          backgroundColor: '#1e293b',
+          backgroundColor: 'var(--color-neutral-800)',
           titleFont: { size: 11 },
           bodyFont: { size: 11 },
           padding: 8,
@@ -578,7 +578,7 @@ function buildSparkline(itemId) {
           reverse: true,
           min: minVal,
           max: maxVal,
-          grid: { color: '#f1f5f9', lineWidth: 0.8 },
+          grid: { color: 'var(--color-neutral-100)', lineWidth: 0.8 },
           border: { display: false },
           ticks: {
             font: { size: 9 }, color: '#cbd5e1',

@@ -4,28 +4,28 @@
 {% block content %}
 <style>
 .analisis-body {
-  font-size:.92rem; line-height:1.75; color:#1e293b;
+  font-size:.92rem; line-height:1.75; color:var(--color-neutral-800);
   white-space:pre-wrap; font-family:inherit;
 }
-.analisis-body strong { color:#1e293b; }
+.analisis-body strong { color:var(--color-neutral-800); }
 .seccion-card {
-  border:1px solid #e2e8f0; border-radius:12px;
+  border:1px solid var(--color-neutral-200); border-radius:12px;
   padding:1.25rem 1.5rem; margin-bottom:1.25rem;
-  background:#fff;
+  background:var(--color-neutral-0);
 }
-.seccion-card.diag     { border-left:5px solid #2563eb; background:#f0f7ff; }
-.seccion-card.urgente  { border-left:5px solid #ef4444; background:#fffbfb; }
-.seccion-card.opor     { border-left:5px solid #10b981; background:#f9fffe; }
+.seccion-card.diag     { border-left:5px solid var(--color-info-600); background:#f0f7ff; }
+.seccion-card.urgente  { border-left:5px solid var(--color-critical-400); background:#fffbfb; }
+.seccion-card.opor     { border-left:5px solid var(--color-success-400); background:#f9fffe; }
 .seccion-card.china    { border-left:5px solid #6366f1; background:#fafaff; }
-.seccion-card.lastres  { border-left:5px solid #94a3b8; background:#f8fafc; }
+.seccion-card.lastres  { border-left:5px solid var(--color-neutral-400); background:var(--color-neutral-50); }
 .meta-chip {
   display:inline-flex; align-items:center; gap:.4rem;
-  background:#f1f5f9; border-radius:20px;
+  background:var(--color-neutral-100); border-radius:20px;
   padding:.25rem .75rem; font-size:.75rem; color:#475569;
 }
 .run-btn {
-  background: linear-gradient(135deg,#2563eb,#7c3aed);
-  color:#fff; border:none; border-radius:10px;
+  background: linear-gradient(135deg,var(--color-info-600),#7c3aed);
+  color:var(--color-neutral-0); border:none; border-radius:10px;
   padding:.65rem 1.5rem; font-size:.9rem; font-weight:600;
   cursor:pointer; transition:opacity .2s;
   display:flex; align-items:center; gap:.5rem;
@@ -146,7 +146,7 @@ function mostrarResultado(d) {
   let deltaChip = '';
   if (rev['7d'] != null && rev['prev_7d'] != null && rev['prev_7d'] > 0) {
     const delta = ((rev['7d'] - rev['prev_7d']) / rev['prev_7d'] * 100).toFixed(1);
-    const color = delta >= 0 ? '#16a34a' : '#dc2626';
+    const color = delta >= 0 ? 'var(--color-success-500)' : 'var(--color-critical-500)';
     const sign  = delta >= 0 ? '▲' : '▼';
     deltaChip = `<span class="meta-chip" style="color:${color};font-weight:700">${sign} ${Math.abs(delta)}% esta semana</span>`;
   }
@@ -161,11 +161,11 @@ function mostrarResultado(d) {
   // Parsear secciones del texto
   const texto   = d.analisis || '';
   const config  = [
-    { emoji: '🔍', cls: 'diag',    icon: 'bi-search',            color: '#2563eb' },
-    { emoji: '🚨', cls: 'urgente', icon: 'bi-exclamation-circle-fill', color: '#ef4444' },
-    { emoji: '💡', cls: 'opor',    icon: 'bi-lightbulb-fill',    color: '#10b981' },
+    { emoji: '🔍', cls: 'diag',    icon: 'bi-search',            color: 'var(--color-info-600)' },
+    { emoji: '🚨', cls: 'urgente', icon: 'bi-exclamation-circle-fill', color: 'var(--color-critical-400)' },
+    { emoji: '💡', cls: 'opor',    icon: 'bi-lightbulb-fill',    color: 'var(--color-success-400)' },
     { emoji: '📦', cls: 'china',   icon: 'bi-box-seam-fill',     color: '#6366f1' },
-    { emoji: '⚠️', cls: 'lastres', icon: 'bi-shield-exclamation', color: '#94a3b8' },
+    { emoji: '⚠️', cls: 'lastres', icon: 'bi-shield-exclamation', color: 'var(--color-neutral-400)' },
   ];
 
   // Dividir texto por secciones usando los emojis como separadores
@@ -201,7 +201,7 @@ function mostrarResultado(d) {
     <div class="seccion-card ${s.cls}">
       <div class="d-flex align-items-center gap-2 mb-3">
         <i class="bi ${s.icon}" style="font-size:1.3rem;color:${s.color}"></i>
-        <h5 class="mb-0" style="font-weight:700;color:#1e293b">${escapeHtml(s.titulo)}</h5>
+        <h5 class="mb-0" style="font-weight:700;color:var(--color-neutral-800)">${escapeHtml(s.titulo)}</h5>
       </div>
       <div class="analisis-body">${formatCuerpo(s.cuerpo)}</div>
     </div>`).join('');
@@ -210,9 +210,9 @@ function mostrarResultado(d) {
 function formatCuerpo(texto) {
   return escapeHtml(texto)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^(PEDÍ SÍ O SÍ|REPONER PRONTO|NO PIDAS):/gm, '<strong style="color:#1e293b">$1:</strong>')
+    .replace(/^(PEDÍ SÍ O SÍ|REPONER PRONTO|NO PIDAS):/gm, '<strong style="color:var(--color-neutral-800)">$1:</strong>')
     .replace(/^(\d+\.\s)/gm, '<span style="color:#7c3aed;font-weight:700">$1</span>')
-    .replace(/^(- )/gm, '<span style="color:#94a3b8">• </span>');
+    .replace(/^(- )/gm, '<span style="color:var(--color-neutral-400)">• </span>');
 }
 
 function escapeHtml(s) {

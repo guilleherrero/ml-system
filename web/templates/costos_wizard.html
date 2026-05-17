@@ -4,33 +4,33 @@
 {% block content %}
 <style>
   .wizard-header {
-    background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+    background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
     padding:1.4rem 1.6rem; margin-bottom:1.2rem;
   }
   .wizard-header h1 { font-size:1.2rem; font-weight:700; margin:0 0 .3rem; }
-  .wizard-header .sub { font-size:.84rem; color:#64748b; }
+  .wizard-header .sub { font-size:.84rem; color:var(--color-neutral-600); }
   .breadcrumb-steps {
     display:flex; gap:.4rem; margin-top:.9rem;
   }
   .step-pill {
     padding:.3rem .85rem; border-radius:14px; font-size:.74rem;
-    background:#f1f5f9; color:#94a3b8; font-weight:600;
+    background:var(--color-neutral-100); color:var(--color-neutral-400); font-weight:600;
   }
-  .step-pill.active { background:#3b82f6; color:#fff; }
-  .step-pill.done   { background:#dcfce7; color:#15803d; }
+  .step-pill.active { background:var(--color-info-500); color:var(--color-neutral-0); }
+  .step-pill.done   { background:var(--color-success-100); color:var(--color-success-700); }
 
   .wizard-section { display:none; }
   .wizard-section.active { display:block; }
 
   .demo-banner {
-    background:#fef3c7; border:1px solid #fde68a;
+    background:var(--color-warning-100); border:1px solid #fde68a;
     border-radius:10px; padding:.85rem 1.05rem; margin-bottom:1rem;
-    font-size:.86rem; color:#92400e;
+    font-size:.86rem; color:var(--color-warning-700);
     display:flex; gap:.75rem; align-items:flex-start;
   }
   .demo-banner .desc { flex:1; line-height:1.45; }
   .btn-clean-demo {
-    background:#d97706; color:#fff; border:none; padding:.4rem .9rem;
+    background:var(--color-warning-500); color:var(--color-neutral-0); border:none; padding:.4rem .9rem;
     border-radius:6px; font-size:.78rem; font-weight:600; cursor:pointer;
     white-space:nowrap;
   }
@@ -39,25 +39,25 @@
   /* Paso 1 — tabla resumen */
   .top10-table {
     width:100%; border-collapse:collapse; font-size:.85rem;
-    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
     overflow:hidden;
   }
   .top10-table th {
-    background:#f8fafc; font-size:.66rem; font-weight:700;
-    text-transform:uppercase; letter-spacing:.04em; color:#64748b;
-    padding:.65rem .8rem; text-align:left; border-bottom:1px solid #e2e8f0;
+    background:var(--color-neutral-50); font-size:.66rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-600);
+    padding:.65rem .8rem; text-align:left; border-bottom:1px solid var(--color-neutral-200);
   }
   .top10-table td {
-    padding:.7rem .8rem; border-bottom:1px solid #f1f5f9;
+    padding:.7rem .8rem; border-bottom:1px solid var(--color-neutral-100);
     vertical-align:top;
   }
-  .top10-table .rank { font-weight:800; color:#3b82f6; }
+  .top10-table .rank { font-weight:800; color:var(--color-info-500); }
   .top10-table .titulo { font-weight:600; color:#0f172a; line-height:1.3; }
-  .top10-table .mla { font-size:.72rem; color:#94a3b8; margin-top:2px; }
+  .top10-table .mla { font-size:.72rem; color:var(--color-neutral-400); margin-top:2px; }
   .top10-table .precio { font-weight:700; }
-  .top10-table .fact { font-weight:700; color:#16a34a; }
+  .top10-table .fact { font-weight:700; color:var(--color-success-500); }
   .top10-table .badge-costo {
-    background:#dcfce7; color:#15803d; font-size:.66rem; font-weight:700;
+    background:var(--color-success-100); color:var(--color-success-700); font-size:.66rem; font-weight:700;
     padding:2px 8px; border-radius:8px;
   }
 
@@ -67,40 +67,40 @@
     display:flex; gap:1.5rem; flex-wrap:wrap; align-items:center;
   }
   .summary-bar .num  { font-weight:800; font-size:1.4rem; color:#1e40af; }
-  .summary-bar .lbl  { font-size:.7rem; color:#64748b; text-transform:uppercase;
+  .summary-bar .lbl  { font-size:.7rem; color:var(--color-neutral-600); text-transform:uppercase;
                        letter-spacing:.04em; font-weight:600; margin-top:1px; }
 
   /* Paso 2 — carga */
   .cobertura-box {
-    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
     padding:1rem 1.2rem; margin-bottom:1rem; position:sticky; top:1rem;
     z-index:10; box-shadow:0 2px 8px rgba(0,0,0,.05);
   }
   .cobertura-bar {
-    height:14px; background:#f1f5f9; border-radius:7px; overflow:hidden;
+    height:14px; background:var(--color-neutral-100); border-radius:7px; overflow:hidden;
     margin:.5rem 0;
   }
   .cobertura-fill {
     height:100%; transition:width .3s, background .3s;
-    background:#dc2626;   /* default rojo */
+    background:var(--color-critical-500);   /* default rojo */
   }
-  .cobertura-fill.warn { background:#d97706; }
-  .cobertura-fill.ok   { background:#16a34a; }
-  .cobertura-text { font-size:.8rem; font-weight:600; color:#1e293b; }
-  .cobertura-meta { font-size:.72rem; color:#64748b; margin-top:.2rem; }
+  .cobertura-fill.warn { background:var(--color-warning-500); }
+  .cobertura-fill.ok   { background:var(--color-success-500); }
+  .cobertura-text { font-size:.8rem; font-weight:600; color:var(--color-neutral-800); }
+  .cobertura-meta { font-size:.72rem; color:var(--color-neutral-600); margin-top:.2rem; }
 
   .item-card {
-    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
     padding:1rem 1.2rem; margin-bottom:.8rem;
     display:grid; grid-template-columns: 1fr 320px; gap:1.2rem;
   }
-  .item-card.skipped { opacity:.55; background:#f8fafc; }
-  .item-card.has-cost { border-left:4px solid #16a34a; }
+  .item-card.skipped { opacity:.55; background:var(--color-neutral-50); }
+  .item-card.has-cost { border-left:4px solid var(--color-success-500); }
   .item-info .titulo  { font-weight:600; color:#0f172a; line-height:1.35; }
-  .item-info .meta    { font-size:.74rem; color:#64748b; margin-top:.3rem;
+  .item-info .meta    { font-size:.74rem; color:var(--color-neutral-600); margin-top:.3rem;
                         display:flex; gap:.8rem; flex-wrap:wrap; }
   .item-info code     { font-size:.72rem; padding:1px 5px;
-                        background:#f1f5f9; border-radius:4px; }
+                        background:var(--color-neutral-100); border-radius:4px; }
 
   .input-row { display:flex; gap:.5rem; align-items:center; }
   .input-row label { font-size:.72rem; font-weight:600; color:#475569;
@@ -110,44 +110,44 @@
     font-size:.9rem; font-weight:600; color:#0f172a;
   }
   .input-row input:focus {
-    outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15);
+    outline:none; border-color:var(--color-info-500); box-shadow:0 0 0 3px rgba(59,130,246,.15);
   }
   .calc-preview {
     margin-top:.55rem; padding:.55rem .7rem; border-radius:7px;
-    background:#f8fafc; font-size:.78rem; line-height:1.5;
+    background:var(--color-neutral-50); font-size:.78rem; line-height:1.5;
   }
   .calc-preview.ok    { background:#f0fdf4; border:1px solid #86efac; }
   .calc-preview.warn  { background:#fffbeb; border:1px solid #fde68a; }
   .calc-preview.crit  { background:#fef2f2; border:1px solid #fca5a5; }
-  .calc-preview.crit-strong { background:#fee2e2; border:2px solid #ef4444; }
+  .calc-preview.crit-strong { background:var(--color-critical-100); border:2px solid var(--color-critical-400); }
   .calc-preview .margen-num {
     font-size:1.05rem; font-weight:800;
   }
   .calc-preview .formula {
-    font-size:.7rem; color:#64748b; margin-top:.25rem; font-family:monospace;
+    font-size:.7rem; color:var(--color-neutral-600); margin-top:.25rem; font-family:monospace;
   }
   .skip-link {
-    margin-top:.4rem; font-size:.72rem; color:#94a3b8; cursor:pointer;
+    margin-top:.4rem; font-size:.72rem; color:var(--color-neutral-400); cursor:pointer;
     background:none; border:none; padding:0; text-decoration:underline;
   }
   .skip-link:hover { color:#475569; }
   .unskip-link {
-    margin-top:.4rem; font-size:.72rem; color:#3b82f6; cursor:pointer;
+    margin-top:.4rem; font-size:.72rem; color:var(--color-info-500); cursor:pointer;
     background:none; border:none; padding:0; text-decoration:underline;
   }
 
   .nav-buttons {
     display:flex; gap:.6rem; justify-content:space-between;
-    margin-top:1.4rem; padding-top:1.2rem; border-top:1px solid #e2e8f0;
+    margin-top:1.4rem; padding-top:1.2rem; border-top:1px solid var(--color-neutral-200);
   }
-  .btn-prev { background:transparent; color:#64748b; border:1px solid #cbd5e1;
+  .btn-prev { background:transparent; color:var(--color-neutral-600); border:1px solid #cbd5e1;
               padding:.55rem 1.2rem; border-radius:7px; cursor:pointer; }
-  .btn-next { background:#3b82f6; color:#fff; border:none;
+  .btn-next { background:var(--color-info-500); color:var(--color-neutral-0); border:none;
               padding:.55rem 1.5rem; border-radius:7px; font-weight:600; cursor:pointer; }
-  .btn-next:hover  { background:#2563eb; }
+  .btn-next:hover  { background:var(--color-info-600); }
   .btn-next:disabled { background:#cbd5e1; cursor:not-allowed; }
-  .btn-final { background:#16a34a; }
-  .btn-final:hover { background:#15803d; }
+  .btn-final { background:var(--color-success-500); }
+  .btn-final:hover { background:var(--color-success-700); }
 
   /* Paso 3 — resumen */
   .summary-grid {
@@ -155,11 +155,11 @@
     gap:.8rem; margin-bottom:1.2rem;
   }
   .summary-card {
-    background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
     padding:1rem 1.2rem;
   }
   .summary-card .num { font-size:1.6rem; font-weight:800; color:#0f172a; }
-  .summary-card .lbl { font-size:.7rem; color:#64748b; text-transform:uppercase;
+  .summary-card .lbl { font-size:.7rem; color:var(--color-neutral-600); text-transform:uppercase;
                        letter-spacing:.04em; font-weight:600; margin-top:.2rem; }
 </style>
 
@@ -176,7 +176,7 @@
   </div>
 </div>
 
-<div id="wiz-loading" style="text-align:center; padding:3rem; color:#94a3b8">
+<div id="wiz-loading" style="text-align:center; padding:3rem; color:var(--color-neutral-400)">
   <i class="bi bi-hourglass-split"></i> Cargando ranking de productos…
 </div>
 
@@ -192,7 +192,7 @@
     <button class="btn-clean-demo" onclick="limpiarDemos()">
       <i class="bi bi-trash3 me-1"></i>Limpiar costos demo
     </button>
-    <button onclick="cerrarBannerDemo()" style="background:none;border:none;color:#92400e;cursor:pointer;font-size:.78rem;padding:.4rem">
+    <button onclick="cerrarBannerDemo()" style="background:none;border:none;color:var(--color-warning-700);cursor:pointer;font-size:.78rem;padding:.4rem">
       Continuar de todas formas
     </button>
   </div>
@@ -212,7 +212,7 @@
         <div class="num" id="s1-cobertura">0/0</div>
         <div class="lbl">items con costo cargado hoy</div>
       </div>
-      <div style="font-size:.74rem; color:#64748b; max-width:280px; line-height:1.4; margin-left:auto">
+      <div style="font-size:.74rem; color:var(--color-neutral-600); max-width:280px; line-height:1.4; margin-left:auto">
         <i class="bi bi-info-circle me-1"></i>Cargando estos 10 desbloqueás margen real para el grueso de tu negocio.
       </div>
     </div>
@@ -263,7 +263,7 @@
   <div class="wizard-section" id="section-3">
     <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px;
                 padding:1.2rem 1.4rem; margin-bottom:1.2rem">
-      <h5 style="margin:0 0 .4rem; color:#15803d; font-weight:700">
+      <h5 style="margin:0 0 .4rem; color:var(--color-success-700); font-weight:700">
         <i class="bi bi-check-circle-fill me-1"></i>Listo para guardar
       </h5>
       <p style="margin:0; font-size:.86rem; color:#166534">
@@ -335,7 +335,7 @@ async function loadWizard() {
     renderPaso1();
   } catch (e) {
     document.getElementById('wiz-loading').innerHTML =
-      `<div style="color:#dc2626"><strong>Error:</strong> ${e.message}</div>`;
+      `<div style="color:var(--color-critical-500)"><strong>Error:</strong> ${e.message}</div>`;
   }
 }
 
@@ -350,8 +350,8 @@ function renderPaso1() {
   tbody.innerHTML = _items.map((it, i) => {
     const badge = it.tiene_costo
       ? `<span class="badge-costo">✓ Costo cargado</span>
-         <div style="font-size:.7rem;color:#94a3b8;margin-top:2px">$${(it.costo_actual||0).toLocaleString('es-AR')} · ${it.costo_updated || '?'}</div>`
-      : `<span style="color:#dc2626;font-size:.74rem;font-weight:600">✗ Sin costo</span>`;
+         <div style="font-size:.7rem;color:var(--color-neutral-400);margin-top:2px">$${(it.costo_actual||0).toLocaleString('es-AR')} · ${it.costo_updated || '?'}</div>`
+      : `<span style="color:var(--color-critical-500);font-size:.74rem;font-weight:600">✗ Sin costo</span>`;
     return `
       <tr>
         <td class="rank">${i+1}</td>
@@ -384,7 +384,7 @@ function renderItemCard(it, i) {
     ? `<button class="unskip-link" onclick="toggleSkip(${i})">↶ Volver a cargar este</button>`
     : `<button class="skip-link" onclick="toggleSkip(${i})">Saltear este por ahora</button>`;
   const yaTenia = it.tiene_costo
-    ? `<span style="font-size:.66rem;background:#dcfce7;color:#15803d;padding:1px 6px;border-radius:8px;margin-left:.4rem">✓ ya cargado · ${it.costo_updated || '?'}</span>`
+    ? `<span style="font-size:.66rem;background:var(--color-success-100);color:var(--color-success-700);padding:1px 6px;border-radius:8px;margin-left:.4rem">✓ ya cargado · ${it.costo_updated || '?'}</span>`
     : '';
 
   return `
@@ -395,7 +395,7 @@ function renderItemCard(it, i) {
           <code>${it.id}</code>
           <span>Precio: <strong>$${it.precio.toLocaleString('es-AR')}</strong></span>
           <span>Vendido 30d: <strong>${it.ventas_30d}</strong></span>
-          <span>Facturó: <strong style="color:#16a34a">$${it.facturacion_30d.toLocaleString('es-AR')}</strong></span>
+          <span>Facturó: <strong style="color:var(--color-success-500)">$${it.facturacion_30d.toLocaleString('es-AR')}</strong></span>
           <span>Fee ML: ${(it.fee_rate*100).toFixed(1)}%</span>
         </div>
       </div>
@@ -409,7 +409,7 @@ function renderItemCard(it, i) {
                  oninput="onCostoInput(${i}, this.value)">
         </div>
         <div class="calc-preview" id="calc-${i}">
-          <span style="color:#94a3b8">Ingresá el costo para ver el margen estimado</span>
+          <span style="color:var(--color-neutral-400)">Ingresá el costo para ver el margen estimado</span>
         </div>
         ${skipBtn}
       </div>
@@ -444,7 +444,7 @@ function refreshCalc(idx) {
   const costo = it.costo_input;
   if (!costo || costo <= 0) {
     target.className = 'calc-preview';
-    target.innerHTML = '<span style="color:#94a3b8">Ingresá el costo para ver el margen estimado</span>';
+    target.innerHTML = '<span style="color:var(--color-neutral-400)">Ingresá el costo para ver el margen estimado</span>';
     return;
   }
   const fee = it.precio * it.fee_rate;
@@ -454,7 +454,7 @@ function refreshCalc(idx) {
   if (margenPct < 0)         cls = 'crit-strong';
   else if (margenPct < 15)   cls = 'crit';
   else if (margenPct < 25)   cls = 'warn';
-  const color = cls === 'ok' ? '#15803d'
+  const color = cls === 'ok' ? 'var(--color-success-700)'
               : cls === 'warn' ? '#b45309'
               : '#b91c1c';
   target.className = 'calc-preview ' + cls;
@@ -516,7 +516,7 @@ function renderPaso3() {
     const fee = it.precio * it.fee_rate;
     const ganancia = it.precio - fee - it.costo_input;
     const margen = ganancia / it.precio * 100;
-    const color = margen < 0 ? '#b91c1c' : margen < 15 ? '#b45309' : margen < 25 ? '#d97706' : '#15803d';
+    const color = margen < 0 ? '#b91c1c' : margen < 15 ? '#b45309' : margen < 25 ? 'var(--color-warning-500)' : 'var(--color-success-700)';
     return `
       <tr>
         <td><div style="font-weight:600">${escHTML(it.titulo)}</div><div class="mla">${it.id}</div></td>
@@ -524,7 +524,7 @@ function renderPaso3() {
         <td class="text-end">$${it.costo_input.toLocaleString('es-AR')}</td>
         <td class="text-end" style="font-weight:700;color:${color}">$${Math.round(ganancia).toLocaleString('es-AR')} (${margen.toFixed(1)}%)</td>
       </tr>`;
-  }).join('') || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:1rem">Ningún producto cargado</td></tr>';
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--color-neutral-400);padding:1rem">Ningún producto cargado</td></tr>';
 
   document.getElementById('resumen-tbody').innerHTML = `
     <table class="top10-table">

@@ -4,9 +4,9 @@
 {% block content %}
 <style>
 :root {
-  --up-bg: #f0fdf4; --up-border: #86efac; --up-text: #15803d;
+  --up-bg: #f0fdf4; --up-border: #86efac; --up-text: var(--color-success-700);
   --dn-bg: #fef2f2; --dn-border: #fca5a5; --dn-text: #b91c1c;
-  --flat-bg: #f8fafc; --flat-border: #e2e8f0; --flat-text: #475569;
+  --flat-bg: var(--color-neutral-50); --flat-border: var(--color-neutral-200); --flat-text: #475569;
 }
 
 .monitor-header {
@@ -14,23 +14,23 @@
   margin-bottom: 1.5rem;
 }
 .monitor-header h2 { margin: 0; font-size: 1.35rem; font-weight: 700; }
-.monitor-subtitle { color: #64748b; font-size: .85rem; margin-top: .2rem; }
+.monitor-subtitle { color: var(--color-neutral-600); font-size: .85rem; margin-top: .2rem; }
 
 .item-card {
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  background: var(--color-neutral-0); border: 1px solid var(--color-neutral-200); border-radius: 12px;
   margin-bottom: 1.25rem; overflow: hidden;
   box-shadow: 0 1px 4px rgba(0,0,0,.06);
 }
 .item-card-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: .85rem 1.2rem; background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  padding: .85rem 1.2rem; background: var(--color-neutral-50);
+  border-bottom: 1px solid var(--color-neutral-200);
 }
 .item-card-header .item-name {
-  font-weight: 600; font-size: .95rem; color: #1e293b;
+  font-weight: 600; font-size: .95rem; color: var(--color-neutral-800);
 }
 .item-card-header .item-meta {
-  font-size: .75rem; color: #64748b; margin-top: .15rem;
+  font-size: .75rem; color: var(--color-neutral-600); margin-top: .15rem;
 }
 .item-card-body { padding: 1.2rem; }
 
@@ -46,10 +46,10 @@
 .titulo-box.despues { background: #f0fdf4; border: 1px solid #86efac; }
 .titulo-box .titulo-label {
   font-size: .68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; margin-bottom: .35rem; color: #64748b;
+  letter-spacing: .05em; margin-bottom: .35rem; color: var(--color-neutral-600);
 }
 .titulo-box.antes .titulo-label { color: #b91c1c; }
-.titulo-box.despues .titulo-label { color: #15803d; }
+.titulo-box.despues .titulo-label { color: var(--color-success-700); }
 
 .metrics-grid {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem;
@@ -59,65 +59,65 @@
 
 .metric-box {
   padding: .75rem; border-radius: 8px; text-align: center;
-  border: 1px solid #e2e8f0; background: #f8fafc;
+  border: 1px solid var(--color-neutral-200); background: var(--color-neutral-50);
 }
 .metric-box.up    { background: var(--up-bg);   border-color: var(--up-border); }
 .metric-box.down  { background: var(--dn-bg);   border-color: var(--dn-border); }
 .metric-box.flat  { background: var(--flat-bg); border-color: var(--flat-border); }
-.metric-label { font-size: .68rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .3rem; }
-.metric-before { font-size: .78rem; color: #94a3b8; margin-bottom: .1rem; }
-.metric-after  { font-size: 1.2rem; font-weight: 700; color: #1e293b; }
+.metric-label { font-size: .68rem; color: var(--color-neutral-600); text-transform: uppercase; letter-spacing: .04em; margin-bottom: .3rem; }
+.metric-before { font-size: .78rem; color: var(--color-neutral-400); margin-bottom: .1rem; }
+.metric-after  { font-size: 1.2rem; font-weight: 700; color: var(--color-neutral-800); }
 .metric-box.up .metric-after   { color: var(--up-text); }
 .metric-box.down .metric-after { color: var(--dn-text); }
 .metric-delta {
   font-size: .72rem; font-weight: 600; margin-top: .2rem; padding: .1rem .4rem;
   border-radius: 10px; display: inline-block;
 }
-.metric-box.up .metric-delta   { background: #dcfce7; color: var(--up-text); }
-.metric-box.down .metric-delta { background: #fee2e2; color: var(--dn-text); }
-.metric-box.flat .metric-delta { background: #e2e8f0; color: var(--flat-text); }
+.metric-box.up .metric-delta   { background: var(--color-success-100); color: var(--up-text); }
+.metric-box.down .metric-delta { background: var(--color-critical-100); color: var(--dn-text); }
+.metric-box.flat .metric-delta { background: var(--color-neutral-200); color: var(--flat-text); }
 
-.no-data-msg { color: #94a3b8; font-size: .82rem; font-style: italic; }
+.no-data-msg { color: var(--color-neutral-400); font-size: .82rem; font-style: italic; }
 
 .card-actions { display: flex; gap: .6rem; justify-content: flex-end; }
 .btn-refresh {
   font-size: .78rem; padding: .35rem .85rem; border-radius: 6px;
-  border: 1px solid #3b82f6; color: #3b82f6; background: transparent;
+  border: 1px solid var(--color-info-500); color: var(--color-info-500); background: transparent;
   cursor: pointer; transition: all .15s;
 }
-.btn-refresh:hover { background: #3b82f6; color: #fff; }
+.btn-refresh:hover { background: var(--color-info-500); color: var(--color-neutral-0); }
 .btn-refresh:disabled { opacity: .5; cursor: not-allowed; }
 .btn-delete {
   font-size: .78rem; padding: .35rem .85rem; border-radius: 6px;
-  border: 1px solid #ef4444; color: #ef4444; background: transparent;
+  border: 1px solid var(--color-critical-400); color: var(--color-critical-400); background: transparent;
   cursor: pointer; transition: all .15s;
 }
-.btn-delete:hover { background: #ef4444; color: #fff; }
+.btn-delete:hover { background: var(--color-critical-400); color: var(--color-neutral-0); }
 
 .badge-applied {
   font-size: .65rem; padding: .15rem .5rem; border-radius: 10px;
-  background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+  background: #eff6ff; color: var(--color-info-600); border: 1px solid #bfdbfe;
   margin-left: .3rem; font-weight: 600;
 }
 .days-badge {
   font-size: .7rem; padding: .15rem .55rem; border-radius: 10px;
-  background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+  background: var(--color-neutral-100); color: #475569; border: 1px solid #cbd5e1;
 }
 .empty-state {
-  text-align: center; padding: 4rem 2rem; color: #94a3b8;
+  text-align: center; padding: 4rem 2rem; color: var(--color-neutral-400);
 }
 .empty-state i { font-size: 3rem; margin-bottom: 1rem; display: block; }
 .empty-state p { font-size: .95rem; }
 
 .spinner { display: inline-block; width: 14px; height: 14px;
-  border: 2px solid #ddd; border-top-color: #3b82f6;
+  border: 2px solid #ddd; border-top-color: var(--color-info-500);
   border-radius: 50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.snapshot-info { font-size: .72rem; color: #94a3b8; margin-top: .5rem; text-align: right; }
+.snapshot-info { font-size: .72rem; color: var(--color-neutral-400); margin-top: .5rem; text-align: right; }
 
 .timeline-toggle {
-  font-size: .72rem; color: #3b82f6; cursor: pointer; border: none; background: none;
+  font-size: .72rem; color: var(--color-info-500); cursor: pointer; border: none; background: none;
   padding: .25rem 0; display: flex; align-items: center; gap: .3rem; margin-top: .5rem;
 }
 .timeline-toggle:hover { text-decoration: underline; }
@@ -125,26 +125,26 @@
   width: 100%; border-collapse: collapse; font-size: .73rem; margin-top: .5rem;
 }
 .timeline-table th {
-  font-size: .65rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;
-  letter-spacing: .04em; padding: .35rem .5rem; border-bottom: 1px solid #e2e8f0;
+  font-size: .65rem; font-weight: 700; color: var(--color-neutral-400); text-transform: uppercase;
+  letter-spacing: .04em; padding: .35rem .5rem; border-bottom: 1px solid var(--color-neutral-200);
   text-align: left;
 }
 .timeline-table td {
-  padding: .35rem .5rem; border-bottom: 1px solid #f1f5f9; color: #334155;
+  padding: .35rem .5rem; border-bottom: 1px solid var(--color-neutral-100); color: #334155;
 }
 .timeline-table tr.baseline-row td { background: #eff6ff; font-weight: 600; }
-.timeline-pos-up   { color: #15803d; font-weight: 700; }
-.timeline-pos-down { color: #dc2626; font-weight: 700; }
-.timeline-pos-flat { color: #64748b; }
+.timeline-pos-up   { color: var(--color-success-700); font-weight: 700; }
+.timeline-pos-down { color: var(--color-critical-500); font-weight: 700; }
+.timeline-pos-flat { color: var(--color-neutral-600); }
 
 /* ── Sprint 3.1 — vista expandible de baseline completo ── */
 .capturing-banner {
-  background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8;
+  background: #eff6ff; border: 1px solid #bfdbfe; color: var(--color-info-700);
   padding: .65rem .9rem; border-radius: 8px; margin-bottom: .75rem;
   font-size: .82rem; display: flex; align-items: center; gap: .5rem;
 }
 .capturing-banner .pulse {
-  width: 10px; height: 10px; border-radius: 50%; background: #3b82f6;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--color-info-500);
   animation: pulse 1.4s infinite;
 }
 @keyframes pulse {
@@ -153,7 +153,7 @@
 }
 
 .expand-toggle {
-  font-size: .76rem; color: #3b82f6; cursor: pointer; border: none;
+  font-size: .76rem; color: var(--color-info-500); cursor: pointer; border: none;
   background: none; padding: .35rem 0; display: inline-flex;
   align-items: center; gap: .3rem; margin-top: .3rem;
 }
@@ -163,7 +163,7 @@
 .detail-sections.open { display: block; }
 
 .detail-section {
-  border: 1px solid #e2e8f0; border-radius: 8px;
+  border: 1px solid var(--color-neutral-200); border-radius: 8px;
   padding: .75rem .95rem; margin-bottom: .65rem; background: #fafafa;
 }
 .detail-section-title {
@@ -177,10 +177,10 @@
 }
 .detail-cell {
   display: flex; flex-direction: column; gap: 1px;
-  padding: .35rem .55rem; background: #fff; border-radius: 6px;
-  border: 1px solid #f1f5f9;
+  padding: .35rem .55rem; background: var(--color-neutral-0); border-radius: 6px;
+  border: 1px solid var(--color-neutral-100);
 }
-.detail-cell .lbl { font-size: .62rem; font-weight: 600; color: #94a3b8;
+.detail-cell .lbl { font-size: .62rem; font-weight: 600; color: var(--color-neutral-400);
                      text-transform: uppercase; letter-spacing: .03em; }
 .detail-cell .val { font-size: .88rem; font-weight: 700; color: #0f172a; }
 .detail-cell.unavailable .val { color: #cbd5e1; font-style: italic; font-weight: 500; }
@@ -191,22 +191,22 @@
                      padding: .15rem .4rem; border-radius: 4px; }
 .kw-list .kw-item:nth-child(even) { background: rgba(241, 245, 249, .6); }
 
-.capture-meta { font-size: .66rem; color: #94a3b8; margin-top: .55rem;
-                 padding-top: .55rem; border-top: 1px dashed #e2e8f0; }
+.capture-meta { font-size: .66rem; color: var(--color-neutral-400); margin-top: .55rem;
+                 padding-top: .55rem; border-top: 1px dashed var(--color-neutral-200); }
 
 .badge-parcial {
   font-size: .62rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
-  background: #fef3c7; color: #b45309; border: 1px solid #fde68a;
+  background: var(--color-warning-100); color: #b45309; border: 1px solid #fde68a;
   margin-left: .3rem; cursor: help;
 }
 .recapture-banner {
-  background: #fefce8; border: 1px solid #fde68a; color: #92400e;
+  background: #fefce8; border: 1px solid #fde68a; color: var(--color-warning-700);
   padding: .65rem .9rem; border-radius: 8px; margin-top: .75rem;
   font-size: .8rem; display: flex; gap: .5rem; align-items: flex-start;
 }
 .recapture-banner .desc { flex: 1; line-height: 1.45; }
 .btn-recapturar {
-  background: #d97706; color: #fff; border: none; padding: .35rem .85rem;
+  background: var(--color-warning-500); color: var(--color-neutral-0); border: none; padding: .35rem .85rem;
   border-radius: 6px; font-size: .76rem; font-weight: 600; cursor: pointer;
   white-space: nowrap;
 }
@@ -221,32 +221,32 @@
 
 /* ── Sprint 3.1 ext republicación — info compacta de MLA-X ── */
 .original-info {
-  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+  background: var(--color-neutral-50); border: 1px solid var(--color-neutral-200); border-radius: 8px;
   padding: .55rem .85rem; margin-top: .65rem;
   font-size: .77rem; display: flex; gap: .8rem; align-items: center;
   flex-wrap: wrap;
 }
 .original-info .label  { font-size: .62rem; font-weight: 700; text-transform: uppercase;
-                          letter-spacing: .04em; color: #64748b; }
-.original-info code    { background: #fff; padding: 1px 6px; border-radius: 4px;
-                          border: 1px solid #e2e8f0; font-size: .75rem; }
+                          letter-spacing: .04em; color: var(--color-neutral-600); }
+.original-info code    { background: var(--color-neutral-0); padding: 1px 6px; border-radius: 4px;
+                          border: 1px solid var(--color-neutral-200); font-size: .75rem; }
 .original-info .estado-pill {
   font-size: .65rem; font-weight: 700; padding: 1px 8px; border-radius: 10px;
 }
-.original-info .estado-pill.active  { background: #dcfce7; color: #15803d; }
-.original-info .estado-pill.paused  { background: #fef3c7; color: #b45309; }
-.original-info .estado-pill.closed  { background: #fee2e2; color: #b91c1c; }
-.original-info .estado-pill.unknown { background: #f1f5f9; color: #94a3b8; }
+.original-info .estado-pill.active  { background: var(--color-success-100); color: var(--color-success-700); }
+.original-info .estado-pill.paused  { background: var(--color-warning-100); color: #b45309; }
+.original-info .estado-pill.closed  { background: var(--color-critical-100); color: #b91c1c; }
+.original-info .estado-pill.unknown { background: var(--color-neutral-100); color: var(--color-neutral-400); }
 .original-info .retroactivo {
-  font-size: .65rem; background: #fef3c7; color: #92400e;
+  font-size: .65rem; background: var(--color-warning-100); color: var(--color-warning-700);
   padding: 1px 7px; border-radius: 8px; cursor: help;
 }
 .btn-revincular {
   font-size: .7rem; padding: .25rem .65rem; border-radius: 6px;
-  background: transparent; color: #d97706; border: 1px solid #fde68a;
+  background: transparent; color: var(--color-warning-500); border: 1px solid #fde68a;
   cursor: pointer; margin-left: auto;
 }
-.btn-revincular:hover { background: #fef3c7; }
+.btn-revincular:hover { background: var(--color-warning-100); }
 
 .alerta-banner {
   display: flex; align-items: flex-start; gap: .6rem;
@@ -254,10 +254,10 @@
   font-size: .82rem; line-height: 1.45;
 }
 .alerta-banner.warning { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
-.alerta-banner.bueno   { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
-.alerta-banner.neutro  { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; }
+.alerta-banner.bueno   { background: #f0fdf4; border: 1px solid #86efac; color: var(--color-success-700); }
+.alerta-banner.neutro  { background: var(--color-neutral-50); border: 1px solid var(--color-neutral-200); color: #475569; }
 .alerta-banner .alerta-icon { font-size: 1rem; flex-shrink: 0; margin-top: .05rem; }
-.alerta-fecha { font-size: .68rem; color: #94a3b8; margin-top: .2rem; }
+.alerta-fecha { font-size: .68rem; color: var(--color-neutral-400); margin-top: .2rem; }
 
 /* ── Sprint 3.2 — Banner del Veredicto IA ─────────────────────────────── */
 .veredicto-banner {
@@ -267,21 +267,21 @@
 }
 .veredicto-banner--ganadora {
   background: var(--color-success-50, #f0fdf4);
-  border-color:    var(--color-success-500, #16a34a);
-  color:           var(--color-success-700, #15803d);
+  border-color:    var(--color-success-500, var(--color-success-500));
+  color:           var(--color-success-700, var(--color-success-700));
 }
 .veredicto-banner--neutra {
   background: var(--color-warning-50, #fffbeb);
-  border-color:    var(--color-warning-500, #d97706);
-  color:           var(--color-warning-700, #92400e);
+  border-color:    var(--color-warning-500, var(--color-warning-500));
+  color:           var(--color-warning-700, var(--color-warning-700));
 }
 .veredicto-banner--perdedora {
   background: var(--color-critical-50, #fef2f2);
-  border-color:    var(--color-critical-500, #dc2626);
-  color:           var(--color-critical-700, #991b1b);
+  border-color:    var(--color-critical-500, var(--color-critical-500));
+  color:           var(--color-critical-700, var(--color-critical-700));
 }
 .veredicto-banner--info {
-  background: #eff6ff; border-color: #3b82f6; color: #1d4ed8;
+  background: #eff6ff; border-color: var(--color-info-500); color: var(--color-info-700);
 }
 .veredicto-header {
   display: flex; align-items: center; flex-wrap: wrap; gap: .55rem;
@@ -298,9 +298,9 @@
   display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
   font-size: .8rem; color: #475569;
 }
-.veredicto-recomendacion strong { color: #1e293b; }
+.veredicto-recomendacion strong { color: var(--color-neutral-800); }
 .veredicto-meta {
-  font-size: .68rem; color: #94a3b8;
+  font-size: .68rem; color: var(--color-neutral-400);
   display: flex; gap: .8rem; flex-wrap: wrap;
 }
 .veredicto-actions {
@@ -312,19 +312,19 @@
   cursor: pointer; transition: all .15s; font-weight: 600;
 }
 .veredicto-actions button:hover:not(:disabled) {
-  background: currentColor; color: #fff;
+  background: currentColor; color: var(--color-neutral-0);
 }
 .veredicto-actions button[data-action="cta-replicar"]:hover:not(:disabled),
 .veredicto-actions button[data-action="cta-revertir"]:hover:not(:disabled),
 .veredicto-actions button[data-action="cta-regenerar"]:hover:not(:disabled) {
   /* Override del color para que no se confunda con el texto del banner */
-  background: #1e293b; color: #fff; border-color: #1e293b;
+  background: var(--color-neutral-800); color: var(--color-neutral-0); border-color: var(--color-neutral-800);
 }
 .veredicto-actions button:disabled {
   opacity: .55; cursor: not-allowed; border-style: dashed;
 }
 .veredicto-alertas {
-  font-size: .72rem; color: #92400e; background: #fef3c7;
+  font-size: .72rem; color: var(--color-warning-700); background: var(--color-warning-100);
   padding: .35rem .55rem; border-radius: 6px; margin-top: .2rem;
 }
 .veredicto-alertas ul { margin: 0; padding-left: 1rem; }
@@ -333,7 +333,7 @@
 
 <div class="monitor-header">
   <div>
-    <h2><i class="bi bi-activity" style="color:#3b82f6"></i> Monitor de Evolución</h2>
+    <h2><i class="bi bi-activity" style="color:var(--color-info-500)"></i> Monitor de Evolución</h2>
     <div class="monitor-subtitle">Seguimiento del impacto real de cada optimización aplicada</div>
   </div>
 </div>
@@ -341,7 +341,7 @@
 <div id="monitor-container">
   <div class="empty-state">
     <span class="spinner"></span>
-    <p style="margin-top:1rem;color:#94a3b8">Cargando...</p>
+    <p style="margin-top:1rem;color:var(--color-neutral-400)">Cargando...</p>
   </div>
 </div>
 
@@ -414,7 +414,7 @@ function renderTimeline(it) {
     <td>📌 ${baseDate}</td>
     <td>${basePOS !== null && basePOS !== undefined ? '#' + basePOS : '—'}</td>
     <td>${baseVIS !== null && baseVIS !== undefined ? baseVIS : '—'}</td>
-    <td><span style="font-size:.65rem;background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:8px;font-weight:700">BASELINE</span></td>
+    <td><span style="font-size:.65rem;background:var(--color-info-100);color:var(--color-info-700);padding:1px 6px;border-radius:8px;font-weight:700">BASELINE</span></td>
   </tr>`;
 
   snaps.forEach(s => {
@@ -433,14 +433,14 @@ function renderTimeline(it) {
     if (baseVIS !== null && baseVIS !== undefined && vis !== null && vis !== undefined) {
       const dv = vis - baseVIS;
       const sign = dv > 0 ? '+' : '';
-      const col  = dv > 0 ? '#15803d' : dv < 0 ? '#dc2626' : '#64748b';
+      const col  = dv > 0 ? 'var(--color-success-700)' : dv < 0 ? 'var(--color-critical-500)' : 'var(--color-neutral-600)';
       visDelta = ` <span style="font-size:.65rem;color:${col}">(${sign}${dv})</span>`;
     }
     rows += `<tr>
       <td>${fecha}</td>
       <td class="${posCls}">${posCell}${deltaTxt}</td>
       <td>${vis !== null && vis !== undefined ? vis : '—'}${visDelta}</td>
-      <td style="color:#94a3b8;font-size:.68rem">${s.ventas_total !== undefined ? s.ventas_total + ' vtas' : ''}</td>
+      <td style="color:var(--color-neutral-400);font-size:.68rem">${s.ventas_total !== undefined ? s.ventas_total + ' vtas' : ''}</td>
     </tr>`;
   });
 
@@ -647,7 +647,7 @@ async function abrirModalReplicar(itemIdOrigen) {
     modal = document.createElement('div');
     modal.id = 'modalReplicar';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:2rem;';
-    modal.innerHTML = '<div id="modalReplicarBody" style="background:#fff;border-radius:12px;max-width:980px;width:100%;padding:1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.2)"></div>';
+    modal.innerHTML = '<div id="modalReplicarBody" style="background:var(--color-neutral-0);border-radius:12px;max-width:980px;width:100%;padding:1.5rem;box-shadow:0 10px 40px rgba(0,0,0,.2)"></div>';
     document.body.appendChild(modal);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
   }
@@ -655,8 +655,8 @@ async function abrirModalReplicar(itemIdOrigen) {
   const body = document.getElementById('modalReplicarBody');
   body.innerHTML = `<div style="text-align:center;padding:2rem">
     <div class="spinner-border" role="status"></div>
-    <p style="margin-top:1rem;color:#64748b">Buscando productos similares en tu catálogo…</p>
-    <p style="font-size:.8rem;color:#94a3b8">Esto puede tardar 5-10 segundos</p>
+    <p style="margin-top:1rem;color:var(--color-neutral-600)">Buscando productos similares en tu catálogo…</p>
+    <p style="font-size:.8rem;color:var(--color-neutral-400)">Esto puede tardar 5-10 segundos</p>
   </div>`;
 
   try {
@@ -675,7 +675,7 @@ async function abrirModalReplicar(itemIdOrigen) {
 function renderModalError(msg, itemIdOrigen) {
   return `<div>
     <h4 style="margin:0 0 .5rem">No se pudo abrir el replicador</h4>
-    <p style="color:#dc2626;margin:0 0 1rem">${msg}</p>
+    <p style="color:var(--color-critical-500);margin:0 0 1rem">${msg}</p>
     <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalReplicar').style.display='none'">Cerrar</button>
   </div>`;
 }
@@ -688,14 +688,14 @@ function renderModalCandidatos(data, itemIdOrigen) {
   const headerHtml = `<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e5e7eb;padding-bottom:1rem;margin-bottom:1rem">
     <div>
       <h4 style="margin:0 0 .25rem">🚀 Replicar patrón ganador</h4>
-      <div style="font-size:.85rem;color:#64748b">Origen: <strong>${data.titulo_origen || itemIdOrigen}</strong></div>
-      <div style="font-size:.78rem;color:#94a3b8;margin-top:.25rem">${aplicables.length} candidato${aplicables.length!==1?'s':''} disponible${aplicables.length!==1?'s':''} · ${bloqueados.length} bloqueado${bloqueados.length!==1?'s':''}</div>
+      <div style="font-size:.85rem;color:var(--color-neutral-600)">Origen: <strong>${data.titulo_origen || itemIdOrigen}</strong></div>
+      <div style="font-size:.78rem;color:var(--color-neutral-400);margin-top:.25rem">${aplicables.length} candidato${aplicables.length!==1?'s':''} disponible${aplicables.length!==1?'s':''} · ${bloqueados.length} bloqueado${bloqueados.length!==1?'s':''}</div>
     </div>
     <button class="btn-close" aria-label="Cerrar" onclick="document.getElementById('modalReplicar').style.display='none'"></button>
   </div>`;
 
   if (candidatos.length === 0) {
-    return headerHtml + `<div style="text-align:center;padding:1.5rem;color:#64748b">
+    return headerHtml + `<div style="text-align:center;padding:1.5rem;color:var(--color-neutral-600)">
       No se encontraron productos similares en tu catálogo (umbral mínimo: 30% similitud).
       <p style="font-size:.85rem;margin-top:.5rem">Esto es normal si el patrón ganador es muy específico.</p>
     </div>`;
@@ -706,11 +706,11 @@ function renderModalCandidatos(data, itemIdOrigen) {
       <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start">
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:.92rem;margin-bottom:.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.titulo}</div>
-          <div style="font-size:.75rem;color:#64748b">
+          <div style="font-size:.75rem;color:var(--color-neutral-600)">
             ${c.item_id} · $${c.price ? c.price.toLocaleString('es-AR') : 'n/d'} · ${c.sold_quantity || 0} vendidos
             ${c.permalink ? `· <a href="${c.permalink}" target="_blank" rel="noopener">ver en ML</a>` : ''}
           </div>
-          <div style="font-size:.78rem;color:#3b82f6;margin-top:.25rem">
+          <div style="font-size:.78rem;color:var(--color-info-500);margin-top:.25rem">
             <strong>${Math.round(c.similitud * 100)}% similitud</strong> ${c.mismo_categoria ? '· misma categoría' : ''} · ${c.motivo_inclusion}
           </div>
         </div>
@@ -729,15 +729,15 @@ function renderModalCandidatos(data, itemIdOrigen) {
 
   const bloqueadosHtml = bloqueados.length ? `
     <details style="margin-top:1rem">
-      <summary style="cursor:pointer;color:#94a3b8;font-size:.85rem">Ver ${bloqueados.length} bloqueado${bloqueados.length!==1?'s':''}</summary>
+      <summary style="cursor:pointer;color:var(--color-neutral-400);font-size:.85rem">Ver ${bloqueados.length} bloqueado${bloqueados.length!==1?'s':''}</summary>
       <div style="margin-top:.5rem">
         ${bloqueados.map(c => `<div style="padding:.5rem;border:1px dashed #e5e7eb;border-radius:6px;margin-bottom:.4rem;font-size:.82rem;opacity:.65">
-          <strong>${c.titulo.slice(0,60)}…</strong> — <span style="color:#dc2626">${c.bloqueado_por}</span>
+          <strong>${c.titulo.slice(0,60)}…</strong> — <span style="color:var(--color-critical-500)">${c.bloqueado_por}</span>
         </div>`).join('')}
       </div>
     </details>` : '';
 
-  const noteHtml = `<div style="font-size:.75rem;color:#94a3b8;margin-top:1rem;padding:.5rem;background:#f8fafc;border-radius:6px">
+  const noteHtml = `<div style="font-size:.75rem;color:var(--color-neutral-400);margin-top:1rem;padding:.5rem;background:var(--color-neutral-50);border-radius:6px">
     💡 Cada preview consume ~$0.005 USD (Claude Haiku). Hard cap: $5/mes.
     Aplicación es 1-por-1 — siempre revisás antes de aplicar.
   </div>`;
@@ -749,19 +749,19 @@ async function generarPreviewReplica(itemOrigen, itemDestino) {
   const cont = document.getElementById('preview-' + itemDestino);
   if (!cont) return;
   cont.style.display = 'block';
-  cont.innerHTML = '<div style="color:#64748b;font-size:.85rem"><span class="spinner-border spinner-border-sm"></span> Generando propuesta IA (Haiku, ~5s, ~$0.005)…</div>';
+  cont.innerHTML = '<div style="color:var(--color-neutral-600);font-size:.85rem"><span class="spinner-border spinner-border-sm"></span> Generando propuesta IA (Haiku, ~5s, ~$0.005)…</div>';
   try {
     const r = await fetch(`/api/replicar/${encodeURIComponent(ALIAS)}/${encodeURIComponent(itemOrigen)}/${encodeURIComponent(itemDestino)}/preview`,
                           {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})});
     const d = await r.json();
     if (!d.ok) {
-      cont.innerHTML = `<div style="color:#dc2626;font-size:.85rem">❌ ${d.error || 'Error'}</div>`;
+      cont.innerHTML = `<div style="color:var(--color-critical-500);font-size:.85rem">❌ ${d.error || 'Error'}</div>`;
       return;
     }
     const p = d.preview || (d.cached ? d.preview : null);
     if (!p) { cont.innerHTML = '<em>Sin propuesta</em>'; return; }
     if (!p.aplicable) {
-      cont.innerHTML = `<div style="background:#fef3c7;padding:.6rem;border-radius:6px;font-size:.85rem">
+      cont.innerHTML = `<div style="background:var(--color-warning-100);padding:.6rem;border-radius:6px;font-size:.85rem">
         <strong>⚠️ El patrón no aplica a este producto.</strong><br>
         ${p.razon_no_aplicable || 'La IA determinó que el patrón no es transferible.'}
       </div>`;
@@ -769,16 +769,16 @@ async function generarPreviewReplica(itemOrigen, itemDestino) {
     }
     const cambios = (p.cambios_clave || []).map(c => `<li>${c}</li>`).join('');
     cont.innerHTML = `
-      <div style="font-size:.78rem;color:#64748b;margin-bottom:.5rem">
-        💡 Propuesta IA · Confianza ${p.confianza}/100 ${d.cached ? '<span style="background:#fef3c7;padding:1px 5px;border-radius:4px">cacheada</span>' : ''}
+      <div style="font-size:.78rem;color:var(--color-neutral-600);margin-bottom:.5rem">
+        💡 Propuesta IA · Confianza ${p.confianza}/100 ${d.cached ? '<span style="background:var(--color-warning-100);padding:1px 5px;border-radius:4px">cacheada</span>' : ''}
       </div>
       <div style="margin-bottom:.6rem">
-        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:.2rem">Título propuesto (${p.titulo_propuesto.length}/60):</label>
+        <label style="font-size:.78rem;color:var(--color-neutral-600);display:block;margin-bottom:.2rem">Título propuesto (${p.titulo_propuesto.length}/60):</label>
         <input id="titReplica-${itemDestino}" type="text" maxlength="60" value="${escAttr(p.titulo_propuesto)}" style="width:100%;padding:.4rem;border:1px solid #e5e7eb;border-radius:4px;font-size:.88rem">
-        <div style="font-size:.72rem;color:#94a3b8;margin-top:.2rem"><em>${p.titulo_motivo || ''}</em></div>
+        <div style="font-size:.72rem;color:var(--color-neutral-400);margin-top:.2rem"><em>${p.titulo_motivo || ''}</em></div>
       </div>
       <div style="margin-bottom:.6rem">
-        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:.2rem">Descripción propuesta:</label>
+        <label style="font-size:.78rem;color:var(--color-neutral-600);display:block;margin-bottom:.2rem">Descripción propuesta:</label>
         <textarea id="descReplica-${itemDestino}" rows="6" style="width:100%;padding:.4rem;border:1px solid #e5e7eb;border-radius:4px;font-size:.85rem">${p.descripcion_propuesta}</textarea>
       </div>
       ${cambios ? `<div style="font-size:.78rem;color:#475569;margin-bottom:.6rem"><strong>Cambios clave:</strong><ul style="margin:.2rem 0 0 1rem;padding:0">${cambios}</ul></div>` : ''}
@@ -787,7 +787,7 @@ async function generarPreviewReplica(itemOrigen, itemDestino) {
         <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('preview-${itemDestino}').style.display='none'">Cerrar preview</button>
       </div>`;
   } catch (e) {
-    cont.innerHTML = `<div style="color:#dc2626;font-size:.85rem">❌ ${e.message}</div>`;
+    cont.innerHTML = `<div style="color:var(--color-critical-500);font-size:.85rem">❌ ${e.message}</div>`;
   }
 }
 
@@ -806,7 +806,7 @@ async function aplicarReplica(itemOrigen, itemDestino) {
     const d = await r.json();
     if (d.ok) {
       const cont = document.getElementById('preview-' + itemDestino);
-      cont.innerHTML = `<div style="background:#dcfce7;padding:.6rem;border-radius:6px;font-size:.88rem;color:#166534">
+      cont.innerHTML = `<div style="background:var(--color-success-100);padding:.6rem;border-radius:6px;font-size:.88rem;color:#166534">
         ✅ Réplica aplicada en ${itemDestino}. Campos: <strong>${(d.applied || []).join(', ')}</strong>.
         Empieza a medirse — verás el veredicto en ~7 días.
       </div>`;
@@ -846,7 +846,7 @@ function renderItem(it) {
   if (it.origen === 'nueva') {
     // Publicación nueva creada con toda la optimización aplicada
     const origLink = it.item_id_original
-      ? ` <span style="font-size:.72rem;color:#6b7280">(reemplaza a ${it.item_id_original})</span>` : '';
+      ? ` <span style="font-size:.72rem;color:var(--color-neutral-500)">(reemplaza a ${it.item_id_original})</span>` : '';
     tituloBlock = `<div class="titulo-compare">
       <div class="titulo-box despues" style="flex:1">
         <div class="titulo-label">🆕 Nueva publicación — optimización completa aplicada${origLink}</div>
@@ -888,13 +888,13 @@ function renderItem(it) {
     const ayer = it.visitas_ayer;
     const diarioBlock = (ayer !== null && ayer !== undefined) ? `
     <div style="display:flex;gap:.75rem;margin-bottom:.75rem;align-items:center;flex-wrap:wrap">
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:.45rem .9rem;display:flex;align-items:center;gap:.5rem">
-        <i class="bi bi-calendar-day" style="color:#64748b;font-size:.85rem"></i>
-        <span style="font-size:.75rem;color:#64748b;font-weight:600">Visitas ayer</span>
-        <span style="font-size:1.15rem;font-weight:800;color:${ayer === 0 ? '#dc2626' : '#1e293b'}">${ayer}</span>
-        ${ayer === 0 ? '<span style="font-size:.65rem;color:#dc2626;font-weight:600">⚠ sin tráfico ayer</span>' : ''}
+      <div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.45rem .9rem;display:flex;align-items:center;gap:.5rem">
+        <i class="bi bi-calendar-day" style="color:var(--color-neutral-600);font-size:.85rem"></i>
+        <span style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">Visitas ayer</span>
+        <span style="font-size:1.15rem;font-weight:800;color:${ayer === 0 ? 'var(--color-critical-500)' : 'var(--color-neutral-800)'}">${ayer}</span>
+        ${ayer === 0 ? '<span style="font-size:.65rem;color:var(--color-critical-500);font-weight:600">⚠ sin tráfico ayer</span>' : ''}
       </div>
-      <div style="font-size:.68rem;color:#94a3b8">
+      <div style="font-size:.68rem;color:var(--color-neutral-400)">
         <i class="bi bi-info-circle me-1"></i>Actualizá para refrescar
       </div>
     </div>` : '';
@@ -942,7 +942,7 @@ function renderItem(it) {
   let parcialBlock = '';
   if (baselineVer < 2 && !it._capturing) {
     parcialBlock = `<div class="recapture-banner">
-      <i class="bi bi-info-circle-fill" style="color:#d97706;flex-shrink:0;margin-top:.1rem"></i>
+      <i class="bi bi-info-circle-fill" style="color:var(--color-warning-500);flex-shrink:0;margin-top:.1rem"></i>
       <div class="desc">
         <strong>Baseline parcial</strong> — esta optimización se aplicó antes del Sprint 3
         y solo tiene métricas básicas (visitas, ventas, conversión, posición).
@@ -973,7 +973,7 @@ function renderItem(it) {
           <span class="days-badge" style="margin-left:.5rem">
             Optimizado hace ${it.dias_elapsed} día${it.dias_elapsed !== 1 ? 's' : ''}
           </span>
-          <span style="color:#94a3b8;font-size:.72rem;margin-left:.5rem">${it.fecha_opt}</span>
+          <span style="color:var(--color-neutral-400);font-size:.72rem;margin-left:.5rem">${it.fecha_opt}</span>
         </div>
       </div>
       <div class="card-actions">
@@ -1032,7 +1032,7 @@ function renderInfoOriginal(it) {
     <code>${it.item_id_original}</code>
     <span class="estado-pill ${estado}">${estado}</span>
     ${retroBadge}
-    <span style="color:#64748b;font-size:.72rem">últ. snapshot: ${ultimaAct}</span>
+    <span style="color:var(--color-neutral-600);font-size:.72rem">últ. snapshot: ${ultimaAct}</span>
   </div>`;
 }
 
@@ -1045,14 +1045,14 @@ function abrirModalRevincular(itemIdNuevo) {
   const mlaOrig  = (card && card.dataset.itemIdOriginal) || '—';
   const fechaOpt = (card && card.dataset.fechaOpt) || '';
   const html = `
-    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+    <h5 style="font-weight:700;color:var(--color-neutral-800);margin-bottom:.6rem">
       <i class="bi bi-link-45deg text-warning me-1"></i>Re-vincular y capturar snapshot
     </h5>
     <p style="font-size:.86rem;color:#475569;margin-bottom:.55rem">
       Publicación nueva: <strong>${itemIdNuevo}</strong><br>
       Publicación original: <strong>${mlaOrig}</strong>
     </p>
-    <p style="font-size:.82rem;color:#64748b;margin-bottom:.4rem">
+    <p style="font-size:.82rem;color:var(--color-neutral-600);margin-bottom:.4rem">
       Republicación vinculada el: <strong>${fechaOpt || 'fecha desconocida'}</strong>
     </p>
     <div class="modal-warn">
@@ -1061,13 +1061,13 @@ function abrirModalRevincular(itemIdNuevo) {
       <strong>NO refleja</strong> el estado real de la original al momento del cambio.
       Va a quedar marcado como <em>retroactivo</em> en el JSON.
     </div>
-    <p style="font-size:.78rem;color:#64748b">
+    <p style="font-size:.78rem;color:var(--color-neutral-600)">
       A partir de ahora, el cron del Monitor refresca AMBAS publicaciones (la nueva y la original)
       para poder hacer comparativa A/B en Sprint 3.2.
     </p>
     <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
       <button onclick="cerrarModalRevinc()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
-      <button id="btn-confirmar-revinc" onclick="ejecutarRevincular()" style="padding:.5rem 1.2rem;background:#d97706;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
+      <button id="btn-confirmar-revinc" onclick="ejecutarRevincular()" style="padding:.5rem 1.2rem;background:var(--color-warning-500);color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;font-weight:600">
         Capturar snapshot retroactivo
       </button>
     </div>`;
@@ -1076,7 +1076,7 @@ function abrirModalRevincular(itemIdNuevo) {
     modal = document.createElement('div');
     modal.id = 'modal-revinc';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center';
-    modal.innerHTML = '<div id="modal-revinc-content" style="background:#fff;border-radius:12px;max-width:560px;width:92%;padding:1.5rem"></div>';
+    modal.innerHTML = '<div id="modal-revinc-content" style="background:var(--color-neutral-0);border-radius:12px;max-width:560px;width:92%;padding:1.5rem"></div>';
     document.body.appendChild(modal);
   }
   document.getElementById('modal-revinc-content').innerHTML = html;
@@ -1122,13 +1122,13 @@ function abrirModalRecapturar(itemId) {
   const titulo   = (card && card.dataset.itemName) || '';
   const fechaOpt = (card && card.dataset.fechaOpt) || '';
   const html = `
-    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+    <h5 style="font-weight:700;color:var(--color-neutral-800);margin-bottom:.6rem">
       <i class="bi bi-arrow-clockwise text-warning me-1"></i>Re-capturar baseline
     </h5>
     <p style="font-size:.86rem;color:#475569;margin-bottom:.55rem">
       Item: <strong>${itemId}</strong><br>${titulo}
     </p>
-    <p style="font-size:.82rem;color:#64748b;margin-bottom:.4rem">
+    <p style="font-size:.82rem;color:var(--color-neutral-600);margin-bottom:.4rem">
       Optimización aplicada el: <strong>${fechaOpt || 'fecha desconocida'}</strong>
     </p>
     <div class="modal-warn">
@@ -1137,12 +1137,12 @@ function abrirModalRecapturar(itemId) {
       al momento de la optimización. Va a quedar marcado como <em>retroactivo</em> para que sepas
       que es referencial, no histórico.
     </div>
-    <p style="font-size:.78rem;color:#64748b">
+    <p style="font-size:.78rem;color:var(--color-neutral-600)">
       La captura toma 10-15 segundos. Mientras corre, vas a ver "Capturando baseline…" en el card.
     </p>
     <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
       <button onclick="cerrarModalRecap()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
-      <button id="btn-confirmar-recap" onclick="ejecutarRecapturar()" style="padding:.5rem 1.2rem;background:#d97706;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
+      <button id="btn-confirmar-recap" onclick="ejecutarRecapturar()" style="padding:.5rem 1.2rem;background:var(--color-warning-500);color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;font-weight:600">
         Re-capturar ahora
       </button>
     </div>`;
@@ -1152,7 +1152,7 @@ function abrirModalRecapturar(itemId) {
     modal = document.createElement('div');
     modal.id = 'modal-recap';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center';
-    modal.innerHTML = '<div id="modal-recap-content" style="background:#fff;border-radius:12px;max-width:520px;width:92%;padding:1.5rem"></div>';
+    modal.innerHTML = '<div id="modal-recap-content" style="background:var(--color-neutral-0);border-radius:12px;max-width:520px;width:92%;padding:1.5rem"></div>';
     document.body.appendChild(modal);
   }
   document.getElementById('modal-recap-content').innerHTML = html;
@@ -1260,13 +1260,13 @@ function renderDetalleExpansible(it) {
         ${detailCell('Tiene Buy Box', vis.tiene_buy_box)}
       </div>
       <div style="margin-top:.6rem">
-        <div class="lbl" style="font-size:.62rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.3rem">Posición top keywords</div>
+        <div class="lbl" style="font-size:.62rem;font-weight:600;color:var(--color-neutral-400);text-transform:uppercase;letter-spacing:.03em;margin-bottom:.3rem">Posición top keywords</div>
         <div class="kw-list">${kwsHtml}</div>
       </div>
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-title"><i class="bi bi-bar-chart-fill" style="color:#3b82f6"></i>Tráfico</div>
+      <div class="detail-section-title"><i class="bi bi-bar-chart-fill" style="color:var(--color-info-500)"></i>Tráfico</div>
       <div class="detail-grid">
         ${detailCell('Visitas 7d', traf.visitas_7d)}
         ${detailCell('Visitas 30d', traf.visitas_30d)}
@@ -1276,7 +1276,7 @@ function renderDetalleExpansible(it) {
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-title"><i class="bi bi-cart-fill" style="color:#16a34a"></i>Ventas</div>
+      <div class="detail-section-title"><i class="bi bi-cart-fill" style="color:var(--color-success-500)"></i>Ventas</div>
       <div class="detail-grid">
         ${detailCell('Unidades 7d', ven.unidades_7d)}
         ${detailCell('Unidades 30d', ven.unidades_30d)}
@@ -1288,7 +1288,7 @@ function renderDetalleExpansible(it) {
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-title"><i class="bi bi-chat-dots-fill" style="color:#d97706"></i>Engagement</div>
+      <div class="detail-section-title"><i class="bi bi-chat-dots-fill" style="color:var(--color-warning-500)"></i>Engagement</div>
       <div class="detail-grid">
         ${detailCell('Preguntas pendientes', eng.preguntas_pendientes)}
         ${detailCell('Preguntas 30d', eng.preguntas_total_30d)}
@@ -1298,7 +1298,7 @@ function renderDetalleExpansible(it) {
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-title"><i class="bi bi-shield-check" style="color:#dc2626"></i>Salud</div>
+      <div class="detail-section-title"><i class="bi bi-shield-check" style="color:var(--color-critical-500)"></i>Salud</div>
       <div class="detail-grid">
         ${detailCell('Reclamos 30d', sal.reclamos_30d)}
         ${detailCell('Cancelaciones 30d', sal.cancelaciones_30d)}

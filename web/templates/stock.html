@@ -4,48 +4,48 @@
 {% block content %}
 <style>
   .stat-num { font-size:1.75rem; font-weight:700; line-height:1; }
-  .stat-label { font-size:.75rem; color:#6b7280; margin-top:3px; }
+  .stat-label { font-size:.75rem; color:var(--color-neutral-500); margin-top:3px; }
   .costo-cell { cursor:pointer; }
   .costo-cell:hover { background:#f0f9ff; }
   .costo-inp { width:110px; font-size:.82rem; }
   .capital-badge { background:#ede9fe; color:#5b21b6; border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
-  .sin-costo-badge { background:#fef3c7; color:#92400e; border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
+  .sin-costo-badge { background:var(--color-warning-100); color:var(--color-warning-700); border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
   .chk-col { width:28px; }
   .updated-dot { width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px; }
   .conv-ok   { color:#059669; font-weight:700; }
-  .conv-warn { color:#d97706; font-weight:700; }
-  .conv-bad  { color:#dc2626; font-weight:700; }
+  .conv-warn { color:var(--color-warning-500); font-weight:700; }
+  .conv-bad  { color:var(--color-critical-500); font-weight:700; }
   .diag-chip { font-size:.68rem; border-radius:4px; padding:1px 6px; font-weight:600; }
-  .diag-trafico  { background:#fee2e2; color:#991b1b; }
-  .diag-titulo   { background:#fef3c7; color:#92400e; }
+  .diag-trafico  { background:var(--color-critical-100); color:var(--color-critical-700); }
+  .diag-titulo   { background:var(--color-warning-100); color:var(--color-warning-700); }
   .diag-ok       { background:#d1fae5; color:#065f46; }
   .vis-skel { display:inline-block; width:50px; height:14px; background:#e5e7eb; border-radius:4px; animation:pulse 1.5s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
   .acciones-panel {
-    background:linear-gradient(135deg,#f8fafc 0%,#f0f9ff 100%);
+    background:linear-gradient(135deg,var(--color-neutral-50) 0%,#f0f9ff 100%);
     border-top:1px solid #e0f2fe; padding:14px 20px;
     display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start;
   }
   .accion-card {
-    background:#fff; border:1px solid #e5e7eb; border-radius:8px;
+    background:var(--color-neutral-0); border:1px solid #e5e7eb; border-radius:8px;
     padding:10px 14px; flex:1; min-width:200px; max-width:280px;
   }
   .accion-card .ac-title { font-size:.72rem; font-weight:700; text-transform:uppercase;
     letter-spacing:.05em; margin-bottom:6px; }
   .accion-card ul { margin:0; padding-left:14px; }
-  .accion-card ul li { font-size:.78rem; color:#374151; margin-bottom:3px; line-height:1.4; }
-  .accion-card.urgente { border-left:3px solid #ef4444; }
-  .accion-card.importante { border-left:3px solid #f59e0b; }
-  .accion-card.oportunidad { border-left:3px solid #3b82f6; }
-  .accion-card.ok { border-left:3px solid #10b981; }
+  .accion-card ul li { font-size:.78rem; color:var(--color-neutral-700); margin-bottom:3px; line-height:1.4; }
+  .accion-card.urgente { border-left:3px solid var(--color-critical-400); }
+  .accion-card.importante { border-left:3px solid var(--color-warning-400); }
+  .accion-card.oportunidad { border-left:3px solid var(--color-info-500); }
+  .accion-card.ok { border-left:3px solid var(--color-success-400); }
   .diag-chip { border:none; cursor:pointer; font-size:.68rem; border-radius:4px; padding:2px 7px; font-weight:600; }
   .filter-chip {
-    border:1px solid #e5e7eb; background:#fff; border-radius:20px;
-    padding:4px 12px; font-size:.78rem; cursor:pointer; color:#374151;
+    border:1px solid #e5e7eb; background:var(--color-neutral-0); border-radius:20px;
+    padding:4px 12px; font-size:.78rem; cursor:pointer; color:var(--color-neutral-700);
     transition:all .15s; white-space:nowrap;
   }
-  .filter-chip:hover { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; }
-  .filter-chip.active { background:#2563eb; border-color:#2563eb; color:#fff; font-weight:600; }
+  .filter-chip:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
+  .filter-chip.active { background:var(--color-info-600); border-color:var(--color-info-600); color:var(--color-neutral-0); font-weight:600; }
 </style>
 
 <div class="page-header">
@@ -128,7 +128,7 @@
 {% if seller_metrics %}
 {% set sm = seller_metrics %}
 {% if sm.claims_rate > 2 %}
-<div class="alert alert-danger d-flex align-items-start gap-2 mb-3 py-2" style="border-left:4px solid #dc2626;">
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-3 py-2" style="border-left:4px solid var(--color-critical-500);">
   <span style="font-size:1.1rem">🔴</span>
   <div class="small">
     <strong>Reputación crítica de cuenta — {{ sm.claims_rate }}% reclamos (límite ML: 2%)</strong><br>
@@ -136,7 +136,7 @@
   </div>
 </div>
 {% elif sm.claims_rate > 1 %}
-<div class="alert alert-warning d-flex align-items-start gap-2 mb-3 py-2" style="border-left:4px solid #f59e0b;">
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-3 py-2" style="border-left:4px solid var(--color-warning-400);">
   <span style="font-size:1.1rem">🟡</span>
   <div class="small">
     <strong>Reputación de cuenta en zona de riesgo — {{ sm.claims_rate }}% reclamos</strong>&nbsp;
@@ -335,7 +335,7 @@
                 {% elif c is not none and c < 1 %}
                   <button class="diag-chip diag-titulo" onclick="toggleAcciones('{{ item.id }}')">Conv. baja ▾</button>
                 {% elif c is not none and c < 3 %}
-                  <button class="diag-chip" style="background:#dbeafe;color:#1e40af" onclick="toggleAcciones('{{ item.id }}')">Mejorable ▾</button>
+                  <button class="diag-chip" style="background:var(--color-info-100);color:#1e40af" onclick="toggleAcciones('{{ item.id }}')">Mejorable ▾</button>
                 {% else %}
                   <button class="diag-chip diag-ok" onclick="toggleAcciones('{{ item.id }}')">Óptimo ▾</button>
                 {% endif %}
@@ -445,7 +445,7 @@
 
           <div class="table-responsive" style="max-height:420px;overflow-y:auto">
             <table class="table table-sm mb-0" id="costos-table">
-              <thead style="position:sticky;top:0;background:#fff;z-index:1">
+              <thead style="position:sticky;top:0;background:var(--color-neutral-0);z-index:1">
                 <tr>
                   <th>Publicación</th>
                   <th class="text-end">Precio venta</th>
@@ -473,7 +473,7 @@
 </div>
 
 <!-- ── Inline edit popover ──────────────────────────────────────────────── -->
-<div id="inline-editor" style="display:none;position:fixed;z-index:9990;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px">
+<div id="inline-editor" style="display:none;position:fixed;z-index:9990;background:var(--color-neutral-0);border:1px solid #e5e7eb;border-radius:10px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px">
   <div class="fw-semibold small mb-2" id="ie-titulo" style="max-width:220px"></div>
   <div class="small text-muted mb-2" id="ie-precio"></div>
   <div class="input-group input-group-sm mb-2">
@@ -522,7 +522,7 @@ async function toggleAcciones(id) {
       if (alias) {
         const healthDiv = document.createElement('div');
         healthDiv.id = `health-${id}`;
-        healthDiv.innerHTML = `<div style="padding:12px 16px;color:#6b7280;font-size:.8rem">
+        healthDiv.innerHTML = `<div style="padding:12px 16px;color:var(--color-neutral-500);font-size:.8rem">
           <span class="spinner-border spinner-border-sm me-2"></span>Consultando experiencia de compra en ML...
         </div>`;
         panel.appendChild(healthDiv);
@@ -573,8 +573,8 @@ async function loadItemHealth(alias, itemId, container) {
     const visitsDeltaPct = data.visits_delta_pct;
 
     const card = (title, items) => `
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:210px;flex:1">
-        <div style="font-size:.68rem;color:#6b7280;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">${title}</div>
+      <div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:8px;padding:10px 14px;min-width:210px;flex:1">
+        <div style="font-size:.68rem;color:var(--color-neutral-500);font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">${title}</div>
         <div style="display:flex;flex-direction:column;gap:4px">${items.map(i=>`<div style="font-size:.75rem;color:${i.col}">${i.txt}</div>`).join('')}</div>
       </div>`;
 
@@ -587,10 +587,10 @@ async function loadItemHealth(alias, itemId, container) {
     // ── Score ─────────────────────────────────────────────────
     if (score !== null && score !== undefined) {
       const pct = Math.round(score * 100);
-      const col = pct >= 70 ? '#059669' : pct >= 40 ? '#d97706' : '#dc2626';
+      const col = pct >= 70 ? '#059669' : pct >= 40 ? 'var(--color-warning-500)' : 'var(--color-critical-500)';
       const lbl = pct >= 70 ? 'Buena' : pct >= 40 ? 'Regular' : 'Baja';
-      html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:110px;text-align:center">
-        <div style="font-size:.68rem;color:#6b7280;font-weight:700;margin-bottom:4px">SCORE ML</div>
+      html += `<div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:8px;padding:10px 14px;min-width:110px;text-align:center">
+        <div style="font-size:.68rem;color:var(--color-neutral-500);font-weight:700;margin-bottom:4px">SCORE ML</div>
         <div style="font-size:2rem;font-weight:800;color:${col};line-height:1">${pct}%</div>
         <div style="font-size:.7rem;color:${col};font-weight:600;margin-top:2px">${lbl}</div>
         <div style="background:#e5e7eb;border-radius:4px;height:5px;margin-top:6px">
@@ -601,25 +601,25 @@ async function loadItemHealth(alias, itemId, container) {
 
     // ── Publicación ───────────────────────────────────────────
     const pubItems = [];
-    if (pics < 4)       pubItems.push({col:'#dc2626', txt:`🖼 Solo ${pics} foto — ML recomienda mínimo 6`});
-    else if (pics < 6)  pubItems.push({col:'#d97706', txt:`🖼 ${pics} fotos — podés agregar más`});
+    if (pics < 4)       pubItems.push({col:'var(--color-critical-500)', txt:`🖼 Solo ${pics} foto — ML recomienda mínimo 6`});
+    else if (pics < 6)  pubItems.push({col:'var(--color-warning-500)', txt:`🖼 ${pics} fotos — podés agregar más`});
     else                pubItems.push({col:'#059669', txt:`✓ ${pics} fotos`});
-    if (!freeShip)      pubItems.push({col:'#d97706', txt:'📦 Sin envío gratis — reduce ranking y conversión'});
+    if (!freeShip)      pubItems.push({col:'var(--color-warning-500)', txt:'📦 Sin envío gratis — reduce ranking y conversión'});
     else                pubItems.push({col:'#059669', txt:'✓ Envío gratis activo'});
-    if (!hasVideo)      pubItems.push({col:'#d97706', txt:'🎬 Sin video — ML premia publicaciones con video'});
+    if (!hasVideo)      pubItems.push({col:'var(--color-warning-500)', txt:'🎬 Sin video — ML premia publicaciones con video'});
     else                pubItems.push({col:'#059669', txt:'✓ Tiene video'});
-    if (descLen === 0)  pubItems.push({col:'#dc2626', txt:'📝 Sin descripción — ML penaliza publicaciones vacías'});
-    else if (descLen < 200) pubItems.push({col:'#d97706', txt:`📝 Descripción muy corta (${descLen} caracteres)`});
+    if (descLen === 0)  pubItems.push({col:'var(--color-critical-500)', txt:'📝 Sin descripción — ML penaliza publicaciones vacías'});
+    else if (descLen < 200) pubItems.push({col:'var(--color-warning-500)', txt:`📝 Descripción muy corta (${descLen} caracteres)`});
     else                pubItems.push({col:'#059669', txt:`✓ Descripción: ${descLen} caracteres`});
-    if (emptyAttrs > 0) pubItems.push({col:'#dc2626', txt:`📋 ${emptyAttrs} atributo${emptyAttrs!==1?'s':''} vacío${emptyAttrs!==1?'s':''} en ficha técnica`});
+    if (emptyAttrs > 0) pubItems.push({col:'var(--color-critical-500)', txt:`📋 ${emptyAttrs} atributo${emptyAttrs!==1?'s':''} vacío${emptyAttrs!==1?'s':''} en ficha técnica`});
     else                pubItems.push({col:'#059669', txt:'✓ Ficha técnica completa'});
     if (listType === 'gold_special' || listType === 'gold_premium') {
       pubItems.push({col:'#059669', txt:`✓ Publicación Premium (más exposición)`});
     } else if (listType) {
-      pubItems.push({col:'#6b7280', txt:`Tipo: ${listType.replace('gold_','').replace('_',' ')}`});
+      pubItems.push({col:'var(--color-neutral-500)', txt:`Tipo: ${listType.replace('gold_','').replace('_',' ')}`});
     }
     for (const t of tags) {
-      if (t.status === 'problem') pubItems.push({col:'#dc2626', txt:t.label});
+      if (t.status === 'problem') pubItems.push({col:'var(--color-critical-500)', txt:t.label});
     }
     html += card('Publicación', pubItems);
 
@@ -628,16 +628,16 @@ async function loadItemHealth(alias, itemId, container) {
       const revItems = [];
       if (ratingAvg !== null) {
         const stars = '★'.repeat(Math.round(ratingAvg)) + '☆'.repeat(5 - Math.round(ratingAvg));
-        const col = ratingAvg >= 4 ? '#059669' : ratingAvg >= 3 ? '#d97706' : '#dc2626';
+        const col = ratingAvg >= 4 ? '#059669' : ratingAvg >= 3 ? 'var(--color-warning-500)' : 'var(--color-critical-500)';
         revItems.push({col, txt:`${stars} ${ratingAvg.toFixed(1)} (${ratingTotal} reseñas)`});
       }
       const neg = (ratingLevels.one_star || 0) + (ratingLevels.two_star || 0);
       if (neg > 0) {
         const negPct = ratingTotal > 0 ? ((neg / ratingTotal) * 100).toFixed(0) : 0;
-        revItems.push({col: negPct > 10 ? '#dc2626' : '#d97706',
+        revItems.push({col: negPct > 10 ? 'var(--color-critical-500)' : 'var(--color-warning-500)',
           txt:`⚠ ${neg} reseñas negativas (${negPct}%)`});
         for (const nr of negReviews.slice(0,2)) {
-          revItems.push({col:'#6b7280', txt:`${nr.rate}★ "${nr.title}"`});
+          revItems.push({col:'var(--color-neutral-500)', txt:`${nr.rate}★ "${nr.title}"`});
         }
       } else {
         revItems.push({col:'#059669', txt:'✓ Sin reseñas negativas recientes'});
@@ -647,27 +647,27 @@ async function loadItemHealth(alias, itemId, container) {
 
     // ── Preguntas + Garantía ──────────────────────────────────
     const otrosItems = [];
-    if (unanswered > 0) otrosItems.push({col:'#dc2626', txt:`❓ ${unanswered} pregunta${unanswered!==1?'s':''} sin responder — frena conversión`});
+    if (unanswered > 0) otrosItems.push({col:'var(--color-critical-500)', txt:`❓ ${unanswered} pregunta${unanswered!==1?'s':''} sin responder — frena conversión`});
     else                otrosItems.push({col:'#059669', txt:'✓ Sin preguntas sin responder'});
-    if (!warranty)      otrosItems.push({col:'#d97706', txt:'🛡 Sin garantía declarada'});
+    if (!warranty)      otrosItems.push({col:'var(--color-warning-500)', txt:'🛡 Sin garantía declarada'});
     else                otrosItems.push({col:'#059669', txt:`✓ Garantía: ${warranty.slice(0,50)}`});
     html += card('Preguntas y garantía', otrosItems);
 
     // ── Posición en búsqueda ML ───────────────────────────────
     if (posCurrentVal !== null && posCurrentVal !== undefined) {
-      const posCol = posCurrentVal <= 10 ? '#059669' : posCurrentVal <= 30 ? '#d97706' : '#dc2626';
+      const posCol = posCurrentVal <= 10 ? '#059669' : posCurrentVal <= 30 ? 'var(--color-warning-500)' : 'var(--color-critical-500)';
       const posLbl = posCurrentVal <= 10 ? 'Excelente visibilidad' : posCurrentVal <= 30 ? 'Visibilidad moderada' : 'Baja visibilidad';
       let trendHtml = '';
       if (posTrend !== null && posTrend !== undefined) {
         if (posTrend < 0)      trendHtml = `<span style="color:#059669;font-size:.72rem">↑ subió ${Math.abs(posTrend)} lugares</span>`;
-        else if (posTrend > 0) trendHtml = `<span style="color:#dc2626;font-size:.72rem">↓ bajó ${posTrend} lugares</span>`;
-        else                   trendHtml = `<span style="color:#6b7280;font-size:.72rem">— estable</span>`;
+        else if (posTrend > 0) trendHtml = `<span style="color:var(--color-critical-500);font-size:.72rem">↓ bajó ${posTrend} lugares</span>`;
+        else                   trendHtml = `<span style="color:var(--color-neutral-500);font-size:.72rem">— estable</span>`;
       }
       let histHtml = '';
       if (posHistory.length > 1) {
         histHtml = `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">` +
           posHistory.map(h => {
-            const c = h.pos <= 10 ? '#059669' : h.pos <= 30 ? '#d97706' : '#dc2626';
+            const c = h.pos <= 10 ? '#059669' : h.pos <= 30 ? 'var(--color-warning-500)' : 'var(--color-critical-500)';
             const fecha = h.fecha.slice(5); // MM-DD
             return `<div style="text-align:center;font-size:.65rem">
               <div style="font-weight:700;color:${c}">#${h.pos}</div>
@@ -675,8 +675,8 @@ async function loadItemHealth(alias, itemId, container) {
             </div>`;
           }).join('') + `</div>`;
       }
-      html += `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;min-width:160px">
-        <div style="font-size:.68rem;color:#6b7280;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">POSICIÓN EN ML</div>
+      html += `<div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:8px;padding:10px 14px;min-width:160px">
+        <div style="font-size:.68rem;color:var(--color-neutral-500);font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">POSICIÓN EN ML</div>
         <div style="font-size:2rem;font-weight:800;color:${posCol};line-height:1">#${posCurrentVal}</div>
         <div style="font-size:.72rem;color:${posCol};font-weight:600;margin-top:2px">${posLbl}</div>
         <div style="margin-top:3px">${trendHtml}</div>
@@ -690,12 +690,12 @@ async function loadItemHealth(alias, itemId, container) {
       if (variantsDead === 0) {
         varItems.push({col:'#059669', txt:`✓ Todas las variantes tienen stock (${variantsTotal})`});
       } else {
-        varItems.push({col:'#dc2626', txt:`⚠ ${variantsDead} de ${variantsTotal} variantes sin stock — ML penaliza la publicación`});
+        varItems.push({col:'var(--color-critical-500)', txt:`⚠ ${variantsDead} de ${variantsTotal} variantes sin stock — ML penaliza la publicación`});
         for (const dv of deadVariants.slice(0,5)) {
-          varItems.push({col:'#ef4444', txt:`  • ${dv.name} → sin stock`});
+          varItems.push({col:'var(--color-critical-400)', txt:`  • ${dv.name} → sin stock`});
         }
         if (activeVariants.length > 0) {
-          varItems.push({col:'#6b7280', txt:`Activas: ${activeVariants.map(v=>v.name).join(', ')}`});
+          varItems.push({col:'var(--color-neutral-500)', txt:`Activas: ${activeVariants.map(v=>v.name).join(', ')}`});
         }
       }
       html += card('Variantes', varItems);
@@ -705,15 +705,15 @@ async function loadItemHealth(alias, itemId, container) {
     if (visitsW1 > 0 || visitsW2 > 0) {
       const trendItems = [];
       trendItems.push({
-        col: '#374151',
+        col: 'var(--color-neutral-700)',
         txt: `Esta semana: ${visitsW1.toLocaleString('es-AR')} visitas`
       });
       trendItems.push({
-        col: '#374151',
+        col: 'var(--color-neutral-700)',
         txt: `Semana anterior: ${visitsW2.toLocaleString('es-AR')} visitas`
       });
       if (visitsDeltaPct !== null && visitsDeltaPct !== undefined) {
-        const tCol = visitsDeltaPct >= 0 ? '#059669' : '#dc2626';
+        const tCol = visitsDeltaPct >= 0 ? '#059669' : 'var(--color-critical-500)';
         const tIcon = visitsDeltaPct >= 5 ? '↑' : visitsDeltaPct <= -5 ? '↓' : '→';
         const tLbl = visitsDeltaPct >= 10 ? 'Creciendo fuerte'
                    : visitsDeltaPct >= 0  ? 'Estable / leve suba'
@@ -730,7 +730,7 @@ async function loadItemHealth(alias, itemId, container) {
     // ── Botón recomendación IA ────────────────────────────────
     html += `<div id="ai-rec-block-${itemId}" style="width:100%;margin-top:4px">
       <button onclick="loadAiRec('${alias}','${itemId}')" id="ai-rec-btn-${itemId}"
-        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;
+        style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:var(--color-neutral-0);border:none;
                border-radius:8px;padding:8px 16px;font-size:.78rem;font-weight:600;
                cursor:pointer;display:flex;align-items:center;gap:6px">
         <i class="bi bi-stars"></i> Analizar con IA — recomendación y decisión
@@ -829,9 +829,9 @@ async function loadAiRec(alias, itemId) {
     // Colorear el veredicto
     const verdictColors = {
       'SALVAR':   {bg:'#d1fae5', border:'#6ee7b7', text:'#065f46'},
-      'OPTIMIZAR':{bg:'#dbeafe', border:'#93c5fd', text:'#1e40af'},
-      'PAUSAR':   {bg:'#fef3c7', border:'#fcd34d', text:'#92400e'},
-      'ELIMINAR': {bg:'#fee2e2', border:'#fca5a5', text:'#991b1b'},
+      'OPTIMIZAR':{bg:'var(--color-info-100)', border:'var(--color-info-300)', text:'#1e40af'},
+      'PAUSAR':   {bg:'var(--color-warning-100)', border:'#fcd34d', text:'var(--color-warning-700)'},
+      'ELIMINAR': {bg:'var(--color-critical-100)', border:'#fca5a5', text:'var(--color-critical-700)'},
     };
     for (const [v, cols] of Object.entries(verdictColors)) {
       if (fullText.includes(v)) {
@@ -843,7 +843,7 @@ async function loadAiRec(alias, itemId) {
     }
 
   } catch(e) {
-    contentDiv.innerHTML = `<span style="color:#dc2626">Error: ${e.message}</span>`;
+    contentDiv.innerHTML = `<span style="color:var(--color-critical-500)">Error: ${e.message}</span>`;
   }
 }
 
@@ -1179,7 +1179,7 @@ function buildAcciones(d) {
         <li>Incluye keywords reales del motor de búsqueda de ML para este producto</li>
       </ul>
       <button class="btn btn-sm fw-semibold mt-1" id="ia-btn-${d.id}"
-              style="background:#7c3aed;color:#fff;border:none"
+              style="background:#7c3aed;color:var(--color-neutral-0);border:none"
               onclick="diagnosticarConIA('${d.id}', '${d.alias}', this)">
         <i class="bi bi-stars me-1"></i>Analizar con IA
       </button>
@@ -1227,18 +1227,18 @@ async function buscarPosicion(itemId, input) {
     const pos   = data.posicion;
     const total = data.total ? ` de ${data.total.toLocaleString('es-AR')} resultados` : '';
     if (pos === 999) {
-      resultEl.innerHTML = `<span style="color:#dc2626">❌ No encontrada en los primeros 300 resultados para <strong>"${keyword}"</strong>${total ? ` (hay ${data.total.toLocaleString('es-AR')} resultados en total)` : ''}</span>`;
+      resultEl.innerHTML = `<span style="color:var(--color-critical-500)">❌ No encontrada en los primeros 300 resultados para <strong>"${keyword}"</strong>${total ? ` (hay ${data.total.toLocaleString('es-AR')} resultados en total)` : ''}</span>`;
     } else if (pos <= 5) {
       resultEl.innerHTML = `<span style="color:#059669">✅ Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — excelente visibilidad</span>`;
     } else if (pos <= 20) {
-      resultEl.innerHTML = `<span style="color:#d97706">📊 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — página 1, mejorable</span>`;
+      resultEl.innerHTML = `<span style="color:var(--color-warning-500)">📊 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — página 1, mejorable</span>`;
     } else if (pos <= 50) {
-      resultEl.innerHTML = `<span style="color:#dc2626">📉 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — página 2+, poca visibilidad</span>`;
+      resultEl.innerHTML = `<span style="color:var(--color-critical-500)">📉 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — página 2+, poca visibilidad</span>`;
     } else {
-      resultEl.innerHTML = `<span style="color:#dc2626">📉 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — muy baja visibilidad</span>`;
+      resultEl.innerHTML = `<span style="color:var(--color-critical-500)">📉 Posición <strong>#${pos}</strong>${total} para <strong>"${keyword}"</strong> — muy baja visibilidad</span>`;
     }
   } catch(e) {
-    resultEl.innerHTML = `<span style="color:#dc2626">Error: ${e.message}</span>`;
+    resultEl.innerHTML = `<span style="color:var(--color-critical-500)">Error: ${e.message}</span>`;
   }
 }
 
@@ -1260,16 +1260,16 @@ async function diagnosticarConIA(itemId, alias, btn) {
     btn.innerHTML = '<i class="bi bi-stars me-1"></i>Analizar con IA';
 
     if (!data.ok) {
-      resultEl.innerHTML = `<div style="color:#dc2626;font-size:.8rem">❌ ${data.error || 'Error desconocido'}</div>`;
+      resultEl.innerHTML = `<div style="color:var(--color-critical-500);font-size:.8rem">❌ ${data.error || 'Error desconocido'}</div>`;
     } else {
       resultEl.innerHTML = `
-        <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #ddd8fe;font-size:.82rem;line-height:1.7;white-space:pre-wrap">${data.diagnostico}</div>`;
+        <div style="background:var(--color-neutral-0);border-radius:8px;padding:12px;border:1px solid #ddd8fe;font-size:.82rem;line-height:1.7;white-space:pre-wrap">${data.diagnostico}</div>`;
     }
     resultEl.style.display = 'block';
   } catch(e) {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-stars me-1"></i>Analizar con IA';
-    resultEl.innerHTML = '<div style="color:#dc2626;font-size:.8rem">❌ Error de conexión</div>';
+    resultEl.innerHTML = '<div style="color:var(--color-critical-500);font-size:.8rem">❌ Error de conexión</div>';
     resultEl.style.display = 'block';
   }
 }
@@ -1355,7 +1355,7 @@ function updateVisitaCells(id, visitas, ventas, conv) {
     } else {
       label = 'Óptimo'; cls = 'diag-ok';
     }
-    const style = cls ? '' : 'style="background:#dbeafe;color:#1e40af"';
+    const style = cls ? '' : 'style="background:var(--color-info-100);color:#1e40af"';
     diagCell.innerHTML = `<button class="diag-chip ${cls}" ${style} onclick="toggleAcciones('${id}')">${label} ▾</button>`;
 
     // Actualizar dataset del panel de acciones y regenerar si está abierto
@@ -1542,7 +1542,7 @@ function renderCostosModal(items) {
     const margenHtml = it.costo ? calcMargenHtml(it.precio, it.costo, it.id) : '<span class="text-muted">—</span>';
     const capital = it.costo ? `$${fmt(it.costo * it.stock)}` : '—';
     const updatedDot = it.updated
-      ? `<span class="updated-dot" style="background:#10b981" title="${it.updated}"></span>${it.updated}`
+      ? `<span class="updated-dot" style="background:var(--color-success-400)" title="${it.updated}"></span>${it.updated}`
       : `<span class="updated-dot" style="background:#fbbf24"></span><span class="text-warning small">Sin costo</span>`;
     return `
       <tr data-titulo="${it.titulo.toLowerCase()}" class="${!it.costo ? 'table-warning' : ''}">

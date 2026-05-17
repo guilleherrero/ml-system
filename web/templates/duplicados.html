@@ -4,28 +4,28 @@
 {% block content %}
 <style>
 .dup-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
   margin-bottom:1.25rem; overflow:hidden;
 }
-.dup-card.severidad-puro          { border-left:4px solid #dc2626; }
+.dup-card.severidad-puro          { border-left:4px solid var(--color-critical-500); }
 .dup-card.severidad-mixto         { border-left:4px solid #ea580c; }
-.dup-card.severidad-subperformante{ border-left:4px solid #f59e0b; }
-.dup-card.severidad-legitimo      { border-left:4px solid #16a34a; }
+.dup-card.severidad-subperformante{ border-left:4px solid var(--color-warning-400); }
+.dup-card.severidad-legitimo      { border-left:4px solid var(--color-success-500); }
 
 .dup-header {
-  padding:.75rem 1rem; background:#f8fafc; border-bottom:1px solid #e2e8f0;
+  padding:.75rem 1rem; background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-200);
   display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;
 }
 .dup-header .titulo  { font-weight:700; color:#0f172a; font-size:.95rem; }
-.dup-header .meta    { font-size:.74rem; color:#64748b; }
+.dup-header .meta    { font-size:.74rem; color:var(--color-neutral-600); }
 .severidad-badge {
   font-size:.66rem; font-weight:800; padding:2px 8px; border-radius:10px;
   text-transform:uppercase; letter-spacing:.04em;
 }
-.severidad-badge.puro          { background:#fee2e2; color:#b91c1c; }
+.severidad-badge.puro          { background:var(--color-critical-100); color:#b91c1c; }
 .severidad-badge.mixto         { background:#ffedd5; color:#9a3412; }
-.severidad-badge.subperformante{ background:#fef3c7; color:#b45309; }
-.severidad-badge.legitimo      { background:#dcfce7; color:#166534; }
+.severidad-badge.subperformante{ background:var(--color-warning-100); color:#b45309; }
+.severidad-badge.legitimo      { background:var(--color-success-100); color:#166534; }
 /* Pill chico para listing_type junto al MLA */
 .lt-pill {
   font-size:.62rem; font-weight:700; padding:1px 6px; border-radius:8px;
@@ -33,61 +33,61 @@
 }
 .lt-pill.classic { background:#e0e7ff; color:#3730a3; }
 .lt-pill.premium { background:#fef9c3; color:#854d0e; }
-.lt-pill.unknown { background:#f1f5f9; color:#64748b; }
+.lt-pill.unknown { background:var(--color-neutral-100); color:var(--color-neutral-600); }
 .legitimo-mark {
-  background:#dcfce7; color:#166534; font-size:.62rem; font-weight:700;
+  background:var(--color-success-100); color:#166534; font-size:.62rem; font-weight:700;
   padding:1px 6px; border-radius:8px; margin-left:.3rem;
 }
 
 .dup-table { width:100%; border-collapse:collapse; font-size:.83rem; }
 .dup-table th {
-  text-align:left; font-size:.66rem; font-weight:700; color:#94a3b8;
+  text-align:left; font-size:.66rem; font-weight:700; color:var(--color-neutral-400);
   text-transform:uppercase; letter-spacing:.04em;
-  padding:.5rem .8rem; background:#fafafa; border-bottom:1px solid #e2e8f0;
+  padding:.5rem .8rem; background:#fafafa; border-bottom:1px solid var(--color-neutral-200);
 }
 .dup-table td {
-  padding:.6rem .8rem; border-bottom:1px solid #f1f5f9;
+  padding:.6rem .8rem; border-bottom:1px solid var(--color-neutral-100);
 }
 .dup-table tr.ganadora td { background:#f0fdf4; }
 .ganadora-badge {
-  background:#dcfce7; color:#15803d; font-size:.62rem; font-weight:700;
+  background:var(--color-success-100); color:var(--color-success-700); font-size:.62rem; font-weight:700;
   padding:1px 6px; border-radius:8px; margin-left:.3rem; vertical-align:middle;
 }
 
 .metric-cell .v { font-weight:700; color:#0f172a; }
-.metric-cell .l { font-size:.66rem; color:#94a3b8; }
+.metric-cell .l { font-size:.66rem; color:var(--color-neutral-400); }
 
 .action-row {
-  padding:.65rem 1rem; background:#fafafa; border-top:1px solid #e2e8f0;
+  padding:.65rem 1rem; background:#fafafa; border-top:1px solid var(--color-neutral-200);
   display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
 }
 .btn-pause-batch {
   font-size:.78rem; padding:.35rem .9rem; border-radius:7px;
-  background:#dc2626; color:#fff; border:none; font-weight:600; cursor:pointer;
+  background:var(--color-critical-500); color:var(--color-neutral-0); border:none; font-weight:600; cursor:pointer;
 }
 .btn-pause-batch:hover { background:#b91c1c; }
 .btn-pause-batch:disabled { opacity:.5; cursor:not-allowed; }
 .btn-ignore {
   font-size:.74rem; padding:.3rem .75rem; border-radius:7px;
-  background:transparent; color:#64748b; border:1px solid #cbd5e1;
+  background:transparent; color:var(--color-neutral-600); border:1px solid #cbd5e1;
   cursor:pointer;
 }
-.btn-ignore:hover { background:#f1f5f9; color:#1e293b; }
+.btn-ignore:hover { background:var(--color-neutral-100); color:var(--color-neutral-800); }
 .btn-ml {
-  font-size:.72rem; color:#3b82f6; text-decoration:none;
+  font-size:.72rem; color:var(--color-info-500); text-decoration:none;
 }
 .btn-ml:hover { text-decoration:underline; }
 
-.empty-state { text-align:center; padding:4rem 2rem; color:#94a3b8; }
+.empty-state { text-align:center; padding:4rem 2rem; color:var(--color-neutral-400); }
 .empty-state i { font-size:3rem; display:block; margin-bottom:1rem; }
 
 .summary-bar {
   display:flex; gap:1.5rem; flex-wrap:wrap; padding:.9rem 1.2rem;
-  background:#fafafa; border:1px solid #e2e8f0; border-radius:10px;
+  background:#fafafa; border:1px solid var(--color-neutral-200); border-radius:10px;
   margin-bottom:1.5rem; font-size:.85rem;
 }
 .summary-bar .num { font-weight:800; color:#0f172a; font-size:1.1rem; }
-.summary-bar .lbl { font-size:.7rem; color:#64748b; text-transform:uppercase;
+.summary-bar .lbl { font-size:.7rem; color:var(--color-neutral-600); text-transform:uppercase;
                      letter-spacing:.03em; font-weight:600; }
 
 /* ── Recomendación banner ─────────────────────────────────── */
@@ -102,17 +102,17 @@
   font-size:.68rem; font-weight:700; padding:2px 8px; border-radius:10px;
   white-space:nowrap; cursor:help;
 }
-.rec-pill.rec-mantener        { background:#dcfce7; color:#15803d; }
-.rec-pill.rec-pausar_traf     { background:#fef3c7; color:#b45309; }
-.rec-pill.rec-pausar_sin_traf { background:#f1f5f9; color:#475569; }
-.rec-pill.rec-revisar         { background:#fee2e2; color:#b91c1c; }
+.rec-pill.rec-mantener        { background:var(--color-success-100); color:var(--color-success-700); }
+.rec-pill.rec-pausar_traf     { background:var(--color-warning-100); color:#b45309; }
+.rec-pill.rec-pausar_sin_traf { background:var(--color-neutral-100); color:#475569; }
+.rec-pill.rec-revisar         { background:var(--color-critical-100); color:#b91c1c; }
 
 /* ── Checkbox + contador ──────────────────────────────────── */
 .cluster-checkbox { width:16px; height:16px; cursor:pointer; }
 .cluster-checkbox:disabled { cursor:not-allowed; opacity:.4; }
 .select-all-cluster { width:14px; height:14px; cursor:pointer; }
 .count-pill {
-  background:rgba(255,255,255,.25); color:#fff; font-size:.68rem;
+  background:rgba(255,255,255,.25); color:var(--color-neutral-0); font-size:.68rem;
   font-weight:700; padding:1px 8px; border-radius:10px; margin-left:.4rem;
   min-width:20px; display:inline-block; text-align:center;
 }
@@ -128,7 +128,7 @@
 {% if not clusters %}
 <div class="empty-state">
   <i class="bi bi-check-circle text-success"></i>
-  <p style="font-size:1.05rem;font-weight:600;color:#1e293b;margin-bottom:.4rem">
+  <p style="font-size:1.05rem;font-weight:600;color:var(--color-neutral-800);margin-bottom:.4rem">
     Sin duplicados detectados
   </p>
   <p style="font-size:.88rem">
@@ -166,7 +166,7 @@
     <div class="num">${{ "{:,.0f}".format(resumen.impacto_monetario_estimado) }}</div>
     <div class="lbl">Impacto estimado / mes</div>
   </div>
-  <div style="font-size:.7rem;color:#94a3b8;align-self:center;max-width:300px;line-height:1.4">
+  <div style="font-size:.7rem;color:var(--color-neutral-400);align-self:center;max-width:300px;line-height:1.4">
     <i class="bi bi-info-circle me-1"></i>
     <strong>Política ML:</strong> Tener 1 Clásica + 1 Premium del mismo producto está
     permitido (segmenta compradores). 2 Clásicas idénticas NO está permitido.
@@ -207,9 +207,9 @@
   </div>
   {% else %}
   <div class="recomendacion-banner">
-    <i class="bi bi-lightbulb-fill" style="color:#d97706;flex-shrink:0;margin-top:.1rem"></i>
+    <i class="bi bi-lightbulb-fill" style="color:var(--color-warning-500);flex-shrink:0;margin-top:.1rem"></i>
     <div>
-      <div style="font-weight:600;color:#92400e;margin-bottom:.15rem">Recomendación del sistema</div>
+      <div style="font-weight:600;color:var(--color-warning-700);margin-bottom:.15rem">Recomendación del sistema</div>
       <div style="color:#78350f;line-height:1.45">{{ c.resumen_recomendacion }}</div>
     </div>
   </div>
@@ -245,7 +245,7 @@
             <i class="bi bi-check-circle-fill" style="color:#059669;font-size:.95rem"
                title="Variante legítima — segmenta compradores"></i>
           {% elif it.es_ganadora %}
-            <i class="bi bi-shield-fill-check" style="color:#15803d;font-size:1rem"
+            <i class="bi bi-shield-fill-check" style="color:var(--color-success-700);font-size:1rem"
                title="Ganadora — protegida (no se puede pausar)"></i>
           {% else %}
             <input type="checkbox" class="cluster-checkbox"
@@ -260,7 +260,7 @@
             {% if it.es_ganadora %}<span class="ganadora-badge">★ GANADORA</span>{% endif %}
             {% if it.es_legitimo %}<span class="legitimo-mark" title="Esta publicación está legítimamente diferenciada según política ML">✓ Legítima</span>{% endif %}
           </div>
-          <div style="font-size:.7rem;color:#94a3b8;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.15rem">
+          <div style="font-size:.7rem;color:var(--color-neutral-400);display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.15rem">
             <span>{{ it.id }}</span>
             {% if it.listing_type in ['gold_special', 'free', 'bronze', 'silver'] %}
               <span class="lt-pill classic" title="Tipo de publicación: Clásica (comisión menor, sin cuotas SI)">Clásica</span>
@@ -270,7 +270,7 @@
               <span class="lt-pill unknown" title="Tipo: {{ it.listing_type }}">{{ it.listing_type }}</span>
             {% endif %}
             {% if it.free_shipping %}
-              <span class="lt-pill" style="background:#dbeafe;color:#1d4ed8" title="Envío gratis">Envío gratis</span>
+              <span class="lt-pill" style="background:var(--color-info-100);color:var(--color-info-700)" title="Envío gratis">Envío gratis</span>
             {% endif %}
           </div>
         </td>
@@ -314,7 +314,7 @@
       <i class="bi bi-pause-circle me-1"></i>Pausar seleccionadas
       <span class="count-pill" id="count-{{ c.cluster_id }}">0</span>
     </button>
-    <span style="font-size:.72rem;color:#64748b;max-width:380px;line-height:1.4">
+    <span style="font-size:.72rem;color:var(--color-neutral-600);max-width:380px;line-height:1.4">
       <i class="bi bi-info-circle me-1"></i>
       Las publicaciones con ventas en 30d están protegidas (checkbox bloqueado).
       Para cerrar definitivamente una publicación, hacelo desde ML directamente.
@@ -331,14 +331,14 @@
 
 <!-- ── Modal pausar ─────────────────────────────────────────────── -->
 <div id="modal-pausar" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:12px;max-width:640px;width:92%;padding:1.5rem;max-height:85vh;overflow-y:auto">
-    <h5 style="font-weight:700;color:#1e293b;margin-bottom:1rem">
+  <div style="background:var(--color-neutral-0);border-radius:12px;max-width:640px;width:92%;padding:1.5rem;max-height:85vh;overflow-y:auto">
+    <h5 style="font-weight:700;color:var(--color-neutral-800);margin-bottom:1rem">
       <i class="bi bi-pause-circle text-danger me-1"></i>Confirmar pausa batch
     </h5>
     <div id="modal-pausar-body" style="font-size:.88rem"></div>
     <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.2rem">
       <button onclick="cerrarModal('modal-pausar')" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:7px;cursor:pointer">Cancelar</button>
-      <button id="btn-confirmar-pausa" onclick="ejecutarPausaBatch()" style="padding:.5rem 1rem;background:#dc2626;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:600">
+      <button id="btn-confirmar-pausa" onclick="ejecutarPausaBatch()" style="padding:.5rem 1rem;background:var(--color-critical-500);color:var(--color-neutral-0);border:none;border-radius:7px;cursor:pointer;font-weight:600">
         Pausar seleccionadas
       </button>
     </div>
@@ -347,18 +347,18 @@
 
 <!-- ── Modal ignorar ────────────────────────────────────────────── -->
 <div id="modal-ignorar" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:12px;max-width:480px;width:92%;padding:1.5rem">
-    <h5 style="font-weight:700;color:#1e293b;margin-bottom:.6rem">
+  <div style="background:var(--color-neutral-0);border-radius:12px;max-width:480px;width:92%;padding:1.5rem">
+    <h5 style="font-weight:700;color:var(--color-neutral-800);margin-bottom:.6rem">
       <i class="bi bi-eye-slash text-secondary me-1"></i>Ignorar cluster
     </h5>
-    <p style="font-size:.86rem;color:#64748b;margin-bottom:1rem">
+    <p style="font-size:.86rem;color:var(--color-neutral-600);margin-bottom:1rem">
       Marcar todos los pares de este cluster como "no son duplicados" para que no aparezcan más en el detector.
     </p>
     <textarea id="ignorar-razon" placeholder="Razón (opcional): ej. son productos distintos aunque parezcan iguales"
               style="width:100%;min-height:64px;border:1px solid #cbd5e1;border-radius:7px;padding:.5rem;font-size:.85rem;font-family:inherit"></textarea>
     <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.2rem">
       <button onclick="cerrarModal('modal-ignorar')" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:7px;cursor:pointer">Cancelar</button>
-      <button id="btn-confirmar-ignorar" onclick="ejecutarIgnorar()" style="padding:.5rem 1rem;background:#475569;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:600">
+      <button id="btn-confirmar-ignorar" onclick="ejecutarIgnorar()" style="padding:.5rem 1rem;background:#475569;color:var(--color-neutral-0);border:none;border-radius:7px;cursor:pointer;font-weight:600">
         Ignorar cluster
       </button>
     </div>
@@ -424,7 +424,7 @@ function abrirModalPausar(cluster_id) {
 
   let html = '';
   if (!seleccionados.length) {
-    html = '<div class="alert alert-info" style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:.75rem;border-radius:7px;font-size:.86rem">No hay publicaciones seleccionadas. Marcá al menos una con el checkbox antes de pausar.</div>';
+    html = '<div class="alert alert-info" style="background:#eff6ff;border:1px solid #bfdbfe;color:var(--color-info-700);padding:.75rem;border-radius:7px;font-size:.86rem">No hay publicaciones seleccionadas. Marcá al menos una con el checkbox antes de pausar.</div>';
     document.getElementById('btn-confirmar-pausa').disabled = true;
   } else {
     document.getElementById('btn-confirmar-pausa').disabled = false;
@@ -433,7 +433,7 @@ function abrirModalPausar(cluster_id) {
     seleccionados.forEach(it => { html += '<li><code style="font-size:.78rem">' + it.mla + '</code> — ' + it.titulo + '</li>'; });
     html += '</ul>';
     if (con_ventas.length) {
-      html += '<div style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;padding:.65rem .9rem;border-radius:7px;font-size:.82rem;margin-bottom:.4rem">';
+      html += '<div style="background:#f0fdf4;border:1px solid #86efac;color:var(--color-success-700);padding:.65rem .9rem;border-radius:7px;font-size:.82rem;margin-bottom:.4rem">';
       html += '<i class="bi bi-shield-check me-1"></i><strong>' + con_ventas.length + ' publicación(es) protegidas</strong> — tienen ventas en 30 días, sus checkboxes están bloqueados.</div>';
     }
   }

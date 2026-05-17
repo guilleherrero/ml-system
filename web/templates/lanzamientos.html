@@ -2,25 +2,25 @@
 {% block title %} — Lanzar producto{% endblock %}
 {% block content %}
 <style>
-.stat-box { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:.9rem 1rem; text-align:center; }
+.stat-box { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px; padding:.9rem 1rem; text-align:center; }
 .stat-box .num { font-size:1.5rem; font-weight:700; line-height:1.1; }
-.stat-box .lbl { font-size:.72rem; color:#64748b; margin-top:2px; }
-.stat-box.blue .num { color:#2563eb; }
-.stat-box.ok   .num { color:#16a34a; }
+.stat-box .lbl { font-size:.72rem; color:var(--color-neutral-600); margin-top:2px; }
+.stat-box.blue .num { color:var(--color-info-600); }
+.stat-box.ok   .num { color:var(--color-success-500); }
 
 /* ── Resultado estructurado ───────────────────────── */
 .result-section { display:flex; flex-direction:column; gap:.85rem; }
 
 .rs-card {
-  background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; overflow:hidden;
 }
 .rs-card-header {
   display:flex; align-items:center; justify-content:space-between;
-  padding:.55rem 1rem; border-bottom:1px solid #f1f5f9;
-  background:#f8fafc;
+  padding:.55rem 1rem; border-bottom:1px solid var(--color-neutral-100);
+  background:var(--color-neutral-50);
 }
 .rs-card-header .rs-label {
-  font-size:.68rem; font-weight:700; color:#374151; text-transform:uppercase;
+  font-size:.68rem; font-weight:700; color:var(--color-neutral-700); text-transform:uppercase;
   letter-spacing:.06em; display:flex; align-items:center; gap:.35rem;
 }
 .rs-card-body { padding:.85rem 1rem; }
@@ -28,40 +28,40 @@
 /* Keywords */
 .kw-principal {
   display:inline-flex; align-items:center; gap:.4rem;
-  background:#1d4ed8; color:#fff; border-radius:6px;
+  background:var(--color-info-700); color:var(--color-neutral-0); border-radius:6px;
   padding:.3rem .75rem; font-size:.82rem; font-weight:700;
   margin-bottom:.5rem;
 }
 .kw-chip {
-  display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0;
+  display:inline-block; background:var(--color-neutral-100); border:1px solid var(--color-neutral-200);
   border-radius:20px; padding:.2rem .6rem; font-size:.72rem; color:#334155;
   margin:.15rem .15rem 0 0;
 }
-.kw-longtail { color:#64748b; font-size:.75rem; margin-top:.4rem; }
+.kw-longtail { color:var(--color-neutral-600); font-size:.75rem; margin-top:.4rem; }
 
 /* Títulos */
 .titulo-card {
-  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+  background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); border-radius:8px;
   padding:.65rem 1rem; margin-bottom:.4rem;
   display:flex; align-items:flex-start; gap:.75rem;
 }
 .titulo-num {
-  min-width:1.4rem; height:1.4rem; background:#2563eb; color:#fff;
+  min-width:1.4rem; height:1.4rem; background:var(--color-info-600); color:var(--color-neutral-0);
   border-radius:50%; font-size:.7rem; font-weight:700;
   display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:.05rem;
 }
-.titulo-text { font-weight:600; color:#1e293b; flex:1; font-size:.88rem; line-height:1.45; }
+.titulo-text { font-weight:600; color:var(--color-neutral-800); flex:1; font-size:.88rem; line-height:1.45; }
 .titulo-meta { display:flex; align-items:center; gap:.5rem; flex-shrink:0; margin-top:.1rem; }
 .char-count {
-  font-size:.65rem; color:#fff; background:#94a3b8; border-radius:10px;
+  font-size:.65rem; color:var(--color-neutral-0); background:var(--color-neutral-400); border-radius:10px;
   padding:.1rem .4rem; white-space:nowrap;
 }
-.char-count.ok  { background:#16a34a; }
-.char-count.warn{ background:#d97706; }
+.char-count.ok  { background:var(--color-success-500); }
+.char-count.warn{ background:var(--color-warning-500); }
 
 /* Ficha */
 .ficha-box {
-  background:#f8fafc; border-radius:6px;
+  background:var(--color-neutral-50); border-radius:6px;
   padding:.75rem 1rem; font-family:'JetBrains Mono',monospace; font-size:.77rem;
   white-space:pre-wrap; max-height:280px; overflow-y:auto; color:#334155;
   line-height:1.65;
@@ -69,21 +69,21 @@
 
 /* Descripción */
 .desc-box {
-  background:#fff; font-size:.85rem; line-height:1.8; color:#1e293b;
+  background:var(--color-neutral-0); font-size:.85rem; line-height:1.8; color:var(--color-neutral-800);
   max-height:320px; overflow-y:auto; white-space:pre-wrap;
 }
 
 /* ── Comp chips ───────────────────────────────────── */
 .comp-chip {
-  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+  background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); border-radius:8px;
   padding:.4rem .7rem; font-size:.75rem;
 }
-.comp-chip .comp-price { font-weight:700; color:#1d4ed8; }
-.comp-chip .comp-sold  { color:#16a34a; font-size:.7rem; }
+.comp-chip .comp-price { font-weight:700; color:var(--color-info-700); }
+.comp-chip .comp-sold  { color:var(--color-success-500); font-size:.7rem; }
 
 /* ── Streaming panels ─────────────────────────────── */
 .stream-panel {
-  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+  background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); border-radius:8px;
   padding:.85rem 1rem; font-size:.82rem; line-height:1.75;
   max-height:340px; overflow-y:auto; white-space:pre-wrap;
   font-family:'Segoe UI',system-ui,sans-serif;
@@ -91,7 +91,7 @@
 
 /* ── History cards ────────────────────────────────── */
 .lanz-card { border-radius:12px; overflow:hidden; }
-.lanz-card .card-header { background:#f8fafc; }
+.lanz-card .card-header { background:var(--color-neutral-50); }
 .has-result { border-color:#86efac !important; }
 .has-result .card-header { background:linear-gradient(135deg,#f0fdf4,#ecfdf5) !important; border-bottom-color:#86efac; }
 </style>
@@ -107,12 +107,12 @@
 <div class="d-flex gap-2 mb-4 flex-wrap">
   <a href="/lanzar-nuevo"
      class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
-     style="background:#2563eb;color:#fff;font-size:.85rem">
+     style="background:var(--color-info-600);color:var(--color-neutral-0);font-size:.85rem">
     <i class="bi bi-stars"></i> Analizar y lanzar
   </a>
   <a href="/evaluar-producto"
      class="d-inline-flex align-items-center gap-2 px-4 py-2 rounded fw-semibold text-decoration-none"
-     style="background:#fff;border:1px solid #e2e8f0;color:#374151;font-size:.85rem">
+     style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);color:var(--color-neutral-700);font-size:.85rem">
     <i class="bi bi-clipboard2-pulse text-primary"></i> Evaluar entrada al mercado
   </a>
 </div>
@@ -179,7 +179,7 @@
     </div>
 
     <!-- ML data OK -->
-    <div id="mlDataBox" class="card-body border-bottom py-2" style="display:none;font-size:.78rem;color:#15803d;background:#f0fdf4">
+    <div id="mlDataBox" class="card-body border-bottom py-2" style="display:none;font-size:.78rem;color:var(--color-success-700);background:#f0fdf4">
       <i class="bi bi-check-circle me-2"></i><span id="mlDataMsg"></span>
     </div>
 
@@ -294,7 +294,7 @@
 
       <!-- Títulos -->
       <div class="mb-3">
-        <div style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;margin-bottom:.4rem">
+        <div style="font-size:.72rem;font-weight:700;color:var(--color-neutral-700);text-transform:uppercase;margin-bottom:.4rem">
           <i class="bi bi-type me-1"></i>Títulos optimizados
         </div>
         {% for t in item.titulos %}
@@ -313,7 +313,7 @@
       {% if item.ficha %}
       <div class="mb-3">
         <div class="d-flex align-items-center justify-content-between mb-1">
-          <div style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase">
+          <div style="font-size:.72rem;font-weight:700;color:var(--color-neutral-700);text-transform:uppercase">
             <i class="bi bi-list-check me-1"></i>Ficha técnica perfecta
           </div>
           <button class="btn btn-xs btn-outline-success"
@@ -328,7 +328,7 @@
       <!-- Descripción -->
       {% if item.descripcion %}
       <details class="mb-2">
-        <summary style="cursor:pointer;font-size:.78rem;font-weight:600;color:#15803d;padding:.4rem 0;list-style:none">
+        <summary style="cursor:pointer;font-size:.78rem;font-weight:600;color:var(--color-success-700);padding:.4rem 0;list-style:none">
           <i class="bi bi-text-paragraph me-1"></i>Ver descripción completa
           <button class="btn btn-xs btn-outline-success ms-2"
                   onclick="event.preventDefault();navigator.clipboard.writeText(`{{ item.descripcion | replace('`','\'') }}`);showToast('Descripción copiada')">
@@ -341,7 +341,7 @@
 
       <!-- Proyección -->
       {% if item.proyeccion %}
-      <div class="p-2 rounded" style="background:#fff;border:1px solid #bbf7d0;font-size:.78rem;color:#374155">
+      <div class="p-2 rounded" style="background:var(--color-neutral-0);border:1px solid #bbf7d0;font-size:.78rem;color:#374155">
         <i class="bi bi-graph-up-arrow me-1 text-success"></i><strong>Proyección:</strong> {{ item.proyeccion }}
       </div>
       {% endif %}
@@ -350,7 +350,7 @@
     <!-- Análisis competencia colapsado -->
     {% if item.analisis_competencia %}
     <details>
-      <summary style="cursor:pointer;list-style:none;font-size:.78rem;color:#64748b;padding:.35rem 0">
+      <summary style="cursor:pointer;list-style:none;font-size:.78rem;color:var(--color-neutral-600);padding:.35rem 0">
         <i class="bi bi-bar-chart-steps me-1"></i>Ver análisis de competencia completo
       </summary>
       <div class="stream-panel mt-2" style="max-height:300px">{{ item.analisis_competencia }}</div>
@@ -360,10 +360,10 @@
     {% elif item.analisis %}
     <!-- ── Formato antiguo (texto blob) ──────────────── -->
     <details>
-      <summary style="cursor:pointer;list-style:none;font-size:.78rem;color:#64748b;padding:.35rem 0">
+      <summary style="cursor:pointer;list-style:none;font-size:.78rem;color:var(--color-neutral-600);padding:.35rem 0">
         <i class="bi bi-file-text me-1"></i>Ver análisis completo
       </summary>
-      <div class="p-3 rounded mt-2" style="background:#f8fafc;white-space:pre-wrap;font-size:.875rem;max-height:400px;overflow-y:auto;line-height:1.6">{{ item.analisis }}</div>
+      <div class="p-3 rounded mt-2" style="background:var(--color-neutral-50);white-space:pre-wrap;font-size:.875rem;max-height:400px;overflow-y:auto;line-height:1.6">{{ item.analisis }}</div>
     </details>
     {% else %}
     <div class="text-muted small">Sin análisis guardado</div>
@@ -415,7 +415,7 @@ function copyText(elId) {
 // ── Markdown mínimo ────────────────────────────────────────────
 function renderMd(text) {
   return text
-    .replace(/## (.+)/g, '<strong style="font-size:.9rem;display:block;margin-top:1em;color:#1d4ed8">$1</strong>')
+    .replace(/## (.+)/g, '<strong style="font-size:.9rem;display:block;margin-top:1em;color:var(--color-info-700)">$1</strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>');
 }
