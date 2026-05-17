@@ -588,10 +588,14 @@ class TestPersistenciaTTL(VeredictoTestBase):
         super().tearDown()
 
     def _fake_gen(self, **kwargs) -> dict:
-        # Generador determinístico — usa fecha_opt para variar el veredicto
-        fecha = kwargs["fecha_opt"]
-        # Si el suffix de la fecha es par → ganadora score 80, impar → neutra 50
-        veredicto = "ganadora" if int(fecha[-1]) % 2 == 0 else "neutra"
+        # Generador determinístico — usa el último dígito del item_id para variar.
+        # ANTES (bug arreglado el 17/05/2026): usaba int(fecha[-1]), lo que hacía
+        # el test sensible a la fecha de corrida y empezó a fallar el 09/05/2026
+        # cuando "hace 8 días" devolvía "2026-05-09" (digit 9 = neutra) en vez
+        # del par esperado. Ahora usa el item_id ("MLA0/MLA1/MLA2") como
+        # intencionaba el comentario del test_historial_agrega_correctamente.
+        item_id = kwargs["item_id"]
+        veredicto = "ganadora" if int(item_id[-1]) % 2 == 0 else "neutra"
         score = 80 if veredicto == "ganadora" else 50
         return {
             "fingerprint":         vo.fingerprint_veredicto(
