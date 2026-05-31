@@ -1,0 +1,330 @@
+{% extends "tienda_base.html" %}
+{% block title %} | {{ p.titulo }}{% endblock %}
+
+{% block content %}
+<main class="pt-32 pb-20 max-w-container-max mx-auto px-margin-desktop">
+
+  <!-- Breadcrumbs -->
+  <nav class="flex items-center space-x-2 text-on-surface-variant mb-8 font-label-caps text-label-caps">
+    <a class="hover:text-primary transition-colors" href="/tienda">Tienda</a>
+    <span class="material-symbols-outlined text-[12px]">chevron_right</span>
+    <span class="text-primary">{{ p.titulo }}</span>
+  </nav>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+
+    <!-- Gallery -->
+    <div class="lg:col-span-7 grid grid-cols-2 gap-4 h-fit">
+      {% if p.fotos and p.fotos|length > 0 %}
+      <div class="col-span-2 overflow-hidden rounded-lg bg-surface-container-low aspect-[4/5] group">
+        <img id="main-img" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+             src="{{ p.fotos[0] }}" alt="{{ p.titulo }}">
+      </div>
+      {% for foto in p.fotos[1:5] %}
+      <div class="overflow-hidden rounded-lg bg-surface-container-low aspect-square group cursor-pointer thumb-wrap" onclick="setMain('{{ foto }}', this)">
+        <img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" src="{{ foto }}" alt="">
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="col-span-2 overflow-hidden rounded-lg bg-surface-container-low aspect-[4/5] flex items-center justify-center text-on-surface-variant">
+        Sin imagen
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Info -->
+    <div class="lg:col-span-5 flex flex-col space-y-8">
+      <div>
+        {% if p.stock and p.stock <= 5 %}
+        <span class="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-2 block">Últimas Unidades</span>
+        {% elif p.stock and p.stock > 0 %}
+        <span class="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-2 block">Best Seller</span>
+        {% else %}
+        <span class="font-label-caps text-label-caps text-error uppercase tracking-widest mb-2 block">Agotado</span>
+        {% endif %}
+        <h1 class="font-display-lg text-headline-md text-on-surface mb-2">{{ p.titulo }}</h1>
+        <p class="font-body-md text-headline-sm text-primary mb-4">$ {{ '{:,.0f}'.format(p.precio_tienda).replace(',', '.') }}</p>
+        <div class="flex items-center space-x-1 mb-6">
+          <div class="flex text-secondary">
+            {% set avg = rating_avg or 0 %}
+            {% for i in range(1, 6) %}
+              {% if avg >= i %}
+                <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+              {% elif avg >= i - 0.5 %}
+                <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star_half</span>
+              {% else %}
+                <span class="material-symbols-outlined text-[18px] opacity-30">star</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% if rating_count and rating_count > 0 %}
+          <a href="#reviews" class="text-body-sm text-on-surface-variant hover:text-primary transition-colors">
+            ({{ rating_count }} {% if rating_count == 1 %}reseña{% else %}reseñas{% endif %})
+          </a>
+          {% else %}
+          <a href="#reviews" class="text-body-sm text-on-surface-variant hover:text-primary transition-colors">
+            (sé el primero en opinar)
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Quantity + Add -->
+      <div class="flex flex-col space-y-4">
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center border border-outline rounded-lg px-2 py-2 bg-surface">
+            <button onclick="changeQty(-1)" class="text-on-surface-variant hover:text-primary px-2 transition-colors">
+              <span class="material-symbols-outlined text-sm">remove</span>
+            </button>
+            <span id="qty" class="px-6 font-body-md">1</span>
+            <button onclick="changeQty(1)" class="text-on-surface-variant hover:text-primary px-2 transition-colors">
+              <span class="material-symbols-outlined text-sm">add</span>
+            </button>
+          </div>
+        </div>
+        <button id="btn-add" onclick="addToCart()" {% if p.stock <= 0 %}disabled{% endif %}
+                class="w-full bg-primary text-on-primary py-5 rounded-lg font-body-md font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
+          {% if p.stock <= 0 %}Agotado{% else %}Agregar al carrito{% endif %}
+        </button>
+        <p class="text-center text-body-sm text-on-surface-variant flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-[18px]">local_shipping</span>
+          Envío gratis en compras desde $25.000
+        </p>
+      </div>
+
+      <!-- Accordion -->
+      <div class="border-t border-outline-variant mt-4">
+        <details class="group py-4 border-b border-outline-variant">
+          <summary class="list-none flex justify-between items-center cursor-pointer font-label-caps text-label-caps uppercase py-2">
+            Descripción del producto
+            <span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+          </summary>
+          <div class="pt-4 text-body-md text-on-surface-variant leading-relaxed whitespace-pre-line">{{ p.descripcion }}</div>
+        </details>
+        <details class="group py-4 border-b border-outline-variant">
+          <summary class="list-none flex justify-between items-center cursor-pointer font-label-caps text-label-caps uppercase py-2">
+            Por qué elegirlo
+            <span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+          </summary>
+          <div class="pt-4 space-y-3">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <p class="text-body-md text-on-surface-variant">Ingredientes orgánicos certificados</p>
+            </div>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <p class="text-body-md text-on-surface-variant">Sin parabenos, sulfatos ni siliconas</p>
+            </div>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <p class="text-body-md text-on-surface-variant">Cruelty-free y vegan-friendly</p>
+            </div>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+              <p class="text-body-md text-on-surface-variant">Envases reciclables y reutilizables</p>
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Reseñas ──────────────────────────────────────────────────────────── -->
+  <section id="reviews" class="mt-32">
+    <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 border-b border-outline-variant pb-8">
+      <div>
+        <h2 class="font-display-lg text-headline-md mb-2">Opiniones de clientes</h2>
+        {% if rating_avg %}
+        <div class="flex items-center gap-3">
+          <div class="flex text-secondary">
+            {% for i in range(1, 6) %}
+              {% if rating_avg >= i %}
+                <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+              {% elif rating_avg >= i - 0.5 %}
+                <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star_half</span>
+              {% else %}
+                <span class="material-symbols-outlined text-[18px] opacity-30">star</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <span class="text-on-surface-variant font-body-md">{{ rating_avg }} sobre {{ rating_count }} {% if rating_count == 1 %}opinión{% else %}opiniones{% endif %}</span>
+        </div>
+        {% else %}
+        <p class="text-on-surface-variant font-body-md">Todavía no hay opiniones. Sé el primero.</p>
+        {% endif %}
+      </div>
+      <button onclick="document.getElementById('review-form').classList.toggle('hidden')"
+              class="mt-6 md:mt-0 font-label-caps text-label-caps text-primary border border-primary px-8 py-3 rounded-full hover:bg-primary hover:text-on-primary transition-all">
+        Dejar una opinión
+      </button>
+    </div>
+
+    <!-- Form (hidden por defecto) -->
+    <form id="review-form" class="hidden bg-surface-container-low p-8 rounded-xl mb-12" onsubmit="enviarReview(event)">
+      <h3 class="font-headline-sm text-headline-sm mb-6">Compartí tu experiencia</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <input type="text" name="nombre" placeholder="Tu nombre" required
+               class="bg-surface border border-outline-variant px-4 py-3 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all font-body-sm">
+        <input type="email" name="email" placeholder="Tu email (opcional — no se publica)"
+               class="bg-surface border border-outline-variant px-4 py-3 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all font-body-sm">
+      </div>
+      <input type="text" name="titulo" placeholder="Título de tu opinión (opcional)"
+             class="w-full bg-surface border border-outline-variant px-4 py-3 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all font-body-sm mb-4">
+
+      <div class="mb-4">
+        <label class="block font-label-caps text-label-caps text-on-surface-variant mb-2">Tu calificación</label>
+        <div class="flex gap-1" id="star-input" data-value="5">
+          {% for i in range(1, 6) %}
+          <button type="button" class="star-btn text-secondary" data-star="{{ i }}">
+            <span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">star</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <textarea name="comentario" required minlength="10" maxlength="2000" rows="4" placeholder="Contanos qué te pareció el producto…"
+                class="w-full bg-surface border border-outline-variant px-4 py-3 rounded-lg focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all font-body-sm mb-4"></textarea>
+
+      <div class="flex items-center justify-between gap-4 flex-wrap">
+        <p class="text-body-sm text-on-surface-variant">Tu reseña aparece después de ser revisada por nuestro equipo.</p>
+        <div class="flex gap-3">
+          <button type="button" onclick="document.getElementById('review-form').classList.add('hidden')"
+                  class="font-label-caps text-label-caps text-on-surface-variant px-6 py-3 hover:text-primary transition-colors">
+            Cancelar
+          </button>
+          <button type="submit"
+                  class="bg-primary text-on-primary px-8 py-3 rounded-lg font-label-caps text-label-caps hover:bg-on-primary-fixed-variant transition-all">
+            Enviar opinión
+          </button>
+        </div>
+      </div>
+      <p id="review-flash" class="mt-3 font-body-sm hidden"></p>
+    </form>
+
+    <!-- Listado -->
+    {% if reviews %}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      {% for r in reviews %}
+      <div class="bg-surface-container-low p-8 rounded-xl flex flex-col space-y-4">
+        <div class="flex space-x-1 text-secondary">
+          {% for i in range(1, 6) %}
+            {% if r.rating >= i %}
+              <span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">star</span>
+            {% else %}
+              <span class="material-symbols-outlined text-[18px] opacity-30">star</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% if r.titulo %}
+        <h4 class="font-headline-sm text-headline-sm text-on-surface">{{ r.titulo }}</h4>
+        {% endif %}
+        <p class="font-body-md text-on-surface italic">"{{ r.comentario }}"</p>
+        <div class="flex items-center justify-between mt-auto pt-4">
+          <p class="font-label-caps text-label-caps">{{ r.nombre }}</p>
+          <p class="text-[10px] text-on-surface-variant">{{ r.fecha }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+</main>
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-24 right-8 bg-primary text-on-primary px-6 py-3 rounded-lg shadow-lg opacity-0 translate-y-2 transition-all duration-300 pointer-events-none z-50">
+  Agregado al carrito
+</div>
+
+<script>
+  let qty = 1;
+  function changeQty(delta) {
+    qty = Math.max(1, qty + delta);
+    document.getElementById('qty').textContent = qty;
+  }
+  function setMain(src, el) {
+    document.getElementById('main-img').src = src;
+    document.querySelectorAll('.thumb-wrap').forEach(t => t.classList.remove('ring-2', 'ring-primary'));
+    el.classList.add('ring-2', 'ring-primary');
+  }
+  async function addToCart() {
+    const r = await fetch('/api/carrito/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: {{ p.id }}, qty: qty }),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      const t = document.getElementById('toast');
+      t.classList.remove('opacity-0', 'translate-y-2');
+      t.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        t.classList.add('opacity-0', 'translate-y-2');
+        t.classList.remove('opacity-100', 'translate-y-0');
+      }, 1800);
+
+      // refrescar badge del carrito
+      const link = document.querySelector('a[href="/tienda/carrito"]');
+      const existing = link?.querySelector('span.absolute');
+      if (existing) existing.textContent = j.cart_count;
+      else if (link) link.insertAdjacentHTML('beforeend',
+        `<span class="absolute -top-1 -right-1 bg-secondary text-on-secondary text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">${j.cart_count}</span>`);
+    }
+  }
+
+  // ── Star rating input ─────────────────────────────────────────────────
+  const starInput = document.getElementById('star-input');
+  function paintStars(val) {
+    starInput.querySelectorAll('.star-btn').forEach(btn => {
+      const v = parseInt(btn.dataset.star, 10);
+      btn.querySelector('span').style.opacity = (v <= val) ? '1' : '0.3';
+    });
+  }
+  starInput.querySelectorAll('.star-btn').forEach(btn => {
+    const v = parseInt(btn.dataset.star, 10);
+    btn.addEventListener('mouseenter', () => paintStars(v));
+    btn.addEventListener('click', () => { starInput.dataset.value = v; paintStars(v); });
+  });
+  starInput.addEventListener('mouseleave', () => paintStars(parseInt(starInput.dataset.value, 10)));
+  paintStars(5);
+
+  // ── Submit review ─────────────────────────────────────────────────────
+  async function enviarReview(e) {
+    e.preventDefault();
+    const form = e.target;
+    const flash = document.getElementById('review-flash');
+    flash.classList.add('hidden');
+    const payload = {
+      nombre:     form.nombre.value.trim(),
+      email:      form.email.value.trim(),
+      titulo:     form.titulo.value.trim(),
+      comentario: form.comentario.value.trim(),
+      rating:     parseInt(starInput.dataset.value, 10),
+    };
+    try {
+      const r = await fetch('/api/reviews/{{ p.id }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      flash.classList.remove('hidden');
+      if (j.ok) {
+        flash.className = 'mt-3 font-body-sm text-on-surface';
+        flash.textContent = j.message || '¡Gracias por tu reseña!';
+        form.reset();
+        starInput.dataset.value = 5;
+        paintStars(5);
+        setTimeout(() => document.getElementById('review-form').classList.add('hidden'), 2500);
+      } else {
+        flash.className = 'mt-3 font-body-sm text-error';
+        flash.textContent = j.error || 'No se pudo enviar la reseña';
+      }
+    } catch (err) {
+      flash.classList.remove('hidden');
+      flash.className = 'mt-3 font-body-sm text-error';
+      flash.textContent = 'Error de red: ' + err.message;
+    }
+  }
+</script>
+{% endblock %}

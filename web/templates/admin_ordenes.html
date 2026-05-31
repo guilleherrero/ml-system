@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %} — Órdenes{% endblock %}
+
+{% block content %}
+<style>
+.ord-tabs { display: flex; gap: .4rem; margin-bottom: 1.2rem; }
+.ord-tabs a {
+  font-size: .82rem; padding: 7px 14px; border-radius: 7px;
+  text-decoration: none; color: var(--color-neutral-600);
+  border: 1px solid var(--color-neutral-200); background: var(--color-neutral-0);
+}
+.ord-tabs a.active {
+  background: var(--color-info-50); border-color: var(--color-info-300);
+  color: var(--color-info-700); font-weight: 600;
+}
+
+.ord-table { width: 100%; background: var(--color-neutral-0);
+  border: 1px solid var(--color-neutral-200); border-radius: 10px;
+  border-collapse: separate; border-spacing: 0; font-size: .85rem;
+}
+.ord-table th {
+  background: var(--color-neutral-50); padding: .55rem .75rem; text-align: left;
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--color-neutral-700); font-weight: 600;
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+.ord-table td { padding: .6rem .75rem; border-bottom: 1px solid var(--color-neutral-100); vertical-align: middle; }
+.ord-table tr:hover { background: var(--color-neutral-50); }
+
+.status-pill {
+  display: inline-block; font-size: .68rem; padding: 3px 9px;
+  border-radius: 10px; font-weight: 600; letter-spacing: .03em;
+}
+.status-pill.pending   { background: #fef3c7; color: #92400e; }
+.status-pill.paid      { background: var(--color-success-100); color: #166534; }
+.status-pill.failed    { background: var(--color-critical-100); color: var(--color-critical-700); }
+.status-pill.cancelled { background: var(--color-neutral-100); color: var(--color-neutral-600); }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-receipt me-2 text-primary"></i>Órdenes</h1>
+    <div class="sub">
+      Compras de la tienda. <strong>{{ total_pagadas }}</strong> pagadas · <strong>{{ total_pending }}</strong> pendientes.
+      <span class="badge ms-2" style="background:#1e3a8a;font-size:.7rem">Solo admin</span>
+    </div>
+  </div>
+</div>
+
+<div class="ord-tabs">
+  <a href="?estado=todas"     class="{{ 'active' if estado == 'todas' else '' }}">Todas</a>
+  <a href="?estado=paid"      class="{{ 'active' if estado == 'paid' else '' }}">Pagadas</a>
+  <a href="?estado=pending"   class="{{ 'active' if estado == 'pending' else '' }}">Pendientes</a>
+  <a href="?estado=failed"    class="{{ 'active' if estado == 'failed' else '' }}">Fallidas</a>
+  <a href="?estado=cancelled" class="{{ 'active' if estado == 'cancelled' else '' }}">Canceladas</a>
+</div>
+
+{% if ordenes %}
+<table class="ord-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Fecha</th>
+      <th>Cliente</th>
+      <th>Items</th>
+      <th>Estado</th>
+      <th>MP status</th>
+      <th class="text-end">Total</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for o in ordenes %}
+    <tr>
+      <td><strong>#{{ o.id }}</strong></td>
+      <td>{{ o.created_at }}{% if o.paid_at %}<div style="font-size:.7rem; color:var(--color-success-600);">pagada {{ o.paid_at }}</div>{% endif %}</td>
+      <td>{{ o.cliente_nombre }}<div style="font-size:.72rem; color:var(--color-neutral-500);">{{ o.cliente_email }}</div></td>
+      <td>{{ o.items_count }}</td>
+      <td><span class="status-pill {{ o.status }}">{{ o.status }}</span></td>
+      <td style="font-size:.72rem; color:var(--color-neutral-600);">{{ o.mp_status or '—' }}{% if o.mp_payment_id %}<div>id {{ o.mp_payment_id }}</div>{% endif %}</td>
+      <td class="text-end"><strong>$ {{ '{:,.0f}'.format(o.total).replace(',', '.') }}</strong></td>
+      <td><a href="/admin/ordenes/{{ o.id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-right"></i></a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div style="text-align:center; padding:3rem; color:var(--color-neutral-500);">
+  <i class="bi bi-receipt" style="font-size:32px; color:var(--color-neutral-300);"></i>
+  <p style="margin-top:.5rem;">No hay órdenes con este filtro.</p>
+</div>
+{% endif %}
+
+{% endblock %}

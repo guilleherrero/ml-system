@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block title %} — Editar {{ p.titulo[:40] }}{% endblock %}
+
+{% macro lock_toggle(field, is_locked) %}
+<label class="lock-toggle {% if is_locked %}locked{% endif %}" data-field="{{ field }}" onclick="toggleLock(this)">
+  <i class="bi {% if is_locked %}bi-lock-fill{% else %}bi-unlock{% endif %}"></i>
+  <span class="lt-text">{% if is_locked %}Lockeado{% else %}Sin lock{% endif %}</span>
+</label>
+{% endmacro %}
+
+{% block content %}
+<style>
+.editor-grid {
+  display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;
+}
+@media (max-width: 1100px) { .editor-grid { grid-template-columns: 1fr; } }
+
+.editor-card {
+  background: var(--color-neutral-0); border: 1px solid var(--color-neutral-200);
+  border-radius: 12px; padding: 1.3rem 1.4rem; margin-bottom: 1rem;
+}
+.editor-card h3 {
+  font-size: .85rem; font-weight: 700; margin: 0 0 1rem;
+  display: flex; align-items: center; gap: .5rem; color: #0f172a;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.editor-card h3 i { color: var(--color-info-600); font-size: 1rem; }
+
+.field {
+  margin-bottom: 1rem;
+}
+.field:last-child { margin-bottom: 0; }
+.field label {
+  display: flex; align-items: center; gap: .5rem; font-size: .78rem;
+  font-weight: 600; color: var(--color-neutral-700); margin-bottom: .35rem;
+}
+.field label .field-name { flex: 1; }
+.field input[type=text],
+.field input[type=number],
+.field input[type=url],
+.field textarea,
+.field select {
+  width: 100%; padding: 8px 11px; font-size: .88rem;
+  border: 1px solid var(--color-neutral-200); border-radius: 7px;
+  background: var(--color-neutral-0); font-family: inherit;
+}
+.field input:disabled, .field textarea:disabled, .field select:disabled {
+  background: #f8fafc; cursor: not-allowed; color: var(--color-neutral-500);
+}
+.field textarea { min-height: 110px; resize: vertical; }
+.field-help { font-size: .72rem; color: var(--color-neutral-500); margin-top: .3rem; }
+.field-help.warn { color: #854d0e; }
+
+/* Lock toggle */
+.lock-toggle {
+  display: inline-flex; align-items: center; gap: .4rem; cursor: pointer;
+  font-size: .68rem; font-weight: 600; padding: 3px 9px;
+  border-radius: 9px; user-select: none;
+  background: var(--color-neutral-100); color: var(--color-neutral-600);
+  border: 1px solid transparent; transition: all .15s;
+}
+.lock-toggle:hover { background: var(--color-neutral-200); }
+.lock-toggle.locked {
+  background: #ede9fe; color: #6b21a8; border-color: #c4b5fd;
+}
+.lock-toggle input { display: none; }
+
+/* Fotos */
+.fotos-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .6rem;
+}
+.foto-item {
+  position: relative; aspect-ratio: 1/1; border: 1px solid var(--color-neutral-200);
+  border-radius: 6px; overflow: hidden; background: var(--color-neutral-100);
+}
+.foto-item img { width: 100%; height: 100%; object-fit: cover; }
+.foto-item .remove {
+  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+  border-radius: 50%; background: rgba(0,0,0,.7); color: white;
+  border: 0; cursor: pointer; font-size: .7rem; line-height: 1;
+}
+.foto-add {
+  display: flex; gap: .5rem; margin-top: .7rem;
+}
+.foto-add input { flex: 1; }
+
+/* Pricing display */
+.price-preview {
+  background: var(--color-info-50); border: 1px solid var(--color-info-200);
+  border-radius: 8px; padding: .9rem 1.1rem; margin-top: .8rem;
+  font-size: .85rem;
+}
+.price-preview .row { display: flex; justify-content: space-between; padding: 3px 0; }
+.price-preview .row.total { font-weight: 700; font-size: 1rem; padding-top: 8px; border-top: 1px solid var(--color-info-200); margin-top: 5px; }
+
+.editor-actions {
+  position: sticky; bottom: 0; background: var(--color-neutral-0);
+  border-top: 1px solid var(--color-neutral-200); padding: 1rem 0;
+  display: flex; gap: .7rem; justify-content: flex-end;
+  margin-top: 1rem;
+}
+.editor-actions .status { margin-right: auto; font-size: .82rem; color: var(--color-neutral-600); }
+.editor-actions .status.ok  { color: #166534; }
+.editor-actions .status.err { color: var(--color-critical-700); }
+
+.meta-row { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: .8rem; color: var(--color-neutral-600); }
+.meta-row dt { font-weight: 500; }
+.meta-row dd { margin: 0; color: #0f172a; font-family: ui-monospace, monospace; font-size: .76rem; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-pencil-square me-2 text-primary"></i>Editar producto</h1>
+    <div class="sub">
+      <a href="/admin/productos">&larr; Volver al listado</a>
+      &nbsp;·&nbsp; MLA <code>{{ p.mla_id }}</code>
+      &nbsp;·&nbsp; <a href="/tienda/p/{{ p.slug or p.mla_id }}" target="_blank">Ver en tienda <i class="bi bi-box-arrow-up-right"></i></a>
+    </div>
+  </div>
+</div>
+
+<form id="editor" onsubmit="event.preventDefault(); guardar();">
+  <div class="editor-grid">
+
+    <!-- ── Columna principal ───────────────────────────────────────────── -->
+    <div>
+      <div class="editor-card">
+        <h3><i class="bi bi-card-text"></i>Información básica</h3>
+
+        <div class="field">
+          <label>
+            <span class="field-name">Título</span>
+            {{ lock_toggle('titulo', 'titulo' in locks) }}
+          </label>
+          <input type="text" id="f-titulo" value="{{ p.titulo }}">
+          <div class="field-help">Si el título no está lockeado, la sync de ML lo va a sobreescribir cada 6h.</div>
+        </div>
+
+        <div class="field">
+          <label>
+            <span class="field-name">Descripción</span>
+            {{ lock_toggle('descripcion', 'descripcion' in locks) }}
+          </label>
+          <textarea id="f-descripcion">{{ p.descripcion }}</textarea>
+        </div>
+      </div>
+
+      <div class="editor-card">
+        <h3><i class="bi bi-images"></i>Fotos <span style="font-weight:400; color:var(--color-neutral-500); font-size:.78rem; text-transform:none; letter-spacing:0;">— URLs (ML hostea las imágenes)</span></h3>
+
+        <label class="lock-toggle {% if 'fotos' in locks %}locked{% endif %}" data-field="fotos">
+          <i class="bi {% if 'fotos' in locks %}bi-lock-fill{% else %}bi-unlock{% endif %}"></i>
+          <span class="lt-text">{% if 'fotos' in locks %}Lockeadas{% else %}Sin lock{% endif %}</span>
+        </label>
+
+        <div id="fotos-grid" class="fotos-grid" style="margin-top:.8rem;">
+          {% for f in p.fotos %}
+          <div class="foto-item" data-url="{{ f }}">
+            <img src="{{ f }}" alt="">
+            <button type="button" class="remove" onclick="removeFoto(this)">×</button>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="foto-add">
+          <input type="url" id="foto-url-input" placeholder="https://...">
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFoto()">
+            <i class="bi bi-plus"></i> Agregar
+          </button>
+        </div>
+        <div class="field-help">El campo "fotos" se sincroniza desde ML — pon 🔒 si querés que tu orden/selección manual prevalezca.</div>
+      </div>
+
+      <div class="editor-card">
+        <h3><i class="bi bi-link-45deg"></i>SEO / URL pública</h3>
+
+        <div class="field">
+          <label><span class="field-name">Slug (URL en tienda)</span></label>
+          <input type="text" id="f-slug" value="{{ p.slug }}" placeholder="aceite-facial-jojoba">
+          <div class="field-help">Tu producto se accede en /tienda/p/<strong id="slug-preview">{{ p.slug or p.mla_id }}</strong></div>
+        </div>
+
+        <div class="field">
+          <label><span class="field-name">Meta title (SEO)</span></label>
+          <input type="text" id="f-meta-title" value="{{ p.meta_title }}" maxlength="255">
+        </div>
+
+        <div class="field">
+          <label><span class="field-name">Meta description (SEO)</span></label>
+          <textarea id="f-meta-description" maxlength="320">{{ p.meta_description }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Columna lateral ─────────────────────────────────────────────── -->
+    <div>
+      <div class="editor-card">
+        <h3><i class="bi bi-currency-dollar"></i>Precio</h3>
+
+        <div class="field">
+          <label><span class="field-name">Precio en ML</span></label>
+          <input type="number" value="{{ p.precio_ml }}" disabled>
+          <div class="field-help">Valor de referencia de ML. Se actualiza automáticamente.</div>
+        </div>
+
+        <div class="field">
+          <label>
+            <span class="field-name">Margen específico (%)</span>
+            {{ lock_toggle('precio', 'precio' in locks) }}
+          </label>
+          <input type="number" step="0.5" min="0" max="500" id="f-margen-override"
+                 value="{{ p.margen_override if p.margen_override is not none else '' }}"
+                 placeholder="usar global ({{ margen_default }}%)"
+                 oninput="recalcPreview()">
+          <div class="field-help">Dejá vacío para usar el margen global.</div>
+        </div>
+
+        <div class="field">
+          <label><span class="field-name">Precio fijo (override total)</span></label>
+          <input type="number" step="1" min="0" id="f-precio-override"
+                 value="{{ p.precio_tienda_override if p.precio_tienda_override is not none else '' }}"
+                 placeholder="auto-calculado"
+                 oninput="recalcPreview()">
+          <div class="field-help">Si lo definís, ignora el margen y usa este valor exacto.</div>
+        </div>
+
+        <div class="price-preview">
+          <div class="row"><span>Precio ML</span><span id="pp-ml">$ {{ '{:,.0f}'.format(p.precio_ml).replace(',', '.') }}</span></div>
+          <div class="row"><span>Margen aplicado</span><span id="pp-margen">{{ margen_efectivo }}%</span></div>
+          <div class="row"><span>Cálculo</span><span id="pp-calc">$ {{ '{:,.0f}'.format(precio_tienda_calc).replace(',', '.') }}</span></div>
+          <div class="row total"><span>Precio final tienda</span><span id="pp-final">$ {{ '{:,.0f}'.format(precio_tienda_efectivo).replace(',', '.') }}</span></div>
+        </div>
+      </div>
+
+      <div class="editor-card">
+        <h3><i class="bi bi-box-seam"></i>Stock y estado</h3>
+
+        <div class="field">
+          <label>
+            <span class="field-name">Stock</span>
+            {{ lock_toggle('stock', 'stock' in locks) }}
+          </label>
+          <input type="number" id="f-stock" value="{{ p.stock }}" min="0">
+        </div>
+
+        <div class="field">
+          <label><span class="field-name">Estado en tienda</span></label>
+          <select id="f-activo">
+            <option value="true"  {% if p.activo %}selected{% endif %}>Activo (visible)</option>
+            <option value="false" {% if not p.activo %}selected{% endif %}>Inactivo (oculto)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="editor-card">
+        <h3><i class="bi bi-info-circle"></i>Meta</h3>
+        <dl class="meta-row">
+          <dt>ID local</dt><dd>{{ p.id }}</dd>
+          <dt>MLA</dt><dd>{{ p.mla_id }}</dd>
+          <dt>Creado</dt><dd>{{ p.created_at }}</dd>
+          <dt>Última sync</dt><dd>{{ p.last_sync_at or '—' }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="editor-actions">
+    <span id="status" class="status"></span>
+    <a href="/admin/productos" class="btn btn-outline-secondary">Cancelar</a>
+    <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Guardar cambios</button>
+  </div>
+</form>
+
+<script>
+const PRODUCT_ID    = {{ p.id }};
+const MARGEN_DEFAULT = {{ margen_default }};
+const PRECIO_ML      = {{ p.precio_ml }};
+
+// ── Toggle locks ─────────────────────────────────────────────────────────────
+async function toggleLock(el) {
+  const field = el.dataset.field;
+  const willBeLocked = !el.classList.contains('locked');
+  el.classList.toggle('locked', willBeLocked);
+  el.querySelector('i').className = 'bi ' + (willBeLocked ? 'bi-lock-fill' : 'bi-unlock');
+  el.querySelector('.lt-text').textContent = willBeLocked ? 'Lockeado' : 'Sin lock';
+  try {
+    const r = await fetch(`/api/admin/productos/${PRODUCT_ID}/lock`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({field, locked: willBeLocked}),
+    });
+    const j = await r.json();
+    if (!j.ok) {
+      // revert
+      el.classList.toggle('locked', !willBeLocked);
+      el.querySelector('i').className = 'bi ' + (!willBeLocked ? 'bi-lock-fill' : 'bi-unlock');
+      el.querySelector('.lt-text').textContent = !willBeLocked ? 'Lockeado' : 'Sin lock';
+      flash(`Error: ${j.error || 'no se pudo cambiar el lock'}`, 'err');
+    } else {
+      flash(`Lock ${field}: ${willBeLocked ? 'activado' : 'desactivado'}`, 'ok');
+    }
+  } catch (e) {
+    flash('Error de red: ' + e.message, 'err');
+  }
+}
+
+// Bind para los toggles que no son macro (fotos)
+document.querySelectorAll('.lock-toggle[data-field="fotos"]').forEach(el => {
+  el.addEventListener('click', () => toggleLock(el));
+});
+
+// ── Fotos: add/remove ────────────────────────────────────────────────────────
+function addFoto() {
+  const input = document.getElementById('foto-url-input');
+  const url = input.value.trim();
+  if (!url) return;
+  const grid = document.getElementById('fotos-grid');
+  const div = document.createElement('div');
+  div.className = 'foto-item';
+  div.dataset.url = url;
+  div.innerHTML = `<img src="${url}" alt=""><button type="button" class="remove" onclick="removeFoto(this)">×</button>`;
+  grid.appendChild(div);
+  input.value = '';
+}
+function removeFoto(btn) { btn.parentElement.remove(); }
+function getFotos() {
+  return Array.from(document.querySelectorAll('#fotos-grid .foto-item')).map(el => el.dataset.url);
+}
+
+// ── Slug preview ─────────────────────────────────────────────────────────────
+document.getElementById('f-slug').addEventListener('input', e => {
+  document.getElementById('slug-preview').textContent = e.target.value || '{{ p.mla_id }}';
+});
+
+// ── Precio preview ───────────────────────────────────────────────────────────
+function recalcPreview() {
+  const mOverride = parseFloat(document.getElementById('f-margen-override').value);
+  const pOverride = parseFloat(document.getElementById('f-precio-override').value);
+  const margen = isFinite(mOverride) ? mOverride : MARGEN_DEFAULT;
+  const calc = Math.round(PRECIO_ML * (1 + margen / 100));
+  const final = isFinite(pOverride) ? pOverride : calc;
+  document.getElementById('pp-margen').textContent = margen + '%';
+  document.getElementById('pp-calc').textContent = '$ ' + Math.round(calc).toLocaleString('es-AR');
+  document.getElementById('pp-final').textContent = '$ ' + Math.round(final).toLocaleString('es-AR');
+}
+
+// ── Guardar ──────────────────────────────────────────────────────────────────
+async function guardar() {
+  const mOverride = document.getElementById('f-margen-override').value;
+  const pOverride = document.getElementById('f-precio-override').value;
+  const payload = {
+    titulo:                  document.getElementById('f-titulo').value,
+    descripcion:             document.getElementById('f-descripcion').value,
+    fotos:                   getFotos(),
+    stock:                   parseInt(document.getElementById('f-stock').value, 10) || 0,
+    slug:                    document.getElementById('f-slug').value,
+    meta_title:              document.getElementById('f-meta-title').value,
+    meta_description:        document.getElementById('f-meta-description').value,
+    activo:                  document.getElementById('f-activo').value === 'true',
+    margen_override:         mOverride === '' ? null : parseFloat(mOverride),
+    precio_tienda_override:  pOverride === '' ? null : parseFloat(pOverride),
+  };
+  flash('Guardando…', '');
+  try {
+    const r = await fetch(`/api/admin/productos/${PRODUCT_ID}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if (j.ok) flash('Guardado ✓', 'ok');
+    else flash('Error: ' + (j.error || ''), 'err');
+  } catch (e) {
+    flash('Error de red: ' + e.message, 'err');
+  }
+}
+
+function flash(msg, kind) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + (kind || '');
+  if (kind) setTimeout(() => { el.textContent = ''; el.className = 'status'; }, 3000);
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %} — Integraciones Biobella{% endblock %}
+
+{% block content %}
+<style>
+.bio-card {
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
+  padding:1.2rem 1.4rem; margin-bottom:1rem;
+}
+.bio-card h3 { font-size:.95rem; font-weight:700; color:#0f172a; margin:0 0 .9rem; display:flex; align-items:center; gap:.5rem; }
+.bio-card h3 i { font-size:1rem; color:var(--color-info-600); }
+.bio-status {
+  font-size:.7rem; font-weight:700; padding:3px 10px; border-radius:10px;
+  text-transform:uppercase; letter-spacing:.04em; display:inline-block;
+}
+.bio-status.ok        { background:var(--color-success-100); color:#166534; }
+.bio-status.warning   { background:var(--color-warning-100); color:var(--color-warning-700); }
+.bio-status.error     { background:var(--color-critical-100); color:var(--color-critical-700); }
+.bio-status.muted     { background:var(--color-neutral-100); color:var(--color-neutral-600); }
+
+.bio-kv  { display:grid; grid-template-columns:max-content 1fr; gap:.45rem 1rem; font-size:.83rem; }
+.bio-kv  dt { color:var(--color-neutral-600); font-weight:500; }
+.bio-kv  dd { margin:0; color:#0f172a; }
+
+.bio-stats {
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:.7rem;
+}
+.bio-stat {
+  background:var(--color-neutral-50); border:1px solid var(--color-neutral-100);
+  border-radius:8px; padding:.7rem .9rem;
+}
+.bio-stat .label { font-size:.7rem; color:var(--color-neutral-600); text-transform:uppercase; letter-spacing:.05em; }
+.bio-stat .val   { font-size:1.25rem; font-weight:700; color:#0f172a; line-height:1.2; margin-top:.15rem; }
+
+.bio-btn {
+  font-size:.82rem; padding:7px 14px; border-radius:7px; border:1px solid;
+  font-weight:600; cursor:pointer; transition:all .15s;
+}
+.bio-btn.primary { color:var(--color-neutral-0); background:var(--color-info-600); border-color:var(--color-info-600); }
+.bio-btn.primary:hover { background:var(--color-info-700); }
+.bio-btn.primary:disabled { background:var(--color-neutral-300); border-color:var(--color-neutral-300); cursor:wait; }
+.bio-btn.ghost { color:var(--color-info-700); background:var(--color-neutral-0); border-color:var(--color-info-200); }
+.bio-btn.ghost:hover { background:var(--color-info-50); }
+
+.bio-table { width:100%; font-size:.82rem; border-collapse:collapse; }
+.bio-table th { text-align:left; padding:.5rem .6rem; background:var(--color-neutral-50); color:var(--color-neutral-700); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--color-neutral-200); }
+.bio-table td { padding:.55rem .6rem; border-bottom:1px solid var(--color-neutral-100); vertical-align:middle; }
+.bio-table tbody tr:hover { background:var(--color-neutral-50); }
+
+.bio-row-2col { display:grid; grid-template-columns:2fr 1fr; gap:1rem; }
+@media (max-width: 900px) { .bio-row-2col { grid-template-columns:1fr; } }
+
+.bio-inline-form { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+.bio-inline-form input[type=number],
+.bio-inline-form input[type=text] {
+  border:1px solid var(--color-neutral-200); border-radius:7px; padding:6px 10px; font-size:.85rem;
+  min-width:120px;
+}
+.bio-flash { margin:.5rem 0 0; font-size:.8rem; }
+.bio-flash.ok  { color:#166534; }
+.bio-flash.err { color:var(--color-critical-700); }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-plug-fill me-2 text-primary"></i>Integraciones — {{ store_name }}</h1>
+    <div class="sub">
+      Conexión con MercadoLibre, sincronización del catálogo y configuración global.
+      <span class="badge ms-2" style="background:#1e3a8a;font-size:.7rem">Solo admin</span>
+    </div>
+  </div>
+</div>
+
+<div class="bio-row-2col">
+  <div>
+    <div class="bio-card">
+      <h3><i class="bi bi-shop"></i>MercadoLibre — cuenta <code>{{ ml_account_alias }}</code></h3>
+      {% if ml_status.state == 'connected' %}
+        <span class="bio-status ok">Conectado</span>
+      {% elif ml_status.state == 'expired' %}
+        <span class="bio-status warning">Token vencido</span>
+      {% elif ml_status.state == 'disconnected' %}
+        <span class="bio-status warning">Sin OAuth</span>
+      {% else %}
+        <span class="bio-status error">Cuenta no existe</span>
+      {% endif %}
+      <p style="margin:.6rem 0 0; font-size:.82rem; color:var(--color-neutral-600);">
+        {{ ml_status.detail }}
+      </p>
+      {% if ml_status.state in ['disconnected', 'missing'] %}
+      <p style="margin:.7rem 0 0; font-size:.8rem;">
+        <a href="/admin/cuentas" class="bio-btn ghost" style="text-decoration:none; display:inline-block;">
+          <i class="bi bi-arrow-right-circle"></i> Conectar cuenta en Admin Cuentas
+        </a>
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="bio-card">
+      <h3><i class="bi bi-arrow-repeat"></i>Sincronización del catálogo</h3>
+
+      <dl class="bio-kv" style="margin-bottom:1rem;">
+        <dt>Próxima sync programada</dt>
+        <dd>{{ next_sync or '—' }} <span style="color:var(--color-neutral-500); font-size:.78rem;">(cada 6h)</span></dd>
+
+        <dt>Última sync</dt>
+        <dd>
+          {% if last_sync %}
+            {{ last_sync.started_at }}
+            {% if last_sync.status == 'ok' %}<span class="bio-status ok">OK</span>
+            {% elif last_sync.status == 'partial' %}<span class="bio-status warning">Parcial</span>
+            {% elif last_sync.status == 'error' %}<span class="bio-status error">Error</span>
+            {% else %}<span class="bio-status muted">{{ last_sync.status }}</span>{% endif %}
+            <span style="color:var(--color-neutral-500); font-size:.78rem;">
+              · {{ last_sync.trigger }}
+              · creados {{ last_sync.creados }} · actualizados {{ last_sync.actualizados }}
+              {% if last_sync.errores_count %} · <span style="color:var(--color-critical-700);">{{ last_sync.errores_count }} errores</span>{% endif %}
+            </span>
+          {% else %}
+            <span style="color:var(--color-neutral-500);">Nunca</span>
+          {% endif %}
+        </dd>
+      </dl>
+
+      <button id="btn-sync-now" class="bio-btn primary" onclick="syncNow()">
+        <i class="bi bi-arrow-clockwise"></i> Sincronizar ahora
+      </button>
+      <div id="sync-flash" class="bio-flash"></div>
+    </div>
+
+    <div class="bio-card">
+      <h3><i class="bi bi-clock-history"></i>Historial de sincronizaciones</h3>
+      {% if history %}
+      <table class="bio-table">
+        <thead>
+          <tr>
+            <th>Inicio</th>
+            <th>Trigger</th>
+            <th>Estado</th>
+            <th class="text-end">Creados</th>
+            <th class="text-end">Actualiz.</th>
+            <th class="text-end">Desact.</th>
+            <th class="text-end">Errores</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in history %}
+          <tr>
+            <td>{{ h.started_at }}<div style="font-size:.7rem; color:var(--color-neutral-500);">fin {{ h.finished_at }}</div></td>
+            <td>{{ h.trigger }}{% if h.triggered_by %}<div style="font-size:.7rem; color:var(--color-neutral-500);">por {{ h.triggered_by }}</div>{% endif %}</td>
+            <td>
+              {% if h.status == 'ok' %}<span class="bio-status ok">OK</span>
+              {% elif h.status == 'partial' %}<span class="bio-status warning">Parcial</span>
+              {% elif h.status == 'error' %}<span class="bio-status error">Error</span>
+              {% else %}<span class="bio-status muted">{{ h.status }}</span>{% endif %}
+            </td>
+            <td class="text-end">{{ h.creados }}</td>
+            <td class="text-end">{{ h.actualizados }}</td>
+            <td class="text-end">{{ h.desactivados }}</td>
+            <td class="text-end">{{ h.errores_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="font-size:.85rem; color:var(--color-neutral-500); margin:0;">Todavía no se corrió ninguna sincronización.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="bio-card">
+      <h3><i class="bi bi-bar-chart-fill"></i>Catálogo</h3>
+      <div class="bio-stats">
+        <div class="bio-stat"><div class="label">Total</div><div class="val">{{ productos_total }}</div></div>
+        <div class="bio-stat"><div class="label">Activos</div><div class="val">{{ productos_activos }}</div></div>
+      </div>
+    </div>
+
+    <div class="bio-card">
+      <h3><i class="bi bi-percent"></i>Margen global por defecto</h3>
+      <p style="font-size:.8rem; color:var(--color-neutral-600); margin-bottom:.8rem;">
+        Aplicado a productos nuevos. <code>precio_tienda = precio_ml × (1 + margen/100)</code>, redondeado.
+        Editable por producto desde el admin.
+      </p>
+      <div class="bio-inline-form">
+        <input type="number" id="margen-input" min="0" max="500" step="0.5" value="{{ margen_global }}">
+        <span>%</span>
+        <button class="bio-btn primary" onclick="saveMargen()">Guardar</button>
+      </div>
+      <div id="margen-flash" class="bio-flash"></div>
+    </div>
+
+    <div class="bio-card">
+      <h3><i class="bi bi-tag"></i>Nombre de la tienda</h3>
+      <p style="font-size:.8rem; color:var(--color-neutral-600); margin-bottom:.8rem;">
+        Se muestra en el storefront público.
+      </p>
+      <div class="bio-inline-form">
+        <input type="text" id="storename-input" maxlength="64" value="{{ store_name }}">
+        <button class="bio-btn primary" onclick="saveStoreName()">Guardar</button>
+      </div>
+      <div id="storename-flash" class="bio-flash"></div>
+    </div>
+
+    <div class="bio-card">
+      <h3><i class="bi bi-credit-card"></i>MercadoPago</h3>
+      {% if mp_token_kind == 'production' %}
+        <span class="bio-status ok">Producción</span>
+        <p style="font-size:.78rem; color:var(--color-neutral-600); margin:.5rem 0 0;">
+          Token activo: <code>{{ mp_token_preview }}</code>
+        </p>
+      {% elif mp_token_kind == 'sandbox' %}
+        <span class="bio-status warning">Sandbox / TEST</span>
+        <p style="font-size:.78rem; color:var(--color-neutral-600); margin:.5rem 0 0;">
+          Token sandbox: <code>{{ mp_token_preview }}</code>. No cobra dinero real.
+        </p>
+      {% else %}
+        <span class="bio-status error">No configurado</span>
+        <p style="font-size:.78rem; color:var(--color-neutral-600); margin:.5rem 0 .8rem;">
+          Sin <code>access_token</code> el checkout no funciona. Obtené el tuyo en
+          <a href="https://www.mercadopago.com.ar/developers/panel/app" target="_blank">developers.mercadopago.com.ar</a>.
+        </p>
+      {% endif %}
+
+      <div style="margin-top:.8rem;">
+        <label style="font-size:.72rem; font-weight:600; color:var(--color-neutral-700); display:block; margin-bottom:4px;">
+          Access token <span style="color:var(--color-neutral-500); font-weight:400;">(empieza con TEST- o APP_USR-)</span>
+        </label>
+        <input type="password" id="mp-token-input" placeholder="TEST-1234… o APP_USR-1234…"
+               style="width:100%; border:1px solid var(--color-neutral-200); border-radius:7px; padding:7px 10px; font-size:.82rem; font-family:ui-monospace,monospace;">
+      </div>
+      <div style="margin-top:.6rem;">
+        <label style="font-size:.72rem; font-weight:600; color:var(--color-neutral-700); display:block; margin-bottom:4px;">
+          Public key <span style="color:var(--color-neutral-500); font-weight:400;">(opcional)</span>
+        </label>
+        <input type="text" id="mp-pubkey-input" placeholder="APP_USR-… (opcional)" value="{{ mp_public_key }}"
+               style="width:100%; border:1px solid var(--color-neutral-200); border-radius:7px; padding:7px 10px; font-size:.82rem; font-family:ui-monospace,monospace;">
+      </div>
+      <button class="bio-btn primary" style="margin-top:.7rem;" onclick="saveMP()">Guardar credenciales</button>
+      <div id="mp-flash" class="bio-flash"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function syncNow() {
+  const btn   = document.getElementById('btn-sync-now');
+  const flash = document.getElementById('sync-flash');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Sincronizando…';
+  flash.textContent = '';
+  flash.className = 'bio-flash';
+  try {
+    const r = await fetch('/api/integraciones/sincronizar', {method:'POST'});
+    const j = await r.json();
+    if (j.ok) {
+      flash.className = 'bio-flash ok';
+      flash.textContent = `${j.status.toUpperCase()} · creados ${j.creados} · actualizados ${j.actualizados} · desactivados ${j.desactivados}` +
+                         (j.total_errores ? ` · ${j.total_errores} errores` : '');
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      flash.className = 'bio-flash err';
+      flash.textContent = j.error || 'Error desconocido';
+    }
+  } catch (e) {
+    flash.className = 'bio-flash err';
+    flash.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Sincronizar ahora';
+  }
+}
+
+async function saveMargen() {
+  const input = document.getElementById('margen-input');
+  const flash = document.getElementById('margen-flash');
+  const margen = parseFloat(input.value);
+  flash.className = 'bio-flash';
+  flash.textContent = '';
+  try {
+    const r = await fetch('/api/integraciones/margen', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({margen}),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      flash.className = 'bio-flash ok';
+      flash.textContent = `Guardado: ${j.margen}%`;
+    } else {
+      flash.className = 'bio-flash err';
+      flash.textContent = j.error || 'Error';
+    }
+  } catch (e) {
+    flash.className = 'bio-flash err';
+    flash.textContent = e.message;
+  }
+}
+
+async function saveMP() {
+  const token  = document.getElementById('mp-token-input').value.trim();
+  const pubkey = document.getElementById('mp-pubkey-input').value.trim();
+  const flash  = document.getElementById('mp-flash');
+  flash.className = 'bio-flash';
+  flash.textContent = '';
+  if (!token) { flash.className = 'bio-flash err'; flash.textContent = 'Pegá el access token de MP.'; return; }
+  try {
+    const r = await fetch('/api/integraciones/mp-credentials', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mp_access_token: token, mp_public_key: pubkey}),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      flash.className = 'bio-flash ok';
+      flash.textContent = 'Credenciales guardadas. Recargá para ver el estado.';
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      flash.className = 'bio-flash err';
+      flash.textContent = j.error || 'Error';
+    }
+  } catch (e) {
+    flash.className = 'bio-flash err';
+    flash.textContent = e.message;
+  }
+}
+
+async function saveStoreName() {
+  const input = document.getElementById('storename-input');
+  const flash = document.getElementById('storename-flash');
+  flash.className = 'bio-flash';
+  flash.textContent = '';
+  try {
+    const r = await fetch('/api/integraciones/store-name', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({store_name: input.value}),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      flash.className = 'bio-flash ok';
+      flash.textContent = `Guardado: "${j.store_name}"`;
+    } else {
+      flash.className = 'bio-flash err';
+      flash.textContent = j.error || 'Error';
+    }
+  } catch (e) {
+    flash.className = 'bio-flash err';
+    flash.textContent = e.message;
+  }
+}
+</script>
+{% endblock %}

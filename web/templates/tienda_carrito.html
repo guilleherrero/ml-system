@@ -1,0 +1,124 @@
+{% extends "tienda_base.html" %}
+{% block title %} | Carrito{% endblock %}
+
+{% block content %}
+<main class="pt-32 pb-20 max-w-container-max mx-auto px-margin-desktop">
+
+  <!-- Breadcrumbs -->
+  <nav class="flex items-center space-x-2 text-on-surface-variant mb-8 font-label-caps text-label-caps">
+    <a class="hover:text-primary transition-colors" href="/tienda">Tienda</a>
+    <span class="material-symbols-outlined text-[12px]">chevron_right</span>
+    <span class="text-primary">Tu carrito</span>
+  </nav>
+
+  <div class="flex items-end justify-between mb-12 border-b border-outline-variant pb-6">
+    <h1 class="font-display-lg text-headline-md">Tu carrito</h1>
+    {% if items %}
+    <span class="font-label-caps text-label-caps text-on-surface-variant">{{ items|length }} ítem{% if items|length != 1 %}s{% endif %}</span>
+    {% endif %}
+  </div>
+
+  {% if not items %}
+  <!-- Empty -->
+  <div class="text-center py-24 bg-surface-container-low rounded-xl">
+    <span class="material-symbols-outlined text-on-surface-variant" style="font-size: 56px;">shopping_bag</span>
+    <p class="font-body-md text-on-surface-variant mt-4 mb-6">Tu carrito está vacío.</p>
+    <a href="/tienda" class="inline-block bg-primary text-on-primary px-10 py-4 rounded-lg font-label-caps text-label-caps hover:bg-on-primary-fixed-variant transition-all duration-300">
+      VOLVER A LA TIENDA
+    </a>
+  </div>
+  {% else %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+
+    <!-- Items -->
+    <div class="lg:col-span-8 space-y-6">
+      {% for it in items %}
+      <div class="flex gap-6 pb-6 border-b border-outline-variant" id="ci-{{ it.product_id }}">
+        <a href="/tienda/p/{{ it.slug or it.mla_id }}" class="block w-28 h-28 md:w-32 md:h-32 flex-shrink-0 bg-surface-container-low overflow-hidden rounded-lg">
+          {% if it.foto %}
+          <img class="w-full h-full object-cover" src="{{ it.foto }}" alt="">
+          {% endif %}
+        </a>
+        <div class="flex-1 flex flex-col justify-between">
+          <div>
+            <a href="/tienda/p/{{ it.slug or it.mla_id }}" class="font-headline-sm text-on-surface hover:text-primary transition-colors line-clamp-2 block">{{ it.titulo }}</a>
+            <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">
+              $ {{ '{:,.0f}'.format(it.precio_unit).replace(',', '.') }} c/u
+            </p>
+          </div>
+          <div class="flex items-center justify-between mt-3">
+            <div class="flex items-center border border-outline rounded-lg px-1">
+              <button onclick="changeQty({{ it.product_id }}, -1)" class="text-on-surface-variant hover:text-primary px-2 py-1 transition-colors">
+                <span class="material-symbols-outlined text-sm">remove</span>
+              </button>
+              <span class="px-4 font-body-md">{{ it.qty }}</span>
+              <button onclick="changeQty({{ it.product_id }}, 1)" class="text-on-surface-variant hover:text-primary px-2 py-1 transition-colors">
+                <span class="material-symbols-outlined text-sm">add</span>
+              </button>
+            </div>
+            <button onclick="removeItem({{ it.product_id }})" class="font-label-caps text-label-caps text-on-surface-variant hover:text-error transition-colors">
+              Eliminar
+            </button>
+          </div>
+        </div>
+        <div class="text-right flex-shrink-0">
+          <p class="font-headline-sm text-on-surface">$ {{ '{:,.0f}'.format(it.subtotal).replace(',', '.') }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Summary -->
+    <aside class="lg:col-span-4">
+      <div class="bg-surface-container-low p-8 rounded-xl sticky top-32">
+        <h3 class="font-headline-sm text-headline-sm mb-6">Resumen</h3>
+        <div class="space-y-3 mb-6 font-body-md text-body-md">
+          <div class="flex justify-between">
+            <span class="text-on-surface-variant">Subtotal</span>
+            <span class="text-on-surface">$ {{ '{:,.0f}'.format(subtotal).replace(',', '.') }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-on-surface-variant">Envío</span>
+            <span class="text-on-surface">{% if subtotal >= 25000 %}Gratis{% else %}A calcular{% endif %}</span>
+          </div>
+        </div>
+        <div class="flex justify-between border-t border-outline-variant pt-4 mb-6">
+          <span class="font-headline-sm">Total</span>
+          <span class="font-headline-sm text-primary">$ {{ '{:,.0f}'.format(subtotal).replace(',', '.') }}</span>
+        </div>
+        <p class="font-body-sm text-body-sm text-on-surface-variant mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined text-[18px]">credit_card</span>
+          12 cuotas sin interés con MercadoPago
+        </p>
+        <a href="/tienda/checkout"
+           class="block text-center w-full bg-primary text-on-primary py-5 rounded-lg font-body-md font-bold uppercase tracking-widest hover:opacity-90 transition-all shadow-sm">
+          Continuar al pago
+        </a>
+      </div>
+    </aside>
+
+  </div>
+  {% endif %}
+
+</main>
+
+<script>
+  async function changeQty(productId, delta) {
+    const r = await fetch('/api/carrito/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: productId, delta: delta }),
+    });
+    if (r.ok) location.reload();
+  }
+  async function removeItem(productId) {
+    const r = await fetch('/api/carrito/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: productId }),
+    });
+    if (r.ok) location.reload();
+  }
+</script>
+{% endblock %}

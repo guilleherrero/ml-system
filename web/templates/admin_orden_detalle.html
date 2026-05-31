@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %} — Orden #{{ o.id }}{% endblock %}
+
+{% block content %}
+<style>
+.det-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1.5rem; }
+@media (max-width: 1000px) { .det-grid { grid-template-columns: 1fr; } }
+.det-card {
+  background: var(--color-neutral-0); border: 1px solid var(--color-neutral-200);
+  border-radius: 10px; padding: 1.2rem 1.4rem; margin-bottom: 1rem;
+}
+.det-card h3 { font-size: .8rem; margin: 0 0 .8rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--color-neutral-700);
+}
+.det-kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; font-size: .85rem; }
+.det-kv dt { color: var(--color-neutral-600); }
+.det-kv dd { margin: 0; color: #0f172a; }
+
+.status-pill { display:inline-block; font-size: .7rem; padding: 3px 10px; border-radius: 10px; font-weight:600; }
+.status-pill.pending { background:#fef3c7; color:#92400e; }
+.status-pill.paid    { background:var(--color-success-100); color:#166534; }
+.status-pill.failed  { background:var(--color-critical-100); color:var(--color-critical-700); }
+.status-pill.cancelled { background:var(--color-neutral-100); color:var(--color-neutral-600); }
+
+.item-row { display: flex; gap: 1rem; align-items: center; padding: .6rem 0; border-bottom: 1px solid var(--color-neutral-100); }
+.item-row:last-child { border-bottom: 0; }
+.item-row img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: var(--color-neutral-100); }
+.item-row .titulo { font-weight: 500; color: #0f172a; font-size: .9rem; }
+.item-row .meta { font-size: .75rem; color: var(--color-neutral-600); }
+
+.totales { font-size: .9rem; }
+.totales .row { display: flex; justify-content: space-between; padding: 4px 0; }
+.totales .row.total { font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--color-neutral-200); margin-top: 8px; padding-top: 10px; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-receipt me-2 text-primary"></i>Orden #{{ o.id }}</h1>
+    <div class="sub">
+      <a href="/admin/ordenes">&larr; Ver todas las órdenes</a>
+      &nbsp;·&nbsp; Estado: <span class="status-pill {{ o.status }}">{{ o.status }}</span>
+      {% if o.mp_payment_id %}&nbsp;·&nbsp; MP payment <code>{{ o.mp_payment_id }}</code>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="det-grid">
+  <div>
+    <div class="det-card">
+      <h3>Items ({{ o.items|length }})</h3>
+      {% for it in o.items %}
+      <div class="item-row">
+        {% if it.foto %}<img src="{{ it.foto }}" alt="">{% else %}<div style="width:56px;height:56px;background:var(--color-neutral-100);border-radius:6px;"></div>{% endif %}
+        <div style="flex:1;">
+          <div class="titulo">{{ it.titulo }}</div>
+          <div class="meta">
+            {{ it.mla_id or 'sin MLA' }} · ${{ '{:,.0f}'.format(it.precio_unit).replace(',', '.') }} × {{ it.cantidad }}
+          </div>
+        </div>
+        <div style="font-weight:600;">$ {{ '{:,.0f}'.format(it.subtotal).replace(',', '.') }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="det-card">
+      <h3>Notas del cliente</h3>
+      {% if o.notas %}
+      <p style="white-space:pre-wrap; margin:0; color:#1e293b; font-size:.85rem;">{{ o.notas }}</p>
+      {% else %}
+      <p style="color:var(--color-neutral-500); margin:0; font-size:.85rem;">Sin notas.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="det-card">
+      <h3>Resumen</h3>
+      <div class="totales">
+        <div class="row"><span>Subtotal</span><span>$ {{ '{:,.0f}'.format(o.subtotal).replace(',', '.') }}</span></div>
+        <div class="row"><span>Envío</span><span>{% if o.envio > 0 %}$ {{ '{:,.0f}'.format(o.envio).replace(',', '.') }}{% else %}Gratis{% endif %}</span></div>
+        <div class="row total"><span>Total</span><span>$ {{ '{:,.0f}'.format(o.total).replace(',', '.') }}</span></div>
+      </div>
+    </div>
+
+    <div class="det-card">
+      <h3>Cliente</h3>
+      <dl class="det-kv">
+        <dt>Nombre</dt><dd>{{ o.cliente_nombre }}</dd>
+        <dt>Email</dt><dd>{{ o.cliente_email }}</dd>
+        {% if o.cliente_telefono %}<dt>Tel</dt><dd>{{ o.cliente_telefono }}</dd>{% endif %}
+      </dl>
+    </div>
+
+    {% if o.direccion.calle or o.direccion.localidad %}
+    <div class="det-card">
+      <h3>Envío</h3>
+      <dl class="det-kv">
+        {% if o.direccion.calle %}<dt>Dirección</dt><dd>{{ o.direccion.calle }} {{ o.direccion.numero }}{% if o.direccion.piso %} · {{ o.direccion.piso }}{% endif %}</dd>{% endif %}
+        {% if o.direccion.localidad %}<dt>Localidad</dt><dd>{{ o.direccion.localidad }}</dd>{% endif %}
+        {% if o.direccion.provincia %}<dt>Provincia</dt><dd>{{ o.direccion.provincia }}</dd>{% endif %}
+        {% if o.direccion.cp %}<dt>CP</dt><dd>{{ o.direccion.cp }}</dd>{% endif %}
+      </dl>
+    </div>
+    {% endif %}
+
+    <div class="det-card">
+      <h3>MercadoPago</h3>
+      <dl class="det-kv">
+        <dt>Estado MP</dt><dd>{{ o.mp_status or '—' }}</dd>
+        {% if o.mp_payment_id %}<dt>Payment ID</dt><dd><code>{{ o.mp_payment_id }}</code></dd>{% endif %}
+        {% if o.mp_preference_id %}<dt>Preference</dt><dd><code style="font-size:.7rem;">{{ o.mp_preference_id }}</code></dd>{% endif %}
+        <dt>Creada</dt><dd>{{ o.created_at }}</dd>
+        {% if o.paid_at %}<dt>Pagada</dt><dd>{{ o.paid_at }}</dd>{% endif %}
+      </dl>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

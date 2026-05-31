@@ -1,0 +1,119 @@
+{% extends "tienda_base.html" %}
+{% block title %} | Beauty & Wellness{% endblock %}
+
+{% block content %}
+<main class="pt-20">
+
+  <!-- Hero -->
+  <section class="relative h-[870px] flex items-center overflow-hidden">
+    <div class="absolute inset-0 z-0">
+      <img class="w-full h-full object-cover object-center"
+           src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7Xo3lhKEOmeD-EpK3whhH-pQGLseavD0wPixJmDqx2ldp0XEPdXFxBXfv-vOof0VZQ45AAaGPcC6QrlREMQfge5W1RUBqoG07KCOFqec3mPm6nNW8y-WlVNDk_TE7rMamCaGQcykh4m9Y-9IDr_LqtRBvsIQ2PYjJzd--VQlDzswzlMR4ayRmYQ9OJI2Of6ymlZnkhzD6FxyC_LtAQU5-EWw2-MhgDxvQF413M1bljlOeyXPisiAwqT4-Uf0A8qfULZ5rB_El2Lbe"
+           alt="">
+      <div class="absolute inset-0 bg-gradient-to-r from-surface via-surface/40 to-transparent"></div>
+    </div>
+    <div class="relative z-10 px-margin-desktop max-w-container-max mx-auto w-full">
+      <div class="max-w-xl">
+        <span class="font-label-caps text-label-caps text-primary mb-4 block">COSMÉTICA NATURAL</span>
+        <h1 class="font-display-lg text-display-lg text-on-surface mb-6 leading-tight">Revitalizá tu esencia natural</h1>
+        <p class="font-body-lg text-body-lg text-on-surface-variant mb-8">
+          Descubrí nuestra colección de productos elaborados con ingredientes orgánicos,
+          cruelty-free, pensados para realzar tu belleza con la sofisticación que merecés.
+        </p>
+        <a href="#bestsellers" class="inline-block bg-primary text-on-primary px-10 py-4 rounded-lg font-label-caps text-label-caps hover:bg-on-primary-fixed-variant transition-all duration-300 shadow-lg shadow-primary/20">
+          VER COLECCIÓN
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust Banners -->
+  <section class="bg-tertiary-container/30 py-12">
+    <div class="max-w-container-max mx-auto px-margin-desktop flex flex-wrap justify-center md:justify-between gap-8 items-center text-primary">
+      <div class="flex items-center space-x-4">
+        <span class="material-symbols-outlined text-4xl">local_shipping</span>
+        <div>
+          <p class="font-label-caps text-label-caps uppercase">Envío gratis</p>
+          <p class="font-body-sm text-body-sm text-on-tertiary-container">En compras desde $25.000</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="material-symbols-outlined text-4xl">verified</span>
+        <div>
+          <p class="font-label-caps text-label-caps uppercase">Calidad garantizada</p>
+          <p class="font-body-sm text-body-sm text-on-tertiary-container">Ingredientes orgánicos</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="material-symbols-outlined text-4xl">card_giftcard</span>
+        <div>
+          <p class="font-label-caps text-label-caps uppercase">Empaque sustentable</p>
+          <p class="font-body-sm text-body-sm text-on-tertiary-container">Envases reciclables</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bestsellers -->
+  <section id="bestsellers" class="bg-tertiary-container/30 py-24">
+    <div class="max-w-container-max mx-auto px-margin-desktop">
+      <div class="flex justify-between items-end mb-12">
+        <div>
+          <span class="font-label-caps text-label-caps text-primary mb-2 block">LOS FAVORITOS</span>
+          <h2 class="font-headline-md text-headline-md text-on-surface">Nuestra colección</h2>
+        </div>
+        <a href="/tienda" class="font-label-caps text-label-caps text-primary border-b border-primary pb-1 hover:opacity-70 transition-opacity">VER TODOS</a>
+      </div>
+
+      {% if productos %}
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-gutter">
+        {% for p in productos %}
+        <a href="/tienda/p/{{ p.slug or p.mla_id }}" class="group cursor-pointer block">
+          <div class="relative aspect-[4/5] bg-white overflow-hidden mb-4 rounded">
+            {% if p.fotos and p.fotos|length > 0 %}
+            <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                 src="{{ p.fotos[0] }}" alt="{{ p.titulo }}">
+            {% endif %}
+            {% if p.stock and p.stock <= 5 %}
+            <div class="absolute top-4 left-4 bg-primary-container text-on-primary-container px-3 py-1 font-label-caps text-[10px] rounded-full">ÚLTIMAS UNIDADES</div>
+            {% elif loop.index <= 2 %}
+            <div class="absolute top-4 left-4 bg-secondary-container text-on-secondary-container px-3 py-1 font-label-caps text-[10px] rounded-full">BEST SELLER</div>
+            {% endif %}
+            <button class="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md text-on-surface py-3 rounded font-label-caps text-[11px] opacity-0 translate-y-4 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0">
+              VER PRODUCTO
+            </button>
+          </div>
+          <h4 class="font-body-md text-body-md text-on-surface mb-1 line-clamp-2">{{ p.titulo }}</h4>
+          <p class="font-body-sm text-body-sm text-primary font-bold">$ {{ '{:,.0f}'.format(p.precio_tienda).replace(',', '.') }}</p>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-16">
+        <p class="text-on-surface-variant font-body-md mb-2">Todavía no hay productos en la tienda.</p>
+        <p class="text-on-surface-variant font-body-sm">Sincronizá la cuenta ML desde <a class="text-primary underline" href="/admin/integraciones">/admin/integraciones</a>.</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- Newsletter -->
+  <section id="contacto" class="py-24 px-margin-desktop max-w-container-max mx-auto text-center">
+    <div class="max-w-2xl mx-auto">
+      <span class="font-label-caps text-label-caps text-primary mb-4 block">SUMATE A LA COMUNIDAD</span>
+      <h2 class="font-headline-md text-headline-md text-on-surface mb-6">Belleza en tu bandeja de entrada</h2>
+      <p class="font-body-md text-body-md text-on-surface-variant mb-10">
+        Suscribite para recibir tips exclusivos, lanzamientos anticipados y 10% de descuento en tu primera compra.
+      </p>
+      <form class="flex flex-col md:flex-row gap-4 justify-center" onsubmit="event.preventDefault(); alert('¡Gracias por sumarte!');">
+        <input class="bg-surface border border-outline-variant px-6 py-4 rounded-lg md:w-80 focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all font-body-sm"
+               placeholder="Tu correo electrónico" type="email" required>
+        <button class="bg-primary text-on-primary px-10 py-4 rounded-lg font-label-caps text-label-caps hover:bg-on-primary-fixed-variant transition-all duration-300">
+          SUSCRIBIRME
+        </button>
+      </form>
+    </div>
+  </section>
+
+</main>
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %} — Productos Biobella{% endblock %}
+
+{% block content %}
+<style>
+.prod-toolbar {
+  display: flex; gap: .7rem; align-items: center; flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+}
+.prod-toolbar input[type=search],
+.prod-toolbar select {
+  border: 1px solid var(--color-neutral-200); border-radius: 7px;
+  padding: 7px 11px; font-size: .85rem; background: var(--color-neutral-0);
+}
+.prod-toolbar input[type=search] { min-width: 280px; }
+
+.prod-table { width: 100%; background: var(--color-neutral-0);
+  border: 1px solid var(--color-neutral-200); border-radius: 10px; overflow: hidden;
+  border-collapse: separate; border-spacing: 0; font-size: .82rem;
+}
+.prod-table th {
+  background: var(--color-neutral-50); padding: .55rem .75rem; text-align: left;
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--color-neutral-700); font-weight: 600;
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+.prod-table td {
+  padding: .6rem .75rem; border-bottom: 1px solid var(--color-neutral-100);
+  vertical-align: middle;
+}
+.prod-table tbody tr:hover { background: var(--color-neutral-50); }
+.prod-table tbody tr:last-child td { border-bottom: 0; }
+
+.prod-thumb {
+  width: 48px; height: 48px; object-fit: cover; border-radius: 6px;
+  background: var(--color-neutral-100); display: block;
+}
+.prod-titulo a {
+  color: #0f172a; font-weight: 500; text-decoration: none;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.prod-titulo a:hover { color: var(--color-info-600); }
+.prod-mla { font-size: .7rem; color: var(--color-neutral-500); margin-top: 2px; }
+
+.prod-pill {
+  display: inline-block; font-size: .68rem; padding: 2px 7px; border-radius: 9px;
+  font-weight: 600; letter-spacing: .03em;
+}
+.prod-pill.activo   { background: var(--color-success-100); color: #166534; }
+.prod-pill.inactivo { background: var(--color-neutral-100); color: var(--color-neutral-600); }
+.prod-pill.override { background: #fff3cd; color: #854d0e; }
+.prod-pill.locked   { background: #ede9fe; color: #6b21a8; font-size: .62rem; padding: 1px 6px; margin: 1px; }
+
+.prod-precio-cell { font-family: var(--font-base); }
+.prod-precio-cell .ml    { font-size: .72rem; color: var(--color-neutral-500); text-decoration: line-through; }
+.prod-precio-cell .final { font-weight: 600; color: #0f172a; }
+.prod-precio-cell .margen { font-size: .7rem; color: var(--color-neutral-500); }
+
+.prod-empty { text-align: center; padding: 3rem; color: var(--color-neutral-500); }
+.prod-pagination { margin-top: 1.2rem; display: flex; gap: .5rem; align-items: center; font-size: .82rem; color: var(--color-neutral-600); }
+.prod-pagination a {
+  padding: 5px 11px; border-radius: 6px; border: 1px solid var(--color-neutral-200);
+  text-decoration: none; color: #0f172a;
+}
+.prod-pagination a:hover { background: var(--color-neutral-50); }
+.prod-pagination a.disabled { pointer-events: none; opacity: .4; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-grid me-2 text-primary"></i>Productos — {{ store_name }}</h1>
+    <div class="sub">
+      Catálogo sincronizado desde MercadoLibre. Editá cualquier campo y la próxima sync respetará tus cambios.
+      <span class="badge ms-2" style="background:#1e3a8a;font-size:.7rem">Solo admin</span>
+    </div>
+  </div>
+  <div style="display:flex; gap:.5rem;">
+    <a href="/admin/integraciones" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-plug-fill"></i> Integraciones
+    </a>
+    <a href="/tienda" target="_blank" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-box-arrow-up-right"></i> Ver tienda
+    </a>
+  </div>
+</div>
+
+<form class="prod-toolbar" method="get" action="/admin/productos">
+  <input type="search" name="q" placeholder="Buscar por título o MLA…" value="{{ q }}">
+  <select name="estado">
+    <option value="todos"      {% if estado == 'todos' %}selected{% endif %}>Todos</option>
+    <option value="activos"    {% if estado == 'activos' %}selected{% endif %}>Activos</option>
+    <option value="inactivos"  {% if estado == 'inactivos' %}selected{% endif %}>Inactivos</option>
+  </select>
+  <button type="submit" class="btn btn-sm btn-primary">Filtrar</button>
+  <span style="margin-left:auto; font-size:.78rem; color:var(--color-neutral-600);">
+    {{ total }} productos · margen global por defecto <strong>{{ margen_default }}%</strong>
+  </span>
+</form>
+
+{% if productos %}
+<table class="prod-table">
+  <thead>
+    <tr>
+      <th style="width:60px"></th>
+      <th>Producto</th>
+      <th class="text-end" style="width:140px">Precio</th>
+      <th class="text-end" style="width:80px">Stock</th>
+      <th style="width:80px">Estado</th>
+      <th style="width:140px">Locks</th>
+      <th style="width:80px"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in productos %}
+    <tr>
+      <td>
+        {% if p.foto %}
+        <img class="prod-thumb" src="{{ p.foto }}" alt="">
+        {% else %}
+        <div class="prod-thumb" style="display:flex;align-items:center;justify-content:center;color:#cbd5e1;"><i class="bi bi-image"></i></div>
+        {% endif %}
+      </td>
+      <td class="prod-titulo">
+        <a href="/admin/productos/{{ p.id }}">{{ p.titulo or '(sin título)' }}</a>
+        <div class="prod-mla">
+          {{ p.mla_id }}{% if p.slug %} · /p/{{ p.slug }}{% endif %}
+          {% if p.last_sync_at %} · last sync {{ p.last_sync_at }}{% endif %}
+        </div>
+      </td>
+      <td class="text-end prod-precio-cell">
+        <div class="ml">ML $ {{ '{:,.0f}'.format(p.precio_ml).replace(',', '.') }}</div>
+        <div class="final">$ {{ '{:,.0f}'.format(p.precio_tienda).replace(',', '.') }}</div>
+        <div class="margen">
+          margen {{ '{:.0f}'.format(p.margen) }}%
+          {% if p.margen_es_override %}<span class="prod-pill override">override</span>{% endif %}
+          {% if p.precio_es_override %}<span class="prod-pill override">precio fijo</span>{% endif %}
+        </div>
+      </td>
+      <td class="text-end">{{ p.stock }}</td>
+      <td>
+        {% if p.activo %}<span class="prod-pill activo">Activo</span>
+        {% else %}<span class="prod-pill inactivo">Inactivo</span>{% endif %}
+      </td>
+      <td>
+        {% if p.locks %}
+          {% for f in p.locks %}<span class="prod-pill locked">🔒 {{ f }}</span>{% endfor %}
+        {% else %}
+          <span style="color:var(--color-neutral-400); font-size:.72rem;">—</span>
+        {% endif %}
+      </td>
+      <td>
+        <a href="/admin/productos/{{ p.id }}" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-pencil"></i> Editar
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% set total_pages = (total // per_page) + (1 if total % per_page else 0) %}
+{% if total_pages > 1 %}
+<div class="prod-pagination">
+  <span>Página {{ page }} de {{ total_pages }}</span>
+  <a class="{% if page <= 1 %}disabled{% endif %}"
+     href="?q={{ q }}&estado={{ estado }}&page={{ page - 1 }}">&larr; Anterior</a>
+  <a class="{% if page >= total_pages %}disabled{% endif %}"
+     href="?q={{ q }}&estado={{ estado }}&page={{ page + 1 }}">Siguiente &rarr;</a>
+</div>
+{% endif %}
+
+{% else %}
+<div class="prod-empty">
+  <i class="bi bi-bag-x" style="font-size: 32px; color: var(--color-neutral-300);"></i>
+  <p style="margin-top:.5rem;">
+    {% if q or estado != 'todos' %}
+      No hay productos que coincidan con el filtro.
+      <a href="/admin/productos">Limpiar filtros</a>
+    {% else %}
+      Todavía no hay productos. Sincronizá desde <a href="/admin/integraciones">/admin/integraciones</a>.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

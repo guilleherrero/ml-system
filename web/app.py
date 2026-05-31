@@ -410,6 +410,13 @@ def _get_request_alias() -> str | None:
 def require_login():
     if request.path.startswith('/static'):
         return
+    # Storefront público Biobella: /tienda*, /api/carrito*, /api/reviews*, /api/checkout*, /api/mp/* no requieren login
+    if (request.path.startswith('/tienda') or
+        request.path.startswith('/api/carrito') or
+        request.path.startswith('/api/reviews') or
+        request.path.startswith('/api/checkout') or
+        request.path.startswith('/api/mp/')):
+        return
     # Auto-actualizar datos si no corrió hoy (resuelve el problema de Render durmiendo)
     if request.path not in _AUTH_EXEMPT and not request.path.startswith('/static'):
         try:
@@ -751,6 +758,437 @@ def api_usuarios_cambiar_pass_admin():
     update_user(user['id'], password=nueva)
     _audit('CAMBIAR_PASSWORD_ADMIN')
     return jsonify({'ok': True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Biobella — Integración con MercadoLibre (cuenta 'novara') + panel admin
+# ══════════════════════════════════════════════════════════════════════════════
+
+BIOBELLA_ML_ACCOUNT = 'novara'
+
+
+def _biobella_ml_status() -> dict:
+    """Estado de la conexión con la cuenta ML que alimenta Biobella."""
+    from core.account_manager import AccountManager as _AM
+    mgr = _AM()
+    acc = mgr.get_account(BIOBELLA_ML_ACCOUNT)
+    if acc is None:
+        return {'state': 'missing', 'detail': f'Cuenta "{BIOBELLA_ML_ACCOUNT}" no existe en accounts.json'}
+    if not acc.refresh_token:
+        return {'state': 'disconnected', 'detail': 'OAuth no completado (sin refresh_token)'}
+    if not acc.is_token_valid():
+        return {'state': 'expired', 'detail': 'Token vencido — se refrescará automáticamente en la próxima sync'}
+    return {'state': 'connected', 'detail': f'Conectado como user_id={acc.user_id}'}
+
+
+def _biobella_next_sync():
+    """Devuelve datetime del próximo run programado para el job biobella_catalog_sync."""
+    if not _app_scheduler:
+        return None
+    job = _app_scheduler.get_job('biobella_catalog_sync')
+    return job.next_run_time if job else None
+
+
+@app.route('/admin/integraciones')
+def admin_integraciones():
+    """Panel de integraciones de Biobella: estado ML, sync, historial, config margen."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product, SyncLog, AppSetting
+    from modules.tienda_sync import get_setting
+
+    ml_status = _biobella_ml_status()
+    next_sync = _biobella_next_sync()
+
+    with _ss() as s:
+        last_sync = s.query(SyncLog).order_by(SyncLog.started_at.desc()).first()
+        history = s.query(SyncLog).order_by(SyncLog.started_at.desc()).limit(20).all()
+        history_data = [{
+            'id':                     h.id,
+            'started_at':             h.started_at.strftime('%Y-%m-%d %H:%M') if h.started_at else '',
+            'finished_at':            h.finished_at.strftime('%H:%M:%S') if h.finished_at else '',
+            'trigger':                h.trigger,
+            'triggered_by':           h.triggered_by or '',
+            'status':                 h.status,
+            'creados':                h.productos_creados,
+            'actualizados':           h.productos_actualizados,
+            'desactivados':           h.productos_desactivados,
+            'errores_count':          len(h.errores or []),
+            'error_resumen':          h.error_resumen or '',
+        } for h in history]
+
+        productos_total  = s.query(Product).count()
+        productos_activos = s.query(Product).filter(Product.activo == True).count()  # noqa: E712
+        margen_global    = get_setting(s, 'margen_global_default', 35.0)
+        store_name       = get_setting(s, 'store_name', 'Biobella')
+        mp_token         = get_setting(s, 'mp_access_token', None)
+        mp_public_key    = get_setting(s, 'mp_public_key', None)
+        if mp_token:
+            mp_token_kind = 'sandbox' if mp_token.startswith('TEST-') else 'production'
+            mp_token_preview = mp_token[:14] + '…'
+        else:
+            mp_token_kind = None
+            mp_token_preview = ''
+
+        last_sync_data = None
+        if last_sync:
+            last_sync_data = {
+                'id':            last_sync.id,
+                'started_at':    last_sync.started_at.strftime('%Y-%m-%d %H:%M:%S') if last_sync.started_at else '',
+                'finished_at':   last_sync.finished_at.strftime('%H:%M:%S') if last_sync.finished_at else '',
+                'status':        last_sync.status,
+                'trigger':       last_sync.trigger,
+                'creados':       last_sync.productos_creados,
+                'actualizados':  last_sync.productos_actualizados,
+                'desactivados': last_sync.productos_desactivados,
+                'errores_count': len(last_sync.errores or []),
+                'error_resumen': last_sync.error_resumen or '',
+            }
+
+    return render_template(
+        'integraciones.html',
+        user=user,
+        accounts=get_accounts(),
+        ml_status=ml_status,
+        ml_account_alias=BIOBELLA_ML_ACCOUNT,
+        last_sync=last_sync_data,
+        next_sync=next_sync.strftime('%Y-%m-%d %H:%M') if next_sync else None,
+        history=history_data,
+        productos_total=productos_total,
+        productos_activos=productos_activos,
+        margen_global=margen_global,
+        store_name=store_name,
+        mp_token_kind=mp_token_kind,
+        mp_token_preview=mp_token_preview,
+        mp_public_key=mp_public_key or '',
+    )
+
+
+@app.route('/api/integraciones/sincronizar', methods=['POST'])
+def api_integraciones_sincronizar():
+    """Dispara una sincronización manual del catálogo Biobella. Corre inline (no async)."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    from modules.tienda_sync import sync_catalogo
+    try:
+        result = sync_catalogo(trigger='manual', triggered_by=user.get('username'))
+        _audit('BIOBELLA_SYNC_MANUAL', resumen=result.get('status'), creados=result.get('creados'))
+        return jsonify({'ok': True, **result})
+    except Exception as e:
+        app.logger.exception('Sync manual falló')
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/integraciones/margen', methods=['POST'])
+def api_integraciones_margen():
+    """Actualiza el margen global por defecto (porcentaje)."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    body = request.get_json() or {}
+    try:
+        margen = float(body.get('margen'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'margen inválido'}), 400
+    if not (0 <= margen <= 500):
+        return jsonify({'ok': False, 'error': 'margen fuera de rango (0–500)'}), 400
+
+    from web.db import session_scope as _ss
+    from modules.tienda_sync import set_setting
+    with _ss() as s:
+        set_setting(s, 'margen_global_default', margen)
+    _audit('BIOBELLA_MARGEN_GLOBAL', valor=margen)
+    return jsonify({'ok': True, 'margen': margen})
+
+
+@app.route('/api/integraciones/mp-credentials', methods=['POST'])
+def api_integraciones_mp_credentials():
+    """Guarda credenciales MercadoPago: access_token y opcionalmente public_key."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    body = request.get_json() or {}
+    access_token = (body.get('mp_access_token') or '').strip()
+    public_key   = (body.get('mp_public_key') or '').strip() or None
+
+    if access_token and not (access_token.startswith('TEST-') or access_token.startswith('APP_USR-')):
+        return jsonify({'ok': False, 'error': 'access_token debe empezar con TEST- o APP_USR-'}), 400
+
+    from web.db import session_scope as _ss
+    from modules.tienda_sync import set_setting
+    with _ss() as s:
+        set_setting(s, 'mp_access_token', access_token or None)
+        set_setting(s, 'mp_public_key',   public_key)
+    _audit('BIOBELLA_MP_CREDENCIALES', set_token=bool(access_token), set_pubkey=bool(public_key))
+    return jsonify({'ok': True})
+
+
+@app.route('/api/integraciones/store-name', methods=['POST'])
+def api_integraciones_store_name():
+    """Actualiza el nombre público de la tienda."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    body = request.get_json() or {}
+    nombre = (body.get('store_name') or '').strip()
+    if not nombre or len(nombre) > 64:
+        return jsonify({'ok': False, 'error': 'nombre inválido (1–64 chars)'}), 400
+
+    from web.db import session_scope as _ss
+    from modules.tienda_sync import set_setting
+    with _ss() as s:
+        set_setting(s, 'store_name', nombre)
+    _audit('BIOBELLA_STORE_NAME', valor=nombre)
+    return jsonify({'ok': True, 'store_name': nombre})
+
+
+# ── Biobella · Admin productos (con lock por campo) ───────────────────────────
+
+BIOBELLA_LOCKABLE_FIELDS = ('titulo', 'descripcion', 'fotos', 'variantes', 'stock', 'precio')
+
+
+@app.route('/admin/productos')
+def admin_productos():
+    """Listado paginado de productos con buscador y filtro activo/inactivo."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product, ProductLock
+    from modules.tienda_sync import get_setting
+
+    q       = (request.args.get('q') or '').strip()
+    estado  = request.args.get('estado', 'todos')  # todos|activos|inactivos
+    page    = max(1, int(request.args.get('page', 1)))
+    per_page = 30
+
+    with _ss() as s:
+        margen_default = float(get_setting(s, 'margen_global_default', 35.0))
+        store_name     = get_setting(s, 'store_name', 'Biobella')
+
+        query = s.query(Product)
+        if estado == 'activos':
+            query = query.filter(Product.activo == True)  # noqa: E712
+        elif estado == 'inactivos':
+            query = query.filter(Product.activo == False)  # noqa: E712
+        if q:
+            like = f'%{q}%'
+            query = query.filter((Product.titulo.ilike(like)) | (Product.mla_id.ilike(like)))
+
+        total = query.count()
+        productos_raw = (query.order_by(Product.id.desc())
+                              .offset((page - 1) * per_page)
+                              .limit(per_page)
+                              .all())
+
+        # Locks por producto (1 sola query)
+        ids = [p.id for p in productos_raw]
+        locks_map: dict[int, set[str]] = {}
+        if ids:
+            for pid, field in s.query(ProductLock.product_id, ProductLock.field)\
+                               .filter(ProductLock.product_id.in_(ids)).all():
+                locks_map.setdefault(pid, set()).add(field)
+
+        productos = []
+        for p in productos_raw:
+            margen = float(p.margen_override) if p.margen_override is not None else margen_default
+            precio_tienda = (float(p.precio_tienda_override)
+                             if p.precio_tienda_override is not None
+                             else round(float(p.precio_ml or 0) * (1 + margen / 100)))
+            productos.append({
+                'id':           p.id,
+                'mla_id':       p.mla_id,
+                'titulo':       p.titulo,
+                'slug':         p.slug or p.mla_id,
+                'foto':         (p.fotos or [None])[0],
+                'stock':        p.stock,
+                'precio_ml':    float(p.precio_ml or 0),
+                'margen':       margen,
+                'margen_es_override': p.margen_override is not None,
+                'precio_tienda': precio_tienda,
+                'precio_es_override': p.precio_tienda_override is not None,
+                'activo':       p.activo,
+                'last_sync_at': p.last_sync_at.strftime('%Y-%m-%d %H:%M') if p.last_sync_at else '',
+                'locks':        sorted(locks_map.get(p.id, set())),
+            })
+
+    return render_template(
+        'admin_productos.html',
+        user=user,
+        accounts=get_accounts(),
+        productos=productos,
+        q=q, estado=estado, page=page, per_page=per_page, total=total,
+        margen_default=margen_default,
+        store_name=store_name,
+    )
+
+
+@app.route('/admin/productos/<int:product_id>')
+def admin_producto_editar(product_id):
+    """Editor de un producto individual con toggle de lock por campo."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product, ProductLock
+    from modules.tienda_sync import get_setting
+
+    with _ss() as s:
+        p = s.get(Product, product_id)
+        if p is None:
+            return redirect('/admin/productos')
+        locks = {row[0] for row in s.query(ProductLock.field)
+                                    .filter(ProductLock.product_id == product_id).all()}
+
+        margen_default = float(get_setting(s, 'margen_global_default', 35.0))
+        margen_efectivo = float(p.margen_override) if p.margen_override is not None else margen_default
+        precio_tienda_calc = round(float(p.precio_ml or 0) * (1 + margen_efectivo / 100))
+        precio_tienda_efectivo = (float(p.precio_tienda_override)
+                                  if p.precio_tienda_override is not None
+                                  else precio_tienda_calc)
+
+        producto = {
+            'id':                     p.id,
+            'mla_id':                 p.mla_id,
+            'titulo':                 p.titulo,
+            'descripcion':            p.descripcion,
+            'fotos':                  p.fotos or [],
+            'variantes':              p.variantes or [],
+            'stock':                  p.stock,
+            'precio_ml':              float(p.precio_ml or 0),
+            'margen_override':        float(p.margen_override) if p.margen_override is not None else None,
+            'precio_tienda_override': float(p.precio_tienda_override) if p.precio_tienda_override is not None else None,
+            'slug':                   p.slug or '',
+            'meta_title':             p.meta_title or '',
+            'meta_description':       p.meta_description or '',
+            'activo':                 p.activo,
+            'created_at':             p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '',
+            'last_sync_at':           p.last_sync_at.strftime('%Y-%m-%d %H:%M') if p.last_sync_at else '',
+        }
+
+    return render_template(
+        'admin_producto_editar.html',
+        user=user,
+        accounts=get_accounts(),
+        p=producto,
+        locks=locks,
+        margen_default=margen_default,
+        margen_efectivo=margen_efectivo,
+        precio_tienda_calc=precio_tienda_calc,
+        precio_tienda_efectivo=precio_tienda_efectivo,
+        store_name=_biobella_store_name() if '_biobella_store_name' in globals() else 'Biobella',
+    )
+
+
+@app.route('/api/admin/productos/<int:product_id>', methods=['POST'])
+def api_admin_producto_guardar(product_id):
+    """Persiste cambios manuales del admin sobre un producto."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    body = request.get_json() or {}
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+    with _ss() as s:
+        p = s.get(Product, product_id)
+        if p is None:
+            return jsonify({'ok': False, 'error': 'no existe'}), 404
+
+        # Campos texto/lista — solo si vienen en el body
+        if 'titulo' in body:
+            p.titulo = (body['titulo'] or '').strip()[:512]
+        if 'descripcion' in body:
+            p.descripcion = body['descripcion'] or ''
+        if 'fotos' in body and isinstance(body['fotos'], list):
+            p.fotos = [str(f).strip() for f in body['fotos'] if str(f).strip()]
+        if 'stock' in body:
+            try:
+                p.stock = max(0, int(body['stock']))
+            except (TypeError, ValueError):
+                return jsonify({'ok': False, 'error': 'stock inválido'}), 400
+        if 'slug' in body:
+            p.slug = (body['slug'] or '').strip()[:255] or None
+        if 'meta_title' in body:
+            p.meta_title = (body['meta_title'] or '').strip()[:255] or None
+        if 'meta_description' in body:
+            p.meta_description = body['meta_description'] or None
+        if 'activo' in body:
+            p.activo = bool(body['activo'])
+
+        # Margen y precio override (null = limpiar override → vuelve a calcular con global)
+        if 'margen_override' in body:
+            v = body['margen_override']
+            if v is None or v == '':
+                p.margen_override = None
+            else:
+                try:
+                    fv = float(v)
+                    if not (0 <= fv <= 500):
+                        return jsonify({'ok': False, 'error': 'margen fuera de rango'}), 400
+                    p.margen_override = fv
+                except (TypeError, ValueError):
+                    return jsonify({'ok': False, 'error': 'margen inválido'}), 400
+        if 'precio_tienda_override' in body:
+            v = body['precio_tienda_override']
+            if v is None or v == '':
+                p.precio_tienda_override = None
+            else:
+                try:
+                    fv = float(v)
+                    if fv < 0:
+                        return jsonify({'ok': False, 'error': 'precio negativo'}), 400
+                    p.precio_tienda_override = fv
+                except (TypeError, ValueError):
+                    return jsonify({'ok': False, 'error': 'precio inválido'}), 400
+
+    _audit('BIOBELLA_PRODUCTO_EDIT', product_id=product_id,
+           fields=list(body.keys()))
+    return jsonify({'ok': True})
+
+
+@app.route('/api/admin/productos/<int:product_id>/lock', methods=['POST'])
+def api_admin_producto_lock(product_id):
+    """Toggle lock por campo. body={field, locked: bool}"""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    body = request.get_json() or {}
+    field = body.get('field')
+    locked = bool(body.get('locked'))
+    if field not in BIOBELLA_LOCKABLE_FIELDS:
+        return jsonify({'ok': False, 'error': f'field inválido: {field}'}), 400
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product, ProductLock
+    with _ss() as s:
+        if s.get(Product, product_id) is None:
+            return jsonify({'ok': False, 'error': 'producto no existe'}), 404
+        existing = s.query(ProductLock).filter(
+            ProductLock.product_id == product_id,
+            ProductLock.field == field,
+        ).one_or_none()
+        if locked and existing is None:
+            s.add(ProductLock(product_id=product_id, field=field,
+                              locked_by=user.get('username')))
+        elif not locked and existing is not None:
+            s.delete(existing)
+
+    _audit('BIOBELLA_PRODUCTO_LOCK', product_id=product_id, field=field, locked=locked)
+    return jsonify({'ok': True, 'field': field, 'locked': locked})
+
 
 def build_calendario():
     from modules.calendario_comercial import _build_calendario
@@ -14389,6 +14827,20 @@ def _job_veredictos_weekly():
           f'Costo mensual acumulado: ${final:.2f} / ${_vo.HARD_CAP_USD_MENSUAL}')
 
 
+def _job_biobella_catalog_sync():
+    """Cron 6h: sincroniza el catálogo Biobella desde la cuenta ML 'novara'."""
+    try:
+        from modules.tienda_sync import sync_catalogo
+        result = sync_catalogo(trigger='auto', triggered_by=None)
+        print(f"[biobella sync] {result.get('status')} — "
+              f"creados={result.get('creados')} "
+              f"actualizados={result.get('actualizados')} "
+              f"desactivados={result.get('desactivados')} "
+              f"errores={result.get('total_errores')}")
+    except Exception as e:
+        print(f'[biobella sync] ERROR fatal: {e}')
+
+
 def _start_scheduler():
     """Inicia APScheduler con los 5 jobs del Sprint 2 vía JobManager."""
     try:
@@ -14490,10 +14942,19 @@ def _start_scheduler():
                          'Solo afecta cuentas en soft-delete vencido.'),
         )
 
+        # Job 10 — Sync catálogo Biobella desde cuenta ML 'novara' cada 6h
+        jm.register_job(
+            'biobella_catalog_sync', _job_biobella_catalog_sync,
+            IntervalTrigger(hours=6, timezone='America/Argentina/Buenos_Aires'),
+            name='Sync catálogo Biobella',
+            description=('Sincroniza el catálogo de la tienda Biobella desde la cuenta '
+                         'ML "novara" cada 6 horas. Respeta locks por campo (admin override).'),
+        )
+
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 9 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 10 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')
@@ -16070,6 +16531,14 @@ try:
 except Exception:
     pass
 
+# Inicializa tablas relacionales de la tienda Biobella (Postgres en Render, SQLite local)
+try:
+    from web.db import init_db as _init_tienda_db
+    _init_tienda_db()
+    print('[biobella] tablas relacionales OK')
+except Exception as _e:
+    print(f'[biobella] ERROR inicializando tablas relacionales: {_e}')
+
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
 
@@ -16103,6 +16572,660 @@ def admin_restart():
         os.execv(sys.executable, [sys.executable] + sys.argv)
     threading.Thread(target=_do_restart, daemon=True).start()
     return jsonify({'ok': True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Biobella — Storefront público
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _biobella_store_name() -> str:
+    """Lee el nombre de la tienda desde app_settings (con fallback 'Biobella')."""
+    try:
+        from web.db import session_scope as _ss
+        from modules.tienda_sync import get_setting
+        with _ss() as s:
+            return get_setting(s, 'store_name', 'Biobella')
+    except Exception:
+        return 'Biobella'
+
+
+def _biobella_margen_default() -> float:
+    try:
+        from web.db import session_scope as _ss
+        from modules.tienda_sync import get_setting
+        with _ss() as s:
+            return float(get_setting(s, 'margen_global_default', 35.0))
+    except Exception:
+        return 35.0
+
+
+def _producto_precio_tienda(product, margen_default: float) -> float:
+    """Calcula el precio_tienda final aplicando override > margen específico > margen global."""
+    from web.models_tienda import calc_precio_tienda
+    margen = float(product.margen_override) if product.margen_override is not None else margen_default
+    return calc_precio_tienda(product.precio_ml, margen, product.precio_tienda_override) or 0.0
+
+
+def _cart_count() -> int:
+    cart = session.get('biobella_cart', {})
+    return sum(cart.values()) if cart else 0
+
+
+@app.route('/tienda')
+def tienda_home():
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+
+    store_name = _biobella_store_name()
+    margen_default = _biobella_margen_default()
+
+    with _ss() as s:
+        productos_raw = s.query(Product).filter(Product.activo == True).order_by(Product.id).all()  # noqa: E712
+        productos = []
+        for p in productos_raw:
+            productos.append({
+                'id':            p.id,
+                'mla_id':        p.mla_id,
+                'titulo':        p.titulo,
+                'slug':          p.slug or p.mla_id,
+                'fotos':         p.fotos or [],
+                'stock':         p.stock,
+                'precio_tienda': _producto_precio_tienda(p, margen_default),
+                'is_new':        False,
+            })
+
+    return render_template('tienda_home.html',
+                           store_name=store_name,
+                           productos=productos,
+                           cart_count=_cart_count())
+
+
+@app.route('/tienda/p/<identifier>')
+def tienda_producto(identifier):
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product, Review
+
+    store_name = _biobella_store_name()
+    margen_default = _biobella_margen_default()
+
+    with _ss() as s:
+        prod = s.query(Product).filter(
+            (Product.slug == identifier) | (Product.mla_id == identifier)
+        ).one_or_none()
+        if prod is None or not prod.activo:
+            return render_template('tienda_home.html',
+                                   store_name=store_name,
+                                   productos=[],
+                                   cart_count=_cart_count()), 404
+
+        p = {
+            'id':            prod.id,
+            'mla_id':        prod.mla_id,
+            'titulo':        prod.titulo,
+            'descripcion':   prod.descripcion,
+            'fotos':         prod.fotos or [],
+            'stock':         prod.stock,
+            'precio_tienda': _producto_precio_tienda(prod, margen_default),
+        }
+
+        # Reseñas aprobadas + estadísticas
+        revs = (s.query(Review).filter(Review.product_id == prod.id, Review.aprobado == True)  # noqa: E712
+                 .order_by(Review.created_at.desc()).limit(20).all())
+        reviews = [{
+            'nombre':     r.nombre,
+            'rating':     r.rating,
+            'titulo':     r.titulo,
+            'comentario': r.comentario,
+            'fecha':      r.created_at.strftime('%d/%m/%Y') if r.created_at else '',
+        } for r in revs]
+        rating_avg = round(sum(r.rating for r in revs) / len(revs), 1) if revs else None
+        rating_count = len(revs)
+
+    return render_template('tienda_producto.html',
+                           store_name=store_name,
+                           p=p,
+                           reviews=reviews,
+                           rating_avg=rating_avg,
+                           rating_count=rating_count,
+                           cart_count=_cart_count())
+
+
+@app.route('/api/reviews/<int:product_id>', methods=['POST'])
+def api_reviews_submit(product_id):
+    """Cliente envía una reseña — queda pendiente de moderación."""
+    body = request.get_json() or {}
+    nombre     = (body.get('nombre') or '').strip()[:80]
+    email      = (body.get('email') or '').strip()[:160] or None
+    titulo     = (body.get('titulo') or '').strip()[:160] or None
+    comentario = (body.get('comentario') or '').strip()
+    try:
+        rating = int(body.get('rating', 5))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'rating inválido'}), 400
+
+    if not nombre or len(nombre) < 2:
+        return jsonify({'ok': False, 'error': 'nombre requerido'}), 400
+    if not comentario or len(comentario) < 10:
+        return jsonify({'ok': False, 'error': 'comentario muy corto (mínimo 10 caracteres)'}), 400
+    if len(comentario) > 2000:
+        return jsonify({'ok': False, 'error': 'comentario muy largo (máx 2000)'}), 400
+    if not (1 <= rating <= 5):
+        return jsonify({'ok': False, 'error': 'rating fuera de rango 1–5'}), 400
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product, Review
+    with _ss() as s:
+        prod = s.get(Product, product_id)
+        if prod is None or not prod.activo:
+            return jsonify({'ok': False, 'error': 'producto no existe'}), 404
+        # Rate limit muy simple: max 3 reviews por IP en últimas 24h
+        from datetime import timedelta as _td
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr or '')[:64]
+        since = datetime.now() - _td(hours=24)
+        recent = s.query(Review).filter(Review.ip_addr == ip, Review.created_at >= since).count()
+        if recent >= 3:
+            return jsonify({'ok': False, 'error': 'demasiadas reseñas recientes desde tu conexión'}), 429
+        s.add(Review(
+            product_id=product_id,
+            nombre=nombre, email=email,
+            rating=rating, titulo=titulo, comentario=comentario,
+            aprobado=False, ip_addr=ip,
+        ))
+    return jsonify({'ok': True, 'message': 'Tu reseña fue enviada y aparecerá cuando el equipo la apruebe.'})
+
+
+@app.route('/admin/resenas')
+def admin_resenas():
+    """Moderación de reseñas: pendientes + aprobadas + rechazadas."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Review, Product
+
+    filtro = request.args.get('filtro', 'pendientes')  # pendientes|aprobadas|todas
+
+    with _ss() as s:
+        q = s.query(Review, Product).join(Product, Review.product_id == Product.id)
+        if filtro == 'pendientes':
+            q = q.filter(Review.aprobado == False)  # noqa: E712
+        elif filtro == 'aprobadas':
+            q = q.filter(Review.aprobado == True)  # noqa: E712
+        q = q.order_by(Review.created_at.desc()).limit(100)
+
+        reviews = []
+        for r, prod in q.all():
+            reviews.append({
+                'id':         r.id,
+                'product_id': prod.id,
+                'mla_id':     prod.mla_id,
+                'producto':   prod.titulo,
+                'slug':       prod.slug or prod.mla_id,
+                'nombre':     r.nombre,
+                'email':      r.email or '',
+                'rating':     r.rating,
+                'titulo':     r.titulo or '',
+                'comentario': r.comentario,
+                'aprobado':   r.aprobado,
+                'created_at': r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '',
+                'moderated_at': r.moderated_at.strftime('%Y-%m-%d %H:%M') if r.moderated_at else '',
+                'moderated_by': r.moderated_by or '',
+            })
+
+        pending_count = s.query(Review).filter(Review.aprobado == False).count()  # noqa: E712
+        approved_count = s.query(Review).filter(Review.aprobado == True).count()  # noqa: E712
+
+    return render_template('admin_resenas.html',
+                           user=user,
+                           accounts=get_accounts(),
+                           reviews=reviews,
+                           filtro=filtro,
+                           pending_count=pending_count,
+                           approved_count=approved_count)
+
+
+@app.route('/api/admin/resenas/<int:review_id>/aprobar', methods=['POST'])
+def api_admin_resenas_aprobar(review_id):
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+    from web.db import session_scope as _ss
+    from web.models_tienda import Review
+    with _ss() as s:
+        r = s.get(Review, review_id)
+        if r is None:
+            return jsonify({'ok': False, 'error': 'no existe'}), 404
+        r.aprobado = True
+        r.moderated_at = datetime.now()
+        r.moderated_by = user.get('username')
+    _audit('BIOBELLA_RESENA_APROBAR', review_id=review_id)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/admin/resenas/<int:review_id>/eliminar', methods=['POST'])
+def api_admin_resenas_eliminar(review_id):
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+    from web.db import session_scope as _ss
+    from web.models_tienda import Review
+    with _ss() as s:
+        r = s.get(Review, review_id)
+        if r is None:
+            return jsonify({'ok': False, 'error': 'no existe'}), 404
+        s.delete(r)
+    _audit('BIOBELLA_RESENA_ELIMINAR', review_id=review_id)
+    return jsonify({'ok': True})
+
+
+@app.route('/tienda/carrito')
+def tienda_carrito():
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+
+    store_name = _biobella_store_name()
+    margen_default = _biobella_margen_default()
+    cart = session.get('biobella_cart', {})  # {product_id_str: qty}
+
+    items = []
+    subtotal = 0.0
+    if cart:
+        ids = [int(k) for k in cart.keys()]
+        with _ss() as s:
+            products = s.query(Product).filter(Product.id.in_(ids)).all()
+            for prod in products:
+                qty = int(cart.get(str(prod.id), 0))
+                if qty <= 0:
+                    continue
+                precio = _producto_precio_tienda(prod, margen_default)
+                items.append({
+                    'product_id': prod.id,
+                    'mla_id':     prod.mla_id,
+                    'slug':       prod.slug or prod.mla_id,
+                    'titulo':     prod.titulo,
+                    'foto':       (prod.fotos or [None])[0],
+                    'precio_unit': precio,
+                    'qty':        qty,
+                    'subtotal':   precio * qty,
+                })
+                subtotal += precio * qty
+
+    return render_template('tienda_carrito.html',
+                           store_name=store_name,
+                           items=items,
+                           subtotal=subtotal,
+                           cart_count=_cart_count())
+
+
+@app.route('/api/carrito/add', methods=['POST'])
+def api_carrito_add():
+    body = request.get_json() or {}
+    try:
+        pid = int(body.get('product_id'))
+        qty = int(body.get('qty', 1))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'product_id/qty inválido'}), 400
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+    with _ss() as s:
+        prod = s.get(Product, pid)
+        if prod is None or not prod.activo:
+            return jsonify({'ok': False, 'error': 'producto no disponible'}), 404
+        max_qty = max(prod.stock or 0, 0)
+
+    cart = session.get('biobella_cart', {})
+    current = int(cart.get(str(pid), 0))
+    new_qty = max(1, min(current + qty, max_qty if max_qty > 0 else current + qty))
+    cart[str(pid)] = new_qty
+    session['biobella_cart'] = cart
+    return jsonify({'ok': True, 'cart_count': sum(cart.values())})
+
+
+@app.route('/api/carrito/update', methods=['POST'])
+def api_carrito_update():
+    body = request.get_json() or {}
+    try:
+        pid = int(body.get('product_id'))
+        delta = int(body.get('delta', 0))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'parámetros inválidos'}), 400
+
+    cart = session.get('biobella_cart', {})
+    current = int(cart.get(str(pid), 0))
+    new_qty = current + delta
+    if new_qty <= 0:
+        cart.pop(str(pid), None)
+    else:
+        cart[str(pid)] = new_qty
+    session['biobella_cart'] = cart
+    return jsonify({'ok': True, 'cart_count': sum(cart.values())})
+
+
+@app.route('/api/carrito/remove', methods=['POST'])
+def api_carrito_remove():
+    body = request.get_json() or {}
+    pid = body.get('product_id')
+    if pid is None:
+        return jsonify({'ok': False, 'error': 'product_id requerido'}), 400
+    cart = session.get('biobella_cart', {})
+    cart.pop(str(pid), None)
+    session['biobella_cart'] = cart
+    return jsonify({'ok': True, 'cart_count': sum(cart.values())})
+
+
+# ── Biobella · Checkout MercadoPago ───────────────────────────────────────────
+
+def _biobella_base_url() -> str:
+    """URL pública del sitio para back_urls + webhook MP."""
+    # Render: usar APP_URL si está seteada; si no, derivar de request
+    base = os.environ.get('APP_URL', '').strip().rstrip('/')
+    if base:
+        return base
+    return request.url_root.rstrip('/')
+
+
+def _carrito_items_with_products():
+    """Devuelve [(product, qty), ...] para el carrito actual."""
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+    cart = session.get('biobella_cart', {})
+    if not cart:
+        return []
+    ids = [int(k) for k in cart.keys()]
+    out = []
+    with _ss() as s:
+        for prod in s.query(Product).filter(Product.id.in_(ids)).all():
+            qty = int(cart.get(str(prod.id), 0))
+            if qty > 0 and prod.activo:
+                out.append((prod, qty))
+    return out
+
+
+@app.route('/tienda/checkout')
+def tienda_checkout():
+    """Form de checkout: datos cliente + dirección + resumen."""
+    store_name = _biobella_store_name()
+    margen_default = _biobella_margen_default()
+
+    items_raw = _carrito_items_with_products()
+    if not items_raw:
+        return redirect('/tienda/carrito')
+
+    items = []
+    subtotal = 0.0
+    for prod, qty in items_raw:
+        precio = _producto_precio_tienda(prod, margen_default)
+        items.append({
+            'product_id': prod.id,
+            'titulo':     prod.titulo,
+            'foto':       (prod.fotos or [None])[0],
+            'precio_unit': precio,
+            'qty':        qty,
+            'subtotal':   precio * qty,
+        })
+        subtotal += precio * qty
+
+    envio = 0.0 if subtotal >= 25000 else 0.0  # placeholder — no calculamos envío real todavía
+    total = subtotal + envio
+
+    from web.db import session_scope as _ss
+    from modules.checkout_mp import is_configured as _mp_configured
+    mp_ready = _mp_configured()
+
+    return render_template('tienda_checkout.html',
+                           store_name=store_name,
+                           items=items,
+                           subtotal=subtotal,
+                           envio=envio,
+                           total=total,
+                           mp_ready=mp_ready,
+                           cart_count=_cart_count())
+
+
+@app.route('/api/checkout/crear-preferencia', methods=['POST'])
+def api_checkout_crear_preferencia():
+    """Crea Order + preference MP. Devuelve init_point para redirect."""
+    body = request.get_json() or {}
+
+    # Validación básica
+    nombre = (body.get('cliente_nombre') or '').strip()
+    email  = (body.get('cliente_email') or '').strip()
+    if not nombre or len(nombre) < 2:
+        return jsonify({'ok': False, 'error': 'Nombre requerido'}), 400
+    if not email or '@' not in email:
+        return jsonify({'ok': False, 'error': 'Email inválido'}), 400
+
+    items_raw = _carrito_items_with_products()
+    if not items_raw:
+        return jsonify({'ok': False, 'error': 'Carrito vacío'}), 400
+
+    margen_default = _biobella_margen_default()
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Order, OrderItem
+    from modules.checkout_mp import crear_preferencia, is_configured as _mp_configured
+
+    if not _mp_configured():
+        return jsonify({'ok': False, 'error': 'MercadoPago no está configurado (falta access_token en /admin/integraciones)'}), 503
+
+    subtotal = 0.0
+    snapshot = []  # data para crear OrderItems después de armar la Order
+    for prod, qty in items_raw:
+        precio = _producto_precio_tienda(prod, margen_default)
+        snapshot.append({
+            'product_id': prod.id,
+            'mla_id':     prod.mla_id,
+            'titulo':     prod.titulo,
+            'foto':       (prod.fotos or [None])[0],
+            'precio':     precio,
+            'qty':        qty,
+        })
+        subtotal += precio * qty
+    envio = 0.0  # placeholder
+    total = subtotal + envio
+
+    with _ss() as s:
+        order = Order(
+            status='pending',
+            cliente_nombre=nombre[:120],
+            cliente_email=email[:160],
+            cliente_telefono=(body.get('cliente_telefono') or '')[:40] or None,
+            direccion_calle=(body.get('direccion_calle') or '')[:200] or None,
+            direccion_numero=(body.get('direccion_numero') or '')[:20] or None,
+            direccion_piso=(body.get('direccion_piso') or '')[:40] or None,
+            direccion_localidad=(body.get('direccion_localidad') or '')[:120] or None,
+            direccion_provincia=(body.get('direccion_provincia') or '')[:60] or None,
+            direccion_cp=(body.get('direccion_cp') or '')[:20] or None,
+            notas=(body.get('notas') or '') or None,
+            subtotal=subtotal,
+            envio=envio,
+            total=total,
+        )
+        s.add(order)
+        s.flush()
+        for it in snapshot:
+            s.add(OrderItem(
+                order_id=order.id,
+                product_id=it['product_id'],
+                mla_id=it['mla_id'],
+                titulo=it['titulo'][:512],
+                foto=it['foto'],
+                precio_unit=it['precio'],
+                cantidad=it['qty'],
+                subtotal=it['precio'] * it['qty'],
+            ))
+        order_id = order.id
+
+    # Crear preference (otra transacción interna)
+    result = crear_preferencia(order_id, _biobella_base_url())
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error') or 'No se pudo crear preference'}), 502
+
+    _audit('BIOBELLA_CHECKOUT_INICIADO', order_id=order_id, total=total)
+    return jsonify({'ok': True, 'init_point': result['init_point'], 'order_id': order_id})
+
+
+@app.route('/tienda/checkout/<resultado>')
+def tienda_checkout_resultado(resultado):
+    """success | failure | pending — landing post-MP."""
+    if resultado not in ('success', 'failure', 'pending'):
+        return redirect('/tienda')
+
+    order_id = request.args.get('order_id') or request.args.get('external_reference')
+    payment_id = request.args.get('payment_id')
+    status_mp = request.args.get('status')
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Order
+
+    order = None
+    if order_id:
+        try:
+            oid = int(order_id)
+            with _ss() as s:
+                o = s.get(Order, oid)
+                if o:
+                    order = {
+                        'id':       o.id,
+                        'total':    float(o.total),
+                        'status':   o.status,
+                        'cliente_nombre': o.cliente_nombre,
+                        'cliente_email':  o.cliente_email,
+                        'items_count':   len(o.items),
+                    }
+                    # Si el resultado es success y el webhook todavía no llegó, marcamos como paid de forma optimista
+                    # (el webhook después confirmará con autoridad)
+                    if resultado == 'success' and o.status == 'pending' and status_mp == 'approved':
+                        o.mp_payment_id = payment_id
+                        o.mp_status = status_mp
+                        o.status = 'paid'
+                        o.paid_at = datetime.now()
+                        order['status'] = 'paid'
+        except (TypeError, ValueError):
+            pass
+
+    # Si pago aprobado, vaciar carrito
+    if resultado == 'success' and order and order.get('status') == 'paid':
+        session.pop('biobella_cart', None)
+
+    return render_template('tienda_checkout_resultado.html',
+                           store_name=_biobella_store_name(),
+                           resultado=resultado,
+                           order=order,
+                           cart_count=_cart_count())
+
+
+@app.route('/api/mp/webhook', methods=['POST', 'GET'])
+def api_mp_webhook():
+    """Endpoint IPN de MercadoPago. Acepta POST con JSON o GET con query."""
+    from modules.checkout_mp import procesar_webhook
+    payload = request.get_json(silent=True) or {}
+    # Si vienen como query (notification IPN clásico), mergeamos
+    payload = {**payload, **(request.args.to_dict() if request.args else {})}
+    if 'data.id' in payload and 'data' not in payload:
+        payload['data'] = {'id': payload.pop('data.id')}
+    try:
+        result = procesar_webhook(payload)
+        return jsonify(result), (200 if result.get('ok') else 500)
+    except Exception as e:
+        app.logger.exception('Webhook MP falló')
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+# ── Biobella · Admin órdenes ──────────────────────────────────────────────────
+
+@app.route('/admin/ordenes')
+def admin_ordenes():
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Order
+
+    estado = request.args.get('estado', 'todas')
+    with _ss() as s:
+        q = s.query(Order)
+        if estado in ('pending', 'paid', 'failed', 'cancelled'):
+            q = q.filter(Order.status == estado)
+        orders_raw = q.order_by(Order.created_at.desc()).limit(200).all()
+        ordenes = []
+        for o in orders_raw:
+            ordenes.append({
+                'id':           o.id,
+                'created_at':   o.created_at.strftime('%Y-%m-%d %H:%M') if o.created_at else '',
+                'paid_at':      o.paid_at.strftime('%Y-%m-%d %H:%M') if o.paid_at else '',
+                'status':       o.status,
+                'mp_status':    o.mp_status or '',
+                'mp_payment_id': o.mp_payment_id or '',
+                'cliente_nombre': o.cliente_nombre,
+                'cliente_email':  o.cliente_email,
+                'total':        float(o.total),
+                'items_count':  len(o.items),
+            })
+
+        # Métricas top
+        total_pagadas = s.query(Order).filter(Order.status == 'paid').count()
+        total_pending = s.query(Order).filter(Order.status == 'pending').count()
+
+    return render_template('admin_ordenes.html',
+                           user=user,
+                           accounts=get_accounts(),
+                           ordenes=ordenes,
+                           estado=estado,
+                           total_pagadas=total_pagadas,
+                           total_pending=total_pending)
+
+
+@app.route('/admin/ordenes/<int:order_id>')
+def admin_orden_detalle(order_id):
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return redirect('/')
+    from web.db import session_scope as _ss
+    from web.models_tienda import Order
+    with _ss() as s:
+        o = s.get(Order, order_id)
+        if o is None:
+            return redirect('/admin/ordenes')
+        data = {
+            'id':           o.id,
+            'status':       o.status,
+            'mp_status':    o.mp_status or '',
+            'mp_payment_id': o.mp_payment_id or '',
+            'mp_preference_id': o.mp_preference_id or '',
+            'created_at':   o.created_at.strftime('%Y-%m-%d %H:%M:%S') if o.created_at else '',
+            'paid_at':      o.paid_at.strftime('%Y-%m-%d %H:%M:%S') if o.paid_at else '',
+            'cliente_nombre': o.cliente_nombre,
+            'cliente_email':  o.cliente_email,
+            'cliente_telefono': o.cliente_telefono or '',
+            'direccion': {
+                'calle':     o.direccion_calle or '',
+                'numero':    o.direccion_numero or '',
+                'piso':      o.direccion_piso or '',
+                'localidad': o.direccion_localidad or '',
+                'provincia': o.direccion_provincia or '',
+                'cp':        o.direccion_cp or '',
+            },
+            'notas':        o.notas or '',
+            'subtotal':     float(o.subtotal),
+            'envio':        float(o.envio),
+            'total':        float(o.total),
+            'items': [{
+                'titulo':      it.titulo,
+                'foto':        it.foto,
+                'mla_id':      it.mla_id,
+                'precio_unit': float(it.precio_unit),
+                'cantidad':    it.cantidad,
+                'subtotal':    float(it.subtotal),
+            } for it in o.items],
+        }
+    return render_template('admin_orden_detalle.html',
+                           user=user,
+                           accounts=get_accounts(),
+                           o=data)
 
 
 if __name__ == '__main__':

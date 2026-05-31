@@ -319,6 +319,26 @@
       <i class="bi bi-calendar-event"></i> Calendario
     </a>
 
+    {% if session.get('is_admin') %}
+    <!-- 🛍️ Biobella -->
+    <div class="sec" title="Storefront público Biobella + administración del catálogo">🛍️ Biobella</div>
+    <a href="/admin/productos" class="{{ 'active' if request.path.startswith('/admin/productos') else '' }}">
+      <i class="bi bi-grid"></i> Productos
+    </a>
+    <a href="/admin/resenas" class="{{ 'active' if request.path == '/admin/resenas' else '' }}">
+      <i class="bi bi-chat-square-quote"></i> Reseñas
+    </a>
+    <a href="/admin/ordenes" class="{{ 'active' if request.path.startswith('/admin/ordenes') else '' }}">
+      <i class="bi bi-receipt"></i> Órdenes
+    </a>
+    <a href="/admin/integraciones" class="{{ 'active' if request.path == '/admin/integraciones' else '' }}">
+      <i class="bi bi-plug-fill"></i> Integraciones
+    </a>
+    <a href="/tienda" target="_blank">
+      <i class="bi bi-box-arrow-up-right"></i> Ver tienda
+    </a>
+    {% endif %}
+
   </nav>
 
   <!-- ── ⚙️ Admin (siempre visible, no scrollea) ─────────────── -->

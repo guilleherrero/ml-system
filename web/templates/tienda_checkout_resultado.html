@@ -1,0 +1,49 @@
+{% extends "tienda_base.html" %}
+{% block title %} | Compra {{ resultado }}{% endblock %}
+
+{% block content %}
+<main class="pt-32 pb-20 max-w-container-max mx-auto px-margin-desktop">
+  <div class="max-w-xl mx-auto text-center py-12">
+
+    {% if resultado == 'success' %}
+      <span class="material-symbols-outlined" style="font-size: 80px; color: #4caf50;">check_circle</span>
+      <h1 class="font-display-lg text-display-lg-mobile mt-6 mb-3">¡Gracias por tu compra!</h1>
+      <p class="font-body-md text-on-surface-variant mb-2">
+        Tu pago fue procesado correctamente.
+      </p>
+      {% if order %}
+      <p class="font-body-md text-on-surface-variant mb-8">
+        Te enviamos los detalles a <strong>{{ order.cliente_email }}</strong>.
+        Nº de orden: <strong>#{{ order.id }}</strong> · Total: <strong>$ {{ '{:,.0f}'.format(order.total).replace(',', '.') }}</strong>
+      </p>
+      {% endif %}
+
+    {% elif resultado == 'pending' %}
+      <span class="material-symbols-outlined" style="font-size: 80px; color: #f59e0b;">hourglass_top</span>
+      <h1 class="font-display-lg text-display-lg-mobile mt-6 mb-3">Pago pendiente</h1>
+      <p class="font-body-md text-on-surface-variant mb-8">
+        Tu pago está siendo procesado. Te vamos a confirmar por email apenas se acredite.
+        {% if order %}Nº de orden: <strong>#{{ order.id }}</strong>{% endif %}
+      </p>
+
+    {% else %}
+      <span class="material-symbols-outlined" style="font-size: 80px; color: #ef4444;">error</span>
+      <h1 class="font-display-lg text-display-lg-mobile mt-6 mb-3">No pudimos completar el pago</h1>
+      <p class="font-body-md text-on-surface-variant mb-8">
+        El pago fue rechazado o cancelado. Tu carrito está intacto — podés intentar nuevamente.
+      </p>
+    {% endif %}
+
+    <div class="flex gap-3 justify-center">
+      <a href="/tienda" class="inline-block bg-primary text-on-primary px-10 py-4 rounded-lg font-label-caps text-label-caps hover:bg-on-primary-fixed-variant transition-all duration-300">
+        Volver a la tienda
+      </a>
+      {% if resultado != 'success' %}
+      <a href="/tienda/carrito" class="inline-block border border-primary text-primary px-10 py-4 rounded-lg font-label-caps text-label-caps hover:bg-primary hover:text-on-primary transition-all duration-300">
+        Ver mi carrito
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</main>
+{% endblock %}
