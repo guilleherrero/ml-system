@@ -25,10 +25,20 @@ from core.ml_client import MLClient, MLApiError
 from web.db import session_scope
 from web.models_tienda import Product, ProductLock, SyncLog, AppSetting
 
-ML_ACCOUNT_ALIAS = 'novara'
+ML_ACCOUNT_ALIAS = 'novara'   # se resuelve case-insensitive contra accounts existentes
 RATE_LIMIT_SLEEP = 0.1   # 10 req/s
 MAX_RETRIES      = 3
 BACKOFF_BASE_SEC = 1.0   # 1, 3, 9
+
+
+def _resolve_account_alias(mgr) -> str | None:
+    """Encuentra el alias real (case-insensitive) que matchea ML_ACCOUNT_ALIAS.
+    Devuelve None si no hay cuenta que coincida."""
+    target = ML_ACCOUNT_ALIAS.lower()
+    for acc in mgr.list_accounts():
+        if (acc.alias or '').lower() == target:
+            return acc.alias
+    return None
 
 
 # ── Settings helpers ──────────────────────────────────────────────────────────
@@ -183,7 +193,10 @@ def sync_catalogo(trigger: str = 'auto', triggered_by: str | None = None) -> dic
     #    cuenta no existe o el token no se puede refrescar)
     try:
         mgr = AccountManager()
-        client = mgr.get_client(ML_ACCOUNT_ALIAS)
+        real_alias = _resolve_account_alias(mgr)
+        if not real_alias:
+            raise ValueError(f"Cuenta ML '{ML_ACCOUNT_ALIAS}' no existe (busqué case-insensitive)")
+        client = mgr.get_client(real_alias)
     except Exception as e:
         # Persistimos un log de error aunque no haya conexión
         with session_scope() as s:

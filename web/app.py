@@ -768,17 +768,18 @@ BIOBELLA_ML_ACCOUNT = 'novara'
 
 
 def _biobella_ml_status() -> dict:
-    """Estado de la conexión con la cuenta ML que alimenta Biobella."""
+    """Estado de la conexión con la cuenta ML que alimenta Biobella (case-insensitive)."""
     from core.account_manager import AccountManager as _AM
     mgr = _AM()
-    acc = mgr.get_account(BIOBELLA_ML_ACCOUNT)
+    target = BIOBELLA_ML_ACCOUNT.lower()
+    acc = next((a for a in mgr.list_accounts() if (a.alias or '').lower() == target), None)
     if acc is None:
         return {'state': 'missing', 'detail': f'Cuenta "{BIOBELLA_ML_ACCOUNT}" no existe en accounts.json'}
     if not acc.refresh_token:
-        return {'state': 'disconnected', 'detail': 'OAuth no completado (sin refresh_token)'}
+        return {'state': 'disconnected', 'detail': f'Cuenta "{acc.alias}": OAuth no completado (sin refresh_token)'}
     if not acc.is_token_valid():
-        return {'state': 'expired', 'detail': 'Token vencido — se refrescará automáticamente en la próxima sync'}
-    return {'state': 'connected', 'detail': f'Conectado como user_id={acc.user_id}'}
+        return {'state': 'expired', 'detail': f'Cuenta "{acc.alias}": token vencido — se refrescará en la próxima sync'}
+    return {'state': 'connected', 'detail': f'Conectado como "{acc.alias}" (user_id={acc.user_id})'}
 
 
 def _biobella_next_sync():
