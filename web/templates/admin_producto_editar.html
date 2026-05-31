@@ -172,7 +172,14 @@
       </div>
 
       <div class="editor-card">
-        <h3><i class="bi bi-link-45deg"></i>SEO / URL pública</h3>
+        <h3>
+          <i class="bi bi-link-45deg"></i>SEO / URL pública
+          <button type="button" class="btn btn-sm btn-outline-primary" style="margin-left:auto; font-weight:500;"
+                  onclick="regenerarSeoIA()" id="btn-seo-ai">
+            <i class="bi bi-magic"></i> Regenerar con IA
+          </button>
+        </h3>
+        <div id="seo-ai-flash" style="font-size:.78rem; margin-bottom:.7rem; display:none;"></div>
 
         <div class="field">
           <label><span class="field-name">Slug (URL en tienda)</span></label>
@@ -181,13 +188,21 @@
         </div>
 
         <div class="field">
-          <label><span class="field-name">Meta title (SEO)</span></label>
-          <input type="text" id="f-meta-title" value="{{ p.meta_title }}" maxlength="255">
+          <label>
+            <span class="field-name">Meta title (SEO)</span>
+            <span id="title-counter" style="font-size:.7rem; color:var(--color-neutral-500);">{{ p.meta_title|length }}/60</span>
+          </label>
+          <input type="text" id="f-meta-title" value="{{ p.meta_title }}" maxlength="80" oninput="updateCounters()">
+          <div class="field-help">Ideal: 50-60 caracteres. Aparece como título en Google.</div>
         </div>
 
         <div class="field">
-          <label><span class="field-name">Meta description (SEO)</span></label>
-          <textarea id="f-meta-description" maxlength="320">{{ p.meta_description }}</textarea>
+          <label>
+            <span class="field-name">Meta description (SEO)</span>
+            <span id="desc-counter" style="font-size:.7rem; color:var(--color-neutral-500);">{{ p.meta_description|length }}/160</span>
+          </label>
+          <textarea id="f-meta-description" maxlength="200" oninput="updateCounters()">{{ p.meta_description }}</textarea>
+          <div class="field-help">Ideal: 150-160 caracteres. Aparece como snippet bajo el título en Google.</div>
         </div>
       </div>
     </div>
@@ -331,6 +346,49 @@ function getFotos() {
 document.getElementById('f-slug').addEventListener('input', e => {
   document.getElementById('slug-preview').textContent = e.target.value || '{{ p.mla_id }}';
 });
+
+// ── Counters de SEO ──────────────────────────────────────────────────────────
+function updateCounters() {
+  const t = document.getElementById('f-meta-title').value.length;
+  const d = document.getElementById('f-meta-description').value.length;
+  const tc = document.getElementById('title-counter');
+  const dc = document.getElementById('desc-counter');
+  tc.textContent = `${t}/60`;
+  tc.style.color = (t >= 40 && t <= 65) ? '#166534' : (t > 65 ? '#b91c1c' : 'var(--color-neutral-500)');
+  dc.textContent = `${d}/160`;
+  dc.style.color = (d >= 130 && d <= 165) ? '#166534' : (d > 165 ? '#b91c1c' : 'var(--color-neutral-500)');
+}
+
+// ── Regenerar SEO con IA ──────────────────────────────────────────────────────
+async function regenerarSeoIA() {
+  const btn   = document.getElementById('btn-seo-ai');
+  const flash = document.getElementById('seo-ai-flash');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generando…';
+  flash.style.display = 'block';
+  flash.style.color   = 'var(--color-neutral-600)';
+  flash.textContent   = 'Llamando a Claude IA…';
+  try {
+    const r = await fetch(`/api/admin/productos/${PRODUCT_ID}/seo-ai`, {method: 'POST'});
+    const j = await r.json();
+    if (j.ok) {
+      document.getElementById('f-meta-title').value       = j.meta_title;
+      document.getElementById('f-meta-description').value = j.meta_description;
+      updateCounters();
+      flash.style.color = '#166534';
+      flash.textContent = `✓ Regenerado. Costo: $${j.cost_usd.toFixed(5)}. Recordá guardar.`;
+    } else {
+      flash.style.color = '#b91c1c';
+      flash.textContent = 'Error: ' + (j.error || 'desconocido');
+    }
+  } catch (e) {
+    flash.style.color = '#b91c1c';
+    flash.textContent = 'Error de red: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-magic"></i> Regenerar con IA';
+  }
+}
 
 // ── Precio preview ───────────────────────────────────────────────────────────
 function recalcPreview() {

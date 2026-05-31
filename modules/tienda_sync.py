@@ -41,6 +41,79 @@ def _resolve_account_alias(mgr) -> str | None:
     return None
 
 
+# ── SEO auto-generator ────────────────────────────────────────────────────────
+
+def _slugify(text: str) -> str:
+    """Convierte texto a slug url-safe simple."""
+    import re, unicodedata
+    if not text:
+        return ''
+    t = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+    t = t.lower()
+    t = re.sub(r'[^a-z0-9]+', '-', t).strip('-')
+    return t[:80]
+
+
+def generate_seo_template(titulo: str, descripcion: str, store_name: str = 'Biobella') -> tuple[str, str]:
+    """
+    Genera meta_title y meta_description con un template determinístico — rápido,
+    sin costo de IA. Sirve como default; el admin puede regenerar con IA después.
+
+    Reglas (Google-friendly):
+    - meta_title: 50-60 chars, "{titulo} | {store}" truncado
+    - meta_description: 150-160 chars, summary del producto + CTA con keyword "comprá"
+    """
+    titulo = (titulo or '').strip()
+    descripcion_raw = (descripcion or '').strip().replace('\n', ' ').replace('  ', ' ')
+
+    # ── meta_title ──
+    sufijo = f' | {store_name}'
+    max_title = 60
+    if titulo:
+        if len(titulo) + len(sufijo) <= max_title:
+            meta_title = titulo + sufijo
+        else:
+            corte = max_title - len(sufijo) - 1
+            meta_title = titulo[:corte].rstrip() + '…' + sufijo
+    else:
+        meta_title = store_name
+
+    # ── meta_description ──
+    max_desc = 160
+    # Tomamos las primeras ~110 chars de la descripción, agregamos CTA
+    cta = f' Comprá online en {store_name} con envío a todo el país.'
+    cuerpo_max = max_desc - len(cta)
+    if descripcion_raw:
+        if len(descripcion_raw) <= cuerpo_max:
+            cuerpo = descripcion_raw
+        else:
+            cuerpo = descripcion_raw[:cuerpo_max - 1].rstrip(',.;: ') + '…'
+        meta_description = cuerpo + cta
+    else:
+        # Sin descripción: usar título como base
+        meta_description = (f'{titulo}.{cta}' if titulo else f'Productos {store_name}.{cta}')[:max_desc]
+
+    return meta_title, meta_description
+
+
+def maybe_autofill_seo(product, store_name: str = 'Biobella') -> bool:
+    """Llena meta_title/description/slug si están vacíos. NO pisa overrides manuales.
+    Devuelve True si modificó algo."""
+    changed = False
+    if not (product.meta_title or '').strip():
+        mt, _ = generate_seo_template(product.titulo, product.descripcion, store_name)
+        product.meta_title = mt
+        changed = True
+    if not (product.meta_description or '').strip():
+        _, md = generate_seo_template(product.titulo, product.descripcion, store_name)
+        product.meta_description = md
+        changed = True
+    if not (product.slug or '').strip():
+        product.slug = _slugify(product.titulo) or product.mla_id.lower()
+        changed = True
+    return changed
+
+
 # ── Settings helpers ──────────────────────────────────────────────────────────
 
 def get_setting(session, key: str, default=None):
@@ -252,6 +325,9 @@ def sync_catalogo(trigger: str = 'auto', triggered_by: str | None = None) -> dic
                         s.add(product)
                         _apply_synced_fields(product, ml_fields, locked=set())
                         product.last_sync_at = datetime.now()
+                        # SEO auto-generado para productos nuevos
+                        store_name = get_setting(s, 'store_name', 'Biobella')
+                        maybe_autofill_seo(product, store_name)
                         s.flush()
                         creados += 1
                     else:
@@ -261,6 +337,9 @@ def sync_catalogo(trigger: str = 'auto', triggered_by: str | None = None) -> dic
                         if not product.activo:
                             product.activo = True
                         product.last_sync_at = datetime.now()
+                        # Si el producto existe pero le falta SEO (creado antes de esta feature), llenarlo
+                        store_name = get_setting(s, 'store_name', 'Biobella')
+                        maybe_autofill_seo(product, store_name)
 
                 except Exception as item_err:
                     errores.append({'mla_id': item_id, 'msg': str(item_err)})

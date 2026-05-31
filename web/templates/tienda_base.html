@@ -3,7 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ store_name|upper }}{% block title %}{% endblock %}</title>
+
+{# ── SEO meta tags (overridables por página) ──────────────────────────── #}
+{% block seo_title %}<title>{{ store_name|upper }}{% block title %}{% endblock %}</title>{% endblock %}
+{% block seo_description %}<meta name="description" content="{{ store_name }} — Cosmética natural, productos elaborados con ingredientes orgánicos, cruelty-free, envases reciclables. Envío gratis a todo el país.">{% endblock %}
+{% block seo_canonical %}{% endblock %}
+{% block seo_extras %}{% endblock %}
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#6c5a56">
+<meta property="og:site_name" content="{{ store_name }}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_AR">
+{% block og_extras %}{% endblock %}
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">

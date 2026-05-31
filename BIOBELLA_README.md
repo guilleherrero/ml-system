@@ -202,6 +202,78 @@ Sincronización manual desde el panel — botón "Sincronizar ahora" en `/admin/
 
 ---
 
+## SEO + Google Shopping
+
+El storefront tiene SEO automatizado end-to-end:
+
+### Automático en cada sync
+Cuando se sincroniza un producto nuevo desde ML, el sistema genera `meta_title` y
+`meta_description` con un template determinístico (`modules/tienda_sync.py:generate_seo_template`).
+También se autogenera el `slug` URL-friendly.
+
+### Regenerar con IA (calidad superior)
+- **Individual**: en `/admin/productos/<id>` → botón **"Regenerar con IA"**.
+  Usa Claude Haiku ($0.0003 por producto).
+- **Bulk**: en `/admin/integraciones` → card "SEO con IA" → **"Regenerar todos"** o
+  **"Solo los vacíos"**. Corre en background. Progreso en pantalla.
+
+Necesita `ANTHROPIC_API_KEY` en env.
+
+### Lo que se inyecta automáticamente
+
+**En `/tienda/p/<slug>`:**
+- `<title>` con meta_title optimizado
+- `<meta name="description">` con meta_description
+- `<link rel="canonical">`
+- Open Graph (`og:title`, `og:description`, `og:image`, `og:url`, `og:type=product`, `product:price:amount`)
+- Twitter Card
+- **JSON-LD Schema.org Product** — lo que Google Shopping necesita:
+  - name, description, sku, mpn, brand, image[]
+  - offers (priceCurrency=ARS, price, availability InStock/OutOfStock, itemCondition NewCondition)
+  - aggregateRating (si hay reseñas aprobadas)
+  - review[] (las 5 mejores)
+- JSON-LD BreadcrumbList
+
+**En `/tienda` (home):**
+- JSON-LD Organization
+- JSON-LD ItemList con todos los productos
+
+**En `/sitemap.xml`** — auto-generado con todos los productos activos. Lo deberías
+enviar a Google Search Console: https://search.google.com/search-console
+
+**En `/robots.txt`** — permite crawler en `/tienda`, bloquea `/admin` y `/api`,
+referencia el sitemap.
+
+### Setup Google Search Console (5 min)
+
+1. Entrá a https://search.google.com/search-console
+2. Agregar propiedad → tipo "Prefijo de URL" → `https://ml-system-rr81.onrender.com`
+   (o tu dominio propio cuando lo tengas)
+3. Verificar propiedad: copiá el meta-tag de verificación y pegalo en el `<head>` de
+   `web/templates/tienda_base.html` (`<meta name="google-site-verification" ...>`)
+4. Una vez verificada → Sitemaps → agregar `https://<tu-dominio>/sitemap.xml`
+5. Google va a indexar tus productos en 1-7 días
+
+### Setup Google Merchant Center (para Google Shopping)
+
+1. Entrá a https://merchants.google.com → crear cuenta
+2. **Verificar dominio** (mismo que en Search Console)
+3. **Crear feed de productos**: hay dos formas:
+   - **A — Crawl automático**: Merchant Center crawlea tu sitio y lee el JSON-LD Product
+     de cada `/tienda/p/<slug>`. Necesita que el sitemap esté indexado.
+   - **B — Feed XML/CSV**: subir manualmente. Para automatizar esto en el futuro,
+     se puede agregar una ruta `/feed/google-shopping.xml` que genere el formato
+     que Google espera (no implementado, contactame si lo querés).
+4. Una vez aprobada la cuenta y los productos pasen revisión (24-72h), aparecen en
+   búsquedas de Google Shopping y la pestaña de Shopping.
+
+### Estructura del Schema.org Product (verificá con Rich Results Test)
+
+Después del deploy, validá que el JSON-LD esté bien:
+1. https://search.google.com/test/rich-results
+2. Pegá una URL de producto, ej. `https://ml-system-rr81.onrender.com/tienda/p/<slug>`
+3. Tiene que detectar **"Product"** y **"BreadcrumbList"** sin errores
+
 ## TODOs / nice-to-haves no implementados
 
 - [ ] Cálculo real de envío (hoy: gratis arriba de $25.000, sin cargo abajo)
@@ -210,3 +282,4 @@ Sincronización manual desde el panel — botón "Sincronizar ahora" en `/admin/
 - [ ] Cupones/descuentos
 - [ ] Soft delete vs hard delete de productos sincronizados
 - [ ] Migración a Alembic cuando aparezca primera schema change real
+- [ ] Feed XML específico para Google Merchant Center (hoy se sirve via JSON-LD crawl)

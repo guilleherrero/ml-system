@@ -204,6 +204,20 @@
     </div>
 
     <div class="bio-card">
+      <h3><i class="bi bi-magic"></i>SEO con IA</h3>
+      <p style="font-size:.8rem; color:var(--color-neutral-600); margin-bottom:.8rem;">
+        Regenera <code>meta_title</code> y <code>meta_description</code> de cada producto
+        usando Claude IA — más natural y posicionable que el template default. Costo ~$0.0003 por producto.
+      </p>
+      <div style="display:flex; gap:.4rem; flex-wrap:wrap;">
+        <button class="bio-btn primary" onclick="startSeoAi(true)">Solo los vacíos</button>
+        <button class="bio-btn ghost" onclick="startSeoAi(false)">Regenerar todos</button>
+      </div>
+      <div id="seo-ai-progress" style="margin-top:.8rem; font-size:.8rem; color:var(--color-neutral-600);"></div>
+      <div id="seo-ai-flash" class="bio-flash"></div>
+    </div>
+
+    <div class="bio-card">
       <h3><i class="bi bi-credit-card"></i>MercadoPago</h3>
       {% if mp_token_kind == 'production' %}
         <span class="bio-status ok">Producción</span>
@@ -297,6 +311,60 @@ async function saveMargen() {
     flash.textContent = e.message;
   }
 }
+
+let seoPollTimer = null;
+async function startSeoAi(onlyEmpty) {
+  const flash = document.getElementById('seo-ai-flash');
+  const prog  = document.getElementById('seo-ai-progress');
+  flash.className = 'bio-flash';
+  flash.textContent = '';
+  try {
+    const r = await fetch('/api/integraciones/seo-ai-bulk', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({only_empty: onlyEmpty}),
+    });
+    const j = await r.json();
+    if (!j.ok) {
+      flash.className = 'bio-flash err';
+      flash.textContent = j.error || 'Error iniciando job';
+      return;
+    }
+    flash.className = 'bio-flash ok';
+    flash.textContent = j.message;
+    if (seoPollTimer) clearInterval(seoPollTimer);
+    seoPollTimer = setInterval(pollSeoStatus, 2000);
+    pollSeoStatus();
+  } catch (e) {
+    flash.className = 'bio-flash err';
+    flash.textContent = e.message;
+  }
+}
+
+async function pollSeoStatus() {
+  try {
+    const r = await fetch('/api/integraciones/seo-ai-status');
+    const j = await r.json();
+    if (!j.ok) return;
+    const s = j.status || {};
+    const prog = document.getElementById('seo-ai-progress');
+    if (s.total == null) {
+      prog.textContent = '';
+      return;
+    }
+    const pct = s.total ? Math.round((s.completed / s.total) * 100) : 0;
+    prog.innerHTML = `Progreso: <strong>${s.completed}/${s.total}</strong> · ${pct}%
+      ${s.errors ? ' · <span style="color:#b91c1c;">' + s.errors + ' errores</span>' : ''}
+      · costo $${s.cost_usd?.toFixed(4) || '0.00'}
+      ${s.running ? '' : '<span style="color:#166534; margin-left:.5rem;">✓ completado</span>'}`;
+    if (!s.running) {
+      clearInterval(seoPollTimer);
+      seoPollTimer = null;
+    }
+  } catch {}
+}
+// Si hay un job ya corriendo, mostralo al cargar
+pollSeoStatus();
 
 async function saveMP() {
   const token  = document.getElementById('mp-token-input').value.trim();

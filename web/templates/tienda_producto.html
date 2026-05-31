@@ -1,5 +1,77 @@
 {% extends "tienda_base.html" %}
-{% block title %} | {{ p.titulo }}{% endblock %}
+
+{# ── SEO: override completos de los blocks definidos en tienda_base.html ── #}
+{% block seo_title %}<title>{{ p.meta_title or (p.titulo ~ ' | ' ~ store_name) }}</title>{% endblock %}
+{% block seo_description %}<meta name="description" content="{{ p.meta_description or p.descripcion[:160] }}">{% endblock %}
+{% block seo_canonical %}<link rel="canonical" href="{{ canonical_url }}">{% endblock %}
+{% block og_extras %}
+<meta property="og:type" content="product">
+<meta property="og:title" content="{{ p.meta_title or (p.titulo ~ ' | ' ~ store_name) }}">
+<meta property="og:description" content="{{ p.meta_description or p.descripcion[:160] }}">
+<meta property="og:url" content="{{ canonical_url }}">
+{% if p.fotos and p.fotos|length > 0 %}<meta property="og:image" content="{{ p.fotos[0] }}">{% endif %}
+<meta property="product:price:amount" content="{{ p.precio_tienda }}">
+<meta property="product:price:currency" content="ARS">
+<meta name="twitter:card" content="summary_large_image">
+{% endblock %}
+{% block seo_extras %}
+{# ── Schema.org Product JSON-LD — clave para Google Shopping ──────────── #}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": {{ p.titulo|tojson }},
+  "description": {{ (p.meta_description or p.descripcion[:300])|tojson }},
+  "sku": "{{ p.mla_id }}",
+  "mpn": "{{ p.mla_id }}",
+  "brand": { "@type": "Brand", "name": "{{ store_name }}" },
+  {% if p.fotos %}"image": {{ p.fotos|tojson }},{% endif %}
+  "offers": {
+    "@type": "Offer",
+    "url": "{{ canonical_url }}",
+    "priceCurrency": "ARS",
+    "price": "{{ p.precio_tienda }}",
+    "availability": "{% if p.stock and p.stock > 0 %}https://schema.org/InStock{% else %}https://schema.org/OutOfStock{% endif %}",
+    "itemCondition": "https://schema.org/NewCondition",
+    "seller": { "@type": "Organization", "name": "{{ store_name }}" }
+  }
+  {% if rating_avg and rating_count and rating_count > 0 %}
+  ,"aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "{{ rating_avg }}",
+    "reviewCount": "{{ rating_count }}",
+    "bestRating": "5",
+    "worstRating": "1"
+  }
+  {% endif %}
+  {% if reviews and reviews|length > 0 %}
+  ,"review": [
+    {% for r in reviews[:5] %}
+    {
+      "@type": "Review",
+      "reviewRating": { "@type": "Rating", "ratingValue": "{{ r.rating }}", "bestRating": "5" },
+      "author": { "@type": "Person", "name": {{ r.nombre|tojson }} },
+      {% if r.titulo %}"name": {{ r.titulo|tojson }},{% endif %}
+      "reviewBody": {{ r.comentario|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]
+  {% endif %}
+}
+</script>
+
+{# Breadcrumb schema #}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Tienda", "item": "{{ canonical_url.rsplit('/p/', 1)[0] }}" },
+    { "@type": "ListItem", "position": 2, "name": {{ p.titulo|tojson }} }
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <main class="pt-32 pb-20 max-w-container-max mx-auto px-margin-desktop">

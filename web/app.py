@@ -410,12 +410,14 @@ def _get_request_alias() -> str | None:
 def require_login():
     if request.path.startswith('/static'):
         return
-    # Storefront público Biobella: /tienda*, /api/carrito*, /api/reviews*, /api/checkout*, /api/mp/* no requieren login
+    # Storefront público Biobella: /tienda*, /api/carrito*, /api/reviews*, /api/checkout*, /api/mp/*,
+    # /sitemap.xml, /robots.txt no requieren login (también accesibles por crawlers de Google)
     if (request.path.startswith('/tienda') or
         request.path.startswith('/api/carrito') or
         request.path.startswith('/api/reviews') or
         request.path.startswith('/api/checkout') or
-        request.path.startswith('/api/mp/')):
+        request.path.startswith('/api/mp/') or
+        request.path in ('/sitemap.xml', '/robots.txt')):
         return
     # Auto-actualizar datos si no corrió hoy (resuelve el problema de Render durmiendo)
     if request.path not in _AUTH_EXEMPT and not request.path.startswith('/static'):
@@ -908,6 +910,134 @@ def api_integraciones_margen():
     return jsonify({'ok': True, 'margen': margen})
 
 
+@app.route('/api/integraciones/seo-ai-bulk', methods=['POST'])
+def api_integraciones_seo_ai_bulk():
+    """
+    Regenera meta_title + meta_description con IA para TODOS los productos activos.
+    Corre en background (thread) porque puede tardar.
+    El status se guarda en app_settings.seo_ai_bulk_status como JSON.
+    """
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+    from modules.tienda_sync import get_setting, set_setting
+    from modules.seo_ai import generar_seo_ia
+
+    # Filtros opcionales: only_empty (solo productos con meta vacío)
+    body = request.get_json(silent=True) or {}
+    only_empty = bool(body.get('only_empty', False))
+
+    # Verificar que no haya un job corriendo ya
+    with _ss() as s:
+        cur = get_setting(s, 'seo_ai_bulk_status') or {}
+        if isinstance(cur, dict) and cur.get('running'):
+            return jsonify({'ok': False, 'error': 'Ya hay un job de SEO IA corriendo'}), 409
+
+    if not os.environ.get('ANTHROPIC_API_KEY'):
+        return jsonify({'ok': False, 'error': 'Falta ANTHROPIC_API_KEY en el entorno'}), 503
+
+    def _run_bulk():
+        from datetime import datetime as _dt
+        from web.db import session_scope as _ss2
+        from web.models_tienda import Product
+        from modules.tienda_sync import get_setting, set_setting
+        from modules.seo_ai import generar_seo_ia
+
+        # Recolectar lista de productos
+        with _ss2() as s:
+            q = s.query(Product).filter(Product.activo == True)  # noqa: E712
+            if only_empty:
+                q = q.filter((Product.meta_title.is_(None)) | (Product.meta_title == ''))
+            ids = [p.id for p in q.all()]
+            store_name = get_setting(s, 'store_name', 'Biobella')
+            margen_default = float(get_setting(s, 'margen_global_default', 35.0))
+
+            set_setting(s, 'seo_ai_bulk_status', {
+                'running':    True,
+                'total':      len(ids),
+                'completed':  0,
+                'errors':     0,
+                'cost_usd':   0.0,
+                'started_at': _dt.now().isoformat(timespec='seconds'),
+                'last_error': '',
+            })
+
+        completed = errors = 0
+        total_cost = 0.0
+        last_error = ''
+
+        for i, pid in enumerate(ids):
+            try:
+                with _ss2() as s:
+                    p = s.get(Product, pid)
+                    if p is None:
+                        continue
+                    margen = float(p.margen_override) if p.margen_override is not None else margen_default
+                    precio = (float(p.precio_tienda_override)
+                              if p.precio_tienda_override is not None
+                              else round(float(p.precio_ml or 0) * (1 + margen / 100)))
+                    titulo, descripcion = p.titulo, p.descripcion
+
+                result = generar_seo_ia(titulo, descripcion, precio, store_name)
+
+                with _ss2() as s:
+                    p = s.get(Product, pid)
+                    if p is not None:
+                        p.meta_title = result['meta_title']
+                        p.meta_description = result['meta_description']
+                completed += 1
+                total_cost += result.get('cost_usd', 0)
+            except Exception as e:
+                errors += 1
+                last_error = str(e)[:200]
+
+            # Update status cada 3 productos para no saturar DB
+            if (i + 1) % 3 == 0 or i == len(ids) - 1:
+                with _ss2() as s:
+                    set_setting(s, 'seo_ai_bulk_status', {
+                        'running':    (i + 1) < len(ids),
+                        'total':      len(ids),
+                        'completed':  completed,
+                        'errors':     errors,
+                        'cost_usd':   round(total_cost, 6),
+                        'started_at': _dt.now().isoformat(timespec='seconds'),
+                        'last_error': last_error,
+                    })
+
+        # Final
+        with _ss2() as s:
+            set_setting(s, 'seo_ai_bulk_status', {
+                'running':     False,
+                'total':       len(ids),
+                'completed':   completed,
+                'errors':      errors,
+                'cost_usd':    round(total_cost, 6),
+                'finished_at': _dt.now().isoformat(timespec='seconds'),
+                'last_error':  last_error,
+            })
+
+    import threading
+    threading.Thread(target=_run_bulk, daemon=True).start()
+    _audit('BIOBELLA_SEO_AI_BULK_START', only_empty=only_empty)
+    return jsonify({'ok': True, 'message': 'Job iniciado en background. Refrescá para ver progreso.'})
+
+
+@app.route('/api/integraciones/seo-ai-status', methods=['GET'])
+def api_integraciones_seo_ai_status():
+    """Devuelve el progreso del último job de SEO bulk."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+    from web.db import session_scope as _ss
+    from modules.tienda_sync import get_setting
+    with _ss() as s:
+        status = get_setting(s, 'seo_ai_bulk_status') or {}
+    return jsonify({'ok': True, 'status': status})
+
+
 @app.route('/api/integraciones/mp-credentials', methods=['POST'])
 def api_integraciones_mp_credentials():
     """Guarda credenciales MercadoPago: access_token y opcionalmente public_key."""
@@ -1157,6 +1287,46 @@ def api_admin_producto_guardar(product_id):
     _audit('BIOBELLA_PRODUCTO_EDIT', product_id=product_id,
            fields=list(body.keys()))
     return jsonify({'ok': True})
+
+
+@app.route('/api/admin/productos/<int:product_id>/seo-ai', methods=['POST'])
+def api_admin_producto_seo_ai(product_id):
+    """Regenera meta_title + meta_description usando Claude IA para 1 producto."""
+    user = get_current_user()
+    if not user or not user.get('is_admin'):
+        return jsonify({'ok': False, 'error': 'Sin permisos'}), 403
+
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+    from modules.seo_ai import generar_seo_ia
+    from modules.tienda_sync import get_setting
+
+    with _ss() as s:
+        p = s.get(Product, product_id)
+        if p is None:
+            return jsonify({'ok': False, 'error': 'producto no existe'}), 404
+        store_name = get_setting(s, 'store_name', 'Biobella')
+        margen_default = float(get_setting(s, 'margen_global_default', 35.0))
+        margen = float(p.margen_override) if p.margen_override is not None else margen_default
+        precio_tienda = (float(p.precio_tienda_override)
+                         if p.precio_tienda_override is not None
+                         else round(float(p.precio_ml or 0) * (1 + margen / 100)))
+        titulo = p.titulo
+        descripcion = p.descripcion
+
+    try:
+        result = generar_seo_ia(titulo, descripcion, precio_tienda, store_name)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+
+    with _ss() as s:
+        p = s.get(Product, product_id)
+        if p is not None:
+            p.meta_title = result['meta_title']
+            p.meta_description = result['meta_description']
+
+    _audit('BIOBELLA_SEO_AI', product_id=product_id, cost_usd=result.get('cost_usd'))
+    return jsonify({'ok': True, **result})
 
 
 @app.route('/api/admin/productos/<int:product_id>/lock', methods=['POST'])
@@ -16635,9 +16805,11 @@ def tienda_home():
                 'is_new':        False,
             })
 
+    canonical_url = f'{_biobella_base_url()}/tienda'
     return render_template('tienda_home.html',
                            store_name=store_name,
                            productos=productos,
+                           canonical_url=canonical_url,
                            cart_count=_cart_count())
 
 
@@ -16667,6 +16839,9 @@ def tienda_producto(identifier):
             'fotos':         prod.fotos or [],
             'stock':         prod.stock,
             'precio_tienda': _producto_precio_tienda(prod, margen_default),
+            'slug':          prod.slug or prod.mla_id,
+            'meta_title':    prod.meta_title or '',
+            'meta_description': prod.meta_description or '',
         }
 
         # Reseñas aprobadas + estadísticas
@@ -16682,12 +16857,14 @@ def tienda_producto(identifier):
         rating_avg = round(sum(r.rating for r in revs) / len(revs), 1) if revs else None
         rating_count = len(revs)
 
+    canonical_url = f'{_biobella_base_url()}/tienda/p/{p["slug"]}'
     return render_template('tienda_producto.html',
                            store_name=store_name,
                            p=p,
                            reviews=reviews,
                            rating_avg=rating_avg,
                            rating_count=rating_count,
+                           canonical_url=canonical_url,
                            cart_count=_cart_count())
 
 
@@ -17116,6 +17293,44 @@ def tienda_checkout_resultado(resultado):
                            resultado=resultado,
                            order=order,
                            cart_count=_cart_count())
+
+
+@app.route('/sitemap.xml')
+def tienda_sitemap():
+    """Sitemap XML para Google. Lista home + todos los productos activos."""
+    from web.db import session_scope as _ss
+    from web.models_tienda import Product
+    base = _biobella_base_url()
+
+    with _ss() as s:
+        productos = s.query(Product).filter(Product.activo == True).all()  # noqa: E712
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+        lines.append(f'<url><loc>{base}/tienda</loc><changefreq>daily</changefreq><priority>1.0</priority></url>')
+        for p in productos:
+            slug = p.slug or p.mla_id
+            lastmod = p.last_sync_at.strftime('%Y-%m-%d') if p.last_sync_at else ''
+            lastmod_xml = f'<lastmod>{lastmod}</lastmod>' if lastmod else ''
+            lines.append(f'<url><loc>{base}/tienda/p/{slug}</loc>{lastmod_xml}<changefreq>weekly</changefreq><priority>0.8</priority></url>')
+        lines.append('</urlset>')
+
+    return Response('\n'.join(lines), mimetype='application/xml')
+
+
+@app.route('/robots.txt')
+def tienda_robots():
+    """robots.txt apuntando al sitemap."""
+    base = _biobella_base_url()
+    body = (
+        "User-agent: *\n"
+        "Allow: /tienda\n"
+        "Disallow: /admin\n"
+        "Disallow: /api\n"
+        "Disallow: /login\n"
+        "Disallow: /logout\n"
+        f"\nSitemap: {base}/sitemap.xml\n"
+    )
+    return Response(body, mimetype='text/plain')
 
 
 @app.route('/api/mp/webhook', methods=['POST', 'GET'])

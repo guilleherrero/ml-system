@@ -1,6 +1,45 @@
 {% extends "tienda_base.html" %}
 {% block title %} | Beauty & Wellness{% endblock %}
 
+{% block seo_description %}<meta name="description" content="{{ store_name }} — Cosmética natural y consciente. Productos con ingredientes orgánicos, cruelty-free, envases sustentables. Envío gratis a todo el país desde $25.000.">{% endblock %}
+{% block seo_canonical %}<link rel="canonical" href="{{ canonical_url }}">{% endblock %}
+{% block og_extras %}
+<meta property="og:title" content="{{ store_name }} — Cosmética natural y consciente">
+<meta property="og:description" content="Productos con ingredientes orgánicos, cruelty-free. Envío gratis a todo el país desde $25.000.">
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:image" content="https://lh3.googleusercontent.com/aida-public/AB6AXuA7Xo3lhKEOmeD-EpK3whhH-pQGLseavD0wPixJmDqx2ldp0XEPdXFxBXfv-vOof0VZQ45AAaGPcC6QrlREMQfge5W1RUBqoG07KCOFqec3mPm6nNW8y-WlVNDk_TE7rMamCaGQcykh4m9Y-9IDr_LqtRBvsIQ2PYjJzd--VQlDzswzlMR4ayRmYQ9OJI2Of6ymlZnkhzD6FxyC_LtAQU5-EWw2-MhgDxvQF413M1bljlOeyXPisiAwqT4-Uf0A8qfULZ5rB_El2Lbe">
+{% endblock %}
+{% block seo_extras %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "{{ store_name }}",
+  "url": "{{ canonical_url }}",
+  "description": "Cosmética natural y consciente. Productos con ingredientes orgánicos, cruelty-free, envases sustentables.",
+  "sameAs": []
+}
+</script>
+{% if productos %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "itemListElement": [
+    {% for p in productos %}
+    {
+      "@type": "ListItem",
+      "position": {{ loop.index }},
+      "url": "{{ canonical_url }}/p/{{ p.slug or p.mla_id }}",
+      "name": {{ p.titulo|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]
+}
+</script>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <main class="pt-20">
 
