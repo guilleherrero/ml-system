@@ -10303,7 +10303,9 @@ def api_capturar_competidor():
 def api_pending_competidores():
     """Devuelve y vacía la cola de competidores pendientes para un alias."""
     alias   = request.args.get('alias', '').strip()
-    pending = _pending_competitors.pop(alias, [])
+    pending = list(_pending_competitors.get(alias, []))
+    if pending:
+        _pending_competitors[alias] = []   # vaciar después de leer, no con pop
     return jsonify({'ok': True, 'competitors': pending})
 
 
@@ -11221,10 +11223,17 @@ def api_descubrir_competidores():
                     except Exception:
                         pass
 
-                # Filtro duro: el nombre debe contener al menos un token del diferenciador
-                if diff_filter_tokens and not (name_tokens & diff_filter_tokens):
-                    _time.sleep(0.08)
-                    continue
+                # Filtro por diferenciador: coincidencia = bonus, no coincidencia = penalización
+                # No rechaza completamente — siempre devuelve resultados, ordenados por relevancia
+                if diff_filter_tokens:
+                    diff_overlap = name_tokens & diff_filter_tokens
+                    if diff_overlap:
+                        score *= 1.5   # bonus por coincidir con diferenciador
+                    elif score == 0:
+                        _time.sleep(0.08)
+                        continue      # rechazar solo si tampoco tiene keywords en común
+                    else:
+                        score *= 0.4   # penalizar pero no rechazar — puede ser competidor indirecto
 
                 competitor_map[prod_id] = {
                     'id':           prod_id,
