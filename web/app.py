@@ -11337,6 +11337,23 @@ def api_reverse_keywords():
                   'tambien','si','no','su','sus','hay','tiene','tienen','puede',
                   'pueden','ideal','perfecta','perfecto','todo','todos','hacer'}
 
+    # Palabras que aparecen en inglés pero no en español — si una frase tiene ≥2, la rechazamos
+    _ENGLISH_MARKERS = {
+        'get','the','look','for','and','with','your','this','that','from',
+        'you','are','have','more','our','new','best','top','now','use',
+        'its','all','any','can','how','out','buy','see','try','shop',
+        'free','day','time','way','make','just','like','take','good',
+        'great','easy','long','about','into','them','they','their','been',
+        'will','what','when','where','which','who','than','then','also',
+        'only','over','after','back','other','some','her','his','she','him',
+    }
+
+    def _is_spanish_kw(kw: str) -> bool:
+        """Devuelve False si la keyword parece estar en inglés (≥2 palabras inglesas)."""
+        words = kw.lower().split()
+        english_count = sum(1 for w in words if w in _ENGLISH_MARKERS)
+        return english_count < 2
+
     def _extract_desc_phrases(description: str, title_words: set, n: int = 3) -> list:
         """
         Extrae frases de 2-3 palabras de la descripción que sean relevantes
@@ -11370,8 +11387,8 @@ def api_reverse_keywords():
         seen = set()
         result = []
         for ph, _ in scored:
-            # Evitar frases redundantes (que sean subconjunto de otra ya incluida)
-            if ph not in seen:
+            # Rechazar frases en inglés y evitar redundantes
+            if ph not in seen and _is_spanish_kw(ph):
                 seen.add(ph)
                 result.append(ph)
             if len(result) >= n:
@@ -11410,6 +11427,8 @@ def api_reverse_keywords():
                     kw_norm = kw.lower().strip()
                     if not kw_norm or kw_norm in seen_for_comp:
                         continue
+                    if not _is_spanish_kw(kw_norm):
+                        continue  # descartar keywords en inglés
                     seen_for_comp.add(kw_norm)
                     if kw_norm not in kw_data:
                         kw_data[kw_norm] = {
