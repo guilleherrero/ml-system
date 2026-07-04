@@ -10396,6 +10396,7 @@ def api_detalle_competidor():
             ]
 
             price = free_ship = False
+            full_ship = False
             premium = False
             seller = '—'; seller_sales = 0
             sold_quantity = 0; listing_type = ''; condition = 'new'
@@ -10414,6 +10415,7 @@ def api_detalle_competidor():
                     best          = items_list[0]
                     price         = best.get('price', 0)
                     free_ship     = best.get('shipping', {}).get('free_shipping', False)
+                    full_ship     = best.get('shipping', {}).get('logistic_type', '') in ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
                     lt            = best.get('listing_type_id', '')
                     listing_type  = lt
                     premium       = lt in ('gold_special', 'gold_pro')
@@ -10456,6 +10458,7 @@ def api_detalle_competidor():
 
                 price         = it.get('price', 0)
                 free_ship     = it.get('shipping', {}).get('free_shipping', False)
+                full_ship     = it.get('shipping', {}).get('logistic_type', '') in ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
                 lt            = it.get('listing_type_id', '')
                 listing_type  = lt
                 premium       = lt in ('gold_special', 'gold_pro')
@@ -10499,7 +10502,7 @@ def api_detalle_competidor():
                                     if a.get('name') and a.get('value_name') and a.get('value_name') != 'No especificado'
                                 ]
                                 # Métricas del mejor ítem del catálogo
-                                price = free_ship = False; premium = False
+                                price = free_ship = False; full_ship = False; premium = False
                                 sold_quantity = 0; listing_type = ''; condition = 'new'
                                 seller = '—'; seller_sales = 0; price = 0
                                 iir = req_lib.get(f'https://api.mercadolibre.com/products/{cat_id}/items',
@@ -10514,6 +10517,7 @@ def api_detalle_competidor():
                                         best       = items_list[0]
                                         price      = best.get('price', 0)
                                         free_ship  = best.get('shipping', {}).get('free_shipping', False)
+                                        full_ship  = best.get('shipping', {}).get('logistic_type', '') in ('fulfillment', 'meli_fulfillment', 'self_service_fulfillment')
                                         lt         = best.get('listing_type_id', '')
                                         listing_type = lt
                                         premium    = lt in ('gold_special', 'gold_pro')
@@ -10538,6 +10542,7 @@ def api_detalle_competidor():
                     attributes    = []
                     price         = 0
                     free_ship     = False
+                    full_ship     = False
                     listing_type  = ''
                     premium       = False
                     sold_quantity = 0
@@ -10556,6 +10561,7 @@ def api_detalle_competidor():
             'photos_count':   photos_count,
             'price':          price,
             'free_ship':      free_ship,
+            'full_ship':      full_ship,
             'premium':        premium,
             'listing_type':   listing_type,
             'condition':      condition,

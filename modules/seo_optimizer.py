@@ -866,6 +866,83 @@ def fetch_competitor_qa(competitor_ids: list, token: str, max_q: int = 15, max_r
     return results
 
 
+def fetch_items_by_ids(item_ids: list, token: str) -> list:
+    """
+    Obtiene datos completos de items específicos por ID.
+    Mismo formato de salida que fetch_competitors_full.
+    Usado para top_rankers (posiciones 1-3) y top sellers por categoría.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    results = []
+    for item_id in item_ids:
+        comp = {
+            "id":            item_id,
+            "title":         "",
+            "seller":        "—",
+            "sold_quantity": 0,
+            "price":         0.0,
+            "listing_type":  "",
+            "premium":       False,
+            "free_ship":     False,
+            "full_ship":     False,
+            "photos_count":  0,
+            "attributes":    [],
+            "description":   "",
+        }
+        try:
+            ir = requests.get(f"{ML_API}/items/{item_id}", headers=headers, timeout=8)
+            if ir.ok:
+                full = ir.json()
+                comp["title"]         = full.get("title", "")
+                comp["seller"]        = full.get("seller", {}).get("nickname", "—")
+                comp["sold_quantity"] = full.get("sold_quantity", 0)
+                comp["price"]         = float(full.get("price", 0))
+                comp["listing_type"]  = full.get("listing_type_id", "")
+                comp["premium"]       = full.get("listing_type_id", "") in ("gold_special", "gold_pro")
+                comp["free_ship"]     = full.get("shipping", {}).get("free_shipping", False)
+                comp["full_ship"]     = full.get("shipping", {}).get("logistic_type", "") == "fulfillment"
+                comp["photos_count"]  = len(full.get("pictures", []))
+                comp["attributes"]    = [
+                    {"name": a.get("name", ""), "value": a.get("value_name", "") or ""}
+                    for a in full.get("attributes", [])
+                    if a.get("value_name")
+                ]
+        except Exception:
+            pass
+        try:
+            dr = requests.get(f"{ML_API}/items/{item_id}/description", headers=headers, timeout=8)
+            if dr.ok:
+                comp["description"] = dr.json().get("plain_text", "")[:800]
+        except Exception:
+            pass
+        if comp["title"]:
+            results.append(comp)
+        time.sleep(0.15)
+    return results
+
+
+def fetch_top_sellers_by_category(category_id: str, token: str, limit: int = 4) -> list:
+    """
+    Obtiene los items más vendidos de la categoría (sort=sold_quantity).
+    Complementa a fetch_competitors_full (relevance) con los bestsellers reales del nicho.
+    """
+    try:
+        resp = requests.get(
+            f"{ML_API}/sites/{ML_SITE}/search",
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"},
+            params={"category": category_id, "sort": "sold_quantity", "limit": limit + 2},
+            timeout=10,
+        )
+        if not resp.ok:
+            return []
+        ids = [r["id"] for r in resp.json().get("results", []) if r.get("id")][:limit]
+        if not ids:
+            return []
+        return fetch_items_by_ids(ids, token)
+    except Exception:
+        return []
+
+
 def analyze_qa_insights(qa_data: list, product_title: str, console=None) -> str:
     """
     M3.5: Claude Haiku analiza las Q&As y reseñas de competidores y extrae
@@ -1486,6 +1563,15 @@ def audit_title(title: str) -> list:
                 "sugerencia": "Remover la última palabra y reformular para que el título entre con palabras completas (mejor 55 chars completos que 60 con la última cortada)",
             })
 
+    # 10. Título demasiado corto — espacio SEO desaprovechado
+    if len(t) < 45:
+        violations.append({
+            "nivel":      "advertencia",
+            "regla":      "Título muy corto — espacio SEO desaprovechado",
+            "detalle":    f"{len(t)} caracteres — quedan {60 - len(t)} chars disponibles sin usar",
+            "sugerencia": "Los títulos de 50-60 chars con palabras completas maximizan la cobertura de keywords. Agregá atributo clave, modelo o especificación.",
+        })
+
     return violations
 
 
@@ -1922,6 +2008,7 @@ def _build_synthesis_prompt(
     own_questions: list = None,
     keyword_clusters: list = None,
     category_path: str = "",
+    top_rankers: list = None,
 ) -> str:
     title        = item_data.get("title", "")
     my_sold      = item_data.get("sold_quantity", 0)
@@ -2078,6 +2165,33 @@ def _build_synthesis_prompt(
             + "\n".join(f"  ▸ {kw}" for kw in gap_keywords[:10])
         )
 
+    # Top rankers block — items en posición 1-3 para las keywords principales
+    top_rankers_block = ""
+    if top_rankers:
+        _my_tokens = set(_tokenize(item_data.get("title", "")))
+        tr_lines = [
+            "═══ TOP RANKERS — ITEMS EN POSICIÓN 1-3 POR KEYWORD (señal primaria del algoritmo) ═══",
+            "Estos items fueron elegidos por ML en posición 1-3 para tus keywords más importantes.",
+            "Son la referencia más directa de qué considera ML relevante y confiable en este nicho.",
+        ]
+        for i, tr in enumerate(top_rankers[:5], 1):
+            tr_title = tr.get("title", "")
+            tr_gap   = sorted(set(_tokenize(tr_title)) - _my_tokens - _STOPWORDS)
+            tr_lines.append(
+                f"RANKER {i}: {tr_title} | "
+                f"Ventas: {tr.get('sold_quantity', 0):,} | "
+                f"${tr.get('price', 0):,.0f} | "
+                f"{'PREMIUM' if tr.get('premium') else 'CLÁSICA'} | "
+                f"{'Full' if tr.get('full_ship') else 'Gratis' if tr.get('free_ship') else 'Pago'}"
+            )
+            if tr.get("attributes"):
+                tr_lines.append("  Ficha: " + " | ".join(
+                    f"{a['name']}: {a['value']}" for a in tr["attributes"][:6] if a.get("value")
+                ))
+            if tr_gap:
+                tr_lines.append(f"  Tokens únicos del ranker ausentes en tu título: {', '.join(tr_gap[:8])}")
+        top_rankers_block = "\n".join(tr_lines) + "\n\n"
+
     # Clasificación ternaria de complejidad
     _avg_comp    = comp_patterns.get("avg_price", 0.0)
     _kw_info_n   = sum(1 for kw in keyword_analysis if kw.get("tipo_intencion") == "informativa")
@@ -2134,7 +2248,7 @@ KEYWORDS REALES DEL AUTOSUGGEST ML (fuente primaria — prioridad absoluta sobre
 ATRIBUTOS OFICIALES DE LA CATEGORÍA "{category_name}":
 {attrs_block}
 {free_text_block}
-ANÁLISIS PREVIO (Haiku):
+{top_rankers_block}ANÁLISIS PREVIO (Haiku):
 {_smart_truncate(analysis_text, 2500)}
 {buyer_context}
 
@@ -2657,7 +2771,14 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         main_kw = autosuggest_raw[0] if autosuggest_raw else title
         _c.print(f"  [dim]M3 — Competitor intel para \"{main_kw[:35]}\"...[/dim]", end=" ")
         client._ensure_token()
-        competitors = fetch_competitors_full(main_kw, token, exclude_id=item_id, limit=8)
+        competitors = fetch_competitors_full(main_kw, token, exclude_id=item_id, limit=6)
+        # Enriquecer con top sellers por volumen de ventas (sort=sold_quantity)
+        top_sellers = fetch_top_sellers_by_category(category_id, token, limit=4)
+        _known_ids  = {c["id"] for c in competitors} | {item_id}
+        for _ts in top_sellers:
+            if _ts["id"] not in _known_ids:
+                competitors.append(_ts)
+                _known_ids.add(_ts["id"])
     comp_patterns = analyze_competitor_patterns(competitors, title)
     _c.print(f"[green]{len(competitors)} competidores analizados[/green]")
 
@@ -2690,6 +2811,18 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     _gap_ranking = sum(1 for p in position_data if p["aparece"] and p["keyword"] in _gap_kws)
     _c.print(f"[green]aparecés en {ranking_n}/{len(position_data)} keywords "
              f"({_gap_ranking} del vocabulario competidor)[/green]")
+
+    # ── Top rankers (items en posición 1-3 por keywords principales) ──────────
+    _c.print("  [dim]Top rankers — items en posición 1-3 por keywords principales...[/dim]", end=" ")
+    _known_comp_ids = {c["id"] for c in competitors} | {item_id}
+    _top3_ids_raw: list[str] = []
+    for _pd in position_data[:5]:
+        for _tid in _pd.get("top3_ids", []):
+            if _tid and _tid not in _known_comp_ids and _tid not in _top3_ids_raw:
+                _top3_ids_raw.append(_tid)
+    _top3_ids_to_fetch = _top3_ids_raw[:5]
+    top_rankers = fetch_items_by_ids(_top3_ids_to_fetch, token) if _top3_ids_to_fetch else []
+    _c.print(f"[green]{len(top_rankers)} top rankers únicos[/green]")
 
     # ── M3.5: Q&A y reseñas de competidores ──────────────────────────────────
     _c.print("  [dim]M3.5 — Minería de Q&A y reseñas de competidores...[/dim]", end=" ")
@@ -2730,6 +2863,25 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     category_name, category_path = _get_category_info(category_id)
     category_attrs = _get_category_attributes(category_id, token)
     _c.print(f"[green]{category_name}[/green]")
+
+    # ── M1.6: Autosuggest por marca (cubre búsquedas "marca + categoría") ─────
+    _brand_attr = next(
+        (a.get("value_name") for a in item_data.get("attributes", [])
+         if a.get("id") == "BRAND" and a.get("value_name")),
+        None,
+    )
+    if _brand_attr:
+        _cat_word = category_name.split()[0] if category_name else ""
+        _brand_query = f"{_cat_word} {_brand_attr}".strip()
+        _c.print(f"  [dim]M1.6 — Autosuggest marca ({_brand_query})...[/dim]", end=" ")
+        _brand_kws = _ml_autosuggest(_brand_query)
+        _brand_new = 0
+        for _bkw in _brand_kws:
+            if _bkw not in autosuggest_raw:
+                autosuggest_raw.append(_bkw)
+                as_position_map.setdefault(_bkw, {'best_pos': 5, 'query_count': 0})
+                _brand_new += 1
+        _c.print(f"[green]+{_brand_new} keywords de marca[/green]")
 
     # ── M1 scoring completo ───────────────────────────────────────────────────
     keyword_analysis = score_and_classify_keywords(autosuggest_raw, title, position_data, competitors, as_position_map)
@@ -2794,6 +2946,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         own_questions=own_questions,
         keyword_clusters=keyword_clusters,
         category_path=category_path,
+        top_rankers=top_rankers,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)

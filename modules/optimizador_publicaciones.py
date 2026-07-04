@@ -69,11 +69,15 @@ def _apply_changes(item_id: str, new_title: str, new_description: str, client: M
 
 def _show_result(result: dict):
     """Muestra el resultado completo del análisis y la optimización."""
-    item_data  = result.get("item_data", {})
-    ml_score   = result.get("ml_score", {})
-    seo        = result.get("seo_result", {})
-    kws        = result.get("autosuggest_kws", [])
-    rankings   = result.get("rankings", {})
+    item_data  = result.get("_item_data", {})
+    ml_score   = result.get("_ml_score", {})
+    opt_plan   = result.get("optimization_plan", {})
+    kws        = result.get("_autosuggest_raw", [])
+    rankings   = {
+        p["keyword"]: p.get("position")
+        for p in result.get("position_tracking", [])
+        if p.get("aparece")
+    }
 
     # Score actual
     score_color = "green" if ml_score.get("total", 0) >= 70 else "yellow" if ml_score.get("total", 0) >= 45 else "red"
@@ -93,7 +97,7 @@ def _show_result(result: dict):
             console.print(f"    {i}. {kw} → {pos_s}{in_t}")
 
     # Los 3 títulos alternativos
-    titulos_alt = seo.get("titulos_alt", [])
+    titulos_alt = opt_plan.get("titles", [])
     if titulos_alt:
         console.print(f"\n  [bold cyan]3 TÍTULOS ALTERNATIVOS:[/bold cyan]")
         old_title = item_data.get("title", "")
@@ -115,14 +119,14 @@ def _show_result(result: dict):
         console.print(table)
 
     # Ficha técnica perfecta
-    ficha = seo.get("ficha_perfecta", "")
+    ficha = opt_plan.get("attributes", "")
     if ficha:
         preview = ficha[:400] + "…" if len(ficha) > 400 else ficha
         console.print(Panel(preview, title="[cyan]Ficha técnica perfecta[/cyan]",
                             border_style="cyan", padding=(0, 1)))
 
     # Descripción nueva
-    desc = seo.get("descripcion_nueva", "")
+    desc = opt_plan.get("description", "")
     if desc:
         preview = desc[:350] + "…" if len(desc) > 350 else desc
         console.print(Panel(preview, title="[green]Descripción nueva (preview)[/green]",
@@ -185,10 +189,10 @@ def run(
         _show_result(result)
 
         # Aplicar cambios
-        seo            = result.get("seo_result", {})
-        titulos_alt    = seo.get("titulos_alt", [])
-        desc_nueva     = seo.get("descripcion_nueva", "")
-        item_data_res  = result.get("item_data", {})
+        opt_plan       = result.get("optimization_plan", {})
+        titulos_alt    = opt_plan.get("titles", [])
+        desc_nueva     = opt_plan.get("description", "")
+        item_data_res  = result.get("_item_data", {})
         my_sold        = item_data_res.get("sold_quantity", 0)
         titulo_elegido = ""
 
@@ -217,17 +221,22 @@ def run(
             aplicados_total += 1
 
         # Guardar en historial
+        _rankings = {
+            p["keyword"]: p.get("position")
+            for p in result.get("position_tracking", [])
+            if p.get("aparece")
+        }
         _save_report(alias, {
             "item_id":           item_id,
             "titulo_actual":     item_data_res.get("title", ""),
-            "titulo_nuevo":      titulo_elegido or seo.get("titulo_principal", ""),
+            "titulo_nuevo":      titulo_elegido or opt_plan.get("titulo_recomendado", ""),
             "titulos_alt":       titulos_alt,
             "descripcion_nueva": desc_nueva,
-            "ficha_perfecta":    seo.get("ficha_perfecta", ""),
-            "autosuggest_kws":   result.get("autosuggest_kws", []),
-            "ml_score_antes":    result.get("ml_score", {}).get("total", 0),
-            "categoria":         result.get("category", ""),
-            "rankings":          result.get("rankings", {}),
+            "ficha_perfecta":    opt_plan.get("attributes", ""),
+            "autosuggest_kws":   result.get("_autosuggest_raw", []),
+            "ml_score_antes":    result.get("_ml_score", {}).get("total", 0),
+            "categoria":         result.get("summary", {}).get("category", ""),
+            "rankings":          _rankings,
             "aplicado":          bool(titulo_elegido or (my_sold > 0 and desc_nueva)),
             "fecha":             today,
         })
