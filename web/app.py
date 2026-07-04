@@ -11121,6 +11121,39 @@ def api_descubrir_competidores():
                 except Exception:
                     pass
 
+        # ── 3b. Top sellers por volumen de ventas (sort=sold_quantity) ──────────
+        # Fuente adicional para encontrar líderes reales del mercado que pueden
+        # no aparecer en highlights ni en búsqueda por relevancia.
+        _sold_headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Referer': 'https://www.mercadolibre.com.ar/',
+        }
+        _main_kw = keywords_to_use[0]['keyword'] if keywords_to_use else ''
+        for _sq_params in [
+            {'category': category_id, 'sort': 'sold_quantity', 'limit': 8} if category_id else None,
+            {'q': _main_kw, 'sort': 'sold_quantity', 'limit': 8} if _main_kw else None,
+        ]:
+            if not _sq_params:
+                continue
+            try:
+                _sq_r = req_lib.get(
+                    'https://api.mercadolibre.com/sites/MLA/search',
+                    headers=_sold_headers,
+                    params=_sq_params,
+                    timeout=10,
+                )
+                if _sq_r.ok:
+                    for _res in _sq_r.json().get('results', []):
+                        _pid = _res.get('id', '')
+                        if _pid and _pid not in seen_pids and _pid != item_id:
+                            seen_pids.add(_pid)
+                            product_ids.append(_pid)
+                            item_ids_mode = True  # estos son item IDs, no catálogo
+                _time.sleep(0.15)
+            except Exception:
+                pass
+
         if not product_ids:
             return jsonify({'ok': False, 'error': 'No se encontraron competidores para ese producto'}), 400
 
