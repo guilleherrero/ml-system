@@ -2009,6 +2009,7 @@ def _build_synthesis_prompt(
     keyword_clusters: list = None,
     category_path: str = "",
     top_rankers: list = None,
+    tier1_kw: str = "",
 ) -> str:
     title        = item_data.get("title", "")
     my_sold      = item_data.get("sold_quantity", 0)
@@ -2339,12 +2340,55 @@ Formato: CANTIDAD SUGERIDA: [N] | Tipos: [fondo blanco, lifestyle, detalle, comp
 ✗ Palabras repetidas dentro del mismo título
 ✗ Keywords INFORMACIONALES en el título (solo van en descripción)
 
-JERARQUÍA OBLIGATORIA DE KEYWORDS EN TÍTULOS:
-✓ TÍTULO 1: primer token = TIER 1 keyword #1 (mayor priority_score, no informacional)
-✓ TÍTULO 2: primer token = TIER 1 keyword #2 o diferente combinación de TIER 1
-✓ TÍTULO 3: primer token = TIER 3 keyword (perfil alternativo de comprador)
-✓ Los 3 títulos deben ser estructuralmente distintos entre sí
-✓ Estructura ideal: Producto + Marca/Modelo + Especificación clave
+═══ FÓRMULA DE CONSTRUCCIÓN DE TÍTULO — OBLIGATORIA ═══
+
+PRINCIPIO RECTOR: cada caracter del título es SEO — ninguna palabra es decorativa.
+El algoritmo ML pondera más las keywords que aparecen antes. El comprador mobile solo ve ~25 chars.
+Objetivo: máxima densidad de keywords poderosas en orden de impacto decreciente.
+
+REGLA CRÍTICA — PRESERVAR FRASES DEL AUTOSUGGEST:
+El autosuggest de ML devuelve n-gramas exactos que reflejan cómo los compradores buscan.
+NUNCA separar las palabras de una frase autosuggest. Si el autosuggest dice "extractor comedones puntas abiertas",
+esas palabras van JUNTAS y en ESE ORDEN — así el algoritmo las reconoce como frase completa.
+
+SLOTS DE CONSTRUCCIÓN (aplicar en este orden estricto):
+{f"""SLOT 1 — chars 1-{len(tier1_kw)} — KEYWORD TIER 1 (FIJO, INVIOLABLE): "{tier1_kw}"
+  → Esta keyword va PRIMERO sin excepción. Es lo que el algoritmo y el comprador mobile ven primero.
+  → Preservar su orden interno exacto del autosuggest.
+SLOT 2 — chars {len(tier1_kw)+2}-~40 — KEYWORD TIER 2 de mayor priority_score disponible:
+  → Elegir la TIER 2 con mayor score que no repita palabras del SLOT 1.
+  → Si es una frase autosuggest, mantener su orden interno.
+SLOT 3 — chars ~41-55 — GAP KEYWORD o LONG-TAIL de mayor score restante:
+  → Cubrir un tercer perfil de búsqueda o especificación técnica clave.
+  → Priorizar gap keywords (vocabulario de competidores top) sobre atributos genéricos.""" if tier1_kw else """SLOT 1 — chars 1-20 — KEYWORD TIER 1 con mayor priority_score (no informacional)
+SLOT 2 — chars 21-40 — KEYWORD TIER 2 de mayor priority_score sin repetir palabras del SLOT 1
+SLOT 3 — chars 41-55 — GAP KEYWORD o LONG-TAIL de mayor score restante"""}
+
+REGLAS DE MAXIMIZACIÓN DE KEYWORDS:
+✗ PROHIBIDO: cualquier palabra que NO aparezca en el autosuggest de ML ni en los gap keywords de competidores.
+  No importa qué tan precisa sea para describir el producto — si ML no la sugiere como búsqueda, los compradores
+  no la usan para buscar y ocupa chars que podrían ser otra keyword con volumen real.
+  EJEMPLO: si "eléctrico" no está en el autosuggest ni en gap keywords → NO va en el título, aunque el producto sea eléctrico.
+✗ PROHIBIDO: stopwords entre frases distintas (de, para, con, el, la, los, las, un, una)
+  EXCEPCIÓN: si la stopword es parte de una frase del autosuggest (ej: "extractor de comedones") → preservarla dentro de esa frase
+✗ PROHIBIDO: adjetivos de relleno (premium, profesional, moderno, práctico, original) — ocupan chars sin volumen de búsqueda
+✗ PROHIBIDO: repetir palabras dentro del mismo título
+✓ OBLIGATORIO: cada palabra del título debe pertenecer a una keyword del autosuggest (cualquier tier) o a un gap keyword de competidores top
+✓ OBLIGATORIO: palabras completas (nunca truncadas)
+✓ TEST DE LEGIBILIDAD OBLIGATORIO: antes de devolver cada título, leerlo en voz alta.
+  Si suena como lista de palabras sin conexión → reformular manteniendo las mismas keywords pero en orden natural.
+  El comprador tiene 2 segundos para entender qué es el producto — si no lo entiende, no hace clic.
+  Un título legible con keywords reales convierte mejor que keyword soup aunque cubra las mismas búsquedas.
+
+ESTRATEGIA POR TÍTULO:
+✓ TÍTULO 1: SLOT1=TIER1 principal + SLOT2=TIER2 más buscada + SLOT3=gap keyword top → máximo volumen
+✓ TÍTULO 2: SLOT1=TIER1 alternativo (distinto ángulo) + SLOT2=TIER2 diferente + SLOT3=long-tail → máxima cobertura
+✓ TÍTULO 3: SLOT1=TIER3 (perfil alternativo de comprador) + SLOT2+SLOT3=specs del producto → captura segmento no explorado
+
+{f'''RESTRICCIÓN MOBILE CRÍTICA:
+"{tier1_kw}" ({len(tier1_kw)} chars) DEBE estar en posición 1 de los títulos 1 y 2.
+Chars disponibles antes del corte mobile (~25): {max(0, 25 - len(tier1_kw))} para el inicio del SLOT 2.''' if tier1_kw else ''}
+═══════════════════════════════════════════════════════════════════
 
 ──── FICHA TÉCNICA ────
 - Nombres EXACTOS de los atributos oficiales de la categoría (los listados arriba)
@@ -2864,25 +2908,6 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     category_attrs = _get_category_attributes(category_id, token)
     _c.print(f"[green]{category_name}[/green]")
 
-    # ── M1.6: Autosuggest por marca (cubre búsquedas "marca + categoría") ─────
-    _brand_attr = next(
-        (a.get("value_name") for a in item_data.get("attributes", [])
-         if a.get("id") == "BRAND" and a.get("value_name")),
-        None,
-    )
-    if _brand_attr:
-        _cat_word = category_name.split()[0] if category_name else ""
-        _brand_query = f"{_cat_word} {_brand_attr}".strip()
-        _c.print(f"  [dim]M1.6 — Autosuggest marca ({_brand_query})...[/dim]", end=" ")
-        _brand_kws = _ml_autosuggest(_brand_query)
-        _brand_new = 0
-        for _bkw in _brand_kws:
-            if _bkw not in autosuggest_raw:
-                autosuggest_raw.append(_bkw)
-                as_position_map.setdefault(_bkw, {'best_pos': 5, 'query_count': 0})
-                _brand_new += 1
-        _c.print(f"[green]+{_brand_new} keywords de marca[/green]")
-
     # ── M1 scoring completo ───────────────────────────────────────────────────
     keyword_analysis = score_and_classify_keywords(autosuggest_raw, title, position_data, competitors, as_position_map)
     keyword_clusters = _cluster_keywords(autosuggest_raw, as_position_map)
@@ -2934,6 +2959,12 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     _c.print("\n  [cyan]M6 — LLAMADA 2/2 → Optimización final (Opus)...[/cyan]")
     my_photos = len(item_data.get("pictures", []))
     my_price  = float(item_data.get("price", 0))
+    # Extraer keyword TIER 1 real para restricción mobile
+    tier1_kw = next(
+        (k["keyword"] for k in keyword_analysis
+         if k.get("priority_score", 0) >= 50 and k.get("compatibilidad") in ("alta", "media")),
+        keyword_analysis[0]["keyword"] if keyword_analysis else "",
+    )
     prompt_synthesis = _build_synthesis_prompt(
         item_data, description, keyword_analysis, category_attrs,
         category_name, root_causes, comp_patterns, analysis_text,
@@ -2947,9 +2978,19 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         keyword_clusters=keyword_clusters,
         category_path=category_path,
         top_rankers=top_rankers,
+        tier1_kw=tier1_kw,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)
+
+    # ── Validación post-generación: TIER 1 en primeros 25 chars ──────────────
+    if tier1_kw:
+        _t1_tokens = set(_tokenize(tier1_kw))
+        for _t in seo_result.get("titles", []):
+            _start25 = _t.get("titulo", "")[:25].lower()
+            _t["tier1_ok"] = any(w in _start25 for w in _t1_tokens)
+            if not _t["tier1_ok"]:
+                _c.print(f"  [yellow]⚠ Título '{_t['titulo'][:40]}…' — TIER 1 '{tier1_kw}' no está en primeros 25 chars[/yellow]")
 
     # ── M7: Confidence Layer ──────────────────────────────────────────────────
     confidence = build_confidence_layer(keyword_analysis, root_causes, difficulty)
