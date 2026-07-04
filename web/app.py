@@ -11387,8 +11387,9 @@ def api_reverse_keywords():
         seen = set()
         result = []
         for ph, _ in scored:
-            # Rechazar frases en inglés y evitar redundantes
-            if ph not in seen and _is_spanish_kw(ph):
+            ph_words = set(ph.split())
+            # Rechazar si no comparte ninguna palabra con el título (off-topic) o está en inglés
+            if ph not in seen and _is_spanish_kw(ph) and (ph_words & title_words):
                 seen.add(ph)
                 result.append(ph)
             if len(result) >= n:
