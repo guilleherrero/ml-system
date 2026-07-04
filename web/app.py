@@ -11354,48 +11354,6 @@ def api_reverse_keywords():
         english_count = sum(1 for w in words if w in _ENGLISH_MARKERS)
         return english_count < 2
 
-    def _extract_desc_phrases(description: str, title_words: set, n: int = 3) -> list:
-        """
-        Extrae frases de 2-3 palabras de la descripción que sean relevantes
-        para el producto (excluye stopwords, incluye palabras del título como ancla).
-        Devuelve hasta n frases únicas ordenadas por frecuencia.
-        """
-        if not description:
-            return []
-        # Limpiar HTML básico
-        clean = re.sub(r'<[^>]+>', ' ', description)
-        clean = re.sub(r'[^\w\sáéíóúüñ]', ' ', clean.lower())
-        words = [w for w in clean.split() if len(w) >= 3 and w not in _stopwords]
-
-        # Bigramas y trigramas
-        phrases = []
-        for i in range(len(words)):
-            if i + 1 < len(words):
-                phrases.append(f'{words[i]} {words[i+1]}')
-            if i + 2 < len(words):
-                phrases.append(f'{words[i]} {words[i+1]} {words[i+2]}')
-
-        # Contar frecuencia y priorizar frases que contienen palabras del título
-        phrase_counts = Counter(phrases)
-        scored = []
-        for ph, cnt in phrase_counts.items():
-            ph_words = set(ph.split())
-            title_overlap = len(ph_words & title_words)
-            scored.append((ph, cnt + title_overlap * 2))
-
-        scored.sort(key=lambda x: -x[1])
-        seen = set()
-        result = []
-        for ph, _ in scored:
-            ph_words = set(ph.split())
-            # Rechazar si no comparte ninguna palabra con el título (off-topic) o está en inglés
-            if ph not in seen and _is_spanish_kw(ph) and (ph_words & title_words):
-                seen.add(ph)
-                result.append(ph)
-            if len(result) >= n:
-                break
-        return result
-
     try:
         # ── Recolectar keywords por competidor ────────────────────────────────
         # kw_data[keyword] = {keyword, competitors: [title,...], positions: [int,...], sources: set}
@@ -11406,23 +11364,16 @@ def api_reverse_keywords():
             if not comp_title or comp_title == comp.get('id', ''):
                 continue
 
-            comp_desc = (comp.get('description') or '').strip()
-
-            # ── Queries desde el TÍTULO ───────────────────────────────────────
+            # Solo analizamos el TÍTULO — es lo que ML indexa para posicionamiento.
+            # Las descripciones se usan en otro módulo para generar contenido, no keywords.
             title_words = {w for w in comp_title.lower().split()
                            if len(w) >= 3 and w not in _stopwords}
             q1 = comp_title.lower()
             q2 = ' '.join(list(title_words)[:4])
-            title_queries = list(dict.fromkeys([q for q in [q1, q2] if q]))
-
-            # ── Queries desde la DESCRIPCIÓN ─────────────────────────────────
-            desc_phrases = _extract_desc_phrases(comp_desc, title_words, n=3)
-
-            all_queries = title_queries + desc_phrases
+            queries = list(dict.fromkeys([q for q in [q1, q2] if q]))
 
             seen_for_comp = set()
-            for q_idx, q in enumerate(all_queries):
-                source = 'titulo' if q_idx < len(title_queries) else 'descripcion'
+            for q in queries:
                 suggestions = _ml_autosuggest(q, limit=10)
                 for pos, kw in enumerate(suggestions, 1):
                     kw_norm = kw.lower().strip()
@@ -11441,7 +11392,7 @@ def api_reverse_keywords():
                         }
                     kw_data[kw_norm]['competitors'].append(comp_title[:50])
                     kw_data[kw_norm]['positions'].append(pos)
-                    kw_data[kw_norm]['sources'].add(source)
+                    kw_data[kw_norm]['sources'].add('titulo')
                 _time.sleep(0.1)
 
         # ── Fallback: extraer keywords directamente de los títulos si autosuggest falló ──
