@@ -1990,6 +1990,75 @@ R: [respuesta 5]"""
     return addendum
 
 
+def _analyze_competitor_attr_freq(competitors: list, top_rankers: list) -> dict:
+    """
+    Analiza qué valores de atributos usan más los competidores y top rankers.
+    Retorna {attr_name: [{"value": str, "count": int, "total": int}]} ordenado por frecuencia.
+    Los top rankers cuentan doble (son la señal más fuerte del algoritmo).
+    """
+    from collections import defaultdict, Counter
+
+    # Top rankers cuentan doble — son la señal más relevante del algoritmo
+    all_sources = list(competitors) + list(top_rankers or []) * 2
+    total = len(competitors) + len(top_rankers or [])
+    if not total:
+        return {}
+
+    attr_value_counts: dict = defaultdict(Counter)
+    for comp in all_sources:
+        for attr in comp.get("attributes", []):
+            name  = attr.get("name", "").strip()
+            value = attr.get("value", "").strip()
+            if name and value and len(value) < 80:
+                attr_value_counts[name][value] += 1
+
+    result = {}
+    for attr_name, value_counts in attr_value_counts.items():
+        result[attr_name] = [
+            {"value": v, "count": c, "total": total}
+            for v, c in value_counts.most_common(3)
+            if c >= 1
+        ]
+    return result
+
+
+def _assign_keywords_to_free_fields(
+    category_attrs: dict,
+    keyword_analysis: list,
+    title: str,
+) -> dict:
+    """
+    Asigna keywords del autosuggest (no usadas en el título) a campos de texto libre.
+    Objetivo: cada campo libre indexa búsquedas distintas → cobertura SEO x2-3 sin tocar el título.
+    Retorna {field_name: keyword_phrase}
+    """
+    all_attrs = category_attrs.get("required", []) + category_attrs.get("optional", [])
+    free_fields = [a["name"] for a in all_attrs if not a.get("values")]
+    if not free_fields:
+        return {}
+
+    title_tokens = set(_tokenize(title))
+
+    # Preferir frases de 3+ palabras no solapadas con el título, ordenadas por priority_score
+    available = [
+        k["keyword"] for k in keyword_analysis
+        if k.get("tipo_intencion") != "informativa"
+        and k.get("compatibilidad") in ("alta", "media", "baja")
+        and len(k["keyword"].split()) >= 2
+        and len(set(_tokenize(k["keyword"])) - title_tokens) >= 1  # al menos 1 token nuevo
+    ]
+
+    assignments = {}
+    used_kws: set = set()
+    for field in free_fields[:8]:
+        for kw in available:
+            if kw not in used_kws:
+                assignments[field] = kw
+                used_kws.add(kw)
+                break
+    return assignments
+
+
 def _build_synthesis_prompt(
     item_data: dict,
     description: str,
@@ -2010,6 +2079,9 @@ def _build_synthesis_prompt(
     category_path: str = "",
     top_rankers: list = None,
     tier1_kw: str = "",
+    neg_reviews_raw: list = None,
+    comp_attr_freq: dict = None,
+    kw_field_assignments: dict = None,
 ) -> str:
     title        = item_data.get("title", "")
     my_sold      = item_data.get("sold_quantity", 0)
@@ -2030,6 +2102,29 @@ def _build_synthesis_prompt(
         attrs_block += "OBLIGATORIOS:\n" + "\n".join(fmt_attr(a) for a in req_attrs)
     if opt_attrs:
         attrs_block += f"\nOPCIONALES ({len(opt_attrs)}):\n" + "\n".join(fmt_attr(a) for a in opt_attrs[:20])
+
+    # Estado actual de atributos del ítem — para que Claude sepa qué ya tiene y qué falta
+    _current_attrs_map = {
+        a.get("name", "").strip(): a.get("value", "").strip()
+        for a in item_data.get("attributes", [])
+        if a.get("value")
+    }
+    _cur_lines = []
+    for a in req_attrs:
+        cur_val = _current_attrs_map.get(a["name"], "")
+        _cur_lines.append(
+            f"  [OBLIG] {a['name']}: {'COMPLETADO: ' + cur_val if cur_val else 'FALTA'}"
+        )
+    for a in opt_attrs[:15]:
+        cur_val = _current_attrs_map.get(a["name"], "")
+        if cur_val:
+            _cur_lines.append(f"  [OPC] {a['name']}: COMPLETADO: {cur_val}")
+        elif not a.get("values"):
+            _cur_lines.append(f"  [OPC-LIBRE] {a['name']}: vacío — oportunidad SEO")
+    current_attrs_block = (
+        "\nESTADO ACTUAL DE LA FICHA TÉCNICA DEL VENDEDOR:\n" + "\n".join(_cur_lines)
+        if _cur_lines else ""
+    )
 
     # Atributos de texto libre — oportunidad SEO para keywords que no entraron en el título
     _all_attrs = req_attrs + opt_attrs
@@ -2074,6 +2169,34 @@ def _build_synthesis_prompt(
         _kw_lines.append("INFORMACIONALES — solo descripción, NUNCA en título:")
         _kw_lines.extend(_inf)
     kw_block = "\n".join(_kw_lines) or "  (no disponible)"
+
+    # N-gramas del autosuggest — frases que deben aparecer verbatim en la descripción
+    _t1_kw_strs = [
+        k["keyword"] for k in keyword_analysis[:15]
+        if k.get("tipo_intencion") != "informativa" and k.get("priority_score", 0) >= 50
+    ]
+    _t2_kw_strs = [
+        k["keyword"] for k in keyword_analysis[:15]
+        if k.get("tipo_intencion") != "informativa"
+        and 25 <= k.get("priority_score", 0) < 50
+        and len(k["keyword"].split()) >= 3
+    ]
+    ngram_block = ""
+    if _t1_kw_strs or _t2_kw_strs:
+        _ngram_lines = [
+            "\nFRASES DEL AUTOSUGGEST — REGLA DE N-GRAMAS EXACTOS EN LA DESCRIPCIÓN:",
+            "ML detecta y pondera n-gramas completos. Una frase presente como bloque consecutivo",
+            "vale más que sus palabras dispersas por el texto.",
+            "OBLIGATORIO: cada frase de 3+ palabras debe aparecer como secuencia CONSECUTIVA en la descripción.",
+            "No alcanza con que las palabras estén presentes — deben aparecer JUNTAS y EN ESE ORDEN.",
+        ]
+        if _t1_kw_strs:
+            _ngram_lines.append("TIER 1 — incluir TODAS (frase completa, exacta, consecutiva):")
+            _ngram_lines.extend(f'  "{kw}"' for kw in _t1_kw_strs[:5])
+        if _t2_kw_strs:
+            _ngram_lines.append("TIER 2 (≥3 palabras) — incluir al menos 2:")
+            _ngram_lines.extend(f'  "{kw}"' for kw in _t2_kw_strs[:4])
+        ngram_block = "\n".join(_ngram_lines)
 
     # Clusters de keywords — indica variantes intercambiables y su poder real
     cluster_block = ""
@@ -2155,6 +2278,16 @@ def _build_synthesis_prompt(
             if static_ctx else ""
         )
 
+    # Quejas verbatim de compradores de competidores — para objeciones sin inventar
+    neg_reviews_block = ""
+    if neg_reviews_raw:
+        neg_reviews_block = (
+            "\nQUEJAS REALES DE COMPRADORES DE COMPETIDORES (verbatim — no filtradas):\n"
+            "Usá estas quejas para identificar los miedos reales del mercado.\n"
+            "RESTRICCIÓN ABSOLUTA: solo mencioná que tu producto resuelve algo si los datos provistos (ficha técnica, specs, descripción actual) lo confirman.\n"
+            + "\n".join(f"  ★1-2 {r}" for r in neg_reviews_raw[:8])
+        )
+
     # Gap keywords block
     gap_block = ""
     if gap_keywords:
@@ -2186,8 +2319,8 @@ def _build_synthesis_prompt(
                 f"{'Full' if tr.get('full_ship') else 'Gratis' if tr.get('free_ship') else 'Pago'}"
             )
             if tr.get("attributes"):
-                tr_lines.append("  Ficha: " + " | ".join(
-                    f"{a['name']}: {a['value']}" for a in tr["attributes"][:6] if a.get("value")
+                tr_lines.append("  Ficha (usar para inferir valores de atributos): " + " | ".join(
+                    f"{a['name']}: {a['value']}" for a in tr["attributes"][:10] if a.get("value")
                 ))
             if tr_gap:
                 tr_lines.append(f"  Tokens únicos del ranker ausentes en tu título: {', '.join(tr_gap[:8])}")
@@ -2229,6 +2362,38 @@ def _build_synthesis_prompt(
 
     category_display = category_path if category_path else category_name
 
+    # Frecuencia de atributos de competidores — referencia primaria para inferir valores
+    comp_attr_freq_block = ""
+    if comp_attr_freq:
+        _cf_lines = [
+            "\nFRECUENCIA DE ATRIBUTOS EN COMPETIDORES + TOP RANKERS",
+            "(los top rankers cuentan doble — son la señal más fuerte del algoritmo):",
+        ]
+        for attr_name, vals in sorted(comp_attr_freq.items(), key=lambda x: -x[1][0]["count"]):
+            if not vals:
+                continue
+            total_comps = vals[0]["total"]
+            top_val = vals[0]
+            pct = round(top_val["count"] / total_comps * 100) if total_comps else 0
+            line = f"  {attr_name}: \"{top_val['value']}\" ({pct}% de competidores)"
+            if len(vals) > 1:
+                others = " | ".join(f'"{v["value"]}"' for v in vals[1:3])
+                line += f"  — también: {others}"
+            _cf_lines.append(line)
+        comp_attr_freq_block = "\n".join(_cf_lines)
+
+    # Asignación de keywords a campos libres — cobertura SEO máxima
+    kw_assign_block = ""
+    if kw_field_assignments:
+        _ka_lines = [
+            "\nASIGNACIÓN ESTRATÉGICA — keywords del autosuggest a campos de texto libre:",
+            "Cada campo debe indexar búsquedas DISTINTAS (no repetir el título).",
+            "Usá exactamente estas frases como secuencias consecutivas en el campo indicado:",
+        ]
+        for field, kw in kw_field_assignments.items():
+            _ka_lines.append(f'  "{field}" → "{kw}"')
+        kw_assign_block = "\n".join(_ka_lines)
+
     return f"""Sos un experto senior en SEO y conversión para MercadoLibre Argentina.
 Tu objetivo es producir el contenido más competitivo posible usando los datos reales del mercado provistos.
 Nunca inventés características técnicas. Nunca usés frases genéricas. Siempre priorizá claridad sobre creatividad.
@@ -2248,10 +2413,10 @@ KEYWORDS REALES DEL AUTOSUGGEST ML (fuente primaria — prioridad absoluta sobre
 
 ATRIBUTOS OFICIALES DE LA CATEGORÍA "{category_name}":
 {attrs_block}
-{free_text_block}
+{free_text_block}{current_attrs_block}
 {top_rankers_block}ANÁLISIS PREVIO (Haiku):
 {_smart_truncate(analysis_text, 2500)}
-{buyer_context}
+{buyer_context}{neg_reviews_block}
 
 ═══ PASO 0 — COMPROMISO DE KEYWORDS (escribirlo explícitamente como primera sección del output) ═══
 Antes de generar cualquier contenido, declarar por escrito las keywords elegidas.
@@ -2398,12 +2563,40 @@ Chars disponibles antes del corte mobile (~25): {max(0, 25 - len(tier1_kw))} par
 ═══════════════════════════════════════════════════════════════════
 
 ──── FICHA TÉCNICA ────
-- Nombres EXACTOS de los atributos oficiales de la categoría (los listados arriba)
-- Completar TODOS los obligatorios + todos los opcionales aplicables
-- Valores semánticamente correctos y limpios — sin keywords SEO dentro del valor
-  EJEMPLO PROHIBIDO: COLOR = "Negro para cabello dañado" → correcto: COLOR = "Negro"
-- Si el valor no se puede inferir con certeza → [SUGERIR: descripción de qué dato va aquí]
-- Gap keywords y long-tail van en título, descripción y campos de texto libre — NUNCA en campos con valores predefinidos (los que tienen lista de opciones fija)
+{comp_attr_freq_block}
+
+FORMATO OBLIGATORIO — una línea por atributo, 4 campos separados por |:
+  Nombre del atributo | Valor sugerido | tipo | Estrategia SEO — una sola línea
+
+ETIQUETAS DE TIPO (usar exactamente estas):
+  obligatorio       → atributo requerido por ML
+  obligatorio-vars  → requerido pero ML lo rellena desde variantes (confirmar consistencia)
+  opcional          → no requerido; completar si aplica al producto
+  texto-libre-seo   → sin lista de valores fija — OPORTUNIDAD SEO CRÍTICA: usar n-gramas del autosuggest
+
+REGLA FUNDAMENTAL — SIEMPRE SUGERÍ UN VALOR CONCRETO:
+PROHIBIDO usar [SUGERIR:] o dejar el campo vacío.
+Tu trabajo es inferir el mejor valor usando estas fuentes en orden de prioridad:
+  1. FRECUENCIA DE ATRIBUTOS (tabla arriba) — si el 60%+ de competidores usa un valor, ese es el correcto
+  2. Atributos de los top rankers individuales (listados en TOP RANKERS)
+  3. Título del item — keywords que mapean a atributos (ej: "recargable" → Fuente de alimentación: USB)
+  4. Descripción actual — especificaciones técnicas mencionadas
+  5. Keywords del autosuggest — revelan qué especificaciones buscan los compradores
+
+Si el dato exacto no está disponible: elegí el valor más probable o más estratégico.
+En la estrategia indicá la fuente: "60% de competidores usa este valor" / "Inferido del título" / "Inferido — verificar con proveedor".
+
+CAMPOS texto-libre-seo — estrategia SEO máxima:
+{kw_assign_block}
+
+Cada campo libre debe capturar búsquedas DISTINTAS — no repetir el título ni otros campos.
+ML indexa estos campos independientemente: cada uno suma cobertura de búsquedas sin costo adicional.
+
+OTRAS REGLAS:
+- Nombres EXACTOS de los atributos listados arriba
+- Campos con lista fija: elegir el valor más cercano de esa lista (no inventar valores fuera de la lista)
+- Campos con lista fija: NUNCA keyword stuffing (COLOR = "Negro" no "Negro mate premium")
+- NO incluir línea "Categoría:" — solo atributos en formato pipe
 
 ──── DESCRIPCIÓN ────
 ANTES DE EMPEZAR: el título que vas a usar como ancla semántica de la descripción es el indicado en TÍTULO RECOMENDADO. Identificá los 3-4 tokens principales (sustantivos y adjetivos clave) de ese título y aseguralos en los primeros 2 párrafos de la descripción.
@@ -2439,6 +2632,7 @@ DISTRIBUCIÓN DE KEYWORDS:
 - keyword_principal: 2–3 apariciones en total — densidad objetivo ~1.5%
 - keywords_secundarias: 2–3 apariciones cada una
 - long_tail: mínimo 5 frases distribuidas naturalmente — nunca forzadas
+{ngram_block}
 - ANCLA DEL PRODUCTO (sustantivo central, ej: "faja", "cortador", "lente"): MÁXIMO 8 apariciones en TODA la descripción incluyendo FAQs
   → La keyword_principal ya está limitada a 2-3 apariciones; ESTA regla es para el sustantivo del producto
   → El sustantivo central tiende a sobre-aparecer porque es el ancla semántica del producto
@@ -2478,8 +2672,16 @@ ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos 
      → fuente primaria: DUDAS FRECUENTES DE COMPRADORES de los insights de Q&A
      → fallback: FAQs típicas del CONTEXTO DE NICHO listadas arriba
    PARTE B — Neutralizar objeciones activamente: para cada miedo/objeción del nicho, escribir una frase que lo desarme con un dato concreto (no con una promesa vacía)
-     → fuente primaria: sección DEBILIDADES DE COMPETIDORES de los insights (las quejas de sus compradores = tus oportunidades de diferenciarte)
+     → fuente primaria: QUEJAS REALES DE COMPRADORES (listadas arriba con ★1-2) — estas son las objeciones reales del mercado
+     → fuente secundaria: sección DEBILIDADES DE COMPETIDORES de los insights
      → fallback: objeciones del CONTEXTO DE NICHO listadas arriba
+     → RESTRICCIÓN ABSOLUTA — SIN INVENTAR: usá las quejas para identificar el miedo del comprador;
+       respondé SOLO con datos verificables del propio producto (ficha técnica, specs confirmados, datos provistos).
+       PROHIBIDO afirmar que el producto resuelve un problema si los datos no lo confirman.
+       CORRECTO: "Los compradores de rizadores similares señalan que pierden temperatura con el uso.
+         Este modelo [dato concreto si existe en la ficha o descripción original, sino omitir la comparación]."
+       INCORRECTO: "A diferencia de la competencia, este rizador mantiene temperatura constante." (sin dato que lo respalde)
+       Si no hay dato que respalde la solución: describir el miedo del mercado y dejar que el comprador juzgue por los specs.
      → ejemplos de neutralización correcta:
         · miedo talle → "Las medidas exactas son X cm de contorno / Y cm de largo" (no "el talle es el correcto")
         · miedo material falso → "El cuero utilizado es [tipo] verificable al tacto por [característica]" (no "es material genuino")
@@ -2554,6 +2756,7 @@ Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
    aparezcan en los primeros 2 párrafos.
 5. Releé cada título y verificá que la ÚLTIMA PALABRA esté COMPLETA (no truncada). Si está cortada, remové palabras enteras hasta que entre con palabras completas dentro de los 60 chars.
 6. Contá apariciones del SUSTANTIVO CENTRAL del producto (ancla) en la descripción incluyendo FAQs → debe ser ≤8. Si excede, rotá con sinónimos contextuales y volvé a contar.
+7. Verificá que cada frase TIER 1 del autosuggest (las listadas arriba con "TIER 1 — incluir TODAS") aparezca como secuencia CONSECUTIVA en la descripción — búscalas literalmente. Si alguna falta, insertala de forma natural en el párrafo más afín.
 
 Si alguno falla, REESCRIBÍ esa parte antes de entregar la respuesta
 final. No marques el checklist como aprobado si algún ítem no cumple.
@@ -2600,10 +2803,43 @@ OPCIÓN: [1 / 2 / 3] | Motivo: [una línea — por qué esta opción maximiza ra
 
 ## FICHA TÉCNICA PERFECTA
 Categoría: {category_display}
-[atributo]: [valor]
+[Nombre atributo] | [Valor sugerido] | [tipo] | [Estrategia — una línea]
 
 ## DESCRIPCIÓN SUPERADORA
 [texto final — 9 bloques + bloque FAQ al final, párrafos separados por línea en blanco, sin títulos internos, sin markdown]{_build_faq_addendum(own_questions or [], qa_insights)}"""
+
+
+def _parse_ficha_structured(ficha_text: str) -> list:
+    """
+    Parsea el output pipe-delimitado de la ficha técnica de Claude.
+    Formato esperado: Nombre | Valor | tipo | Estrategia
+    Retorna lista de dicts: {name, value, tipo, strategy}
+    """
+    rows = []
+    skip_first = {"campo", "atributo", "nombre", "categoria", "categoría"}
+    for line in ficha_text.strip().split("\n"):
+        line = line.strip().strip("- •*")
+        if not line or "|" not in line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 2:
+            continue
+        name  = parts[0].strip()
+        value = parts[1].strip()
+        if not name or not value or name.lower() in skip_first:
+            continue
+        tipo     = parts[2].strip().lower() if len(parts) > 2 else "opcional"
+        strategy = parts[3].strip() if len(parts) > 3 else ""
+        # Marcar como "pendiente_verificacion" si Claude infirió el valor (no bloquearlo)
+        needs_check = "[SUGERIR:" in value or "verificar" in strategy.lower() or "confirmar" in strategy.lower()
+        rows.append({
+            "name":          name,
+            "value":         value,
+            "tipo":          tipo,
+            "strategy":      strategy,
+            "needs_check":   needs_check,
+        })
+    return rows
 
 
 def _call_claude(prompt: str, max_tokens: int = 3500, console=None, fast: bool = False) -> str:
@@ -2716,6 +2952,7 @@ def _parse_synthesis(text: str) -> dict:
         "titulo_recomendado_motivo": tr_motivo,
         "keywords_elegidas":     _extract_section(text, "KEYWORDS ELEGIDAS"),
         "ficha_perfecta":        _extract_section(text, "FICHA TÉCNICA PERFECTA"),
+        "ficha_attrs":           _parse_ficha_structured(_extract_section(text, "FICHA TÉCNICA PERFECTA")),
         "descripcion_nueva":     _extract_section(text, "DESCRIPCIÓN SUPERADORA"),
         "correcciones_titulo":   _extract_section(text, "CORRECCIONES DE TÍTULO"),
         "precio_recomendado":    _extract_section(text, "PRECIO RECOMENDADO"),
@@ -2814,8 +3051,26 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     category_id = item_data.get("category_id", "")
     _c.print("[green]✓[/green]")
 
+    # ── Extraer título base sin sufijo de variación (para auditoría justa) ───
+    # ML puede retornar el title con la variante concatenada, ej: "Título Base Tono 01 Natural"
+    # La regla de 60 chars aplica solo al título base, no al texto de la variante.
+    _title_for_audit = title
+    _variations = item_data.get("variations", [])
+    if _variations and len(title) > 60:
+        _var_vals = []
+        for _v in _variations:
+            for _ac in _v.get("attribute_combinations", []):
+                _vn = (_ac.get("value_name") or "").strip()
+                if _vn:
+                    _var_vals.append(_vn)
+        for _vv in _var_vals:
+            for _sep in (f" - {_vv}", f" | {_vv}", f" / {_vv}", f" {_vv}"):
+                if _title_for_audit.lower().endswith(_sep.lower()):
+                    _title_for_audit = _title_for_audit[:len(_title_for_audit) - len(_sep)].strip()
+                    break
+
     # ── Auditoría del título actual ───────────────────────────────────────────
-    title_violations = audit_title(title)
+    title_violations = audit_title(_title_for_audit)
     if title_violations:
         criticos = [v for v in title_violations if v["nivel"] == "critico"]
         _c.print(f"  [red]⚠ Título actual: {len(criticos)} violación(es) crítica(s) detectada(s)[/red]")
@@ -2895,11 +3150,20 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     _c.print("  [dim]M3.5 — Minería de Q&A y reseñas de competidores...[/dim]", end=" ")
     comp_ids = [c["id"] for c in competitors if c.get("id")]
     qa_raw   = fetch_competitor_qa(comp_ids, token)
+    neg_reviews_raw: list = []
     if qa_raw:
         total_q = sum(len(c["questions"]) for c in qa_raw)
         total_r = sum(len(c["reviews"])   for c in qa_raw)
         _c.print(f"[green]{total_q} preguntas + {total_r} reseñas[/green]")
         qa_insights = analyze_qa_insights(qa_raw, title, console=_c)
+        # Extraer quejas verbatim de reseñas negativas para síntesis directa
+        for _comp in qa_raw:
+            for _r in _comp.get("reviews", []):
+                if _r.get("rating", 5) <= 2:
+                    _neg = (_r.get("title", "") + " — " + _r.get("content", "")).strip(" —")
+                    if _neg and len(_neg) > 10:
+                        neg_reviews_raw.append(_neg[:200])
+        neg_reviews_raw = neg_reviews_raw[:8]
     else:
         _c.print("[dim]sin datos disponibles[/dim]")
         qa_insights = ""
@@ -2988,6 +3252,12 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
          if k.get("priority_score", 0) >= 50 and k.get("compatibilidad") in ("alta", "media")),
         keyword_analysis[0]["keyword"] if keyword_analysis else "",
     )
+    # Análisis de frecuencia de atributos entre competidores y top rankers
+    comp_attr_freq    = _analyze_competitor_attr_freq(competitors, top_rankers)
+    # Asignación de keywords del autosuggest a campos de texto libre
+    kw_field_assignments = _assign_keywords_to_free_fields(category_attrs, keyword_analysis, title)
+    _c.print(f"  [dim]Atributos frecuentes detectados: {len(comp_attr_freq)} | Campos libres asignados: {len(kw_field_assignments)}[/dim]")
+
     prompt_synthesis = _build_synthesis_prompt(
         item_data, description, keyword_analysis, category_attrs,
         category_name, root_causes, comp_patterns, analysis_text,
@@ -3002,6 +3272,9 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         category_path=category_path,
         top_rankers=top_rankers,
         tier1_kw=tier1_kw,
+        neg_reviews_raw=neg_reviews_raw,
+        comp_attr_freq=comp_attr_freq,
+        kw_field_assignments=kw_field_assignments,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=5000, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)
@@ -3052,6 +3325,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
             "titulo_recomendado_motivo": seo_result.get("titulo_recomendado_motivo", ""),
             "keywords":                  seo_result.get("keywords_section", ""),
             "attributes":                seo_result.get("ficha_perfecta", ""),
+            "ficha_attrs":               seo_result.get("ficha_attrs", []),
             "description":               seo_result.get("descripcion_nueva", ""),
             "correcciones_titulo":       seo_result.get("correcciones_titulo", ""),
             "precio_recomendado":        seo_result.get("precio_recomendado", ""),
@@ -3143,11 +3417,19 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     _c.print("  [dim]M3.5 — Minería de Q&A y reseñas de competidores...[/dim]", end=" ")
     comp_ids = [c["id"] for c in competitors if c.get("id")]
     qa_raw   = fetch_competitor_qa(comp_ids, token)
+    neg_reviews_raw_new: list = []
     if qa_raw:
         total_q = sum(len(c["questions"]) for c in qa_raw)
         total_r = sum(len(c["reviews"])   for c in qa_raw)
         _c.print(f"[green]{total_q} preguntas + {total_r} reseñas[/green]")
         qa_insights = analyze_qa_insights(qa_raw, product_idea, console=_c)
+        for _comp in qa_raw:
+            for _r in _comp.get("reviews", []):
+                if _r.get("rating", 5) <= 2:
+                    _neg = (_r.get("title", "") + " — " + _r.get("content", "")).strip(" —")
+                    if _neg and len(_neg) > 10:
+                        neg_reviews_raw_new.append(_neg[:200])
+        neg_reviews_raw_new = neg_reviews_raw_new[:8]
     else:
         _c.print("[dim]sin datos disponibles[/dim]")
         qa_insights = ""
@@ -3202,6 +3484,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
         qa_insights=qa_insights,
         keyword_clusters=keyword_clusters,
         category_path=category_path,
+        neg_reviews_raw=neg_reviews_raw_new,
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=5000, console=_c, fast=False)
     seo_result     = _parse_synthesis(synthesis_text)
@@ -3227,6 +3510,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
             "titulo_recomendado_motivo": seo_result.get("titulo_recomendado_motivo", ""),
             "keywords":                  seo_result.get("keywords_section", ""),
             "attributes":                seo_result.get("ficha_perfecta", ""),
+            "ficha_attrs":               seo_result.get("ficha_attrs", []),
             "description":               seo_result.get("descripcion_nueva", ""),
             "correcciones_titulo":       seo_result.get("correcciones_titulo", ""),
             "precio_recomendado":        seo_result.get("precio_recomendado", ""),
