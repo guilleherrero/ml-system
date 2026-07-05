@@ -667,22 +667,39 @@
           <div id="reverseKwResults" style="display:none;padding:12px 14px">
 
             <!-- Resumen -->
-            <div id="reverseKwSummary" style="font-size:.75rem;color:var(--color-neutral-700);margin-bottom:10px;background:var(--color-neutral-0);border-radius:6px;padding:7px 10px;border:1px solid #d1fae5"></div>
+            <div id="reverseKwSummary" style="font-size:.8rem;color:var(--color-neutral-700);margin-bottom:12px;background:var(--color-neutral-0);border-radius:8px;padding:10px 14px;border:1px solid #d1fae5;line-height:1.6"></div>
 
-            <!-- GAPS: keywords que ellos tienen y yo no -->
+            <!-- Keywords que YA CUBRÍS (primero — es la buena noticia) -->
+            <div id="reverseKwSharedSection" style="display:none;margin-bottom:14px">
+              <div style="font-size:.7rem;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                <i class="bi bi-check2-circle"></i>
+                Ya cubrís estas búsquedas — tus competidores top también las usan
+                <span style="font-size:.65rem;font-weight:500;color:#4ade80;background:#14532d;border-radius:10px;padding:1px 7px;text-transform:none;letter-spacing:0">buena señal</span>
+              </div>
+              <div id="reverseKwSharedList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+            </div>
+
+            <!-- GAPS: oportunidades nuevas -->
             <div id="reverseKwGapsSection" style="display:none;margin-bottom:12px">
-              <div style="font-size:.7rem;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
-                <i class="bi bi-exclamation-triangle-fill me-1"></i>Gaps — keywords que tus competidores rankean y vos no tenés
+              <div style="font-size:.7rem;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:flex;align-items:center;gap:6px">
+                <i class="bi bi-plus-circle-fill"></i>
+                Oportunidades — keywords que usan tus competidores y vos no tenés aún
+              </div>
+              <div style="font-size:.68rem;color:#b45309;margin-bottom:8px;padding:5px 8px;background:#fffbeb;border-radius:5px;border:1px solid #fde68a">
+                <i class="bi bi-magic me-1"></i>Estas keywords se envían automáticamente al optimizador de IA para incorporarlas al título y descripción
               </div>
               <div id="reverseKwGapsList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
             </div>
 
-            <!-- Compartidas: keywords que ya tenemos -->
-            <div id="reverseKwSharedSection" style="display:none">
-              <div style="font-size:.7rem;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
-                <i class="bi bi-check2-circle me-1"></i>Keywords confirmadas — ya están en tu análisis
-              </div>
-              <div id="reverseKwSharedList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+            <!-- Estado 0 gaps -->
+            <div id="reverseKwNoGaps" style="display:none;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;font-size:.8rem;color:#166534">
+              <i class="bi bi-trophy-fill me-2"></i><strong>Excelente cobertura</strong> — tus keywords ya cubren todo lo que usan tus competidores top. No hay brechas detectadas.
+            </div>
+
+            <!-- Leyenda -->
+            <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;font-size:.65rem;color:var(--color-neutral-500);display:flex;gap:14px;flex-wrap:wrap">
+              <span><strong style="color:var(--color-neutral-600)">2/4</strong> = aparece en 2 de los 4 competidores analizados</span>
+              <span><strong style="color:var(--color-neutral-600)">pos.1</strong> = posición en autosuggest de ML (1 = más buscada)</span>
             </div>
           </div>
         </div>
@@ -1984,52 +2001,64 @@ function renderReverseKeywords(data) {
   const gaps       = data.gaps   || [];
   const shared     = data.shared || [];
 
-  // Resumen
-  document.getElementById('reverseKwSummary').innerHTML =
-    `Se analizaron <strong>${totalComps}</strong> competidores → ` +
-    `<strong>${data.total_kws}</strong> keywords únicas encontradas · ` +
-    `<span style="color:#b45309;font-weight:700">${gaps.length} gaps</span> de oportunidad · ` +
-    `<span style="color:#0369a1;font-weight:700">${shared.length} confirmadas</span>`;
+  // ── Resumen en lenguaje claro ────────────────────────────────────────
+  const gapMsg = gaps.length
+    ? `<span style="color:#92400e;font-weight:700"><i class="bi bi-plus-circle-fill me-1"></i>${gaps.length} keyword${gaps.length !== 1 ? 's nuevas' : ' nueva'} para agregar</span>`
+    : `<span style="color:#166534;font-weight:700"><i class="bi bi-check2-circle me-1"></i>Sin brechas — cobertura completa</span>`;
+  const sharedMsg = shared.length
+    ? `<span style="color:#0369a1;font-weight:700">${shared.length} búsquedas ya cubiertas</span>`
+    : '';
 
-  // Función para renderizar una keyword chip
+  document.getElementById('reverseKwSummary').innerHTML =
+    `<strong>${totalComps}</strong> competidores analizados · <strong>${data.total_kws || 0}</strong> keywords únicas detectadas<br>` +
+    [gapMsg, sharedMsg].filter(Boolean).join(' · ');
+
+  // ── Chip de keyword ──────────────────────────────────────────────────
   function kwChip(kw) {
-    const freqColor  = kw.frequency >= 3 ? '#7c3aed' : kw.frequency >= 2 ? '#0369a1' : 'var(--color-neutral-700)';
-    const bgColor    = kw.is_gap ? '#fff7ed' : '#f0f9ff';
-    const border     = kw.is_gap ? '#fed7aa' : '#bae6fd';
-    const descBadge  = kw.from_desc
-      ? `<span style="background:#e0e7ff;color:#3730a3;border-radius:4px;padding:0 4px;font-size:.59rem;font-weight:700"
-               title="Encontrada en la descripción del competidor">desc</span>`
-      : '';
+    const isGap      = kw.is_gap;
+    const bgColor    = isGap ? '#fffbeb' : '#f0fdf4';
+    const border     = isGap ? '#fcd34d' : '#86efac';
+    const kwColor    = isGap ? '#92400e' : '#166534';
+    const freqColor  = kw.frequency >= 3 ? '#7c3aed' : kw.frequency >= 2 ? '#1d4ed8' : '#475569';
+    const freqLabel  = `en ${kw.frequency} de ${totalComps} competidores`;
+    const posLabel   = `pos. ${kw.avg_position} en autosuggest ML`;
+    const tooltip    = `${freqLabel} · ${posLabel}\nCompetidores: ${kw.competitors.join(', ')}`;
     return `
-      <div style="display:inline-flex;align-items:center;gap:4px;background:${bgColor};
-                  border:1px solid ${border};border-radius:6px;padding:4px 8px;font-size:.74rem;cursor:default"
-           title="Aparece en: ${kw.competitors.join(', ')}">
-        <span style="font-weight:600;color:var(--color-neutral-800)">${kw.keyword}</span>
-        ${descBadge}
-        <span style="background:${freqColor};color:var(--color-neutral-0);border-radius:10px;padding:0 5px;font-size:.62rem;font-weight:700"
-              title="${kw.frequency} competidor${kw.frequency !== 1 ? 'es' : ''}">${kw.frequency}/${totalComps}</span>
-        <span style="color:var(--color-neutral-400);font-size:.63rem">pos.${kw.avg_position}</span>
+      <div style="display:inline-flex;align-items:center;gap:5px;background:${bgColor};
+                  border:1px solid ${border};border-radius:7px;padding:5px 10px;font-size:.76rem;
+                  cursor:default;transition:box-shadow .12s"
+           title="${tooltip}"
+           onmouseover="this.style.boxShadow='0 1px 6px rgba(0,0,0,.12)'"
+           onmouseout="this.style.boxShadow='none'">
+        <span style="font-weight:700;color:${kwColor}">${kw.keyword}</span>
+        <span style="background:${freqColor};color:#fff;border-radius:10px;padding:1px 6px;font-size:.62rem;font-weight:700;white-space:nowrap"
+              title="${freqLabel}">${kw.frequency}/${totalComps}</span>
+        <span style="color:var(--color-neutral-400);font-size:.62rem;white-space:nowrap"
+              title="${posLabel}">✦${kw.avg_position}</span>
       </div>`;
   }
 
-  // Gaps
-  const gapsSection = document.getElementById('reverseKwGapsSection');
-  const gapsList    = document.getElementById('reverseKwGapsList');
-  if (gaps.length) {
-    gapsList.innerHTML    = gaps.map(kwChip).join('');
-    gapsSection.style.display = 'block';
-  } else {
-    gapsSection.style.display = 'none';
-  }
-
-  // Compartidas
+  // ── Sección: ya cubrís (primero) ─────────────────────────────────────
   const sharedSection = document.getElementById('reverseKwSharedSection');
   const sharedList    = document.getElementById('reverseKwSharedList');
   if (shared.length) {
-    sharedList.innerHTML    = shared.map(kwChip).join('');
+    sharedList.innerHTML       = shared.map(kwChip).join('');
     sharedSection.style.display = 'block';
   } else {
     sharedSection.style.display = 'none';
+  }
+
+  // ── Sección: gaps (oportunidades) ───────────────────────────────────
+  const gapsSection = document.getElementById('reverseKwGapsSection');
+  const gapsList    = document.getElementById('reverseKwGapsList');
+  const noGapsEl    = document.getElementById('reverseKwNoGaps');
+  if (gaps.length) {
+    gapsList.innerHTML         = gaps.map(kwChip).join('');
+    gapsSection.style.display  = 'block';
+    if (noGapsEl) noGapsEl.style.display = 'none';
+  } else {
+    gapsSection.style.display  = 'none';
+    if (noGapsEl) noGapsEl.style.display = 'block';
   }
 }
 
