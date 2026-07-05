@@ -7023,9 +7023,6 @@ def api_crear_publicacion_optimizada():
     except Exception as e:
         return jsonify({'ok': False, 'error': f'Error leyendo item original: {e}'}), 500
 
-    if orig.get('catalog_product_id'):
-        return jsonify({'ok': False, 'error': 'La publicación está vinculada al catálogo de ML. No se puede crear un clon.'}), 400
-
     # ── 2. Construir fotos ───────────────────────────────────────────────────
     original_pictures = orig.get('pictures', [])
     pictures_payload  = [{'source': p['secure_url']} for p in original_pictures if p.get('secure_url')]
