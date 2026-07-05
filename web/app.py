@@ -12636,7 +12636,14 @@ def api_optimizar_pub_v2():
             }
 
             # ── Persistir ─────────────────────────────────────────────────────
-            yield _sse({'type': 'step', 'msg': 'Guardando resultado...'})
+            _desc_len  = len(record.get('descripcion_nueva', ''))
+            _ficha_len = len(record.get('ficha_perfecta', ''))
+            if not _desc_len:
+                app.logger.warning('[optimizar-v2] item=%s — descripcion_nueva vacía tras parseo de síntesis', item_id)
+            if not _ficha_len:
+                app.logger.warning('[optimizar-v2] item=%s — ficha_perfecta vacía tras parseo de síntesis', item_id)
+
+            yield _sse({'type': 'step', 'msg': f'Guardando resultado (desc: {_desc_len} chars, ficha: {_ficha_len} chars)...'})
             opt_path = os.path.join(DATA_DIR, f'optimizaciones_{safe(alias)}.json')
             existing = load_json(opt_path) or {'optimizaciones': []}
             opts = existing.get('optimizaciones', [])

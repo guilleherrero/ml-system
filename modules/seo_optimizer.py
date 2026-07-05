@@ -2635,9 +2635,25 @@ def _call_claude(prompt: str, max_tokens: int = 3500, console=None, fast: bool =
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _extract_section(text: str, header: str) -> str:
+    import unicodedata as _ud
+    def _strip_acc(s: str) -> str:
+        return ''.join(c for c in _ud.normalize('NFD', s) if _ud.category(c) != 'Mn')
+
     pattern = rf"## {re.escape(header)}[ \t]*\n(.*?)(?=\n## |\Z)"
     m = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-    return m.group(1).strip() if m else ""
+    if m:
+        return m.group(1).strip()
+
+    # Fallback: Claude a veces escribe cabeceras sin tildes (DESCRIPCION en vez de DESCRIPCIÓN).
+    # Normalizamos tanto el texto como el header para encontrarlo igual.
+    stripped_text   = _strip_acc(text)
+    stripped_header = _strip_acc(header)
+    pattern2 = rf"## {re.escape(stripped_header)}[ \t]*\n(.*?)(?=\n## |\Z)"
+    m2 = re.search(pattern2, stripped_text, re.DOTALL | re.IGNORECASE)
+    if m2:
+        return text[m2.start(1):m2.end(1)].strip()  # devolver texto original sin normalizar
+
+    return ""
 
 
 def _parse_synthesis(text: str) -> dict:
@@ -2987,7 +3003,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
         top_rankers=top_rankers,
         tier1_kw=tier1_kw,
     )
-    synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
+    synthesis_text = _call_claude(prompt_synthesis, max_tokens=5000, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)
 
     # ── Validación post-generación: TIER 1 en primeros 25 chars ──────────────
@@ -3187,7 +3203,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
         keyword_clusters=keyword_clusters,
         category_path=category_path,
     )
-    synthesis_text = _call_claude(prompt_synthesis, max_tokens=3500, console=_c, fast=False)
+    synthesis_text = _call_claude(prompt_synthesis, max_tokens=5000, console=_c, fast=False)
     seo_result     = _parse_synthesis(synthesis_text)
     confidence     = build_confidence_layer(keyword_analysis, root_causes, difficulty)
 
