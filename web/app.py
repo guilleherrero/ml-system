@@ -12923,7 +12923,7 @@ def api_lanzar():
                         'photos':        len(item_d.get('pictures', [])),
                         'listing_type':  item_d.get('listing_type_id', ''),
                         'attrs':         attr_dict,
-                        'description':   desc_t[:400],
+                        'description':   desc_t[:800],
                         'reviews_rating': rev_d.get('rating_average', 0),
                         'reviews_count':  rev_d.get('paging', {}).get('total', 0),
                         'seller_sales':   seller_sales,

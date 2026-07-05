@@ -1786,7 +1786,7 @@ def _build_analysis_prompt(
         if c.get("attributes"):
             lines.append("Ficha: " + " | ".join(f"{a['name']}: {a['value']}" for a in c["attributes"][:10]))
         if c.get("description"):
-            lines.append(f"Descripción: {c['description'][:400]}")
+            lines.append(f"Descripción: {c['description'][:800]}")
         if kw_gap:
             lines.append(f"Keywords que ellos tienen y yo no: {', '.join(sorted(kw_gap)[:5])}")
         comp_lines.append("\n".join(lines))
@@ -1874,7 +1874,7 @@ Título ({len(title)} chars): {title}
 Categoría: {category_name} | Precio: ${price:,.0f} | Tipo: {tipo_pub}
 Shipping: {'Full' if full_ship else 'Envío gratis' if free_ship else 'Envío pago'} | Fotos: {photos} | Ventas: {my_sold:,}
 Score interno (estimado): {ml_score['total']}/100{(chr(10) + 'VIOLACIONES DETECTADAS EN TÍTULO ACTUAL:' + chr(10) + chr(10).join('  [' + v['nivel'].upper() + '] ' + v['regla'] + ': ' + v['detalle'] + ' → ' + v['sugerencia'] for v in (title_violations or []))) if title_violations else (chr(10) + '✓ Título actual sin violaciones de reglas ML')}{(chr(10) + 'Score OFICIAL ML: ' + str((ml_quality_oficial or {}).get('score', '')) + '/100' + (' — ' + (ml_quality_oficial or {}).get('level', '') if (ml_quality_oficial or {}).get('level') else '') + (chr(10) + 'Razones ML: ' + ' | '.join((ml_quality_oficial or {}).get('reasons', [])[:5]) if (ml_quality_oficial or {}).get('reasons') else '')) if (ml_quality_oficial or {}).get('score') else ''}
-Descripción ({len(description)} chars): {description[:400] or '(sin descripción)'}
+Descripción ({len(description)} chars): {description[:800] or '(sin descripción)'}
 
 ═══ M1: KEYWORD ANALYSIS — FUENTE PRINCIPAL ═══
 (40% posición autosuggest + 25% presencia competidores + 15% en título + 10% posición actual + 10% semántica)
@@ -2854,8 +2854,8 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     # Las descripciones contienen long-tails y sinónimos que no entran en el título de 60 chars
     _c.print("  [dim]M1.5 — Expandiendo keywords (títulos + descripciones propias y competidores)...[/dim]", end=" ")
     _comp_titles_raw = [c.get("title", "") for c in competitors if c.get("title")]
-    _comp_desc_raw   = [c.get("description", "")[:300] for c in competitors if c.get("description")]
-    _own_desc_chunk  = [description[:300]] if description else []
+    _comp_desc_raw   = [c.get("description", "")[:600] for c in competitors if c.get("description")]
+    _own_desc_chunk  = [description[:600]] if description else []
     _source_texts    = _comp_titles_raw + _comp_desc_raw + _own_desc_chunk
     _extra_kws = _competitor_seeded_autosuggest_seo(_source_texts, title)
     _seen_raw  = set(autosuggest_raw)
@@ -3180,8 +3180,8 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     comps_trimmed = []
     for c in competitors:
         ct = dict(c)
-        if ct.get("description") and len(ct["description"]) > 500:
-            ct["description"] = ct["description"][:500] + "…"
+        if ct.get("description") and len(ct["description"]) > 800:
+            ct["description"] = ct["description"][:800] + "…"
         comps_trimmed.append(ct)
     prompt_analysis = _build_analysis_prompt(
         item_mock, "", keyword_analysis, [], comps_trimmed,
