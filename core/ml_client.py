@@ -121,6 +121,9 @@ class MLClient:
     def update_item(self, item_id: str, payload: dict) -> dict:
         return self._put(f"/items/{item_id}", payload)
 
+    def create_item(self, payload: dict) -> dict:
+        return self._post("/items", payload)
+
     # ── Questions ─────────────────────────────────────────────────────────────
 
     def get_unanswered_questions(self) -> dict:

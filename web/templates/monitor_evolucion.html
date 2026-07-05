@@ -995,6 +995,8 @@ function renderItem(it) {
       ${detailBlock}
       ${parcialBlock}
       ${it.snapshots_n > 0 ? renderTimeline(it) : ''}
+      ${renderHistorialCambios(it)}
+      ${renderCambioPrecio(it)}
     </div>
   </div>`;
 }
@@ -1316,6 +1318,126 @@ function toggleDetail(id, btn) {
   btn.innerHTML = open
     ? '<i class="bi bi-chevron-down"></i> Ocultar métricas detalladas'
     : '<i class="bi bi-chevron-right"></i> Ver todas las métricas del baseline';
+}
+
+// ── Historial de cambios con impacto ─────────────────────────────────────────
+function renderHistorialCambios(it) {
+  const cambios = it.cambios || [];
+  if (!cambios.length) return '';
+
+  const IMPACT_DAYS = 7;
+  const snaps = it.snapshots || [];
+
+  function getPosAfterDays(fechaCambio, dias) {
+    const t0  = new Date(fechaCambio).getTime();
+    const cutoff = t0 + dias * 86400000;
+    const after  = snaps.filter(s => new Date(s.fecha).getTime() > t0 && new Date(s.fecha).getTime() <= cutoff + 86400000);
+    if (!after.length) return null;
+    return after[after.length - 1].posicion;
+  }
+
+  const rows = cambios.slice().reverse().map(c => {
+    const pos0    = c.pos_al_cambio;
+    const posPost = getPosAfterDays(c.fecha, IMPACT_DAYS);
+    let impactoHtml = '<span style="color:#94a3b8;font-size:.68rem">midiendo...</span>';
+    if (pos0 !== null && pos0 !== undefined && posPost !== null && posPost !== undefined) {
+      const delta = pos0 - posPost;  // positivo = mejoró
+      if (delta > 0)
+        impactoHtml = `<span style="color:#16a34a;font-weight:700">↑ +${delta} pos (${IMPACT_DAYS}d)</span>`;
+      else if (delta < 0)
+        impactoHtml = `<span style="color:#dc2626;font-weight:700">↓ ${delta} pos (${IMPACT_DAYS}d)</span>`;
+      else
+        impactoHtml = `<span style="color:#64748b">= sin cambio (${IMPACT_DAYS}d)</span>`;
+    }
+
+    let cambioDesc = '';
+    if (typeof c.antes === 'boolean' || typeof c.despues === 'boolean') {
+      cambioDesc = `${c.antes ? 'Sí' : 'No'} → ${c.despues ? 'Sí' : 'No'}`;
+    } else if (c.campo === 'precio') {
+      cambioDesc = `$${Number(c.antes||0).toLocaleString('es-AR')} → $${Number(c.despues||0).toLocaleString('es-AR')}`;
+    } else {
+      cambioDesc = `${c.antes} → ${c.despues}`;
+    }
+
+    return `<tr>
+      <td style="padding:.35rem .5rem;font-size:.72rem;color:#475569">${(c.fecha||'').slice(0,10)}</td>
+      <td style="padding:.35rem .5rem;font-size:.78rem">${c.icono||'•'} ${c.label}</td>
+      <td style="padding:.35rem .5rem;font-size:.72rem;color:#475569">${cambioDesc}</td>
+      <td style="padding:.35rem .5rem;text-align:right">${impactoHtml}</td>
+    </tr>`;
+  }).join('');
+
+  const tableId = 'ch-' + it.item_id.replace(/[^a-z0-9]/gi,'_');
+  return `<button class="timeline-toggle" onclick="(function(b,t){b.innerHTML=(t.style.display==='none'?(t.style.display='',b.innerHTML.replace('▶','▼')):(t.style.display='none',b.innerHTML.replace('▼','▶')))})(this,document.getElementById('${tableId}'))">
+    <i class="bi bi-pencil-square"></i> ▶ Historial de cambios y su impacto (${cambios.length})
+  </button>
+  <div id="${tableId}" style="display:none;margin-top:.4rem">
+    <table style="width:100%;border-collapse:collapse;font-size:.73rem">
+      <thead><tr>
+        <th style="text-align:left;padding:.3rem .5rem;font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e8f0">Fecha</th>
+        <th style="text-align:left;padding:.3rem .5rem;font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e8f0">Cambio</th>
+        <th style="text-align:left;padding:.3rem .5rem;font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e8f0">Antes → Después</th>
+        <th style="text-align:right;padding:.3rem .5rem;font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e8f0">Impacto posición (7d)</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="font-size:.65rem;color:#94a3b8;margin-top:.4rem;font-style:italic">
+      Los cambios detectados automáticamente al hacer "Actualizar". Cambios de precio también desde el botón de precio.
+    </div>
+  </div>`;
+}
+
+// ── Cambio de precio desde el Monitor ────────────────────────────────────────
+function renderCambioPrecio(it) {
+  const snap = it.ultimo_snapshot || it.baseline || {};
+  const precioActual = snap.precio;
+  if (!precioActual) return '';
+
+  const safeId = it.item_id.replace(/[^a-z0-9]/gi,'_');
+  return `<div style="margin-top:.6rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.5rem .6rem;background:#fafafa;border:1px solid #e2e8f0;border-radius:7px">
+    <i class="bi bi-tag" style="color:#64748b;font-size:.85rem"></i>
+    <span style="font-size:.75rem;color:#475569;font-weight:600">Precio actual:</span>
+    <span style="font-size:.85rem;font-weight:700;color:#0f172a">$${Number(precioActual).toLocaleString('es-AR')}</span>
+    <input id="precio-inp-${safeId}" type="number" min="1" step="1"
+           placeholder="Nuevo precio..."
+           style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:.8rem;width:130px;outline:none">
+    <button onclick="cambiarPrecioMonitor('${it.item_id}', 'precio-inp-${safeId}', this)"
+            style="padding:4px 12px;background:#0f172a;color:#fff;border:none;border-radius:5px;font-size:.76rem;font-weight:600;cursor:pointer">
+      Cambiar precio
+    </button>
+  </div>`;
+}
+
+async function cambiarPrecioMonitor(itemId, inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  const precio = parseFloat(inp.value);
+  if (!precio || precio <= 0) { alert('Ingresá un precio válido.'); return; }
+  if (!confirm(`¿Cambiar precio a $${precio.toLocaleString('es-AR')} en MercadoLibre?`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Cambiando...';
+  try {
+    const r = await fetch('/api/cambiar-precio-monitor', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ alias: ALIAS, item_id: itemId, precio_nuevo: precio })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      btn.textContent = '✓ Aplicado';
+      btn.style.background = '#16a34a';
+      inp.value = '';
+      setTimeout(() => loadMonitor(), 1500);
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+      btn.disabled = false;
+      btn.textContent = 'Cambiar precio';
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Cambiar precio';
+  }
 }
 
 async function loadMonitor() {

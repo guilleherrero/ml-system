@@ -5836,7 +5836,14 @@ def api_monitor_refresh():
     try:
         _ir = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}', headers=_h, timeout=6)
         if _ir.ok:
-            snap['ventas_total'] = _ir.json().get('sold_quantity', 0)
+            _item_live = _ir.json()
+            snap['ventas_total']  = _item_live.get('sold_quantity', 0)
+            snap['precio']        = _item_live.get('price', 0)
+            snap['fotos']         = len(_item_live.get('pictures', []))
+            snap['listing_type']  = _item_live.get('listing_type_id', '')
+            snap['free_shipping'] = _item_live.get('shipping', {}).get('free_shipping', False)
+            snap['full_shipping'] = _item_live.get('shipping', {}).get('logistic_type', '') == 'fulfillment'
+            snap['attrs_filled']  = sum(1 for a in _item_live.get('attributes', []) if a.get('value_name') or a.get('value_id'))
     except Exception:
         pass
 
@@ -5861,9 +5868,35 @@ def api_monitor_refresh():
     snap_orig = None   # snapshot de la publicación original si hay republicación
     for it in _mon.get('items', []):
         if it.get('item_id') == item_id and it.get('alias') == alias:
+            _prev_snap = it.get('ultimo_snapshot')  # capturar ANTES de actualizar
             it.setdefault('snapshots', []).append(snap)
             it['snapshots']      = it['snapshots'][-30:]   # máx 30 snapshots
             it['ultimo_snapshot'] = snap
+            # Detectar cambios externos vs snapshot anterior
+            if _prev_snap:
+                _CAMPOS_MONITOR = {
+                    'precio':        ('💰', 'Precio'),
+                    'fotos':         ('📸', 'Fotos'),
+                    'listing_type':  ('⭐', 'Tipo publicación'),
+                    'free_shipping': ('🚚', 'Envío gratis'),
+                    'full_shipping': ('📦', 'Full Shipping'),
+                    'attrs_filled':  ('🔧', 'Atributos completos'),
+                }
+                _cambios = it.setdefault('cambios', [])
+                for _cf, (_ci, _cl) in _CAMPOS_MONITOR.items():
+                    _vp = _prev_snap.get(_cf)
+                    _vc = snap.get(_cf)
+                    if _vp is not None and _vc is not None and _vp != _vc:
+                        _cambios.append({
+                            'fecha':         snap.get('fecha', ''),
+                            'campo':         _cf,
+                            'icono':         _ci,
+                            'label':         _cl,
+                            'antes':         _vp,
+                            'despues':       _vc,
+                            'pos_al_cambio': snap.get('posicion'),
+                        })
+                it['cambios'] = _cambios[-50:]
 
             # ── Sprint 3.1 ext: refrescar también la publicación original ──
             # Si esta entry tiene publicacion_original (caso republicación),
@@ -6949,6 +6982,260 @@ def api_monitor_iniciar():
 
     save_json(_mon_path, _mon)
     return jsonify({'ok': True, 'baseline': baseline})
+
+
+# ── Crear publicación optimizada (clon con nuevo título) ──────────────────────
+
+@app.route('/api/crear-publicacion-optimizada', methods=['POST'])
+def api_crear_publicacion_optimizada():
+    """
+    Crea una nueva publicación en ML copiando todos los datos del original
+    pero con el título optimizado, descripción e IA y ficha técnica mejorada.
+    Soporta items con variaciones (talle/color) mediante mapeo de fotos por posición.
+    """
+    body          = request.get_json() or {}
+    alias         = body.get('alias', '').strip()
+    item_id_orig  = body.get('item_id_original', '').strip().upper()
+    titulo_nuevo  = body.get('titulo_nuevo', '').strip()
+    descripcion   = body.get('descripcion', '').strip()
+    ficha_attrs   = body.get('ficha_attrs', [])   # [{name, value}]
+
+    if not alias or not item_id_orig or not titulo_nuevo:
+        return jsonify({'ok': False, 'error': 'Faltan campos requeridos (alias, item_id_original, titulo_nuevo)'}), 400
+
+    try:
+        from core.account_manager import AccountManager as _AM_cp
+        _client_cp = _AM_cp().get_client(alias)
+        _client_cp._ensure_token()
+        _tok_cp  = _client_cp.account.access_token
+        _h_cp    = {'Authorization': f'Bearer {_tok_cp}'}
+        _hj_cp   = {**_h_cp, 'Content-Type': 'application/json'}
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    # ── 1. Leer item original ────────────────────────────────────────────────
+    try:
+        r_orig = req_lib.get(f'https://api.mercadolibre.com/items/{item_id_orig}',
+                             headers=_h_cp, timeout=10)
+        if not r_orig.ok:
+            return jsonify({'ok': False, 'error': f'No se pudo leer el item original: HTTP {r_orig.status_code}'}), 400
+        orig = r_orig.json()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error leyendo item original: {e}'}), 500
+
+    if orig.get('catalog_product_id'):
+        return jsonify({'ok': False, 'error': 'La publicación está vinculada al catálogo de ML. No se puede crear un clon.'}), 400
+
+    # ── 2. Construir fotos ───────────────────────────────────────────────────
+    original_pictures = orig.get('pictures', [])
+    pictures_payload  = [{'source': p['secure_url']} for p in original_pictures if p.get('secure_url')]
+
+    # ── 3. Construir atributos ───────────────────────────────────────────────
+    attrs_payload = []
+    if ficha_attrs:
+        try:
+            r_cat = req_lib.get(
+                f'https://api.mercadolibre.com/categories/{orig.get("category_id")}/attributes',
+                timeout=8)
+            if r_cat.ok:
+                _name_to_id = {}
+                for _ca in r_cat.json():
+                    _name_to_id[_ca['name'].lower()] = _ca['id']
+                    _name_to_id[_ca['id'].lower()]   = _ca['id']
+                for _fa in ficha_attrs:
+                    _val = (_fa.get('value') or '').strip()
+                    if not _val or _val.startswith('[SUGERIR:'):
+                        continue
+                    _aid = _name_to_id.get((_fa.get('name') or '').lower())
+                    if _aid:
+                        attrs_payload.append({'id': _aid, 'value_name': _val})
+        except Exception:
+            pass
+    if not attrs_payload:
+        for _a in orig.get('attributes', []):
+            if _a.get('value_name') or _a.get('value_id'):
+                _e = {'id': _a['id']}
+                if _a.get('value_id'):   _e['value_id']   = _a['value_id']
+                if _a.get('value_name'): _e['value_name'] = _a['value_name']
+                attrs_payload.append(_e)
+
+    # ── 4. Shipping — copiar salvo Full (lo inicia el vendedor manualmente) ──
+    _os = orig.get('shipping', {})
+    shipping_payload = {
+        'mode':          'me2' if _os.get('logistic_type') == 'fulfillment' else _os.get('mode', 'not_specified'),
+        'local_pick_up': _os.get('local_pick_up', False),
+        'free_shipping': _os.get('free_shipping', False),
+    }
+
+    # ── 5. Sale terms (garantía, etc.) ──────────────────────────────────────
+    sale_terms = []
+    for _st in orig.get('sale_terms', []):
+        if _st.get('id') and (_st.get('value_id') or _st.get('value_name')):
+            _e = {'id': _st['id']}
+            if _st.get('value_id'):   _e['value_id']   = _st['value_id']
+            elif _st.get('value_name'): _e['value_name'] = _st['value_name']
+            sale_terms.append(_e)
+
+    # ── 6. Payload base (sin variaciones) ────────────────────────────────────
+    payload = {
+        'title':            titulo_nuevo,
+        'category_id':      orig.get('category_id'),
+        'price':            orig.get('price') or 0,
+        'currency_id':      orig.get('currency_id', 'ARS'),
+        'buying_mode':      orig.get('buying_mode', 'buy_it_now'),
+        'listing_type_id':  orig.get('listing_type_id', 'gold_special'),
+        'condition':        orig.get('condition', 'new'),
+        'available_quantity': orig.get('available_quantity', 1),
+        'pictures':         pictures_payload,
+        'attributes':       attrs_payload,
+        'shipping':         shipping_payload,
+    }
+    if sale_terms:
+        payload['sale_terms'] = sale_terms
+
+    # ── 7. POST nuevo item ───────────────────────────────────────────────────
+    try:
+        r_new = req_lib.post('https://api.mercadolibre.com/items',
+                             headers=_hj_cp, json=payload, timeout=15)
+        if not r_new.ok:
+            return jsonify({'ok': False, 'error': f'Error al crear publicación: {r_new.text[:400]}'}), 400
+        new_item_id = r_new.json().get('id', '')
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error en POST /items: {e}'}), 500
+
+    # ── 8. Mapear fotos y aplicar variaciones (si las hay) ───────────────────
+    original_variations = orig.get('variations', [])
+    if original_variations and pictures_payload:
+        try:
+            r_get_new = req_lib.get(f'https://api.mercadolibre.com/items/{new_item_id}',
+                                    headers=_h_cp, timeout=8)
+            if r_get_new.ok:
+                new_pictures  = r_get_new.json().get('pictures', [])
+                old_pic_index = {p['id']: i for i, p in enumerate(original_pictures) if p.get('id')}
+                new_variations = []
+                for _v in original_variations:
+                    _nv = {
+                        'attribute_combinations': _v.get('attribute_combinations', []),
+                        'available_quantity':      _v.get('available_quantity', 0),
+                    }
+                    if _v.get('price'):
+                        _nv['price'] = _v['price']
+                    _old_ids = _v.get('picture_ids', [])
+                    if _old_ids and new_pictures:
+                        _new_ids = [new_pictures[old_pic_index[_oid]]['id']
+                                    for _oid in _old_ids
+                                    if _oid in old_pic_index and old_pic_index[_oid] < len(new_pictures)]
+                        if _new_ids:
+                            _nv['picture_ids'] = _new_ids
+                    new_variations.append(_nv)
+                req_lib.put(f'https://api.mercadolibre.com/items/{new_item_id}',
+                            headers=_hj_cp, json={'variations': new_variations}, timeout=12)
+        except Exception as _ve:
+            app.logger.warning('[crear-pub] variaciones: %s', _ve)
+
+    # ── 9. POST descripción ──────────────────────────────────────────────────
+    if descripcion:
+        try:
+            req_lib.post(f'https://api.mercadolibre.com/items/{new_item_id}/description',
+                         headers=_hj_cp, json={'plain_text': descripcion}, timeout=8)
+        except Exception as _de:
+            app.logger.warning('[crear-pub] descripción: %s', _de)
+
+    # ── 10. Registrar en Monitor de Evolución ────────────────────────────────
+    try:
+        _now_cp   = datetime.now().strftime('%Y-%m-%d %H:%M')
+        _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+        _mon_cp   = load_json(_mon_path) or {'items': []}
+        if not isinstance(_mon_cp, dict):
+            _mon_cp = {'items': []}
+        _baseline_cp = {'fecha': _now_cp, 'visitas_7d': 0, 'ventas_30d': 0,
+                        'ventas_total': 0, 'conv_pct': 0.0, 'posicion': None}
+        _existing_cp = next((x for x in _mon_cp['items']
+                             if x.get('item_id') == new_item_id and x.get('alias') == alias), None)
+        _entry_cp = {
+            'item_id':          new_item_id,
+            'alias':            alias,
+            'titulo_producto':  titulo_nuevo,
+            'fecha_opt':        _now_cp,
+            'titulo_antes':     '',
+            'titulo_despues':   titulo_nuevo,
+            'origen':           'nueva',
+            'item_id_original': item_id_orig,
+            'baseline':         _baseline_cp,
+            'snapshots':        [],
+            'ultimo_snapshot':  None,
+            'applied':          ['titulo', 'descripcion', 'ficha'],
+            'competidores':     [],
+            'cambios':          [],
+        }
+        if _existing_cp:
+            _existing_cp.update(_entry_cp)
+        else:
+            _mon_cp['items'].append(_entry_cp)
+        save_json(_mon_path, _mon_cp)
+    except Exception as _me:
+        app.logger.warning('[crear-pub] monitor: %s', _me)
+
+    return jsonify({'ok': True, 'new_item_id': new_item_id, 'titulo': titulo_nuevo})
+
+
+# ── Cambiar precio desde el Monitor ──────────────────────────────────────────
+
+@app.route('/api/cambiar-precio-monitor', methods=['POST'])
+def api_cambiar_precio_monitor():
+    """Cambia el precio de una publicación desde el Monitor y registra el cambio."""
+    body      = request.get_json() or {}
+    alias     = body.get('alias', '').strip()
+    item_id   = body.get('item_id', '').strip().upper()
+    precio_nuevo = body.get('precio_nuevo')
+
+    if not alias or not item_id or precio_nuevo is None:
+        return jsonify({'ok': False, 'error': 'Faltan campos requeridos'}), 400
+    try:
+        precio_nuevo = float(precio_nuevo)
+        if precio_nuevo <= 0:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Precio inválido'}), 400
+
+    try:
+        _tok_pr, _, _h_pr = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    try:
+        _r_pr = req_lib.put(
+            f'https://api.mercadolibre.com/items/{item_id}',
+            headers={**_h_pr, 'Content-Type': 'application/json'},
+            json={'price': precio_nuevo}, timeout=8)
+        if not _r_pr.ok:
+            return jsonify({'ok': False, 'error': f'ML: {_r_pr.text[:200]}'}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    # Registrar cambio en monitor
+    _now_pr   = datetime.now().strftime('%Y-%m-%d %H:%M')
+    _mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
+    _mon_pr   = load_json(_mon_path) or {'items': []}
+    for _it_pr in _mon_pr.get('items', []):
+        if _it_pr.get('item_id') == item_id and _it_pr.get('alias') == alias:
+            _prev_pr = (_it_pr.get('ultimo_snapshot') or {}).get('precio')
+            _cambios_pr = _it_pr.setdefault('cambios', [])
+            _cambios_pr.append({
+                'fecha':         _now_pr,
+                'campo':         'precio',
+                'icono':         '💰',
+                'label':         'Precio (cambiado desde Monitor)',
+                'antes':         _prev_pr,
+                'despues':       precio_nuevo,
+                'pos_al_cambio': (_it_pr.get('ultimo_snapshot') or {}).get('posicion'),
+                'manual':        True,
+            })
+            _it_pr['cambios'] = _cambios_pr[-50:]
+            break
+    save_json(_mon_path, _mon_pr)
+
+    return jsonify({'ok': True, 'precio_nuevo': precio_nuevo})
 
 
 _STOP_WORDS = {
@@ -12611,6 +12898,12 @@ def api_optimizar_pub_v2():
                 'titulo_recomendado_motivo': tr_motivo,
                 'descripcion_nueva':         opt_plan.get('description', ''),
                 'ficha_perfecta':            opt_plan.get('attributes', ''),
+                'ficha_attrs':               opt_plan.get('ficha_attrs', []),
+                'current_attrs':             [
+                    {'name': a.get('name', ''), 'value': a.get('value_name', '') or str(a.get('value_id', ''))}
+                    for a in item_data.get('attributes', [])
+                    if a.get('value_name') or a.get('value_id')
+                ],
                 'keywords_faltantes':        keywords_faltantes_str,
                 'correcciones_titulo':       opt_plan.get('correcciones_titulo', ''),
                 'precio_recomendado':        opt_plan.get('precio_recomendado', ''),
@@ -12773,6 +13066,8 @@ def api_lanzar_nuevo_v2():
                 'titulo_recomendado_motivo': opt_plan.get('titulo_recomendado_motivo', ''),
                 'descripcion_nueva':         opt_plan.get('description', ''),
                 'ficha_perfecta':            opt_plan.get('attributes', ''),
+                'ficha_attrs':               opt_plan.get('ficha_attrs', []),
+                'current_attrs':             [],
                 'keywords_faltantes':        ', '.join(
                     k['keyword'] for k in result.get('keyword_analysis', [])[:8]
                     if k.get('compatibilidad') in ('alta', 'media')

@@ -434,6 +434,38 @@
 
 <!-- ── SIN POSICIÓN (colapsado) ───────────────────────────────── -->
 {% if items_sin_pos %}
+{% set items_sin_resultados = items_sin_pos | selectattr('ventas_30d', 'eq', 0) | list %}
+{% if items_sin_resultados %}
+<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:14px 18px;margin-top:14px;margin-bottom:8px">
+  <div style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#b91c1c;margin-bottom:10px;display:flex;align-items:center;gap:8px">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    {{ items_sin_resultados|length }} publicación{{ 'es' if items_sin_resultados|length > 1 }} sin ventas ni posición — sin resultados
+  </div>
+  <div style="font-size:.78rem;color:#7f1d1d;margin-bottom:10px">
+    Estas publicaciones llevan tiempo sin aparecer en búsquedas y sin generar ventas.
+    Podría estar afectando la tasa de conversión de tu cuenta. Considerá pausarlas u optimizarlas.
+  </div>
+  {% for item in items_sin_resultados | sort(attribute='visitas_30d') %}
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;background:#fff5f5;border:1px solid #fecaca;border-radius:6px;padding:7px 10px">
+    <i class="bi bi-exclamation-circle" style="color:#ef4444;flex-shrink:0"></i>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:.8rem;font-weight:600;color:#7f1d1d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ item.title }}</div>
+      <div style="font-size:.68rem;color:#94a3b8">{{ item.id }} · {{ item.visitas_30d or 0 }} visitas 30d · 0 ventas</div>
+    </div>
+    <div style="display:flex;gap:4px;flex-shrink:0">
+      <a href="/optimizaciones/{{ alias }}" style="font-size:.7rem;padding:3px 8px;background:#3b82f6;color:#fff;border-radius:4px;text-decoration:none;white-space:nowrap">
+        Optimizar
+      </a>
+      <a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] }}" target="_blank"
+         style="font-size:.7rem;padding:3px 8px;background:transparent;border:1px solid #fca5a5;color:#b91c1c;border-radius:4px;text-decoration:none">
+        ML <i class="bi bi-box-arrow-up-right"></i>
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 <details class="mt-3" id="sin-pos-section">
   <summary style="cursor:pointer;list-style:none;padding:.7rem 1rem;
                   background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:10px;
@@ -449,15 +481,19 @@
       </tr></thead>
       <tbody>
         {% for item in items_sin_pos | sort(attribute='ventas_30d', reverse=True) %}
-        <tr>
+        <tr {% if item.ventas_30d == 0 %}style="background:#fff5f5"{% endif %}>
           <td>
             <div style="font-size:.82rem;color:var(--color-neutral-600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px" title="{{ item.title }}">
               {% if item.optimizado %}<span style="color:#7c3aed;font-size:.7rem;margin-right:4px"><i class="bi bi-stars"></i></span>{% endif %}
+              {% if item.ventas_30d == 0 %}<span style="color:#ef4444;font-size:.65rem;margin-right:3px">⚠</span>{% endif %}
               {{ item.title }}
             </div>
             <div style="font-size:.68rem;color:#cbd5e1">{{ item.id }}</div>
           </td>
-          <td class="text-end text-muted small">{{ item.ventas_30d or '—' }}</td>
+          <td class="text-end text-muted small">
+            {% if item.ventas_30d == 0 %}<span style="color:#ef4444;font-weight:700">0</span>
+            {% else %}{{ item.ventas_30d }}{% endif %}
+          </td>
           <td class="text-end text-muted small">{{ item.visitas_30d or '—' }}</td>
           <td class="text-end">
             <a href="https://articulo.mercadolibre.com.ar/MLA-{{ item.id[3:] }}"
