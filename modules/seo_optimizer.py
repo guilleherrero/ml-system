@@ -2327,7 +2327,7 @@ Formato: CANTIDAD SUGERIDA: [N] | Tipos: [fondo blanco, lifestyle, detalle, comp
    2. Contá los caracteres exactos.
    3. Si el conteo da 58, 59 o 60: leé la ÚLTIMA PALABRA letra por letra.
    4. Si la última palabra termina en consonante atípica española (-st, -bl, -pr, -tr, -ct, -pt, -rb, -mn, -mp, -rs, -rt, -ng) → ESTÁ TRUNCADA → REGENERÁ removiendo una palabra completa.
-   5. PRIORIDAD: 55 chars con palabras completas > 60 chars con la última cortada.
+   5. PRIORIDAD: 58 chars con palabras completas > 60 chars con la última cortada.
    6. El SEO de 5 chars extra NUNCA compensa la pérdida de profesionalismo + el rechazo del post-procesamiento.
 
 ✗ Más de 60 caracteres — contar exactamente antes de escribir
@@ -2358,11 +2358,17 @@ SLOTS DE CONSTRUCCIÓN (aplicar en este orden estricto):
 SLOT 2 — chars {len(tier1_kw)+2}-~40 — KEYWORD TIER 2 de mayor priority_score disponible:
   → Elegir la TIER 2 con mayor score que no repita palabras del SLOT 1.
   → Si es una frase autosuggest, mantener su orden interno.
-SLOT 3 — chars ~41-55 — GAP KEYWORD o LONG-TAIL de mayor score restante:
+SLOT 3 — chars ~41-52 — GAP KEYWORD o LONG-TAIL de mayor score restante:
   → Cubrir un tercer perfil de búsqueda o especificación técnica clave.
-  → Priorizar gap keywords (vocabulario de competidores top) sobre atributos genéricos.""" if tier1_kw else """SLOT 1 — chars 1-20 — KEYWORD TIER 1 con mayor priority_score (no informacional)
+  → Priorizar gap keywords (vocabulario de competidores top) sobre atributos genéricos.
+SLOT 4 — chars ~53-60 — 4ta KEYWORD PODEROSA del autosuggest o gap keywords:
+  → Usar para capturar un 4to perfil de búsqueda con palabras aún no usadas.
+  → PROHIBIDO: colores (negro, blanco, rojo…) y talles/tamaños — ML los agrega
+    automáticamente al título desde las variantes configuradas en la ficha técnica.
+    Ese espacio vale más con una keyword que suma búsquedas nuevas.""" if tier1_kw else """SLOT 1 — chars 1-20 — KEYWORD TIER 1 con mayor priority_score (no informacional)
 SLOT 2 — chars 21-40 — KEYWORD TIER 2 de mayor priority_score sin repetir palabras del SLOT 1
-SLOT 3 — chars 41-55 — GAP KEYWORD o LONG-TAIL de mayor score restante"""}
+SLOT 3 — chars 41-52 — GAP KEYWORD o LONG-TAIL de mayor score restante
+SLOT 4 — chars 53-60 — 4ta keyword poderosa del autosuggest (NO colores ni talles — ML los agrega desde variantes)"""}
 
 REGLAS DE MAXIMIZACIÓN DE KEYWORDS:
 ✗ PROHIBIDO: cualquier palabra que NO aparezca en el autosuggest de ML ni en los gap keywords de competidores.
@@ -2381,9 +2387,10 @@ REGLAS DE MAXIMIZACIÓN DE KEYWORDS:
   Un título legible con keywords reales convierte mejor que keyword soup aunque cubra las mismas búsquedas.
 
 ESTRATEGIA POR TÍTULO:
-✓ TÍTULO 1: SLOT1=TIER1 principal + SLOT2=TIER2 más buscada + SLOT3=gap keyword top → máximo volumen
-✓ TÍTULO 2: SLOT1=TIER1 alternativo (distinto ángulo) + SLOT2=TIER2 diferente + SLOT3=long-tail → máxima cobertura
-✓ TÍTULO 3: SLOT1=TIER3 (perfil alternativo de comprador) + SLOT2+SLOT3=specs del producto → captura segmento no explorado
+✓ TÍTULO 1: SLOT1=TIER1 principal + SLOT2=TIER2 más buscada + SLOT3=gap keyword top + SLOT4=4ta keyword nueva → máximo volumen
+✓ TÍTULO 2: SLOT1=TIER1 alternativo (distinto ángulo) + SLOT2=TIER2 diferente + SLOT3=long-tail + SLOT4=atributo técnico buscado → máxima cobertura
+✓ TÍTULO 3: SLOT1=TIER3 (perfil alternativo de comprador) + SLOT2+SLOT3+SLOT4=specs del producto → captura segmento no explorado
+OBJETIVO DE LONGITUD: 58-60 chars con palabras completas. Cada char libre es SEO desperdiciado.
 
 {f'''RESTRICCIÓN MOBILE CRÍTICA:
 "{tier1_kw}" ({len(tier1_kw)} chars) DEBE estar en posición 1 de los títulos 1 y 2.
