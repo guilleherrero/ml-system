@@ -7116,7 +7116,16 @@ def api_crear_publicacion_optimizada():
         r_new = req_lib.post('https://api.mercadolibre.com/items',
                              headers=_hj_cp, json=payload, timeout=15)
         if not r_new.ok:
-            return jsonify({'ok': False, 'error': f'Error al crear publicación: {r_new.text[:400]}'}), 400
+            _err_txt = r_new.text
+            # Catálogo obligatorio: ML rechaza 'title' porque lo controla el catálogo
+            if 'title' in _err_txt and 'invalid_fields' in _err_txt:
+                return jsonify({'ok': False, 'error': (
+                    'Esta categoría es de catálogo obligatorio en MercadoLibre: el título '
+                    'lo controla el catálogo y no se puede personalizar. '
+                    'Podés aplicar las mejoras de descripción y ficha técnica a la publicación '
+                    'original usando el botón "Aplicar en ML".'
+                )}), 400
+            return jsonify({'ok': False, 'error': f'Error al crear publicación: {_err_txt[:400]}'}), 400
         new_item_id = r_new.json().get('id', '')
     except Exception as e:
         return jsonify({'ok': False, 'error': f'Error en POST /items: {e}'}), 500
