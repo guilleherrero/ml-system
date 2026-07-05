@@ -11433,21 +11433,32 @@ def api_reverse_keywords():
             return jsonify({'ok': False, 'error': 'No se pudieron obtener keywords de los competidores. Los competidores no tienen títulos válidos.'}), 400
 
         # ── Marcar cuáles ya tiene el usuario ────────────────────────────────
-        our_token_sets = [
-            set(re.findall(r'[a-záéíóúüñ0-9]+', kw)) - _stopwords
-            for kw in our_keywords
-        ]
+        import unicodedata as _ud
+
+        def _strip_accents(s: str) -> str:
+            return ''.join(c for c in _ud.normalize('NFD', s) if _ud.category(c) != 'Mn')
+
+        # Unión de TODOS los tokens del usuario (normalizados sin acentos)
+        # Así "pestañas" y "pestanas" se tratan igual, y keywords que el
+        # usuario cubre entre varias frases no aparecen como gaps.
+        our_vocab: set = set()
+        for kw in our_keywords:
+            for w in re.findall(r'[a-záéíóúüñ0-9]+', kw.lower()):
+                if w not in _stopwords and len(w) >= 3:
+                    our_vocab.add(_strip_accents(w))
 
         for kw_norm, entry in kw_data.items():
-            kw_tokens = set(re.findall(r'[a-záéíóúüñ0-9]+', kw_norm)) - _stopwords
-            # Consideramos "match" si hay ≥60% de overlap con alguna keyword propia
-            for our_tokens in our_token_sets:
-                if not our_tokens:
-                    continue
-                overlap = len(kw_tokens & our_tokens) / max(len(kw_tokens), len(our_tokens))
-                if overlap >= 0.6:
-                    entry['in_ours'] = True
-                    break
+            kw_tokens_norm = {
+                _strip_accents(w)
+                for w in re.findall(r'[a-záéíóúüñ0-9]+', kw_norm)
+                if w not in _stopwords and len(w) >= 3
+            }
+            if not kw_tokens_norm:
+                entry['in_ours'] = True
+                continue
+            # Gap real = la mayoría de sus tokens son palabras NUEVAS para el usuario
+            already_covered = len(kw_tokens_norm & our_vocab) / len(kw_tokens_norm)
+            entry['in_ours'] = already_covered >= 0.7
 
         # ── Calcular métricas y ordenar ───────────────────────────────────────
         total_comps = len(competitors)
