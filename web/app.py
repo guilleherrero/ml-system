@@ -7089,6 +7089,12 @@ def api_crear_publicacion_optimizada():
     }
     if sale_terms:
         payload['sale_terms'] = sale_terms
+    # family_name: requerido por ML en items con variaciones y ciertas categorías.
+    # Se genera uno nuevo (no se copia el del original) para mantener las publicaciones independientes.
+    if orig.get('family_name') or orig.get('variations'):
+        import re as _re
+        _slug = _re.sub(r'[^a-z0-9]+', '_', titulo_nuevo.lower())[:40].strip('_')
+        payload['family_name'] = f"{_slug}_{item_id_orig.lower()}"
 
     # ── 7. POST nuevo item ───────────────────────────────────────────────────
     try:
