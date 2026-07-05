@@ -7073,30 +7073,45 @@ def api_crear_publicacion_optimizada():
             elif _st.get('value_name'): _e['value_name'] = _st['value_name']
             sale_terms.append(_e)
 
-    # ── 6. Payload base (sin variaciones) ────────────────────────────────────
+    # ── 6. Variaciones (se incluyen en el POST inicial, no en PUT separado) ────
+    original_variations = orig.get('variations', [])
+    import re as _re
+
+    # Variaciones sin picture_ids (se reasignan después con los nuevos IDs de foto)
+    initial_variations = []
+    for _v in original_variations:
+        _nv = {'attribute_combinations': _v.get('attribute_combinations', [])}
+        if _v.get('price'):
+            _nv['price'] = _v['price']
+        _nv['available_quantity'] = _v.get('available_quantity', 0)
+        initial_variations.append(_nv)
+
+    # ── 7. Payload completo ──────────────────────────────────────────────────
     payload = {
-        'title':            titulo_nuevo,
-        'category_id':      orig.get('category_id'),
-        'price':            orig.get('price') or 0,
-        'currency_id':      orig.get('currency_id', 'ARS'),
-        'buying_mode':      orig.get('buying_mode', 'buy_it_now'),
-        'listing_type_id':  orig.get('listing_type_id', 'gold_special'),
-        'condition':        orig.get('condition', 'new'),
-        'available_quantity': orig.get('available_quantity', 1),
-        'pictures':         pictures_payload,
-        'attributes':       attrs_payload,
-        'shipping':         shipping_payload,
+        'title':           titulo_nuevo,
+        'category_id':     orig.get('category_id'),
+        'price':           orig.get('price') or 0,
+        'currency_id':     orig.get('currency_id', 'ARS'),
+        'buying_mode':     orig.get('buying_mode', 'buy_it_now'),
+        'listing_type_id': orig.get('listing_type_id', 'gold_special'),
+        'condition':       orig.get('condition', 'new'),
+        'pictures':        pictures_payload,
+        'attributes':      attrs_payload,
+        'shipping':        shipping_payload,
     }
+    # available_quantity solo a nivel item cuando NO hay variaciones
+    if not initial_variations:
+        payload['available_quantity'] = orig.get('available_quantity', 1)
+    else:
+        payload['variations'] = initial_variations
     if sale_terms:
         payload['sale_terms'] = sale_terms
-    # family_name: requerido por ML en items con variaciones y ciertas categorías.
-    # Se genera uno nuevo (no se copia el del original) para mantener las publicaciones independientes.
-    if orig.get('family_name') or orig.get('variations'):
-        import re as _re
+    # family_name requerido por ML en items con variaciones y ciertas categorías
+    if orig.get('family_name') or initial_variations:
         _slug = _re.sub(r'[^a-z0-9]+', '_', titulo_nuevo.lower())[:40].strip('_')
         payload['family_name'] = f"{_slug}_{item_id_orig.lower()}"
 
-    # ── 7. POST nuevo item ───────────────────────────────────────────────────
+    # ── 8. POST nuevo item ───────────────────────────────────────────────────
     try:
         r_new = req_lib.post('https://api.mercadolibre.com/items',
                              headers=_hj_cp, json=payload, timeout=15)
@@ -7106,35 +7121,38 @@ def api_crear_publicacion_optimizada():
     except Exception as e:
         return jsonify({'ok': False, 'error': f'Error en POST /items: {e}'}), 500
 
-    # ── 8. Mapear fotos y aplicar variaciones (si las hay) ───────────────────
-    original_variations = orig.get('variations', [])
+    # ── 9. Reasignar fotos a variaciones (PUT con nuevos picture_ids) ─────────
     if original_variations and pictures_payload:
         try:
             r_get_new = req_lib.get(f'https://api.mercadolibre.com/items/{new_item_id}',
                                     headers=_h_cp, timeout=8)
             if r_get_new.ok:
-                new_pictures  = r_get_new.json().get('pictures', [])
+                new_item_data = r_get_new.json()
+                new_pictures  = new_item_data.get('pictures', [])
+                new_vars_raw  = new_item_data.get('variations', [])
                 old_pic_index = {p['id']: i for i, p in enumerate(original_pictures) if p.get('id')}
-                new_variations = []
-                for _v in original_variations:
+                # Reasignar picture_ids usando posición (order preservado en el POST)
+                updated_vars = []
+                for _i, (_ov, _nv_raw) in enumerate(zip(original_variations, new_vars_raw)):
                     _nv = {
-                        'attribute_combinations': _v.get('attribute_combinations', []),
-                        'available_quantity':      _v.get('available_quantity', 0),
+                        'id':                     _nv_raw.get('id'),
+                        'attribute_combinations': _ov.get('attribute_combinations', []),
+                        'available_quantity':     _ov.get('available_quantity', 0),
                     }
-                    if _v.get('price'):
-                        _nv['price'] = _v['price']
-                    _old_ids = _v.get('picture_ids', [])
+                    if _ov.get('price'):
+                        _nv['price'] = _ov['price']
+                    _old_ids = _ov.get('picture_ids', [])
                     if _old_ids and new_pictures:
                         _new_ids = [new_pictures[old_pic_index[_oid]]['id']
                                     for _oid in _old_ids
                                     if _oid in old_pic_index and old_pic_index[_oid] < len(new_pictures)]
                         if _new_ids:
                             _nv['picture_ids'] = _new_ids
-                    new_variations.append(_nv)
+                    updated_vars.append(_nv)
                 req_lib.put(f'https://api.mercadolibre.com/items/{new_item_id}',
-                            headers=_hj_cp, json={'variations': new_variations}, timeout=12)
+                            headers=_hj_cp, json={'variations': updated_vars}, timeout=12)
         except Exception as _ve:
-            app.logger.warning('[crear-pub] variaciones: %s', _ve)
+            app.logger.warning('[crear-pub] variaciones foto-remap: %s', _ve)
 
     # ── 9. POST descripción ──────────────────────────────────────────────────
     if descripcion:
