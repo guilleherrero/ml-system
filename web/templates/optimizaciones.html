@@ -4106,6 +4106,9 @@ window.actualizarPreviewML = actualizarPreviewML;
 
 // ── Modal "Crear publicación optimizada" ─────────────────────────────────────
 
+// Datos del modal activo — evita pasar JSON en atributos onclick (rompe con comillas)
+window._crearPubData = null;
+
 function abrirModalCrearPub(itemId, tituloElemId, cardIdx) {
   const tituloEl = document.getElementById(tituloElemId);
   const titulo   = tituloEl ? tituloEl.innerText.trim() : '';
@@ -4207,11 +4210,14 @@ function abrirModalCrearPub(itemId, tituloElemId, cardIdx) {
 
     <div style="display:flex;gap:.6rem;justify-content:flex-end">
       <button onclick="cerrarModalCrearPub()" style="padding:9px 18px;background:transparent;border:1px solid #cbd5e1;border-radius:7px;font-size:.87rem;cursor:pointer;color:#475569">Cancelar</button>
-      <button id="btn-confirmar-crear" onclick="confirmarCrearPub('${itemId}', ${JSON.stringify(titulo)}, ${JSON.stringify(descripcion)}, ${JSON.stringify(fichaAttrs)})"
+      <button id="btn-confirmar-crear" onclick="confirmarCrearPub()"
               style="padding:9px 22px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:.87rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">
         <i class="bi bi-plus-circle"></i> Confirmar y crear
       </button>
     </div>`;
+
+  // Guardar datos en variable global — evita pasar JSON con comillas en atributo onclick
+  window._crearPubData = { itemId, titulo, descripcion, fichaAttrs };
 
   modal.style.display = 'flex';
 }
@@ -4221,7 +4227,11 @@ function cerrarModalCrearPub() {
   if (m) m.style.display = 'none';
 }
 
-async function confirmarCrearPub(itemIdOrig, titulo, descripcion, fichaAttrs) {
+async function confirmarCrearPub() {
+  const d = window._crearPubData;
+  if (!d) return;
+  const { itemId: itemIdOrig, titulo, descripcion, fichaAttrs } = d;
+
   const btn = document.getElementById('btn-confirmar-crear');
   const progress = document.getElementById('crear-pub-progress');
   const status = document.getElementById('crear-pub-status');
