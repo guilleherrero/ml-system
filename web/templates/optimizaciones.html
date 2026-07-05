@@ -4259,7 +4259,7 @@ async function confirmarCrearPub() {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        alias:            ALIAS,
+        alias:            ALIAS_OPT,
         item_id_original: itemIdOrig,
         titulo_nuevo:     titulo,
         descripcion:      descripcion,
@@ -4287,7 +4287,7 @@ async function confirmarCrearPub() {
                  style="padding:8px 16px;background:#3483fa;color:#fff;border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:600">
                 <i class="bi bi-box-arrow-up-right me-1"></i>Ver en ML
               </a>
-              <a href="/monitor/${encodeURIComponent(ALIAS)}"
+              <a href="/monitor/${encodeURIComponent(ALIAS_OPT)}"
                  style="padding:8px 16px;background:#0f172a;color:#fff;border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:600">
                 <i class="bi bi-activity me-1"></i>Ver en Monitor
               </a>
