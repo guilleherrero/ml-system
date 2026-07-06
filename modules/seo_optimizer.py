@@ -2646,6 +2646,21 @@ DISTRIBUCIÓN DE KEYWORDS:
 - keywords_secundarias: 2–3 apariciones cada una
 - long_tail: mínimo 5 frases distribuidas naturalmente — nunca forzadas
 {ngram_block}
+
+COBERTURA DE KEYWORDS DEL AUTOSUGGEST NO USADAS EN TÍTULOS [ESTRATEGIA CLAVE]:
+El título tiene 60 chars — inevitablemente quedan keywords poderosas del autosuggest que no pudieron entrar.
+La descripción es el único lugar donde esas keywords pueden capturar sus búsquedas.
+PASO OBLIGATORIO antes de escribir la descripción:
+  1. Revisá los 3 títulos que generaste.
+  2. Identificá qué keywords de TIER 2, TIER 3 e INFORMACIONALES NO aparecen en ninguno de los 3 títulos.
+  3. Esas keywords son prioritarias para la descripción — tienen volumen de búsqueda real en ML y no tienen otro canal de aparición.
+  4. Integralas como n-gramas exactos (frase consecutiva completa) en los bloques más naturales:
+     → TIER 2 no usadas: bloques 2, 3 o 4 (secciones de interés y deseo)
+     → TIER 3 no usadas: bloques 4, 5 o 7 (beneficios, diferenciación, specs)
+     → INFORMACIONALES: bloques 6 o FAQ (responden preguntas, no fuerzan keywords en texto comercial)
+  5. Si una keyword no entra naturalmente en ningún bloque: incluirla en el FAQ como parte de una pregunta o respuesta.
+  6. PROHIBIDO forzar keywords donde no encajan semánticamente — si no caben con naturalidad, usarlas en FAQ.
+Resultado esperado: la descripción amplía la cobertura semántica del título, no la repite.
 - ANCLA DEL PRODUCTO (sustantivo central, ej: "faja", "cortador", "lente"): MÁXIMO 8 apariciones en TODA la descripción incluyendo FAQs
   → La keyword_principal ya está limitada a 2-3 apariciones; ESTA regla es para el sustantivo del producto
   → El sustantivo central tiende a sobre-aparecer porque es el ancla semántica del producto
@@ -2809,6 +2824,7 @@ CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
 □ Sin características inventadas
 □ Sin frases de la lista PROHIBIDA
 □ Sin adjetivos valorativos sin dato de respaldo
+□ Keywords TIER 2/3/INFORMACIONALES no usadas en títulos → incluidas en descripción o FAQ como n-gramas exactos
 □ Títulos: sin símbolos, sin CAPS, sin prohibidos, ≤60 chars cada uno (contados), ÚLTIMA PALABRA COMPLETA (no truncada)
 □ Ancla del producto (sustantivo central) ≤8 apariciones en TODA la descripción + FAQs — contadas
 □ Título recomendado indicado con justificación
@@ -2827,6 +2843,7 @@ Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
 8. Releé el bloque 1 completo: ¿contiene keyword_principal + problema concreto + beneficio concreto, todo dentro de 300 chars? ¿Empieza con el producto, no con una pregunta retórica?
 9. Releé bloques 4 y 5: ¿cada beneficio tiene un dato que lo respalda? ¿hay al menos una diferenciación real basada en datos del análisis?
 10. Releé bloque 9: ¿el CTA es directo y específico? ¿hay alguna frase de la lista PROHIBIDA? Si la hay, reemplazala.
+11. Listá las keywords TIER 2, TIER 3 e INFORMACIONALES que NO están en ninguno de los 3 títulos. Verificá que cada una aparezca como n-grama exacto en la descripción o en el FAQ. Si alguna falta, insertala en el bloque más natural o en el FAQ.
 
 Si alguno falla, REESCRIBÍ esa parte antes de entregar la respuesta
 final. No marques el checklist como aprobado si algún ítem no cumple.
