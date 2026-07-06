@@ -2601,6 +2601,20 @@ OTRAS REGLAS:
 ──── DESCRIPCIÓN ────
 ANTES DE EMPEZAR: el título que vas a usar como ancla semántica de la descripción es el indicado en TÍTULO RECOMENDADO. Identificá los 3-4 tokens principales (sustantivos y adjetivos clave) de ese título y aseguralos en los primeros 2 párrafos de la descripción.
 
+ESTÁNDAR DE CALIDAD OBLIGATORIO — NIVEL EXPERTO EN CONVERSIÓN:
+Esta descripción debe funcionar como el mejor vendedor físico de la categoría: alguien que conoce el producto en profundidad, entiende exactamente qué duda frena al comprador antes del click y sabe cómo resolverla con datos concretos. No escribe para llenar espacio — cada oración gana su lugar.
+Antes de entregar, hacé esta prueba interna: "¿Un comprador que ya comparó 10 productos similares encontraría algo en esta descripción que no encontró en las otras?" Si la respuesta es no, reescribir.
+
+FRASES ABSOLUTAMENTE PROHIBIDAS (generan rechazo inmediato y señalan AI genérica):
+- "alta calidad", "excelente calidad", "de primera calidad", "calidad premium" (sin especificar QUÉ es de calidad y POR QUÉ)
+- "ideal para vos", "perfecto para vos", "es para ti"
+- "no te arrepentirás", "no te lo pierdas", "aprovechá esta oportunidad"
+- "el mejor del mercado", "sin igual", "incomparable", "inigualable"
+- "producto excepcional", "artículo de lujo"
+- "envío rápido", "entrega garantizada" (ML ya lo muestra)
+- Cualquier frase que podría estar en el 80% de las descripciones de ML sin cambiar una palabra
+Si detectás alguna de estas frases en tu borrador, reemplazala por un dato concreto o eliminala.
+
 REGLAS TÉCNICAS DE ML:
 - NUNCA repetir información que ya está en la ficha técnica — el comprador ya la leyó arriba. La descripción complementa, no repite
 - NUNCA repetir datos que ML ya muestra al comprador: condiciones de envío, cuotas, devolución estándar, garantía propia de ML
@@ -2608,8 +2622,9 @@ REGLAS TÉCNICAS DE ML:
 - NUNCA inventar características técnicas no confirmadas en los datos provistos
 - Texto plano únicamente — sin HTML, markdown, bullets con *, links, teléfonos, emails, URLs
 - PROHIBIDO ABSOLUTO: emojis o símbolos decorativos (✓ ✗ ⚠ □ ★ ► ▸ ✅ ❌ 🎯 📊 etc.) — ML rechaza la publicación o los muestra como caracteres rotos. Esto aplica también a la FICHA TÉCNICA y al TÍTULO.
-- Español rioplatense (vos, tus, tu)
-- PROHIBIDO: frases genéricas ("alta calidad", "excelente producto", "no te arrepentirás", "el mejor del mercado")
+- Español rioplatense (vos, tus, tu) — tono directo, sin formalidades innecesarias
+- Párrafos cortos: máximo 3 oraciones por párrafo (mobile-first — los bloques de texto no se leen)
+- Cada oración debe poder eliminarse sin que el texto "duela" perder — si puede sacarse, sacala
 
 LONGITUD CORRECTA ({desc_type}):
 - Zona crítica: PRIMEROS 300-400 CARACTERES — doble función obligatoria:
@@ -2658,77 +2673,129 @@ DISTRIBUCIÓN DE KEYWORDS:
   → Ejemplo: si el título dice "Cortador Puntas Abiertas Cabello Rizado", los párrafos 1-3 deben
     usar "cortador", "puntas", "rizado" — no sinónimos distintos en esa zona inicial
 
-ESTRUCTURA DE 9 BLOQUES (párrafos separados por línea en blanco, sin títulos ni bullets):
-1. APERTURA SEO [CRÍTICO — dentro de los primeros 300 chars]: keyword_principal + problema real + beneficio concreto
+PSICOLOGÍA DEL COMPRADOR EN ML ARGENTINA:
+El comprador que llega a la descripción ya vio el precio y las fotos — está en modo decisión, no descubrimiento.
+No necesita que le "vendas" el producto. Necesita que le elimines la última duda que le frena el click.
+Las dudas más frecuentes por categoría (detectar cuál aplica y resolverla explícitamente):
+- Indumentaria/calzado: ¿me queda bien el talle? ¿es el color real?
+- Electrónica: ¿es compatible con mi dispositivo? ¿es original o refurbished?
+- Belleza/cosmética: ¿funciona para mi tipo de piel/cabello? ¿dura realmente?
+- Salud/ortopedia: ¿sirve para mi problema específico? ¿es seguro usarlo?
+- Hogar: ¿entra en el espacio que tengo? ¿es fácil de armar/instalar?
+Escribí para ese comprador específico, no para un comprador genérico.
+
+TONO según categoría (detectar y aplicar con precisión):
+- Belleza/cuidado personal → resultado visual y sensorial concreto ("unifroma en 3 capas sin efecto máscara")
+- Salud/soporte/ortopedia → alivio específico, funcionalidad comprobable, no promesas vagas
+- Electrónica/gadget → compatibilidad, facilidad de uso, resultado medible
+- Moda/indumentaria → estilo, ocasión de uso, cómo lo lleva el comprador en su vida
+- Hogar/muebles → practicidad, medidas exactas en contexto ("entra en heladera estándar de 50cm")
+
+ESTRUCTURA AIDA ADAPTADA A ML — 9 BLOQUES:
+La estructura sigue el marco AIDA adaptado al contexto de ML, donde el comprador ya tiene interés básico.
+El objetivo de cada bloque NO es informar — es avanzar al comprador un paso más hacia la compra.
+Párrafos separados por línea en blanco. Sin títulos de sección. Sin bullets.
+
+FASE A — ATENCIÓN (el comprador abre la descripción con una pregunta implícita: "¿esto es lo que busco?")
+
+1. GANCHO DE APERTURA [CRÍTICO — dentro de los primeros 300 chars]:
+   Objetivo: confirmar al comprador en 2-3 oraciones que encontró exactamente lo que buscaba.
+   Estructura obligatoria: keyword_principal + el problema específico que resuelve + el resultado concreto que obtiene.
    → La PRIMERA ORACIÓN debe contener la keyword_principal exacta — ML pondera el inicio del texto más que el resto
-   → Ejemplo correcto: "El cortador puntas abiertas Frizz Ender elimina el daño sin acortar el largo."
-   → Ejemplo incorrecto: "¿Cansado de las puntas dañadas? Este producto es para vos." (keyword ausente en la primera oración)
-2. QUÉ ES + PARA QUIÉN: descripción del producto + perfil del comprador ideal
-3. CÓMO FUNCIONA: mecanismo real de uso + por qué es efectivo
-4. BENEFICIOS COMPROBABLES: concretos y verificables — sin generalidades
-5. DIFERENCIACIÓN REAL: comparar contra los competidores analizados usando solo datos reales del análisis
-6. DUDAS + NEUTRALIZACIÓN DE OBJECIONES: dos objetivos en un mismo bloque
-   PARTE A — Responder dudas frecuentes: integrar en prosa natural las 3–4 preguntas más frecuentes del nicho
+   → No empezar con pregunta retórica ("¿Buscás...?") — empezar directo con el producto y su beneficio principal
+   → Lenguaje de resultado, no de promesa: "elimina", "reduce", "unifica", "resuelve" — no "ayuda a", "puede", "podría"
+   → Ejemplo correcto: "El cortador puntas abiertas Frizz Ender elimina el daño sin acortar el largo. Diseñado para cabello rizado, teñido o con tratamientos químicos — separá un mechón, pasalo por la ranura y solo corta las puntas dañadas, sin tijera, sin peluquería."
+   → Ejemplo incorrecto: "¿Cansado de las puntas dañadas? Este producto es para vos. Alta calidad y excelentes resultados."
+   → Este bloque debe funcionar como argumento de venta completo en sí mismo para el comprador mobile que no expande.
+
+FASE I — INTERÉS (el comprador quiere saber más sobre ESTE producto específico)
+
+2. PARA QUIÉN ES EXACTAMENTE:
+   Objetivo: que el comprador correcto sienta que este producto fue hecho para él/ella.
+   → Nombrar 2-3 perfiles o situaciones concretas de uso — no géneros ni edades genéricas
+   → Ejemplo correcto: "Ideal para quien tiene cabello con tratamientos de keratina, coloración frecuente o permanente — casos donde las puntas se dañan sin perder largo."
+   → Ejemplo incorrecto: "Ideal para hombres y mujeres que cuidan su cabello."
+   → Incluir al menos una keyword_secundaria de forma natural en este bloque
+
+3. CÓMO FUNCIONA — MECANISMO REAL:
+   Objetivo: que el comprador entienda POR QUÉ funciona, no solo que funciona.
+   → Explicar el mecanismo de uso en 3-4 oraciones concretas, en orden de pasos si aplica
+   → Traducir specs técnicos a acciones reales: no "motor brushless" sino "el motor sin escobillas no genera calor en el agarre — podés usarlo 40 minutos sin que se caliente la mano"
+   → Si el uso es intuitivo, explicar qué resultado se ve/siente inmediatamente después
+
+FASE D — DESEO (el comprador quiere ESTE producto, no uno genérico)
+
+4. BENEFICIOS COMPROBABLES — CON ESPECIFICIDAD:
+   Objetivo: generar deseo con datos, no con adjetivos.
+   → Cada beneficio debe tener un dato concreto que lo respalde: número, medida, comparación verificable
+   → Formato interno: [beneficio] + [por qué / dato que lo sostiene]
+   → Correcto: "Cobertura que unifica el tono en 2-3 capas sin efecto máscara — la fórmula cremosa se difumina sin marcas de borde."
+   → Incorrecto: "Excelente cobertura para un look natural impecable."
+   → Mínimo 3 beneficios con su dato de respaldo. Máximo 5 para no perder foco.
+
+5. DIFERENCIACIÓN REAL — QUÉ TIENE ESTE QUE LOS OTROS NO:
+   Objetivo: que el comprador entienda por qué no comprar el más barato de la categoría.
+   → Usar solo datos del análisis competitivo provisto — PROHIBIDO inventar comparaciones
+   → Si hay datos de competidores: nombrar 1-2 diferencias concretas y verificables
+   → Si no hay datos: enfocarse en los atributos únicos confirmados del producto, sin comparar
+   → Tono: informativo, nunca despectivo hacia la competencia
+
+6. DUDAS FRECUENTES + NEUTRALIZACIÓN DE OBJECIONES:
+   Objetivo: eliminar la última duda que frena el click en "Comprar".
+   PARTE A — Dudas frecuentes del nicho (integrar en prosa natural, nunca en Q&A explícito):
      → fuente primaria: DUDAS FRECUENTES DE COMPRADORES de los insights de Q&A
      → fallback: FAQs típicas del CONTEXTO DE NICHO listadas arriba
-   PARTE B — Neutralizar objeciones activamente: para cada miedo/objeción del nicho, escribir una frase que lo desarme con un dato concreto (no con una promesa vacía)
-     → fuente primaria: QUEJAS REALES DE COMPRADORES (listadas arriba con ★1-2) — estas son las objeciones reales del mercado
-     → fuente secundaria: sección DEBILIDADES DE COMPETIDORES de los insights
-     → fallback: objeciones del CONTEXTO DE NICHO listadas arriba
-     → RESTRICCIÓN ABSOLUTA — SIN INVENTAR: usá las quejas para identificar el miedo del comprador;
-       respondé SOLO con datos verificables del propio producto (ficha técnica, specs confirmados, datos provistos).
-       PROHIBIDO afirmar que el producto resuelve un problema si los datos no lo confirman.
-       CORRECTO: "Los compradores de rizadores similares señalan que pierden temperatura con el uso.
-         Este modelo [dato concreto si existe en la ficha o descripción original, sino omitir la comparación]."
-       INCORRECTO: "A diferencia de la competencia, este rizador mantiene temperatura constante." (sin dato que lo respalde)
-       Si no hay dato que respalde la solución: describir el miedo del mercado y dejar que el comprador juzgue por los specs.
-     → ejemplos de neutralización correcta:
-        · miedo talle → "Las medidas exactas son X cm de contorno / Y cm de largo" (no "el talle es el correcto")
-        · miedo material falso → "El cuero utilizado es [tipo] verificable al tacto por [característica]" (no "es material genuino")
-        · miedo refurbished → "El equipo llega sellado de fábrica con [número de serie / sticker]" (no "es original")
-     → formato: prosa corrida, integrado naturalmente — nunca en formato Q&A explícito
-7. CARACTERÍSTICAS TÉCNICAS: especificaciones en lenguaje del comprador — COMPLEMENTA la ficha técnica, no la repite
-   → Propósito: traducir los datos técnicos de la ficha a beneficios concretos que el comprador entiende
-   → NO copiar valores de la ficha técnica tal cual — transformarlos en contexto de uso real
-   → Ejemplo correcto: "Potencia 2200W: suficiente para secar cabello grueso en menos de 10 minutos sin dañar la fibra."
-   → Ejemplo incorrecto: "Potencia: 2200W. Peso: 350g." (eso ya está en la ficha técnica arriba)
-   → Cada característica debe comenzar con el término de búsqueda más relevante
-   → ML pondera las primeras palabras de cada segmento del texto
-8. PRUEBA SOCIAL + CONFIANZA: {"usar los " + str(my_sold) + " ventas reales como dato de credibilidad. " if my_sold > 0 else "garantía propia, respaldo, experiencia de uso — solo datos reales, sin inventar. "}Nunca mencionar garantía ML (ya la muestra arriba)
-9. CIERRE Y CTA: refuerzo del beneficio principal + llamada a la acción + keyword_principal
+   PARTE B — Neutralizar objeciones con datos, no con promesas:
+     → fuente primaria: QUEJAS REALES DE COMPRADORES (listadas con ★1-2) — estas son los miedos reales
+     → RESTRICCIÓN ABSOLUTA: respondé SOLO con datos verificables del producto. PROHIBIDO afirmar que el producto resuelve un problema si los datos no lo confirman.
+     → Neutralización correcta: dato concreto que desarma el miedo
+        · miedo talle → "Las medidas exactas son X cm de contorno / Y cm de largo — referencia: talle M para contorno 80-90cm"
+        · miedo material falso → "El material es [tipo verificable] con [característica detectada al tacto/uso]"
+        · miedo refurbished → "El equipo llega sellado de fábrica"
+     → Si no hay dato que respalde: describir el miedo del mercado y dejar que el comprador evalúe por los specs
+
+7. ESPECIFICACIONES EN LENGUAJE DEL COMPRADOR:
+   Objetivo: traducir los datos técnicos a consecuencias reales de uso.
+   → COMPLEMENTA la ficha técnica, no la repite — el comprador ya la leyó arriba
+   → NO copiar valores de ficha tal cual. Transformarlos en contexto de uso real.
+   → Correcto: "Potencia 2200W: suficiente para secar cabello grueso en menos de 10 minutos sin dañar la fibra capilar."
+   → Incorrecto: "Potencia: 2200W. Peso: 350g." (eso ya está en la ficha)
+   → Cada especificación debe comenzar con el término de búsqueda más relevante — ML pondera inicio de segmento
+
+FASE A — ACCIÓN (el comprador necesita el último empujón para comprar)
+
+8. PRUEBA SOCIAL + STACK DE CONFIANZA:
+   Objetivo: eliminar el riesgo percibido de comprar sin ver el producto físicamente.
+   → {"Usar los " + str(my_sold) + " ventas reales como primer dato de credibilidad — es prueba social concreta. " if my_sold > 0 else ""}
+   → Stack de confianza en este orden si aplican: ventas reales → garantía propia del vendedor/fabricante → plazo de despacho propio → autenticidad verificable
+   → NUNCA mencionar garantía ML, devoluciones ML, cuotas ML — ML ya los muestra arriba
+   → NUNCA inventar datos de ventas, stock o garantías que no existen
+   → Tono: seguro y específico, no suplicante ("más de X compradores eligieron este modelo" — no "no te quedes sin el tuyo")
+
+9. CIERRE Y CTA — ACCIÓN DIRECTA:
+   Objetivo: que el siguiente click sea "Agregar al carrito".
+   → Reafirmar en 1-2 oraciones el beneficio principal con la keyword_principal
+   → CTA directo y sin presión artificial: "Agregalo al carrito y recibilo en [plazo]" o "Elegí tu talle y coordinamos el envío" — según el producto
+   → PROHIBIDO: urgencia falsa ("últimas unidades", "oferta por tiempo limitado") a menos que sea real y verificable
+   → La última oración debe dejar al comprador con ganas de actuar, no con una promesa vacía
 
 PALABRAS DE ALTA CONVERSIÓN — POSICIONES ESTRATÉGICAS [CRÍTICO]:
-Estas palabras suelen correlacionar con conversión cuando aplican realmente al producto. NO incluirlas si no son verdad — la regla de no inventar características es absoluta.
-No van en el título (muchas están prohibidas ahí). Van en la descripción en estas zonas:
-  → Bloque 7 (características): "original", "certificado", "compatible con", "incluye", "viene con"
-  → Bloque 8 (confianza): "garantía", "stock disponible", "entrega en [N] días hábiles", "sellado de fábrica"
-  → Bloque 9 (cierre): "disponible", "unidades disponibles", "enviamos hoy", "entrega inmediata"
-REGLAS: solo usar las que apliquen realmente al producto — nunca inventar garantías ni stocks que no existen.
-Estas palabras en estas posiciones son señal de intención de venta real para el algoritmo.
-
-TONO según tipo de producto (detectar y aplicar):
-- Belleza/cuidado personal → resultado visual, sensación, experiencia
-- Salud/soporte/ortopedia → dolor, alivio, funcionalidad real
-- Electrónica/gadget → facilidad de uso, resultado concreto, compatibilidad
-- Moda/indumentaria → estilo, comodidad, ocasión de uso
-- Hogar/muebles → practicidad, medidas reales, integración en el espacio
+Estas palabras correlacionan con conversión cuando son verdad. NO incluirlas si no aplican — la regla de no inventar es absoluta.
+  → Bloque 7 (specs): "original", "certificado", "compatible con", "incluye", "viene con", "sellado de fábrica"
+  → Bloque 8 (confianza): "garantía [N] meses", "despachamos en [N] días hábiles", "stock propio"
+  → Bloque 9 (cierre): "disponible", "enviamos hoy", "entrega en [N] días hábiles"
+Solo usar las que apliquen realmente. Estas palabras son señal de intención de venta real para el algoritmo.
 
 ESTRUCTURA ALTERNATIVA — 5 BLOQUES (solo si producto = SIMPLE):
 
 Si el tipo detectado es SIMPLE, usá esta estructura en lugar de los 9 bloques.
-Los 5 bloques son cierres autocontenidos, no recortes de los 9:
+Cada bloque es autocontenido — no son recortes de los 9:
 
-1. APERTURA SEO — keyword_principal en primera oración + problema +
-   beneficio. Dentro de 300 chars.
-2. QUÉ ES + PARA QUIÉN + CÓMO SE USA — un solo párrafo directo.
-   Producto + comprador ideal + uso típico en 3-4 oraciones.
-3. BENEFICIOS + DIFERENCIACIÓN — 3-4 beneficios concretos en prosa.
-   Si tenés datos reales de competidores, incluí UNA comparación.
-   Si no, profundizá en beneficios sin comparativa.
-4. DUDAS + OBJECIONES — neutralizar las 3 dudas más frecuentes con
-   datos concretos (no promesas vacías).
-5. PRUEBA SOCIAL + CIERRE Y CTA — ventas reales o garantía propia +
-   refuerzo del beneficio principal + CTA + keyword_principal.
+1. GANCHO DE APERTURA — keyword_principal en primera oración + problema específico + resultado concreto. Dentro de 300 chars. Sin preguntas retóricas. Sin frases genéricas.
+2. PARA QUIÉN + CÓMO FUNCIONA — perfil concreto del comprador ideal + mecanismo real de uso. 3-4 oraciones. Incluir una keyword_secundaria.
+3. BENEFICIOS + DIFERENCIACIÓN — 3 beneficios con su dato de respaldo cada uno. Si hay datos de competidores, incluí UNA comparación verificable. Sin adjetivos sin dato.
+4. DUDAS + OBJECIONES — neutralizar las 2-3 dudas más frecuentes del nicho con datos concretos. Prosa corrida, nunca Q&A explícito.
+5. PRUEBA SOCIAL + CIERRE — {"ventas reales (" + str(my_sold) + ") + " if my_sold > 0 else ""}garantía o respaldo propio + beneficio principal + CTA directo + keyword_principal. Último párrafo que genera acción.
 
 CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
 □ keyword_principal aparece 2–3 veces — contadas (no más, evita penalización por spam)
@@ -2742,10 +2809,12 @@ CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
 □ Sin información de ficha técnica repetida
 □ Sin datos que ML ya muestra arriba
 □ Sin características inventadas
-□ Sin frases genéricas
+□ Sin frases de la lista PROHIBIDA
+□ Sin adjetivos valorativos sin dato de respaldo
 □ Títulos: sin símbolos, sin CAPS, sin prohibidos, ≤60 chars cada uno (contados), ÚLTIMA PALABRA COMPLETA (no truncada)
 □ Ancla del producto (sustantivo central) ≤8 apariciones en TODA la descripción + FAQs — contadas
 □ Título recomendado indicado con justificación
+□ PRUEBA DE CALIDAD: ¿Un comprador que comparó 10 productos similares encontraría algo único aquí? Si no → reescribir bloques 4 y 5
 
 ═══ AUTO-VERIFICACIÓN OBLIGATORIA ANTES DE ENTREGAR ═══
 Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
@@ -2757,6 +2826,9 @@ Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
 5. Releé cada título y verificá que la ÚLTIMA PALABRA esté COMPLETA (no truncada). Si está cortada, remové palabras enteras hasta que entre con palabras completas dentro de los 60 chars.
 6. Contá apariciones del SUSTANTIVO CENTRAL del producto (ancla) en la descripción incluyendo FAQs → debe ser ≤8. Si excede, rotá con sinónimos contextuales y volvé a contar.
 7. Verificá que cada frase TIER 1 del autosuggest (las listadas arriba con "TIER 1 — incluir TODAS") aparezca como secuencia CONSECUTIVA en la descripción — búscalas literalmente. Si alguna falta, insertala de forma natural en el párrafo más afín.
+8. Releé el bloque 1 completo: ¿contiene keyword_principal + problema concreto + beneficio concreto, todo dentro de 300 chars? ¿Empieza con el producto, no con una pregunta retórica?
+9. Releé bloques 4 y 5: ¿cada beneficio tiene un dato que lo respalda? ¿hay al menos una diferenciación real basada en datos del análisis?
+10. Releé bloque 9: ¿el CTA es directo y específico? ¿hay alguna frase de la lista PROHIBIDA? Si la hay, reemplazala.
 
 Si alguno falla, REESCRIBÍ esa parte antes de entregar la respuesta
 final. No marques el checklist como aprobado si algún ítem no cumple.
