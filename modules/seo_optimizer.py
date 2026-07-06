@@ -2226,10 +2226,8 @@ def _build_synthesis_prompt(
         else "Sin ventas — título SÍ modificable directamente."
     )
 
-    # Prueba social real disponible
+    # Nota de confianza — solo garantía y despacho propios (ventas/stock/autenticidad los agrega el vendedor manualmente)
     social_proof_note = ""
-    if my_sold > 0:
-        social_proof_note = f"\nPRUEBA SOCIAL: {my_sold} unidades vendidas — dato real para usar en bloque 8 de la descripción."
     if is_premium:
         social_proof_note += "\nPUBLICACIÓN PREMIUM (Gold Special/Pro) — mencionable como diferencial de confianza si es relevante."
 
@@ -2764,13 +2762,13 @@ FASE D — DESEO (el comprador quiere ESTE producto, no uno genérico)
 
 FASE A — ACCIÓN (el comprador necesita el último empujón para comprar)
 
-8. PRUEBA SOCIAL + STACK DE CONFIANZA:
+8. BLOQUE DE CONFIANZA:
    Objetivo: eliminar el riesgo percibido de comprar sin ver el producto físicamente.
-   → {"Usar los " + str(my_sold) + " ventas reales como primer dato de credibilidad — es prueba social concreta. " if my_sold > 0 else ""}
-   → Stack de confianza en este orden si aplican: ventas reales → garantía propia del vendedor/fabricante → plazo de despacho propio → autenticidad verificable
-   → NUNCA mencionar garantía ML, devoluciones ML, cuotas ML — ML ya los muestra arriba
-   → NUNCA inventar datos de ventas, stock o garantías que no existen
-   → Tono: seguro y específico, no suplicante ("más de X compradores eligieron este modelo" — no "no te quedes sin el tuyo")
+   → Enfocarse ÚNICAMENTE en: garantía propia del vendedor/fabricante y plazo de despacho propio del vendedor
+   → PROHIBIDO: mencionar cantidad de ventas, stock disponible, datos de autenticidad o cualquier indicador de volumen de negocio — el vendedor los agrega manualmente si los desea
+   → PROHIBIDO: garantía ML, devoluciones ML, cuotas ML — ML ya los muestra arriba
+   → Si no hay datos de garantía ni plazo de despacho propios confirmados: omitir este bloque completamente antes que inventar
+   → Tono: específico y directo ("garantía del fabricante 12 meses" — no "respaldado por nuestra trayectoria")
 
 9. CIERRE Y CTA — ACCIÓN DIRECTA:
    Objetivo: que el siguiente click sea "Agregar al carrito".
@@ -2781,8 +2779,8 @@ FASE A — ACCIÓN (el comprador necesita el último empujón para comprar)
 
 PALABRAS DE ALTA CONVERSIÓN — POSICIONES ESTRATÉGICAS [CRÍTICO]:
 Estas palabras correlacionan con conversión cuando son verdad. NO incluirlas si no aplican — la regla de no inventar es absoluta.
-  → Bloque 7 (specs): "original", "certificado", "compatible con", "incluye", "viene con", "sellado de fábrica"
-  → Bloque 8 (confianza): "garantía [N] meses", "despachamos en [N] días hábiles", "stock propio"
+  → Bloque 7 (specs): "compatible con", "incluye", "viene con"
+  → Bloque 8 (confianza): "garantía [N] meses", "despachamos en [N] días hábiles"
   → Bloque 9 (cierre): "disponible", "enviamos hoy", "entrega en [N] días hábiles"
 Solo usar las que apliquen realmente. Estas palabras son señal de intención de venta real para el algoritmo.
 
@@ -2795,7 +2793,7 @@ Cada bloque es autocontenido — no son recortes de los 9:
 2. PARA QUIÉN + CÓMO FUNCIONA — perfil concreto del comprador ideal + mecanismo real de uso. 3-4 oraciones. Incluir una keyword_secundaria.
 3. BENEFICIOS + DIFERENCIACIÓN — 3 beneficios con su dato de respaldo cada uno. Si hay datos de competidores, incluí UNA comparación verificable. Sin adjetivos sin dato.
 4. DUDAS + OBJECIONES — neutralizar las 2-3 dudas más frecuentes del nicho con datos concretos. Prosa corrida, nunca Q&A explícito.
-5. PRUEBA SOCIAL + CIERRE — {"ventas reales (" + str(my_sold) + ") + " if my_sold > 0 else ""}garantía o respaldo propio + beneficio principal + CTA directo + keyword_principal. Último párrafo que genera acción.
+5. CONFIANZA + CIERRE — garantía propia o plazo de despacho propio (si los datos los confirman) + beneficio principal + CTA directo + keyword_principal. PROHIBIDO mencionar ventas, stock ni autenticidad. Último párrafo que genera acción.
 
 CHECKLIST DE VALIDACIÓN INTERNA (completar antes de entregar):
 □ keyword_principal aparece 2–3 veces — contadas (no más, evita penalización por spam)
