@@ -1963,6 +1963,7 @@ REGLAS DEL BLOQUE FAQ:
 - Elegí las 5 preguntas más frecuentes o que más impactan en la decisión de compra
 - Respondé cada una de forma directa y convincente (1–2 oraciones, español rioplatense)
 - Las respuestas deben eliminar dudas reales, no repetir lo ya dicho en la descripción
+- ORTOGRAFÍA PERFECTA OBLIGATORIA: tildes, signos de puntuación y mayúsculas correctas en preguntas Y respuestas. Las FAQs son la cara visible del nivel de profesionalismo de la publicación. Errores ortográficos destruyen la credibilidad construida en el resto de la descripción. Palabras críticas con tilde: cómo, cuál, qué, cuánto, también, fórmula, podés, más, así, según, días, aplicación, cobertura, última, así. NUNCA omitir tilde por simplificación.
 - CRÍTICO — redactar las preguntas exactamente como las buscaría un comprador en ML o Google:
   → búsqueda conversacional y específica, no técnica formal
   → incluir la keyword o término del producto dentro de la pregunta misma
@@ -2713,12 +2714,14 @@ FASE A — ATENCIÓN (el comprador abre la descripción con una pregunta implíc
 
 1. GANCHO DE APERTURA [CRÍTICO — dentro de los primeros 300 chars]:
    Objetivo: confirmar al comprador en 2-3 oraciones que encontró exactamente lo que buscaba.
-   Estructura obligatoria: keyword_principal + el problema específico que resuelve + el resultado concreto que obtiene.
+   Estructura obligatoria: keyword_principal + el resultado concreto que obtiene + el diferencial más importante.
    → La PRIMERA ORACIÓN debe contener la keyword_principal exacta — ML pondera el inicio del texto más que el resto
-   → No empezar con pregunta retórica ("¿Buscás...?") — empezar directo con el producto y su beneficio principal
-   → Lenguaje de resultado, no de promesa: "elimina", "reduce", "unifica", "resuelve" — no "ayuda a", "puede", "podría"
-   → Ejemplo correcto: "El cortador puntas abiertas Frizz Ender elimina el daño sin acortar el largo. Diseñado para cabello rizado, teñido o con tratamientos químicos — separá un mechón, pasalo por la ranura y solo corta las puntas dañadas, sin tijera, sin peluquería."
-   → Ejemplo incorrecto: "¿Cansado de las puntas dañadas? Este producto es para vos. Alta calidad y excelentes resultados."
+   → No empezar con pregunta retórica ("¿Buscás...?") — empezar directo con el producto y su resultado principal
+   → Lenguaje de resultado desde la primera capa, no de proceso: "cubre desde la primera capa", "unifica en un trazo", "elimina", "reduce" — no "ayuda a", "puede", "podría", "permite buildear"
+   → PROHIBIDO mencionar número de capas o pasos necesarios en la apertura — suena a limitación del producto. Si la cobertura es buildable, mencionarlo en el bloque 3 (cómo funciona), no aquí.
+   → La apertura habla del RESULTADO que obtiene el comprador, no del PROCESO que requiere el producto
+   → Ejemplo correcto: "La base stick barra maquillaje alta cobertura cubre manchas e imperfecciones desde el primer trazo sin efecto máscara. La brocha integrada difumina en el mismo paso — sin esponjas, sin pinceles, en menos de dos minutos."
+   → Ejemplo incorrecto: "Esta base stick unifica el tono en 2 a 3 capas..." (el número de capas en la apertura suena a que necesita mucho trabajo)
    → Este bloque debe funcionar como argumento de venta completo en sí mismo para el comprador mobile que no expande.
 
 FASE I — INTERÉS (el comprador quiere saber más sobre ESTE producto específico)
@@ -2840,7 +2843,8 @@ Releé tu sección 'KEYWORDS ELEGIDAS' y verificá manualmente:
 5. Releé cada título y verificá que la ÚLTIMA PALABRA esté COMPLETA (no truncada). Si está cortada, remové palabras enteras hasta que entre con palabras completas dentro de los 60 chars.
 6. Contá apariciones del SUSTANTIVO CENTRAL del producto (ancla) en la descripción incluyendo FAQs → debe ser ≤8. Si excede, rotá con sinónimos contextuales y volvé a contar.
 7. Verificá que cada frase TIER 1 del autosuggest (las listadas arriba con "TIER 1 — incluir TODAS") aparezca como secuencia CONSECUTIVA en la descripción — búscalas literalmente. Si alguna falta, insertala de forma natural en el párrafo más afín.
-8. Releé el bloque 1 completo: ¿contiene keyword_principal + problema concreto + beneficio concreto, todo dentro de 300 chars? ¿Empieza con el producto, no con una pregunta retórica?
+8. Releé el bloque 1 completo: ¿contiene keyword_principal + resultado concreto desde la primera capa + diferencial principal, todo dentro de 300 chars? ¿Empieza con el producto y su resultado, no con una pregunta retórica ni con el número de capas/pasos necesarios?
+8b. Releé el FAQ completo: ¿todas las preguntas y respuestas tienen tildes correctas? Palabras críticas: cómo, cuál, qué, cuánto, también, podés, más, así, según, fórmula, aplicación. Si alguna falta, corregirla antes de entregar.
 9. Releé bloques 4 y 5: ¿cada beneficio tiene un dato que lo respalda? ¿hay al menos una diferenciación real basada en datos del análisis?
 10. Releé bloque 9: ¿el CTA es directo y específico? ¿hay alguna frase de la lista PROHIBIDA? Si la hay, reemplazala.
 11. Listá las keywords TIER 2, TIER 3 e INFORMACIONALES que NO están en ninguno de los 3 títulos. Verificá que cada una aparezca como n-grama exacto en la descripción o en el FAQ. Si alguna falta, insertala en el bloque más natural o en el FAQ.
