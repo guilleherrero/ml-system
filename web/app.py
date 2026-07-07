@@ -111,7 +111,7 @@ def save_json(path, data):
 # ── Token cost logger ─────────────────────────────────────────────────────────
 
 _TOKEN_PRICES = {
-    'claude-opus-4-6':            {'input': 15.0,  'output': 75.0},
+    'claude-opus-4-7':            {'input': 15.0,  'output': 75.0},
     'claude-sonnet-4-6':          {'input':  3.0,  'output': 15.0},
     'claude-haiku-4-5-20251001':  {'input':  0.25, 'output':  1.25},
 }
@@ -2266,11 +2266,11 @@ Respondé únicamente con las secciones marcadas con **, sin texto adicional."""
 
     ai   = anthropic.Anthropic()
     resp = ai.messages.create(
-        model='claude-opus-4-6',
+        model='claude-opus-4-7',
         max_tokens=1800,
         messages=[{'role': 'user', 'content': prompt}],
     )
-    _log_token_usage('Optimizar IA — Títulos/Descripción', 'claude-opus-4-6', resp.usage.input_tokens, resp.usage.output_tokens)
+    _log_token_usage('Optimizar IA — Títulos/Descripción', 'claude-opus-4-7', resp.usage.input_tokens, resp.usage.output_tokens)
     raw = resp.content[0].text if resp.content else ''
 
     def _extract(tag: str) -> str:
@@ -8016,11 +8016,11 @@ Máximo 120 palabras. Sin asteriscos ni markdown."""
     try:
         client   = anthropic.Anthropic()
         response = client.messages.create(
-            model='claude-opus-4-6',
+            model='claude-opus-4-7',
             max_tokens=300,
             messages=[{'role': 'user', 'content': prompt}],
         )
-        _log_token_usage('Meli ADS — Análisis campaña', 'claude-opus-4-6', response.usage.input_tokens, response.usage.output_tokens)
+        _log_token_usage('Meli ADS — Análisis campaña', 'claude-opus-4-7', response.usage.input_tokens, response.usage.output_tokens)
         return response.content[0].text.strip()
     except Exception as e:
         return f'Error al conectar con Claude: {e}'
@@ -8614,11 +8614,11 @@ Respondé SOLO con este JSON, sin texto adicional:
 
         ai   = anthropic.Anthropic()
         resp = ai.messages.create(
-            model='claude-opus-4-6',
+            model='claude-opus-4-7',
             max_tokens=400,
             messages=[{'role': 'user', 'content': prompt}],
         )
-        _log_token_usage('Evaluar Producto — Dictamen IA', 'claude-opus-4-6', resp.usage.input_tokens, resp.usage.output_tokens)
+        _log_token_usage('Evaluar Producto — Dictamen IA', 'claude-opus-4-7', resp.usage.input_tokens, resp.usage.output_tokens)
         import re as _re, json as _json
         raw = next((b.text for b in resp.content if hasattr(b, 'text')), '')
         m   = _re.search(r'\{[\s\S]+\}', raw)
@@ -13649,11 +13649,11 @@ Respondé solo con las secciones indicadas, sin texto adicional."""
 
         ai   = anthropic.Anthropic()
         resp = ai.messages.create(
-            model='claude-opus-4-6',
+            model='claude-opus-4-7',
             max_tokens=4000,
             messages=[{'role': 'user', 'content': prompt}],
         )
-        _log_token_usage('Lanzar Producto — Análisis completo', 'claude-opus-4-6', resp.usage.input_tokens, resp.usage.output_tokens)
+        _log_token_usage('Lanzar Producto — Análisis completo', 'claude-opus-4-7', resp.usage.input_tokens, resp.usage.output_tokens)
         text = next((b.text for b in resp.content if hasattr(b, 'text')), '')
 
         def _sec(label: str) -> str:

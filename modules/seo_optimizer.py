@@ -2939,18 +2939,23 @@ def _call_claude(prompt: str, max_tokens: int = 3500, console=None, fast: bool =
     fast=False → usa Opus (síntesis creativa, títulos y descripciones finales).
     """
     ai    = anthropic.Anthropic()
-    model = "claude-haiku-4-5-20251001" if fast else "claude-opus-4-6"
+    model = "claude-haiku-4-5-20251001" if fast else "claude-opus-4-7"
     full_txt = ""
 
-    with ai.messages.stream(
-        model=model,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        for text in stream.text_stream:
-            full_txt += text
-            if console:
-                console.print(text, end="", markup=False)
+    try:
+        with ai.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            for text in stream.text_stream:
+                full_txt += text
+                if console:
+                    console.print(text, end="", markup=False)
+    except Exception as _e:
+        import traceback as _tb
+        _tb.print_exc()
+        raise RuntimeError(f"Claude API error ({model}): {_e}") from _e
 
     if console:
         console.print()
