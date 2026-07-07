@@ -3054,8 +3054,116 @@ def _parse_synthesis(text: str) -> dict:
         "precio_recomendado":    _extract_section(text, "PRECIO RECOMENDADO"),
         "fotos_recomendadas":    _extract_section(text, "FOTOS RECOMENDADAS"),
         "alerta_catalogo":       _extract_section(text, "ALERTA CATÁLOGO"),
+        "keyword_principal":     _parse_keyword_principal(_extract_section(text, "KEYWORDS ELEGIDAS")),
         "raw":                   text,
     }
+
+
+def _parse_keyword_principal(kw_elegidas_text: str) -> str:
+    """Extrae la keyword principal de la sección ## KEYWORDS ELEGIDAS del output de Opus.
+    Toma la primera keyword no-vacía listada (formato: '- keyword' o '1. keyword')."""
+    for line in (kw_elegidas_text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Quitar bullets: "- ", "• ", "1. ", "**1.**", etc.
+        line = re.sub(r'^[\-•*\d]+[.\)]\s*|\*+', '', line).strip()
+        # Quitar anotaciones de tier como "(TIER 1)" o "[principal]"
+        line = re.sub(r'\(.*?\)|\[.*?\]', '', line).strip()
+        if line:
+            return line.lower()
+    return ""
+
+
+# ── Constantes para validar_sintesis ─────────────────────────────────────────
+
+_FRASES_PROHIBIDAS_VALIDACION = [
+    "alta calidad", "excelente calidad", "de primera calidad", "calidad premium",
+    "ideal para vos", "perfecto para vos", "es para ti",
+    "no te arrepentirás", "no te lo pierdas", "aprovechá esta oportunidad",
+    "el mejor del mercado", "sin igual", "incomparable", "inigualable",
+    "producto excepcional", "artículo de lujo",
+    "envío rápido", "entrega garantizada",
+]
+
+_SIMBOLOS_PROHIBIDOS_RE = re.compile(r'[✓✗⚠□★►▸●■✅❌🎯📊]')
+
+_RANGOS_DESC_CHARS = {
+    "SIMPLE":     (600,  1200),
+    "INTERMEDIO": (1000, 1800),
+    "COMPLEJO":   (1200, 2500),
+}
+
+
+def validar_sintesis(
+    parsed: dict,
+    product_type: str,
+    tier1_keywords: list,
+    ancla: str,
+    keyword_principal: str,
+) -> list:
+    """Revalida determinísticamente el checklist que el prompt le pide a Opus
+    que se autoevalúe. Devuelve lista de errores concretos (vacía = todo OK)."""
+    errores = []
+    desc   = parsed.get("descripcion_nueva", "") or ""
+    titulo = parsed.get("titulo_recomendado", "") or ""
+
+    if titulo and len(titulo) > 60:
+        errores.append(f"Título recomendado excede 60 chars ({len(titulo)}): '{titulo}'")
+
+    desc_lower = desc.lower()
+    for frase in _FRASES_PROHIBIDAS_VALIDACION:
+        if frase in desc_lower:
+            errores.append(f"Frase prohibida detectada: '{frase}'")
+
+    if keyword_principal:
+        apariciones = desc_lower.count(keyword_principal.lower())
+        if not (2 <= apariciones <= 3):
+            errores.append(
+                f"keyword_principal '{keyword_principal}' aparece {apariciones} veces (esperado 2-3)"
+            )
+
+    if ancla:
+        apariciones_ancla = desc_lower.count(ancla.lower())
+        if apariciones_ancla > 8:
+            errores.append(f"Ancla '{ancla}' aparece {apariciones_ancla} veces (máx 8)")
+
+    if desc and product_type in _RANGOS_DESC_CHARS:
+        lo, hi = _RANGOS_DESC_CHARS[product_type]
+        if not (lo <= len(desc) <= hi):
+            errores.append(
+                f"Descripción fuera de rango: {len(desc)} chars "
+                f"(esperado {lo}-{hi} para {product_type})"
+            )
+
+    for kw in (tier1_keywords or []):
+        if kw and kw.lower() not in desc_lower:
+            errores.append(f"Frase TIER 1 '{kw}' no aparece como n-grama exacto en la descripción")
+
+    if _SIMBOLOS_PROHIBIDOS_RE.search(titulo + desc):
+        errores.append("Símbolos/emojis prohibidos detectados en título o descripción")
+
+    return errores
+
+
+def _ancla_from_title(title: str) -> str:
+    """Sustantivo central del producto: primer token no-stopword del título."""
+    _STOPWORDS = {
+        "de", "la", "el", "los", "las", "un", "una", "unos", "unas",
+        "para", "con", "por", "en", "a", "al", "del", "y", "o", "e",
+    }
+    for tok in _tokenize(title):
+        if tok not in _STOPWORDS and len(tok) > 2:
+            return tok
+    return ""
+
+
+def _tier1_kws_from_analysis(keyword_analysis: list) -> list:
+    """Reconstruye la lista _t1_kw_strs sin llamar a _build_synthesis_prompt."""
+    return [
+        k["keyword"] for k in keyword_analysis[:15]
+        if k.get("tipo_intencion") != "informativa" and k.get("priority_score", 0) >= 50
+    ]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3375,6 +3483,32 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=5000, console=_c, fast=False)
     seo_result = _parse_synthesis(synthesis_text)
 
+    # ── Validación determinística post-síntesis (max 1 reintento) ────────────
+    _val_t1_kws   = _tier1_kws_from_analysis(keyword_analysis)
+    _val_ancla    = _ancla_from_title(title)
+    _val_kw_princ = seo_result.get("keyword_principal", "") or (keyword_analysis[0]["keyword"].lower() if keyword_analysis else "")
+    _val_pt, _, _, _ = _classify_product_complexity(item_data.get("category_id", ""), category_name, item_data)
+    _errores = validar_sintesis(seo_result, _val_pt, _val_t1_kws, _val_ancla, _val_kw_princ)
+    if _errores:
+        _c.print(f"  [yellow]⚠ validar_sintesis: {len(_errores)} problema(s) — reintentando corrección...[/yellow]")
+        for _e in _errores:
+            _c.print(f"    [dim]· {_e}[/dim]")
+        _prompt_corr = (
+            "Tu generación anterior tiene estos problemas concretos, corregilos "
+            "sin reescribir lo que ya está bien. Devolvé el mismo formato de salida "
+            "completo (todas las secciones), ya corregido:\n\n"
+            + "\n".join(f"- {e}" for e in _errores)
+            + "\n\nTEXTO ORIGINAL A CORREGIR:\n" + synthesis_text
+        )
+        synthesis_text = _call_claude(_prompt_corr, max_tokens=5000, console=_c, fast=False)
+        seo_result = _parse_synthesis(synthesis_text)
+        _errores_2 = validar_sintesis(seo_result, _val_pt, _val_t1_kws, _val_ancla, _val_kw_princ)
+        if _errores_2:
+            _logger.warning("[validar_sintesis] persisten errores tras reintento: %s", _errores_2)
+            _c.print(f"  [yellow]⚠ Persisten {len(_errores_2)} error(es) tras reintento — se entrega igual[/yellow]")
+        else:
+            _c.print("  [green]✓ Corrección aplicada — validación OK[/green]")
+
     # ── Validación post-generación: TIER 1 en primeros 25 chars ──────────────
     if tier1_kw:
         _t1_tokens = set(_tokenize(tier1_kw))
@@ -3584,6 +3718,33 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     )
     synthesis_text = _call_claude(prompt_synthesis, max_tokens=5000, console=_c, fast=False)
     seo_result     = _parse_synthesis(synthesis_text)
+
+    # ── Validación determinística post-síntesis (max 1 reintento) ────────────
+    _val_t1_kws   = _tier1_kws_from_analysis(keyword_analysis)
+    _val_ancla    = _ancla_from_title(product_idea)
+    _val_kw_princ = seo_result.get("keyword_principal", "") or (keyword_analysis[0]["keyword"].lower() if keyword_analysis else "")
+    _val_pt, _, _, _ = _classify_product_complexity(category_id, category_name, item_mock)
+    _errores = validar_sintesis(seo_result, _val_pt, _val_t1_kws, _val_ancla, _val_kw_princ)
+    if _errores:
+        _c.print(f"  [yellow]⚠ validar_sintesis: {len(_errores)} problema(s) — reintentando corrección...[/yellow]")
+        for _e in _errores:
+            _c.print(f"    [dim]· {_e}[/dim]")
+        _prompt_corr = (
+            "Tu generación anterior tiene estos problemas concretos, corregilos "
+            "sin reescribir lo que ya está bien. Devolvé el mismo formato de salida "
+            "completo (todas las secciones), ya corregido:\n\n"
+            + "\n".join(f"- {e}" for e in _errores)
+            + "\n\nTEXTO ORIGINAL A CORREGIR:\n" + synthesis_text
+        )
+        synthesis_text = _call_claude(_prompt_corr, max_tokens=5000, console=_c, fast=False)
+        seo_result = _parse_synthesis(synthesis_text)
+        _errores_2 = validar_sintesis(seo_result, _val_pt, _val_t1_kws, _val_ancla, _val_kw_princ)
+        if _errores_2:
+            _logger.warning("[validar_sintesis] persisten errores tras reintento: %s", _errores_2)
+            _c.print(f"  [yellow]⚠ Persisten {len(_errores_2)} error(es) tras reintento — se entrega igual[/yellow]")
+        else:
+            _c.print("  [green]✓ Corrección aplicada — validación OK[/green]")
+
     confidence     = build_confidence_layer(keyword_analysis, root_causes, difficulty)
 
     return {
