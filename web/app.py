@@ -5056,6 +5056,57 @@ def api_rep_items(alias):
     })
 
 
+@app.route('/api/reclamos', methods=['GET'])
+def api_reclamos():
+    """Lista reclamos post-compra donde el vendedor es respondiente.
+    Query params: alias (req), limit (def 50), offset (def 0).
+    """
+    alias = request.args.get('alias', '').strip()
+    if not alias:
+        return jsonify({'ok': False, 'error': 'alias requerido'}), 400
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    try:
+        resp = req_lib.get(
+            'https://api.mercadolibre.com/post-purchase/v1/claims/search',
+            params={
+                'player_id':   user_id,
+                'player_role': 'respondent',
+                'limit':       request.args.get('limit',  50),
+                'offset':      request.args.get('offset',  0),
+            },
+            headers=heads,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+
+    reclamos = [
+        {
+            'claim_id':     c.get('id'),
+            'resource_id':  c.get('resource_id'),
+            'type':         c.get('type'),
+            'stage':        c.get('stage'),
+            'status':       c.get('status'),
+            'reason_id':    c.get('reason_id'),
+            'date_created': c.get('date_created'),
+            'last_updated': c.get('last_updated'),
+        }
+        for c in data.get('data', [])
+    ]
+    return jsonify({
+        'ok':      True,
+        'total':   data.get('paging', {}).get('total', 0),
+        'reclamos': reclamos,
+    })
+
+
 # ── Análisis ──────────────────────────────────────────────────────────────────
 
 @app.route('/competencia/<alias>')
