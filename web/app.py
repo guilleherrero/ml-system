@@ -11527,6 +11527,10 @@ def api_descubrir_competidores():
 
         # ── 4. Enriquecer products y puntuar por relevancia con keywords ──────
         competitor_map = {}
+        app.logger.info(
+            '[descubrir-competidores] candidatos=%d item_ids_mode=%s alias=%s',
+            len(product_ids), item_ids_mode, alias,
+        )
 
         for prod_id in product_ids[:15]:
             if prod_id == item_id:
@@ -11577,8 +11581,22 @@ def api_descubrir_competidores():
                                     x.get('price', 9999999)
                                 ))
                                 best_item = items_list[0]
-                    except Exception:
-                        pass
+                            else:
+                                app.logger.warning(
+                                    '[descubrir-competidores] /products/%s/items OK pero lista vacía. '
+                                    'raw=%s',
+                                    prod_id, items_r.text[:300],
+                                )
+                        else:
+                            app.logger.warning(
+                                '[descubrir-competidores] /products/%s/items status=%d body=%s',
+                                prod_id, items_r.status_code, items_r.text[:300],
+                            )
+                    except Exception as _exc:
+                        app.logger.error(
+                            '[descubrir-competidores] excepción en /products/%s/items: %s: %s',
+                            prod_id, type(_exc).__name__, _exc,
+                        )
 
                     if best_item and not thumb:
                         try:
