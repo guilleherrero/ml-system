@@ -3309,8 +3309,9 @@ def api_item_health(alias, item_id):
         item = r_item.json()
 
         # ── Datos base del item ───────────────────────────────
-        health_score  = item.get('health')
-        tags          = item.get('tags') or []
+        health_score       = item.get('health')
+        catalog_listing_flag = bool(item.get('catalog_listing'))
+        tags               = item.get('tags') or []
         attrs         = item.get('attributes') or []
         pics          = item.get('pictures') or []
         shipping      = item.get('shipping') or {}
@@ -3453,6 +3454,9 @@ def api_item_health(alias, item_id):
             'ok': True,
             'item_id':           item_id,
             'health_score':      health_score,
+            'catalog_listing':   catalog_listing_flag,
+            'health_note':       ('Item de catálogo — ML no expone health score individual para catalog listings.'
+                                  if catalog_listing_flag and health_score is None else None),
             'tag_results':       tag_results,
             'empty_attrs_count': len(empty_attrs),
             'pic_count':         len(pics),
