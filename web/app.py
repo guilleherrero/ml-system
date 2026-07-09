@@ -5082,6 +5082,11 @@ def api_reclamos():
             headers=heads,
             timeout=10,
         )
+        if not resp.ok:
+            app.logger.warning(
+                '[get_claims] ML claims status=%d body=%s user_id=%s',
+                resp.status_code, resp.text[:500], user_id,
+            )
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
