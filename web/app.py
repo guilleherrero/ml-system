@@ -5116,6 +5116,51 @@ def api_reclamos():
     })
 
 
+@app.route('/api/reclamo-reputacion', methods=['POST'])
+def api_reclamo_reputacion():
+    """Consulta /claims/{claim_id}/affects-reputation para una lista de claim_ids.
+    Body: {alias, claim_ids: ["123", "456", ...]} — máx 20 por call.
+    """
+    data      = request.get_json() or {}
+    alias     = data.get('alias', '').strip()
+    claim_ids = data.get('claim_ids', [])
+
+    if not alias:
+        return jsonify({'ok': False, 'error': 'alias requerido'}), 400
+    if not claim_ids or not isinstance(claim_ids, list):
+        return jsonify({'ok': False, 'error': 'claim_ids (lista) requerido'}), 400
+
+    claim_ids = [str(c) for c in claim_ids[:20]]
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    results, errors = {}, {}
+    for claim_id in claim_ids:
+        try:
+            r = req_lib.get(
+                f'https://api.mercadolibre.com/claims/{claim_id}/affects-reputation',
+                headers=heads,
+                timeout=8,
+            )
+            if r.ok:
+                d = r.json()
+                results[claim_id] = {
+                    'affects_reputation': d.get('affects_reputation'),
+                    'has_incentive':      d.get('has_incentive'),
+                    'due_date':           d.get('due_date'),
+                }
+            else:
+                errors[claim_id] = f'HTTP {r.status_code}'
+        except Exception as exc:
+            errors[claim_id] = str(exc)
+        _time_module.sleep(0.1)
+
+    return jsonify({'ok': True, 'results': results, 'errors': errors})
+
+
 # ── Análisis ──────────────────────────────────────────────────────────────────
 
 @app.route('/competencia/<alias>')
