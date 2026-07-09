@@ -7505,65 +7505,102 @@ def _check_positions_for_keywords(item_id: str, keywords: list[str], token: str)
 @app.route('/api/buscar-posicion', methods=['POST'])
 def api_buscar_posicion():
     """
-    Busca en qué posición aparece un item para una keyword dada usando la API oficial de ML.
+    Devuelve la posición de un item según el método disponible:
+
+    - catalog_listing=True  → posición en /highlights/MLA/category/{cat_id}
+                              (metodo: 'highlights_categoria')
+    - catalog_listing=False → {ok: false, metodo: 'no_disponible'}
+                              ML desactivó /sites/MLA/search para tráfico programático.
+
     Body: {item_id, keyword, alias}
-    Returns: {posicion, keyword, total}
+    keyword se mantiene por compatibilidad pero no se usa para catalog items.
     """
     data    = request.get_json() or {}
     item_id = data.get('item_id', '').strip()
     keyword = data.get('keyword', '').strip()
     alias   = data.get('alias', '').strip()
-    if not item_id or not keyword:
-        return jsonify({'ok': False, 'error': 'item_id y keyword requeridos'}), 400
+    if not item_id:
+        return jsonify({'ok': False, 'error': 'item_id requerido'}), 400
 
     try:
-        token, _, _ = _ml_auth(alias)
+        token, _, heads = _ml_auth(alias)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 400
 
-    NOT_FOUND    = 999
-    SEARCH_PAGES = 6   # 6 × 50 = 300 resultados
-    PAGE_SIZE    = 50
-    posicion     = NOT_FOUND
-    total        = 0
+    # ── 1. Fetch item para saber si es catalog listing ────────────────────────
+    try:
+        r_item = req_lib.get(
+            f'https://api.mercadolibre.com/items/{item_id}',
+            headers=heads,
+            params={'attributes': 'id,catalog_listing,catalog_product_id,category_id'},
+            timeout=8,
+        )
+        if not r_item.ok:
+            return jsonify({'ok': False, 'error': f'No se pudo obtener item {item_id}: HTTP {r_item.status_code}'}), 502
+        item_data = r_item.json()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error fetching item: {e}'}), 502
 
-    for page in range(SEARCH_PAGES):
-        offset = page * PAGE_SIZE
+    is_catalog = bool(item_data.get('catalog_listing'))
+    cat_prod_id = item_data.get('catalog_product_id') or ''
+    cat_id      = item_data.get('category_id') or ''
+
+    # ── 2. No catalog → endpoint muerto, no hay dato real ────────────────────
+    if not is_catalog:
+        return jsonify({
+            'ok':      False,
+            'item_id': item_id,
+            'keyword': keyword,
+            'metodo':  'no_disponible',
+            'error':   'Posición por keyword no disponible — /sites/MLA/search desactivado por ML para tráfico programático. Solo items con catalog_listing=true tienen posición medible via highlights.',
+        })
+
+    # ── 3. Catalog listing → posición en highlights de categoría ─────────────
+    def _highlights_position(category: str) -> tuple[int | None, int]:
+        """Devuelve (posición 1-based, total_highlights) o (None, 0) si no está."""
         try:
-            resp = req_lib.get(
-                'https://api.mercadolibre.com/sites/MLA/search',
-                headers={'Accept': 'application/json'},
-                params={'q': keyword, 'limit': PAGE_SIZE, 'offset': offset},
-                timeout=10
+            r = req_lib.get(
+                f'https://api.mercadolibre.com/highlights/MLA/category/{category}',
+                headers=heads, timeout=10,
             )
-            if not resp.ok:
-                app.logger.warning(
-                    '[buscar-posicion] ML search status=%d body=%.200s keyword=%r page=%d',
-                    resp.status_code, resp.text, keyword, page,
-                )
-                break
-            body    = resp.json()
-            results = body.get('results', [])
-            if page == 0:
-                total = body.get('paging', {}).get('total', 0)
-            for i, item in enumerate(results):
-                if item.get('id') == item_id:
-                    posicion = offset + i + 1
-                    break
-            if posicion != NOT_FOUND:
-                break
-            if len(results) < PAGE_SIZE:
-                break
-            _time_module.sleep(0.2)
+            if not r.ok:
+                return None, 0
+            content = r.json().get('content', [])
+            ids = [e.get('id') for e in content]
+            if cat_prod_id in ids:
+                return ids.index(cat_prod_id) + 1, len(ids)
+            return None, len(ids)
         except Exception:
-            break
+            return None, 0
+
+    posicion, hl_total = _highlights_position(cat_id)
+
+    # Si no aparece en la categoría principal, buscar en subcategorías
+    if posicion is None and cat_id:
+        try:
+            cr = req_lib.get(
+                f'https://api.mercadolibre.com/categories/{cat_id}',
+                headers=heads, timeout=8,
+            )
+            if cr.ok:
+                for child in cr.json().get('children_categories', [])[:6]:
+                    posicion, hl_total = _highlights_position(child['id'])
+                    if posicion is not None:
+                        cat_id = child['id']
+                        break
+        except Exception:
+            pass
 
     return jsonify({
-        'ok':      True,
-        'item_id': item_id,
-        'keyword': keyword,
-        'posicion': posicion,
-        'total':   total,
+        'ok':               True,
+        'item_id':          item_id,
+        'keyword':          keyword,
+        'metodo':           'highlights_categoria',
+        'catalog_product_id': cat_prod_id,
+        'category_id':      cat_id,
+        'posicion':         posicion,
+        'highlights_total': hl_total,
+        'nota':             'Posición en highlights de categoría ML, no en resultados de keyword search.',
     })
 
 
