@@ -7528,11 +7528,7 @@ def api_buscar_posicion():
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'application/json',
-                    'Referer': 'https://www.mercadolibre.com.ar/',
-                },
+                headers={'Accept': 'application/json'},
                 params={'q': keyword, 'limit': PAGE_SIZE, 'offset': offset},
                 timeout=10
             )
