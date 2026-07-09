@@ -7507,24 +7507,14 @@ def api_buscar_posicion():
     if not item_id or not keyword:
         return jsonify({'ok': False, 'error': 'item_id y keyword requeridos'}), 400
 
-    # Obtener token de acceso
-    token = ''
     try:
-        from core.account_manager import AccountManager
-        mgr    = AccountManager()
-        client = mgr.get_client(alias)
-        client._ensure_token()
-        token  = client.account.access_token
-    except Exception:
-        pass
+        token, _, _ = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
 
-    if not token:
-        return jsonify({'ok': False, 'error': 'No se pudo obtener token para esta cuenta'}), 400
-
-    NOT_FOUND  = 999
+    NOT_FOUND    = 999
     SEARCH_PAGES = 6   # 6 × 50 = 300 resultados
     PAGE_SIZE    = 50
-    headers      = {'Authorization': f'Bearer {token}'}
     posicion     = NOT_FOUND
     total        = 0
 
@@ -7533,7 +7523,12 @@ def api_buscar_posicion():
         try:
             resp = req_lib.get(
                 'https://api.mercadolibre.com/sites/MLA/search',
-                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json', 'Referer': 'https://www.mercadolibre.com.ar/'},
+                headers={
+                    'Authorization': f'Bearer {token}',
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/json',
+                    'Referer': 'https://www.mercadolibre.com.ar/',
+                },
                 params={'q': keyword, 'limit': PAGE_SIZE, 'offset': offset},
                 timeout=10
             )
