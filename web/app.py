@@ -10812,6 +10812,7 @@ def api_detalle_competidor():
             sold_quantity = 0; listing_type = ''; condition = 'new'
             item_id_best = ''
             price = 0
+            no_active_listings = False
 
             ir = req_lib.get(f'https://api.mercadolibre.com/products/{product_id}/items',
                              headers=headers, timeout=8)
@@ -10833,6 +10834,10 @@ def api_detalle_competidor():
                     condition     = best.get('condition', 'new')
                     item_id_best  = best.get('id', '')
                     seller, seller_sales = _fetch_seller(best.get('seller_id', ''), headers)
+                else:
+                    no_active_listings = True
+            else:
+                no_active_listings = True
 
             full_description = base_desc
             if item_id_best:
@@ -10938,6 +10943,10 @@ def api_detalle_competidor():
                                         if item_id_for_desc and len(base_desc) < 50:
                                             d = _fetch_description(item_id_for_desc, headers)
                                             if d: base_desc = d
+                                    else:
+                                        no_active_listings = True
+                                else:
+                                    no_active_listings = True
                                 full_description = base_desc
                                 reviews_rating, reviews_total, reviews_sample = 0.0, 0, []
                                 catalog_found = True
@@ -10963,27 +10972,28 @@ def api_detalle_competidor():
                     reviews_rating, reviews_total, reviews_sample = 0.0, 0, []
 
         return jsonify({
-            'ok':             True,
-            'id':             product_id,
-            'title':          title,
-            'thumbnail':      thumbnail,
-            'pictures':       pictures,
-            'photos_count':   photos_count,
-            'price':          price,
-            'free_ship':      free_ship,
-            'full_ship':      full_ship,
-            'premium':        premium,
-            'listing_type':   listing_type,
-            'condition':      condition,
-            'seller':         seller,
-            'seller_sales':   seller_sales,
-            'sold_quantity':  sold_quantity,
-            'attributes':     attributes,
-            'description':    full_description,
-            'main_features':  main_features,
-            'reviews_rating': reviews_rating,
-            'reviews_total':  reviews_total,
-            'reviews_sample': reviews_sample,
+            'ok':                  True,
+            'id':                  product_id,
+            'title':               title,
+            'thumbnail':           thumbnail,
+            'pictures':            pictures,
+            'photos_count':        photos_count,
+            'price':               price,
+            'free_ship':           free_ship,
+            'full_ship':           full_ship,
+            'premium':             premium,
+            'listing_type':        listing_type,
+            'condition':           condition,
+            'seller':              seller,
+            'seller_sales':        seller_sales,
+            'sold_quantity':       sold_quantity,
+            'no_active_listings':  no_active_listings,
+            'attributes':          attributes,
+            'description':         full_description,
+            'main_features':       main_features,
+            'reviews_rating':      reviews_rating,
+            'reviews_total':       reviews_total,
+            'reviews_sample':      reviews_sample,
         })
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -11143,15 +11153,18 @@ def api_buscar_competidores():
             try:
                 # Thumbnail del catálogo
                 thumb = ''
+                prod_photos = 0
                 pr = req_lib.get(f'https://api.mercadolibre.com/products/{prod_id}',
                                   headers=headers, timeout=6)
                 if pr.ok:
                     pics = pr.json().get('pictures', [])
+                    prod_photos = len(pics)
                     if pics:
                         thumb = re.sub(r'-[A-Z]+\.jpg$', '-I.jpg', pics[0].get('url', ''))
 
                 # Mejor listing del producto para métricas
                 sold, price, is_premium, free_ship, photos = 0, 0, False, False, 0
+                no_active_listings = False
                 ir = req_lib.get(f'https://api.mercadolibre.com/products/{prod_id}/items',
                                   headers=headers, params={'limit': 3}, timeout=6)
                 if ir.ok:
@@ -11173,22 +11186,29 @@ def api_buscar_competidores():
                                 if item_pics:
                                     thumb = re.sub(r'-[A-Z]+\.jpg$', '-I.jpg',
                                                    item_pics[0].get('secure_url') or item_pics[0].get('url', ''))
+                    else:
+                        no_active_listings = True
+                        photos = prod_photos  # fallback: fotos del producto catálogo
+                else:
+                    no_active_listings = True
+                    photos = prod_photos  # fallback: fotos del producto catálogo
 
                 score   = _competitor_score(position, sold, is_premium, free_ship, photos)
                 verdict = _score_verdict(score)
 
                 results.append({
-                    'id':          prod_id,
-                    'title':       name,
-                    'thumbnail':   thumb,
-                    'position':    position,
-                    'price':       round(price),
-                    'sold':        sold,
-                    'is_premium':  is_premium,
-                    'free_ship':   free_ship,
-                    'photos':      photos,
-                    'score':       score,
-                    'verdict':     verdict,
+                    'id':                 prod_id,
+                    'title':              name,
+                    'thumbnail':          thumb,
+                    'position':           position,
+                    'price':              round(price),
+                    'sold':               sold,
+                    'is_premium':         is_premium,
+                    'free_ship':          free_ship,
+                    'photos':             photos,
+                    'score':              score,
+                    'verdict':            verdict,
+                    'no_active_listings': no_active_listings,
                 })
                 _time.sleep(0.08)
             except Exception:
