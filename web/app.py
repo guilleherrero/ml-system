@@ -7538,6 +7538,10 @@ def api_buscar_posicion():
                 timeout=10
             )
             if not resp.ok:
+                app.logger.warning(
+                    '[buscar-posicion] ML search status=%d body=%.200s keyword=%r page=%d',
+                    resp.status_code, resp.text, keyword, page,
+                )
                 break
             body    = resp.json()
             results = body.get('results', [])
