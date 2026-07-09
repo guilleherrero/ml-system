@@ -5074,8 +5074,8 @@ def api_reclamos():
         resp = req_lib.get(
             'https://api.mercadolibre.com/post-purchase/v1/claims/search',
             params={
-                'players.user_id': user_id,
-                'players.role':    'respondent',
+                'player_user_id': user_id,
+                'player_role':    'respondent',
                 'limit':       request.args.get('limit',  50),
                 'offset':      request.args.get('offset',  0),
             },
