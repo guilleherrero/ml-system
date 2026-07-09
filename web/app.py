@@ -5141,7 +5141,7 @@ def api_reclamo_reputacion():
     for claim_id in claim_ids:
         try:
             r = req_lib.get(
-                f'https://api.mercadolibre.com/claims/{claim_id}/affects-reputation',
+                f'https://api.mercadolibre.com/post-purchase/v1/claims/{claim_id}/affects-reputation',
                 headers=heads,
                 timeout=8,
             )
