@@ -293,6 +293,9 @@
     <a href="/reputacion/{{ acc.alias }}" class="{{ 'active' if request.path == '/reputacion/'~acc.alias else '' }}">
       <i class="bi bi-shield-check"></i> Reputación
     </a>
+    <a href="/mensajes/{{ acc.alias }}" class="{{ 'active' if request.path == '/mensajes/'~acc.alias else '' }}">
+      <i class="bi bi-envelope"></i> Mensajes
+    </a>
 
     </div>{# /acc-group #}
     {% endfor %}

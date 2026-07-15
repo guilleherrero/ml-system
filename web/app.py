@@ -5161,6 +5161,211 @@ def api_reclamo_reputacion():
     return jsonify({'ok': True, 'results': results, 'errors': errors})
 
 
+# ── Mensajes ──────────────────────────────────────────────────────────────────
+
+@app.route('/mensajes/<alias>')
+def mensajes(alias):
+    all_accs = get_accounts()
+    account  = next((a for a in all_accs if a.get('alias') == alias), None)
+    return render_template('mensajes.html', alias=alias, account=account, accounts=all_accs)
+
+
+@app.route('/api/mensajes-config/<alias>', methods=['GET'])
+def api_mensajes_config_get(alias):
+    from modules.tienda_sync import get_setting
+    from web.db import SessionLocal
+    with SessionLocal() as s:
+        activo = get_setting(s, f'mensajes_auto_activo_{alias}', False)
+        texto  = get_setting(s, f'mensajes_auto_texto_{alias}',
+                             'Hola {nombre}, gracias por tu compra de "{producto}" (orden #{orden}). '
+                             'Cualquier consulta estoy a disposición.')
+    return jsonify({'ok': True, 'activo': bool(activo), 'texto': texto})
+
+
+@app.route('/api/mensajes-config/<alias>', methods=['POST'])
+def api_mensajes_config_set(alias):
+    from modules.tienda_sync import set_setting
+    from web.db import SessionLocal
+    data   = request.get_json() or {}
+    activo = bool(data.get('activo', False))
+    texto  = str(data.get('texto', '')).strip()
+    if not texto:
+        return jsonify({'ok': False, 'error': 'texto requerido'}), 400
+    with SessionLocal() as s:
+        set_setting(s, f'mensajes_auto_activo_{alias}', activo)
+        set_setting(s, f'mensajes_auto_texto_{alias}', texto)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/mensajes-conversaciones/<alias>')
+def api_mensajes_conversaciones(alias):
+    """Devuelve las últimas N órdenes pagas con su último mensaje (si tienen)."""
+    import time as _t
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    ML = 'https://api.mercadolibre.com'
+
+    # Últimas 50 órdenes pagas
+    try:
+        r = req_lib.get(f'{ML}/orders/search',
+                        headers=heads,
+                        params={'seller': user_id, 'order.status': 'paid',
+                                'sort': 'date_desc', 'limit': 50},
+                        timeout=12)
+        orders_raw = r.json().get('results', []) if r.ok else []
+    except Exception:
+        orders_raw = []
+
+    conversaciones = []
+    for ord_ in orders_raw:
+        order_id = ord_.get('id')
+        if not order_id:
+            continue
+
+        # Primer ítem del pedido para mostrar título
+        items = ord_.get('order_items', [])
+        titulo_prod = items[0].get('item', {}).get('title', '') if items else ''
+        buyer       = ord_.get('buyer', {})
+        buyer_nick  = buyer.get('nickname', 'Comprador')
+        buyer_id    = buyer.get('id')
+        fecha_orden = (ord_.get('date_created', '') or '')[:10]
+
+        # Mensajes del pedido
+        try:
+            rm = req_lib.get(f'{ML}/messages/orders/{order_id}',
+                             headers=heads,
+                             params={'tag': 'post_sale'},
+                             timeout=8)
+            msgs_raw = rm.json().get('messages', []) if rm.ok else []
+        except Exception:
+            msgs_raw = []
+
+        if not msgs_raw:
+            continue  # Sin mensajes → no mostrar
+
+        # Clasificar
+        has_buyer_unread = any(
+            m.get('from', {}).get('user_type') == 'buyer'
+            and not m.get('message_resources', [{}])[0].get('seen', True)
+            for m in msgs_raw
+        )
+        last_msg = msgs_raw[-1] if msgs_raw else {}
+        last_text = last_msg.get('text', {})
+        if isinstance(last_text, dict):
+            last_text = last_text.get('plain', '')
+        last_from  = last_msg.get('from', {}).get('user_type', '')
+        last_date  = (last_msg.get('message_date', {}) or {}).get('received', '') or ''
+        last_date  = last_date[:16].replace('T', ' ')
+
+        conversaciones.append({
+            'order_id':     order_id,
+            'titulo':       titulo_prod,
+            'buyer':        buyer_nick,
+            'buyer_id':     buyer_id,
+            'fecha_orden':  fecha_orden,
+            'total_msgs':   len(msgs_raw),
+            'unread_buyer': has_buyer_unread,
+            'last_from':    last_from,
+            'last_text':    str(last_text)[:120],
+            'last_date':    last_date,
+        })
+        _t.sleep(0.05)
+
+    conversaciones.sort(key=lambda x: x['last_date'], reverse=True)
+    return jsonify({'ok': True, 'conversaciones': conversaciones})
+
+
+@app.route('/api/mensajes-thread/<alias>/<int:order_id>')
+def api_mensajes_thread(alias, order_id):
+    """Devuelve el hilo completo de mensajes de una orden."""
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    ML = 'https://api.mercadolibre.com'
+
+    try:
+        r = req_lib.get(f'{ML}/messages/orders/{order_id}',
+                        headers=heads,
+                        params={'tag': 'post_sale'},
+                        timeout=10)
+        if not r.ok:
+            return jsonify({'ok': False, 'error': f'HTTP {r.status_code}'}), r.status_code
+        data = r.json()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+    mensajes_list = []
+    for m in data.get('messages', []):
+        text = m.get('text', {})
+        if isinstance(text, dict):
+            text = text.get('plain', '')
+        from_info   = m.get('from', {})
+        user_type   = from_info.get('user_type', '')
+        msg_date    = (m.get('message_date', {}) or {}).get('received', '') or ''
+        msg_date    = msg_date[:16].replace('T', ' ')
+        mensajes_list.append({
+            'id':        m.get('id'),
+            'text':      text,
+            'from_type': user_type,
+            'from_nick': from_info.get('nickname', ''),
+            'date':      msg_date,
+        })
+
+    return jsonify({'ok': True, 'order_id': order_id, 'messages': mensajes_list,
+                    'seller_id': str(user_id)})
+
+
+@app.route('/api/mensajes-responder/<alias>/<int:order_id>', methods=['POST'])
+def api_mensajes_responder(alias, order_id):
+    """Envía un mensaje al comprador en el hilo de la orden."""
+    data = request.get_json() or {}
+    text = str(data.get('text', '')).strip()
+    if not text:
+        return jsonify({'ok': False, 'error': 'text requerido'}), 400
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    ML = 'https://api.mercadolibre.com'
+
+    # Obtener buyer_id de la orden
+    try:
+        ro = req_lib.get(f'{ML}/orders/{order_id}', headers=heads, timeout=8)
+        buyer_id = ro.json().get('buyer', {}).get('id') if ro.ok else None
+    except Exception:
+        buyer_id = None
+
+    if not buyer_id:
+        return jsonify({'ok': False, 'error': 'No se pudo obtener buyer_id de la orden'}), 400
+
+    payload = {
+        'from': {'user_id': str(user_id)},
+        'to':   {'user_id': str(buyer_id)},
+        'text': text,
+        'attachments': [],
+    }
+    post_heads = {**heads, 'Content-Type': 'application/json'}
+    try:
+        r = req_lib.post(f'{ML}/messages/orders/{order_id}',
+                         params={'tag': 'post_sale'},
+                         json=payload,
+                         headers=post_heads,
+                         timeout=10)
+        if r.ok:
+            return jsonify({'ok': True, 'message_id': r.json().get('id')})
+        else:
+            return jsonify({'ok': False, 'error': f'HTTP {r.status_code}', 'detail': r.text}), r.status_code
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 # ── Análisis ──────────────────────────────────────────────────────────────────
 
 @app.route('/competencia/<alias>')
