@@ -9,7 +9,7 @@
   grid-template-columns: 340px 1fr;
   grid-template-rows: auto 1fr;
   gap:1rem;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 140px);
 }
 .msgs-config  { grid-column: 1 / -1; }
 .msgs-list    { overflow-y:auto; border:1px solid var(--color-neutral-200); border-radius:12px; background:var(--color-neutral-0); }
@@ -17,7 +17,7 @@
 
 /* ── Config card ─────────────────────────────────────────────────────── */
 .config-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; padding:1rem 1.2rem; }
-.config-card .row-toggle { display:flex; align-items:center; gap:.75rem; margin-bottom:.75rem; }
+.config-card .row-toggle { display:flex; align-items:center; gap:.75rem; margin-bottom:.6rem; }
 
 /* ── Conversation list ───────────────────────────────────────────────── */
 .conv-item {
@@ -48,14 +48,24 @@
 
 /* ── Message bubbles ─────────────────────────────────────────────────── */
 .bubble { max-width:75%; padding:.55rem .8rem; border-radius:12px; font-size:.83rem; line-height:1.45; }
-.bubble.seller   { background:#dbeafe; align-self:flex-end; border-bottom-right-radius:3px; }
-.bubble.buyer    { background:var(--color-neutral-100); align-self:flex-start; border-bottom-left-radius:3px; }
-.bubble.ml-system{ background:#fef3c7; align-self:flex-start; border-bottom-left-radius:3px; border:1px solid #fcd34d; }
+.bubble.seller    { background:#dbeafe; align-self:flex-end; border-bottom-right-radius:3px; }
+.bubble.buyer     { background:var(--color-neutral-100); align-self:flex-start; border-bottom-left-radius:3px; }
+.bubble.ml-system { background:#fef3c7; align-self:flex-start; border-bottom-left-radius:3px; border:1px solid #fcd34d; }
 .bubble-meta { font-size:.65rem; color:var(--color-neutral-400); margin-top:.2rem; }
 .bubble-wrap { display:flex; flex-direction:column; }
-.bubble-wrap.seller   { align-items:flex-end; }
-.bubble-wrap.buyer    { align-items:flex-start; }
-.bubble-wrap.ml-system{ align-items:flex-start; }
+.bubble-wrap.seller    { align-items:flex-end; }
+.bubble-wrap.buyer     { align-items:flex-start; }
+.bubble-wrap.ml-system { align-items:flex-start; }
+
+/* ── Log table ───────────────────────────────────────────────────────── */
+.log-section { border:1px solid var(--color-neutral-200); border-radius:12px; background:var(--color-neutral-0); margin-top:1rem; }
+.log-section .log-head { padding:.75rem 1rem; border-bottom:1px solid var(--color-neutral-200); background:var(--color-neutral-50); border-radius:12px 12px 0 0; font-weight:600; font-size:.85rem; }
+.log-table { width:100%; border-collapse:collapse; font-size:.8rem; }
+.log-table th { padding:.5rem .75rem; text-align:left; font-weight:600; color:var(--color-neutral-500); border-bottom:1px solid var(--color-neutral-200); font-size:.73rem; text-transform:uppercase; letter-spacing:.03em; }
+.log-table td { padding:.55rem .75rem; border-bottom:1px solid var(--color-neutral-100); vertical-align:top; }
+.log-table tr:last-child td { border-bottom:none; }
+.status-ok   { color:#16a34a; font-weight:600; }
+.status-err  { color:#dc2626; font-weight:600; }
 
 /* ── Empty states ────────────────────────────────────────────────────── */
 .empty-state { text-align:center; padding:3rem 1rem; color:var(--color-neutral-400); }
@@ -79,25 +89,24 @@
         <span class="text-muted small ms-auto">Se envía cuando el pago es aprobado.</span>
       </div>
       <div class="d-flex gap-2 align-items-start">
-        <textarea id="autoMsgTexto" rows="2" class="form-control form-control-sm" style="font-size:.83rem;"
-          placeholder="Ej: Hola {nombre}, gracias por tu compra de &quot;{producto}&quot; (orden #{orden}). Cualquier consulta estoy a disposición."></textarea>
-        <button class="btn btn-primary btn-sm px-3" onclick="guardarConfig()" style="white-space:nowrap">Guardar</button>
+        <textarea id="autoMsgTexto" rows="3" class="form-control form-control-sm" style="font-size:.84rem; min-height:70px;"></textarea>
+        <button class="btn btn-primary btn-sm px-3" onclick="guardarConfig()" style="white-space:nowrap; align-self:flex-end;">Guardar</button>
       </div>
-      <div class="mt-1">
-        <span class="text-muted" style="font-size:.72rem;">Variables disponibles: <code>{nombre}</code> · <code>{producto}</code> · <code>{orden}</code></span>
-        <span id="configMsg" class="ms-2 small" style="display:none"></span>
+      <div class="mt-1 d-flex align-items-center gap-2">
+        <span class="text-muted" style="font-size:.72rem;">Variables: <code>{nombre}</code> · <code>{producto}</code> · <code>{orden}</code></span>
+        <span id="configMsg" style="display:none; font-size:.78rem;"></span>
       </div>
     </div>
   </div>
 
   <!-- Block 2: Conversation list -->
   <div class="msgs-list" id="convList">
-    <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background:var(--color-neutral-50);">
+    <div class="p-3 border-bottom d-flex justify-content-between align-items-center" style="background:var(--color-neutral-50); border-radius:12px 12px 0 0;">
       <span class="fw-600 small"><i class="bi bi-chat-dots"></i> Conversaciones</span>
       <button class="btn btn-outline-secondary btn-sm" onclick="cargarConversaciones()"><i class="bi bi-arrow-clockwise"></i></button>
     </div>
     <div id="convContent">
-      <div class="empty-state"><i class="bi bi-envelope-open"></i>Cargando conversaciones…</div>
+      <div class="empty-state"><i class="bi bi-envelope-open"></i>Cargando…</div>
     </div>
   </div>
 
@@ -111,17 +120,27 @@
       <div class="empty-state"><i class="bi bi-chat-square-text"></i>Seleccioná una conversación para ver el hilo.</div>
     </div>
     <div class="thread-footer" id="threadFooter" style="display:none">
-      <textarea id="replyText" rows="2" placeholder="Escribí tu respuesta…" onkeydown="if(event.ctrlKey&&event.key==='Enter')enviarRespuesta()"></textarea>
+      <textarea id="replyText" rows="2" placeholder="Escribí tu respuesta… (Ctrl+Enter para enviar)" onkeydown="if(event.ctrlKey&&event.key==='Enter')enviarRespuesta()"></textarea>
       <button class="btn btn-primary btn-sm" onclick="enviarRespuesta()"><i class="bi bi-send"></i> Enviar</button>
     </div>
   </div>
 
 </div>
 
+<!-- Block 4: Auto-messages sent log -->
+<div class="log-section">
+  <div class="log-head d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-clock-history"></i> Mensajes automáticos enviados</span>
+    <button class="btn btn-outline-secondary btn-sm" onclick="cargarLog()"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+  <div id="logContent" style="padding:.25rem 0;">
+    <div class="empty-state" style="padding:1.5rem;"><i class="bi bi-inbox" style="font-size:1.5rem;"></i>Cargando historial…</div>
+  </div>
+</div>
+
 <script>
 const ALIAS = {{ alias | tojson }};
 let activeOrderId = null;
-let activeConvData = null;
 
 /* ── Config ─────────────────────────────────────────────────────────── */
 async function cargarConfig() {
@@ -144,11 +163,11 @@ async function guardarConfig() {
   const d = await r.json();
   msgEl.style.display = '';
   if (d.ok) {
-    msgEl.className = 'ms-2 small text-success';
+    msgEl.className = 'text-success';
     msgEl.textContent = '✓ Guardado';
-    setTimeout(()=>{ msgEl.style.display='none'; }, 2500);
+    setTimeout(() => { msgEl.style.display = 'none'; }, 2500);
   } else {
-    msgEl.className = 'ms-2 small text-danger';
+    msgEl.className = 'text-danger';
     msgEl.textContent = d.error || 'Error al guardar';
   }
 }
@@ -157,22 +176,18 @@ async function guardarConfig() {
 async function cargarConversaciones() {
   document.getElementById('convContent').innerHTML =
     '<div class="empty-state"><i class="bi bi-envelope-open"></i>Cargando…</div>';
-
   const r = await fetch(`/api/mensajes-conversaciones/${encodeURIComponent(ALIAS)}`);
   const d = await r.json();
-
   if (!d.ok) {
     document.getElementById('convContent').innerHTML =
       `<div class="empty-state text-danger"><i class="bi bi-exclamation-triangle"></i>${d.error}</div>`;
     return;
   }
-
   if (!d.conversaciones.length) {
     document.getElementById('convContent').innerHTML =
       '<div class="empty-state"><i class="bi bi-inbox"></i>Sin conversaciones con mensajes.</div>';
     return;
   }
-
   const html = d.conversaciones.map(c => {
     const dot = c.unread_buyer
       ? '<span class="unread-dot" title="Mensaje del comprador sin leer"></span>'
@@ -199,36 +214,28 @@ async function abrirConversacion(orderId, el) {
   el.classList.add('active');
   activeOrderId = orderId;
 
-  const buyer  = el.dataset.buyer;
-  const titulo = el.dataset.titulo;
-  const fecha  = el.dataset.fecha;
-
   document.getElementById('threadHeader').style.display = '';
-  document.getElementById('threadTitle').textContent    = `Orden #${orderId} — ${buyer}`;
-  document.getElementById('threadSub').textContent      = `${titulo} · comprado el ${fecha}`;
-  document.getElementById('threadBody').innerHTML       =
+  document.getElementById('threadTitle').textContent = `Orden #${orderId} — ${el.dataset.buyer}`;
+  document.getElementById('threadSub').textContent   = `${el.dataset.titulo} · comprado el ${el.dataset.fecha}`;
+  document.getElementById('threadBody').innerHTML    =
     '<div class="empty-state"><i class="bi bi-hourglass-split"></i>Cargando hilo…</div>';
   document.getElementById('threadFooter').style.display = '';
 
   const r = await fetch(`/api/mensajes-thread/${encodeURIComponent(ALIAS)}/${orderId}`);
   const d = await r.json();
-
   if (!d.ok) {
     document.getElementById('threadBody').innerHTML =
       `<div class="empty-state text-danger"><i class="bi bi-exclamation-triangle"></i>${d.error}</div>`;
     return;
   }
-
   if (!d.messages.length) {
     document.getElementById('threadBody').innerHTML =
       '<div class="empty-state"><i class="bi bi-chat-square"></i>Sin mensajes en este hilo.</div>';
     return;
   }
-
   const html = d.messages.map(m => {
-    let cls = 'buyer';
-    let label = m.from_nick || 'Comprador';
-    if (m.from_type === 'seller') { cls = 'seller'; label = 'Vos'; }
+    let cls = 'buyer', label = m.from_nick || 'Comprador';
+    if (m.from_type === 'seller')       { cls = 'seller';    label = 'Vos'; }
     else if (m.from_type === 'mercadolibre') { cls = 'ml-system'; label = 'Mercado Libre'; }
     return `
       <div class="bubble-wrap ${cls}">
@@ -244,29 +251,57 @@ async function abrirConversacion(orderId, el) {
 async function enviarRespuesta() {
   const txt = document.getElementById('replyText').value.trim();
   if (!txt || !activeOrderId) return;
-
   const btn = document.querySelector('#threadFooter button');
   btn.disabled = true;
   btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-
   const r = await fetch(`/api/mensajes-responder/${encodeURIComponent(ALIAS)}/${activeOrderId}`, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({text: txt})
   });
   const d = await r.json();
-
   btn.disabled = false;
   btn.innerHTML = '<i class="bi bi-send"></i> Enviar';
-
   if (d.ok) {
     document.getElementById('replyText').value = '';
-    // reload thread
     const activeEl = document.querySelector('.conv-item.active');
     if (activeEl) await abrirConversacion(activeOrderId, activeEl);
   } else {
     alert('Error al enviar: ' + (d.error || 'desconocido'));
   }
+}
+
+/* ── Auto-message log ────────────────────────────────────────────────── */
+async function cargarLog() {
+  document.getElementById('logContent').innerHTML =
+    '<div class="empty-state" style="padding:1.5rem;"><i class="bi bi-hourglass-split" style="font-size:1.5rem;"></i>Cargando…</div>';
+  const r = await fetch(`/api/mensajes-auto-log/${encodeURIComponent(ALIAS)}`);
+  const d = await r.json();
+  if (!d.ok || !d.log.length) {
+    document.getElementById('logContent').innerHTML =
+      '<div class="empty-state" style="padding:1.5rem; font-size:.82rem; color:var(--color-neutral-400);">' +
+      '<i class="bi bi-inbox" style="font-size:1.5rem; display:block; margin-bottom:.4rem;"></i>' +
+      'Todavía no se enviaron mensajes automáticos. Se registrarán aquí cuando el scheduler esté activo.</div>';
+    return;
+  }
+  const rows = d.log.map(e => `
+    <tr>
+      <td>${escH(e.fecha || '')}</td>
+      <td>#${escH(String(e.order_id || ''))}</td>
+      <td>${escH(e.buyer || '')}</td>
+      <td style="max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escH(e.producto || '')}</td>
+      <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--color-neutral-500);">${escH(e.texto_enviado || '')}</td>
+      <td class="${e.status === 'ok' ? 'status-ok' : 'status-err'}">${e.status === 'ok' ? '✓ Enviado' : '✗ Error'}</td>
+    </tr>`).join('');
+  document.getElementById('logContent').innerHTML = `
+    <div style="overflow-x:auto;">
+      <table class="log-table">
+        <thead><tr>
+          <th>Fecha</th><th>Orden</th><th>Comprador</th><th>Producto</th><th>Mensaje</th><th>Estado</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 function escH(s) {
@@ -276,5 +311,6 @@ function escH(s) {
 /* ── Init ────────────────────────────────────────────────────────────── */
 cargarConfig();
 cargarConversaciones();
+cargarLog();
 </script>
 {% endblock %}

@@ -5170,31 +5170,43 @@ def mensajes(alias):
     return render_template('mensajes.html', alias=alias, account=account, accounts=all_accs)
 
 
+_MENS_CFG_DEFAULT = ('Hola {nombre}, gracias por tu compra de "{producto}" '
+                     '(orden #{orden}). Cualquier consulta estoy a disposición.')
+
+def _mensajes_cfg_path(alias):
+    return os.path.join(DATA_DIR, f'mensajes_cfg_{safe(alias)}.json')
+
+def _mensajes_log_path(alias):
+    return os.path.join(DATA_DIR, f'mensajes_log_{safe(alias)}.json')
+
+
 @app.route('/api/mensajes-config/<alias>', methods=['GET'])
 def api_mensajes_config_get(alias):
-    from modules.tienda_sync import get_setting
-    from web.db import SessionLocal
-    with SessionLocal() as s:
-        activo = get_setting(s, f'mensajes_auto_activo_{alias}', False)
-        texto  = get_setting(s, f'mensajes_auto_texto_{alias}',
-                             'Hola {nombre}, gracias por tu compra de "{producto}" (orden #{orden}). '
-                             'Cualquier consulta estoy a disposición.')
-    return jsonify({'ok': True, 'activo': bool(activo), 'texto': texto})
+    cfg = load_json(_mensajes_cfg_path(alias)) or {}
+    return jsonify({'ok': True,
+                    'activo': bool(cfg.get('activo', False)),
+                    'texto':  cfg.get('texto', _MENS_CFG_DEFAULT)})
 
 
 @app.route('/api/mensajes-config/<alias>', methods=['POST'])
 def api_mensajes_config_set(alias):
-    from modules.tienda_sync import set_setting
-    from web.db import SessionLocal
     data   = request.get_json() or {}
     activo = bool(data.get('activo', False))
     texto  = str(data.get('texto', '')).strip()
     if not texto:
         return jsonify({'ok': False, 'error': 'texto requerido'}), 400
-    with SessionLocal() as s:
-        set_setting(s, f'mensajes_auto_activo_{alias}', activo)
-        set_setting(s, f'mensajes_auto_texto_{alias}', texto)
+    cfg = load_json(_mensajes_cfg_path(alias)) or {}
+    cfg['activo'] = activo
+    cfg['texto']  = texto
+    save_json(_mensajes_cfg_path(alias), cfg)
     return jsonify({'ok': True})
+
+
+@app.route('/api/mensajes-auto-log/<alias>')
+def api_mensajes_auto_log(alias):
+    """Devuelve el historial de mensajes automáticos enviados."""
+    log = load_json(_mensajes_log_path(alias)) or []
+    return jsonify({'ok': True, 'log': log})
 
 
 @app.route('/api/mensajes-conversaciones/<alias>')
