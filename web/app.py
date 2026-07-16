@@ -15996,15 +15996,9 @@ def _start_scheduler():
                          'ML "novara" cada 6 horas. Respeta locks por campo (admin override).'),
         )
 
-        # Job 11 — Mensajes automáticos post-venta cada 30 min (8-22 ART)
-        jm.register_job(
-            'mensajes_auto', _job_mensajes_auto,
-            CronTrigger(hour='8-22', minute='*/30',
-                        timezone='America/Argentina/Buenos_Aires'),
-            name='Mensajes automáticos post-venta',
-            description=('Detecta órdenes pagas nuevas (últimas 48h) y envía el mensaje '
-                         'automático configurado por alias. Usa log JSON para evitar duplicados.'),
-        )
+        # Job 11 — Mensajes automáticos post-venta (DESHABILITADO — API /messages/orders 404)
+        # Requiere habilitación especial por parte de ML para la app.
+        # Re-habilitar cuando ML apruebe el acceso a la API de mensajes post-venta.
 
         global _job_manager
         _job_manager = jm
