@@ -15785,7 +15785,7 @@ def _enviar_mensajes_auto(alias):
 
     # IDs ya procesados
     log = load_json(log_path) or []
-    ya_enviados = {str(e['order_id']) for e in log}
+    ya_enviados = {str(e['order_id']) for e in log if e.get('status') == 'ok'}
 
     try:
         token, user_id, heads = _ml_auth(alias)
@@ -15795,9 +15795,10 @@ def _enviar_mensajes_auto(alias):
 
     ML = 'https://api.mercadolibre.com'
 
-    # Órdenes pagas de las últimas 48h
+    # Órdenes pagas desde medianoche de hoy (ART = UTC-3)
     from datetime import timedelta as _td
-    desde = (datetime.now(_tz.utc) - _td(hours=48)).strftime('%Y-%m-%dT%H:%M:%S.000-00:00')
+    hoy_art = (datetime.now(_tz.utc) - _td(hours=3)).date()
+    desde = f'{hoy_art}T00:00:00.000-03:00'
     try:
         r = req_lib.get(f'{ML}/orders/search', headers=heads,
                         params={'seller': user_id, 'order.status': 'paid',

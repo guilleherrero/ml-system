@@ -289,15 +289,15 @@ async function cargarLog() {
       <td>${escH(e.fecha || '')}</td>
       <td>#${escH(String(e.order_id || ''))}</td>
       <td>${escH(e.buyer || '')}</td>
-      <td style="max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escH(e.producto || '')}</td>
-      <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--color-neutral-500);">${escH(e.texto_enviado || '')}</td>
-      <td class="${e.status === 'ok' ? 'status-ok' : 'status-err'}">${e.status === 'ok' ? '✓ Enviado' : '✗ Error'}</td>
+      <td style="max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escH(e.producto || '')}</td>
+      <td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--color-neutral-500);">${escH(e.texto_enviado || '')}</td>
+      <td class="${e.status === 'ok' ? 'status-ok' : 'status-err'}" title="${escH(e.detalle || '')}">${e.status === 'ok' ? '✓ Enviado' : '✗ ' + escH(e.detalle || 'Error')}</td>
     </tr>`).join('');
   document.getElementById('logContent').innerHTML = `
     <div style="overflow-x:auto;">
       <table class="log-table">
         <thead><tr>
-          <th>Fecha</th><th>Orden</th><th>Comprador</th><th>Producto</th><th>Mensaje</th><th>Estado</th>
+          <th>Fecha</th><th>Orden</th><th>Comprador</th><th>Producto</th><th>Mensaje</th><th>Estado / Detalle</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
