@@ -15765,6 +15765,126 @@ def _job_biobella_catalog_sync():
         print(f'[biobella sync] ERROR fatal: {e}')
 
 
+def _enviar_mensajes_auto(alias):
+    """Envía el mensaje automático a compradores de órdenes pagas nuevas.
+
+    Detecta órdenes pagas de las últimas 48h que aún no recibieron el mensaje
+    (usando el log como registro de ya-enviados). Escribe resultado en el log.
+    """
+    import time as _t
+    from datetime import timezone as _tz
+
+    cfg_path = _mensajes_cfg_path(alias)
+    log_path = _mensajes_log_path(alias)
+
+    cfg = load_json(cfg_path) or {}
+    if not cfg.get('activo'):
+        return
+
+    template = cfg.get('texto', _MENS_CFG_DEFAULT)
+
+    # IDs ya procesados
+    log = load_json(log_path) or []
+    ya_enviados = {str(e['order_id']) for e in log}
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        print(f'[mensajes-auto] {alias} — auth error: {e}')
+        return
+
+    ML = 'https://api.mercadolibre.com'
+
+    # Órdenes pagas de las últimas 48h
+    from datetime import timedelta as _td
+    desde = (datetime.now(_tz.utc) - _td(hours=48)).strftime('%Y-%m-%dT%H:%M:%S.000-00:00')
+    try:
+        r = req_lib.get(f'{ML}/orders/search', headers=heads,
+                        params={'seller': user_id, 'order.status': 'paid',
+                                'order.date_created.from': desde,
+                                'sort': 'date_desc', 'limit': 50},
+                        timeout=12)
+        orders = r.json().get('results', []) if r.ok else []
+    except Exception as e:
+        print(f'[mensajes-auto] {alias} — error buscando órdenes: {e}')
+        return
+
+    nuevas = [o for o in orders if str(o.get('id', '')) not in ya_enviados]
+    if not nuevas:
+        print(f'[mensajes-auto] {alias} — sin órdenes nuevas')
+        return
+
+    print(f'[mensajes-auto] {alias} — {len(nuevas)} orden(es) nuevas para mensajear')
+
+    for ord_ in nuevas:
+        order_id  = ord_.get('id')
+        buyer     = ord_.get('buyer', {})
+        buyer_id  = buyer.get('id')
+        buyer_nick= buyer.get('nickname', 'Cliente')
+        items     = ord_.get('order_items', [])
+        producto  = items[0].get('item', {}).get('title', '') if items else ''
+
+        texto = (template
+                 .replace('{nombre}', buyer_nick)
+                 .replace('{producto}', producto)
+                 .replace('{orden}', str(order_id)))
+
+        entry = {
+            'order_id':     order_id,
+            'buyer':        buyer_nick,
+            'producto':     producto,
+            'texto_enviado': texto,
+            'fecha':        datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'status':       'error',
+            'detalle':      '',
+        }
+
+        if not buyer_id:
+            entry['detalle'] = 'buyer_id no disponible'
+            log.append(entry)
+            continue
+
+        payload = {
+            'from': {'user_id': str(user_id)},
+            'to':   {'user_id': str(buyer_id)},
+            'text': texto,
+            'attachments': [],
+        }
+        post_heads = {**heads, 'Content-Type': 'application/json'}
+        try:
+            rm = req_lib.post(f'{ML}/messages/orders/{order_id}',
+                              params={'tag': 'post_sale'},
+                              json=payload, headers=post_heads, timeout=10)
+            if rm.ok:
+                entry['status']  = 'ok'
+                entry['detalle'] = rm.json().get('id', '')
+                print(f'[mensajes-auto] {alias} — orden {order_id} → OK')
+            else:
+                entry['detalle'] = f'HTTP {rm.status_code}: {rm.text[:120]}'
+                print(f'[mensajes-auto] {alias} — orden {order_id} → {entry["detalle"]}')
+        except Exception as exc:
+            entry['detalle'] = str(exc)[:120]
+            print(f'[mensajes-auto] {alias} — orden {order_id} → EXC: {exc}')
+
+        log.append(entry)
+        _t.sleep(0.3)
+
+    # Guardar log (máx 500 entradas, más recientes primero)
+    log_sorted = sorted(log, key=lambda x: x.get('fecha', ''), reverse=True)[:500]
+    save_json(log_path, log_sorted)
+
+
+def _job_mensajes_auto():
+    """Cron 30min: envía mensajes automáticos a compradores nuevos."""
+    from core.account_manager import AccountManager
+    mgr = AccountManager()
+    for acc in mgr.list_accounts():
+        try:
+            _enviar_mensajes_auto(acc.alias)
+        except Exception as e:
+            print(f'[mensajes-auto] {acc.alias} — ERROR: {e}')
+
+
 def _start_scheduler():
     """Inicia APScheduler con los 5 jobs del Sprint 2 vía JobManager."""
     try:
@@ -15873,6 +15993,16 @@ def _start_scheduler():
             name='Sync catálogo Biobella',
             description=('Sincroniza el catálogo de la tienda Biobella desde la cuenta '
                          'ML "novara" cada 6 horas. Respeta locks por campo (admin override).'),
+        )
+
+        # Job 11 — Mensajes automáticos post-venta cada 30 min (8-22 ART)
+        jm.register_job(
+            'mensajes_auto', _job_mensajes_auto,
+            CronTrigger(hour='8-22', minute='*/30',
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Mensajes automáticos post-venta',
+            description=('Detecta órdenes pagas nuevas (últimas 48h) y envía el mensaje '
+                         'automático configurado por alias. Usa log JSON para evitar duplicados.'),
         )
 
         global _job_manager
