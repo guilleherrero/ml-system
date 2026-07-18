@@ -491,11 +491,191 @@ def _candidates_buybox(alias: str) -> list[Oportunidad]:
 
 
 def _candidates_repricing(alias: str) -> list[Oportunidad]:
-    """B — wizard de repricing (BB perdidos con costo cargado). STUB: depende del
-    snapshot de buybox para no llamar API live en el cron diario."""
-    _logger.info("[top_acciones.repricing] alias=%s, source_path=N/A, loaded=0 items "
-                 "(STUB — depends on buybox snapshot)", alias)
-    return []
+    """B — items con tráfico alto (>=100 vis/30d) y conversión 0 o muy baja.
+
+    Candidatos: costo cargado + visitas_30d >= 100 + (ventas_30d == 0 ó
+    conversión < 50% del promedio del catálogo).
+    Safeguards: nunca sugiere precio por debajo de costo + comisión ML +
+    margen mínimo del 10%. Cooldown de 10 días por ítem para no saturar.
+    """
+    out: list[Oportunidad] = []
+    skipped = {
+        "sin_trafico": 0, "con_conversion_ok": 0,
+        "sin_costo": 0, "cooldown": 0,
+        "sin_margen_reducible": 0,
+    }
+
+    src_path = _stock_path(alias)
+    stock = _load_json(src_path)
+    items = (stock or {}).get("items", [])
+    _logger.info("[top_acciones.repricing] alias=%s, source_path=%s, loaded=%d items",
+                 alias, src_path, len(items))
+    if not items:
+        return out
+
+    # ── Costos desde config (fuente de verdad, más fresca que el campo en stock) ─
+    costos_cfg_path = os.path.join(CONFIG_DIR, "costos.json")
+    costos_data = _load_json(costos_cfg_path) or {}
+
+    # ── Cooldown 10 días ─────────────────────────────────────────────────────
+    cooldown_path = os.path.join(DATA_DIR, f"repricing_sugeridos_{_safe(alias)}.json")
+    cooldown_raw = _load_json(cooldown_path) or {}
+    now_dt = datetime.now(timezone.utc)
+    COOLDOWN_DAYS = 10
+
+    cooldown_activos: set = set()
+    cooldown_vigente: dict = {}
+    for iid, ts_str in cooldown_raw.items():
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if (now_dt - ts) < timedelta(days=COOLDOWN_DAYS):
+                cooldown_activos.add(iid)
+                cooldown_vigente[iid] = ts_str
+        except Exception:
+            pass
+
+    # ── Conversión promedio del catálogo ─────────────────────────────────────
+    convs = [
+        float(it.get("conversion_pct") or 0)
+        for it in items
+        if int(it.get("visitas_30d") or 0) > 0
+    ]
+    avg_conv = sum(convs) / len(convs) if convs else 1.5
+
+    # ── Constantes ────────────────────────────────────────────────────────────
+    VIS_MIN       = 100   # visitas mínimas para ser candidato
+    MARGEN_MIN    = 0.10  # margen mínimo post-baja (ratio 0-1 = 10%)
+    DESCUENTO_PCT = 0.08  # baja sugerida del 8%
+
+    nuevos_cooldown: dict = {}
+    candidatos: list[tuple] = []  # (prioridad, Oportunidad)
+
+    for it in items:
+        vis  = int(it.get("visitas_30d") or 0)
+        vtas = int(it.get("ventas_30d") or 0)
+        conv = float(it.get("conversion_pct") or 0)
+        iid  = it.get("id", "")
+
+        if vis < VIS_MIN:
+            skipped["sin_trafico"] += 1
+            continue
+
+        # Requiere costo cargado — preferir costos.json (más fresco), luego campo del stock
+        costo_entry = costos_data.get(iid, {})
+        costo = costo_entry.get("costo") if costo_entry else it.get("costo")
+        margen_ratio = it.get("margen_pct")  # ratio 0-1, ej. 0.30 = 30%
+        if costo is None and margen_ratio is None:
+            skipped["sin_costo"] += 1
+            continue
+
+        precio = float(it.get("precio") or 0)
+        if precio <= 0:
+            continue
+
+        # Solo items con 0 ventas o conversión < 50% del promedio del catálogo
+        if vtas > 0 and conv >= avg_conv * 0.5:
+            skipped["con_conversion_ok"] += 1
+            continue
+
+        if iid in cooldown_activos:
+            skipped["cooldown"] += 1
+            continue
+
+        fee_rate = float(it.get("fee_rate") or 0.15)
+
+        # Costo: usar campo directo; si falta, reconstruir desde margen_pct
+        if costo is None:
+            # margen_pct = (neto - costo) / precio → costo = precio*(1-fee_rate) - margen_pct*precio
+            neto_est = precio * (1.0 - fee_rate)
+            costo = neto_est - float(margen_ratio) * precio
+        costo = float(costo)
+        if costo <= 0:
+            continue
+
+        # margen_pct_actual para snapshot (ratio, pero mostramos como %)
+        if margen_ratio is not None:
+            margen_actual_display = round(float(margen_ratio) * 100.0, 1)
+        else:
+            neto = precio * (1.0 - fee_rate)
+            margen_actual_display = round(max(0.0, (neto - costo) / precio * 100.0), 1)
+
+        # Precio mínimo: nunca debajo de costo + comisión + margen mínimo
+        denominador = 1.0 - fee_rate - MARGEN_MIN
+        if denominador <= 0:
+            continue
+        precio_minimo = costo / denominador
+
+        # Precio sugerido: bajar DESCUENTO_PCT%, acotado al mínimo
+        precio_sug = max(round(precio * (1.0 - DESCUENTO_PCT)), round(precio_minimo))
+
+        if precio_sug >= precio:
+            skipped["sin_margen_reducible"] += 1
+            continue
+
+        descuento_real_pct = round((precio - precio_sug) / precio * 100.0, 1)
+        neto_nuevo = precio_sug * (1.0 - fee_rate)
+        margen_nuevo = max(0.0, (neto_nuevo - costo) / precio_sug)  # ratio
+
+        # Impacto estimado si la conversión sube al promedio del catálogo
+        impacto = round(vis * (avg_conv / 100.0) * precio_sug * margen_nuevo)
+        if impacto <= 0:
+            continue
+
+        # Prioridad: visitas × margen_nuevo (per spec)
+        prioridad = vis * margen_nuevo
+
+        urgencia = "alta" if vtas == 0 and vis >= 200 else "media"
+        titulo = (it.get("titulo") or "")[:55]
+        if vtas == 0:
+            desc = (f"BAJAR PRECIO — {titulo} ({vis} vis, 0 ventas) "
+                    f"${precio:,.0f} → ${precio_sug:,.0f} (-{descuento_real_pct}%)")
+        else:
+            desc = (f"REVISAR PRECIO — {titulo} ({vis} vis, conv {conv:.1f}% "
+                    f"vs avg {avg_conv:.1f}%) ${precio:,.0f} → ${precio_sug:,.0f} "
+                    f"(-{descuento_real_pct}%)")
+
+        fp = _fingerprint("repricing_precio", iid)
+        op = Oportunidad(
+            fingerprint=fp,
+            tipo="repricing_precio",
+            descripcion=desc,
+            impacto_mensual_ars=float(impacto),
+            urgencia=urgencia,
+            cta_label="Ver repricing →",
+            cta_url=f"/repricing/{alias}",
+            fuente="repricing",
+            snapshot={
+                "item_id":           iid,
+                "titulo":            it.get("titulo", ""),
+                "visitas_30d":       vis,
+                "ventas_30d":        vtas,
+                "conversion_pct":    conv,
+                "avg_conv_pct":      round(avg_conv, 2),
+                "precio_actual":     precio,
+                "precio_sugerido":   precio_sug,
+                "descuento_pct":     descuento_real_pct,
+                "margen_pct_actual": margen_actual_display,
+                "margen_nuevo_pct":  round(margen_nuevo * 100.0, 1),
+                "costo":             round(costo, 2),
+            },
+        )
+        candidatos.append((prioridad, op))
+        nuevos_cooldown[iid] = _now_iso()
+
+    # Guardar cooldown actualizado con los nuevos candidatos de esta corrida
+    cooldown_vigente.update(nuevos_cooldown)
+    if nuevos_cooldown:
+        _save_json(cooldown_path, cooldown_vigente)
+
+    # Ordenar por prioridad (visitas × margen_nuevo) descendente
+    candidatos.sort(key=lambda x: x[0], reverse=True)
+    out = [op for _, op in candidatos]
+
+    _logger.info("[top_acciones] repricing: %d candidates (skipped=%s avg_conv=%.2f%%)",
+                 len(out), skipped, avg_conv)
+    return out
 
 
 def _candidates_full(alias: str) -> list[Oportunidad]:
