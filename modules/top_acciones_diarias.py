@@ -545,12 +545,12 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
     avg_conv = sum(convs) / len(convs) if convs else 1.5
 
     # ── Constantes ────────────────────────────────────────────────────────────
-    VIS_MIN       = 100   # visitas mínimas para ser candidato
-    MARGEN_MIN    = 0.10  # margen mínimo post-baja (ratio 0-1 = 10%)
-    DESCUENTO_PCT = 0.08  # baja sugerida del 8%
+    VIS_MIN       = 100    # visitas mínimas para ser candidato
+    MARGEN_MIN    = -0.10  # margen mínimo post-baja (ratio 0-1); permite hasta -10%
+    DESCUENTO_PCT = 0.08   # baja sugerida del 8%
 
     nuevos_cooldown: dict = {}
-    candidatos: list[tuple] = []  # (prioridad, Oportunidad)
+    candidatos: list[tuple] = []  # (perdida_margen_ppt, Oportunidad)
 
     for it in items:
         vis  = int(it.get("visitas_30d") or 0)
@@ -619,12 +619,13 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
         margen_nuevo = max(0.0, (neto_nuevo - costo) / precio_sug)  # ratio
 
         # Impacto estimado si la conversión sube al promedio del catálogo
-        impacto = round(vis * (avg_conv / 100.0) * precio_sug * margen_nuevo)
+        impacto = round(vis * (avg_conv / 100.0) * precio_sug * abs(margen_nuevo))
         if impacto <= 0:
             continue
 
-        # Prioridad: visitas × margen_nuevo (per spec)
-        prioridad = vis * margen_nuevo
+        # Prioridad: menor pérdida de margen → primero en el listado
+        # perdida_margen en puntos porcentuales (positivo = se sacrifica margen)
+        perdida_margen = margen_actual_display - round(margen_nuevo * 100.0, 1)
 
         urgencia = "alta" if vtas == 0 and vis >= 200 else "media"
         titulo = (it.get("titulo") or "")[:55]
@@ -661,7 +662,7 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
                 "costo":             round(costo, 2),
             },
         )
-        candidatos.append((prioridad, op))
+        candidatos.append((perdida_margen, op))
         nuevos_cooldown[iid] = _now_iso()
 
     # Guardar cooldown actualizado con los nuevos candidatos de esta corrida
@@ -669,8 +670,8 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
     if nuevos_cooldown:
         _save_json(cooldown_path, cooldown_vigente)
 
-    # Ordenar por prioridad (visitas × margen_nuevo) descendente
-    candidatos.sort(key=lambda x: x[0], reverse=True)
+    # Ordenar por pérdida de margen ascendente: menor sacrificio → primero
+    candidatos.sort(key=lambda x: x[0])
     out = [op for _, op in candidatos]
 
     _logger.info("[top_acciones] repricing: %d candidates (skipped=%s avg_conv=%.2f%%)",
