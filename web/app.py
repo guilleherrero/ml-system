@@ -17568,8 +17568,9 @@ Sé directo — si algo hay que cortar, decilo.]"""
 
 _app_scheduler = None
 _job_manager   = None  # JobManager wrappeando _app_scheduler
-_scheduler_last_run = None  # datetime del último run completado
-_scheduler_running  = False  # flag para evitar ejecuciones simultáneas
+_scheduler_last_run    = None   # datetime del último run completado
+_scheduler_running     = False  # flag para evitar ejecuciones simultáneas
+_scheduler_started_at  = None   # datetime de inicio del run activo (watchdog)
 
 # Restaurar last_run desde disco (sobrevive reinicios)
 try:
@@ -17591,25 +17592,67 @@ except Exception as _e:
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
 
+# Startup trigger: si el servidor arrancó y los datos son viejos/ausentes,
+# dispara el refresh automáticamente a los 90s (da tiempo para que todo esté listo)
+def _startup_refresh():
+    import time as _t
+    _t.sleep(90)
+    try:
+        _auto_update_if_needed()
+        print('[scheduler] Startup trigger ejecutado')
+    except Exception as _e:
+        print(f'[scheduler] Startup trigger error: {_e}')
+
+import threading as _startup_threading
+_startup_threading.Thread(target=_startup_refresh, daemon=True).start()
+
 
 def _auto_update_if_needed():
-    """Corre el scheduler en background si no corrió hoy. Llamado en before_request."""
-    global _scheduler_running
+    """Corre el scheduler en background si los datos están desactualizados."""
+    global _scheduler_running, _scheduler_started_at
+
+    # Watchdog: si lleva más de 2 horas "corriendo", probablemente está colgado
     if _scheduler_running:
-        return
+        if _scheduler_started_at and (datetime.now() - _scheduler_started_at).total_seconds() > 7200:
+            print('[scheduler] Watchdog: forzando reset del flag (>2h sin completar)')
+            _scheduler_running = False
+        else:
+            return
+
     today = date.today()
-    if _scheduler_last_run and _scheduler_last_run.date() >= today:
+
+    # Condición 1: no corrió hoy
+    needs_run = not (_scheduler_last_run and _scheduler_last_run.date() >= today)
+
+    # Condición 2: el archivo de stock tiene más de 23h (datos viejos aunque last_run sea reciente)
+    if not needs_run:
+        from core.account_manager import AccountManager as _AM_au
+        for _acc in _AM_au().list_accounts()[:1]:
+            _stock_path = os.path.join(DATA_DIR, f'stock_{_acc.alias.replace(" ","_")}.json')
+            if not os.path.exists(_stock_path):
+                needs_run = True
+                break
+            age_h = (datetime.now() - datetime.fromtimestamp(os.path.getmtime(_stock_path))).total_seconds() / 3600
+            if age_h > 23:
+                needs_run = True
+
+    if not needs_run:
         return
+
     import threading
-    _scheduler_running = True
+    _scheduler_running    = True
+    _scheduler_started_at = datetime.now()
+
     def _run():
+        global _scheduler_running, _scheduler_started_at
         try:
             _scheduler_run_all_inner()
         finally:
-            global _scheduler_running
-            _scheduler_running = False
+            _scheduler_running    = False
+            _scheduler_started_at = None
+
     threading.Thread(target=_run, daemon=True).start()
-    print('[scheduler] Auto-run disparado: datos no actualizados hoy')
+    print('[scheduler] Auto-run disparado: datos desactualizados o archivo ausente')
 
 @app.route('/admin/restart', methods=['POST'])
 def admin_restart():
