@@ -377,10 +377,9 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
     {# Mensaje de sugerencia #}
     {% if ac.sugerencia == "reducir_cuotas" %}
       <div class="extra-msg verde">
-        ✅ <strong>Oportunidad:</strong> {{ ac.mensaje }}
-        {% if ac.ahorro_fee_pct > 0 %}
-        <br><small>Ahorro estimado reduciendo a 3 cuotas: −{{ ac.ahorro_fee_pct }}% del fee por orden → <strong>${{ "{:,.0f}".format(ac.ahorro_mensual_ars) }}/mes</strong></small>
-        {% endif %}
+        ✅ <strong>Acción recomendada: configurar máximo {{ ac.cuotas_recomendadas_max }} cuotas</strong>
+        (cubre al {{ ac.compradores_cubiertos_pct }}% de tus compradores reales)
+        <br>{{ ac.mensaje }}
       </div>
     {% elif ac.sugerencia == "cuotas_son_driver" %}
       <div class="extra-msg naranja">

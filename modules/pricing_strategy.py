@@ -62,18 +62,14 @@ class AnalisisCuotas:
     cuotas_promedio: float         # promedio ponderado de cuotas (ej. 3.2)
     cuotas_breakdown: dict         # {"1": 65, "2-3": 10, "4-6": 20, "7-12": 5}
 
-    # Costo de financiamiento actual (estimado como % del precio)
-    # = (cuotas_promedio - 1) × COSTO_CUOTA_EST
-    # Ej: cuotas_promedio=3.2 → (3.2-1)×0.009 = 1.98% del precio por orden
-    costo_financiamiento_pct: float
+    costo_financiamiento_pct: float  # % estimado de financiamiento actual por orden
+    cuotas_recomendadas_max: int     # máximo de cuotas que cubre el 90%+ de compradores
+    compradores_cubiertos_pct: int   # % de compradores cubiertos con ese máximo
+    ahorro_fee_pct: float            # % de fee que se ahorraría por orden
+    ahorro_mensual_ars: float        # ARS/mes estimado de ahorro
 
-    # Si se redujeran las cuotas máximas a 3:
-    ahorro_fee_pct: float          # % de fee que se ahorraría por orden
-    ahorro_mensual_ars: float      # ARS/mes estimado de ahorro
-
-    # Veredicto
     sugerencia: str                # "reducir_cuotas" | "mantener" | "cuotas_son_driver"
-    mensaje: str                   # explicación legible
+    mensaje: str
 
 
 @dataclass
@@ -152,94 +148,127 @@ def _estimar_elasticidad(conv_actual: float, avg_conv: float) -> float:
     return 1.5
 
 
+# ── Helpers de cuotas ────────────────────────────────────────────────────────
+
+# Cuota máxima y promedio representativo de cada bucket del breakdown
+_BUCKET_MAX = {"1": 1, "2-3": 3, "4-6": 6, "7-12": 12, "13+": 18}
+_BUCKET_AVG = {"1": 1, "2-3": 2.5, "4-6": 5.0, "7-12": 9.5, "13+": 15.0}
+_BUCKET_ORDER = ["1", "2-3", "4-6", "7-12", "13+"]
+
+
+def _cuotas_max_optimo(breakdown: dict, cobertura_min: float = 0.90) -> tuple[int, int]:
+    """Devuelve (max_cuotas, pct_compradores_cubiertos) que cubre >= cobertura_min.
+
+    Recorre los buckets de menor a mayor acumulando el % de compradores.
+    El primer bucket que supera cobertura_min define el máximo recomendado.
+    """
+    acumulado = 0.0
+    for bucket in _BUCKET_ORDER:
+        acumulado += breakdown.get(bucket, 0) / 100.0
+        if acumulado >= cobertura_min:
+            return _BUCKET_MAX[bucket], round(acumulado * 100)
+    return 12, 100   # fallback: sin restricción
+
+
+def _cuotas_promedio_con_max(breakdown: dict, max_cuotas: int) -> float:
+    """Estima el nuevo cuotas_promedio si se limita el máximo a max_cuotas.
+
+    Compradores que usaban más de max_cuotas pasan a usar max_cuotas.
+    """
+    nuevo_promedio = 0.0
+    for bucket in _BUCKET_ORDER:
+        pct = breakdown.get(bucket, 0) / 100.0
+        avg = min(_BUCKET_AVG[bucket], float(max_cuotas))
+        nuevo_promedio += pct * avg
+    return nuevo_promedio
+
+
 # ── Análisis de cuotas ────────────────────────────────────────────────────────
 
 def _analizar_cuotas(item: dict, precio: float, ventas_30d: int) -> Optional[AnalisisCuotas]:
-    """Analiza el uso real de cuotas en las ventas del item.
+    """Analiza el uso real de cuotas y recomienda el máximo exacto a configurar.
 
-    Requiere pct_contado y cuotas_promedio en el item (capturados de órdenes reales).
-    Devuelve None si no hay suficientes datos.
+    Calcula desde el breakdown real cuál es el mínimo número de cuotas que
+    cubre al 90%+ de compradores, y estima el ahorro de reducir hasta ahí.
     """
     pct_contado      = item.get("pct_contado")
     cuotas_promedio  = item.get("cuotas_promedio")
     cuotas_breakdown = item.get("cuotas_breakdown") or {}
 
-    # Necesitamos al menos los dos valores clave
     if pct_contado is None or cuotas_promedio is None:
         return None
 
-    # n_ordenes lo inferimos del breakdown (suma de porcentajes → no sirve; usamos ventas como proxy)
-    # El breakdown es en %, no en conteo absoluto. Usamos ventas_30d como referencia de muestra.
     n_ordenes = max(ventas_30d, 1)
+    pct_con_cuotas = 1.0 - pct_contado
 
     # ── Costo de financiamiento actual ───────────────────────────────────────
-    # Cada cuota sin interés que ML ofrece tiene un costo de ~0.9% por cuota.
-    # El costo total por orden = (cuotas_promedio - 1) × 0.9%
-    # Ej: cuotas_promedio = 3.2 → (3.2 - 1) × 0.009 = 1.98% del precio
+    # Por cada cuota sin interés ML cobra ~0.9% del precio. El costo total
+    # por orden = (cuotas_promedio - 1) × 0.9%
+    # Ej: cuotas_promedio 3.2 → (3.2-1) × 0.009 = 1.98% del precio
     costo_financiamiento_pct = max(0.0, cuotas_promedio - 1) * COSTO_CUOTA_EST
 
-    # ── Ahorro si se reducen cuotas máximas a 3 ──────────────────────────────
-    # Nuevo cuotas_promedio asumiendo que quienes usaban más de 3 pasan a usar 3:
-    #   nueva_promedio = pct_contado × 1 + (1 - pct_contado) × 3
-    nuevo_cuotas_promedio   = pct_contado * 1 + (1 - pct_contado) * 3
-    nuevo_costo_financ_pct  = max(0.0, nuevo_cuotas_promedio - 1) * COSTO_CUOTA_EST
-    ahorro_fee_pct          = max(0.0, costo_financiamiento_pct - nuevo_costo_financ_pct)
+    # ── Máximo de cuotas óptimo según datos reales ───────────────────────────
+    # Buscamos el número exacto que cubre al 90%+ de compradores
+    if cuotas_breakdown:
+        cuotas_max_opt, compradores_cubiertos = _cuotas_max_optimo(cuotas_breakdown)
+        nuevo_promedio = _cuotas_promedio_con_max(cuotas_breakdown, cuotas_max_opt)
+    else:
+        # Sin breakdown: estimación genérica basada en pct_contado
+        cuotas_max_opt = 3 if pct_contado >= 0.80 else 6
+        compradores_cubiertos = round(pct_contado * 100) + 10   # estimado
+        nuevo_promedio = pct_contado * 1 + pct_con_cuotas * cuotas_max_opt
 
-    # Impacto mensual en ARS:
-    # Ahorro por unidad = precio × ahorro_fee_pct
-    # Ahorro mensual = ventas_30d × ahorro_por_unidad
-    ahorro_mensual_ars = round(ventas_30d * precio * ahorro_fee_pct)
+    nuevo_costo_financ_pct = max(0.0, nuevo_promedio - 1) * COSTO_CUOTA_EST
+    ahorro_fee_pct         = max(0.0, costo_financiamiento_pct - nuevo_costo_financ_pct)
+    ahorro_mensual_ars     = round(ventas_30d * precio * ahorro_fee_pct)
 
     # ── Veredicto ─────────────────────────────────────────────────────────────
-    pct_con_cuotas = 1 - pct_contado
+    # Determinar el máximo actual que probablemente tiene configurado (12 es el default de ML)
+    max_actual_estimado = 12
+    hay_ahorro_real = cuotas_max_opt < max_actual_estimado and ahorro_fee_pct > 0.001
+
     if pct_contado >= 0.80:
         sugerencia = "reducir_cuotas"
         mensaje = (
-            f"El {round(pct_contado * 100)}% de tus compradores paga en efectivo (1 cuota). "
-            f"Las cuotas sin interés te cuestan financiamiento pero pocos las aprovechan. "
-            f"Reducir a 3 cuotas máximas podría ahorrarte ~${ahorro_mensual_ars:,.0f}/mes. "
-            f"Dado que la mayoría ya paga contado, el riesgo de caída en conversión y "
-            f"posicionamiento es bajo — ML rankea según ventas y conversión, no por cuotas disponibles."
+            f"El {round(pct_contado * 100)}% paga contado. "
+            f"Con {cuotas_max_opt} cuotas máximas cubrís al {compradores_cubiertos}% de tus compradores "
+            f"y eliminás el costo de financiamiento innecesario. "
+            f"Ahorro estimado: ~${ahorro_mensual_ars:,.0f}/mes. "
+            f"Riesgo de posicionamiento bajo — ML rankea por conversión y ventas, no por cuotas disponibles."
         )
     elif pct_con_cuotas >= 0.60:
         sugerencia = "cuotas_son_driver"
         mensaje = (
-            f"El {round(pct_con_cuotas * 100)}% de tus compradores usa cuotas "
-            f"(promedio {cuotas_promedio:.1f} cuotas). "
-            f"Son un driver clave de ventas en este producto — no las reduzcas."
+            f"El {round(pct_con_cuotas * 100)}% de tus compradores usa cuotas — son un driver clave de ventas. "
+            f"Reducirlas bajaría conversión → ML te baja en el ranking → menos ventas. No tocar."
+        )
+    elif hay_ahorro_real:
+        sugerencia = "reducir_cuotas"
+        mensaje = (
+            f"Mix: {round(pct_contado * 100)}% contado, {round(pct_con_cuotas * 100)}% en cuotas. "
+            f"El 90% de tus compradores usa como máximo {cuotas_max_opt} cuotas. "
+            f"Podés bajar de 12 a {cuotas_max_opt} cuotas máximas: "
+            f"cubrís al {compradores_cubiertos}% de compradores y ahorrás ~${ahorro_mensual_ars:,.0f}/mes en financiamiento. "
+            f"Monitoreá la conversión los primeros 15 días."
         )
     else:
-        # Mix: calcular cuántas cuotas usan en promedio los compradores que SÍ usan cuotas
-        if pct_con_cuotas > 0:
-            cuotas_promedio_cuoteros = round((cuotas_promedio - pct_contado) / pct_con_cuotas, 1)
-        else:
-            cuotas_promedio_cuoteros = 1.0
-
         sugerencia = "mantener"
-        if cuotas_promedio_cuoteros > 5:
-            mensaje = (
-                f"Mix real: {round(pct_contado * 100)}% paga contado, "
-                f"{round(pct_con_cuotas * 100)}% usa cuotas (promedio {cuotas_promedio_cuoteros:.0f} cuotas entre ellos). "
-                f"Estrategia recomendada: reducir el máximo de 12 a 6 cuotas. "
-                f"Conservás al 90%+ de compradores reales (los de 6 cuotas) "
-                f"y eliminás el costo de financiamiento más caro (12 cuotas). "
-                f"Monitoreá la conversión los primeros 15 días después del cambio."
-            )
-        else:
-            mensaje = (
-                f"Mix equilibrado: {round(pct_contado * 100)}% contado, "
-                f"{round(pct_con_cuotas * 100)}% en cuotas (promedio {cuotas_promedio_cuoteros:.0f} cuotas entre ellos). "
-                f"Los compradores que usan cuotas eligen pocas — el costo de financiamiento ya es bajo. "
-                f"No vale la pena reducirlas: el ahorro sería mínimo y el riesgo de perder ventas no compensa."
-            )
+        mensaje = (
+            f"Mix: {round(pct_contado * 100)}% contado, {round(pct_con_cuotas * 100)}% en cuotas "
+            f"(promedio {cuotas_promedio:.1f}). "
+            f"Los compradores usan pocas cuotas — el costo de financiamiento ya es bajo "
+            f"y el ahorro de reducirlas no justifica el riesgo."
+        )
 
     return AnalisisCuotas(
         n_ordenes=n_ordenes,
         pct_contado=round(pct_contado, 4),
         cuotas_promedio=round(cuotas_promedio, 2),
         cuotas_breakdown=cuotas_breakdown,
-        costo_financiamiento_pct=round(costo_financiamiento_pct * 100, 2),  # en %
-        ahorro_fee_pct=round(ahorro_fee_pct * 100, 2),                      # en %
+        costo_financiamiento_pct=round(costo_financiamiento_pct * 100, 2),
+        cuotas_recomendadas_max=cuotas_max_opt,
+        compradores_cubiertos_pct=compradores_cubiertos,
+        ahorro_fee_pct=round(ahorro_fee_pct * 100, 2),
         ahorro_mensual_ars=ahorro_mensual_ars,
         sugerencia=sugerencia,
         mensaje=mensaje,
