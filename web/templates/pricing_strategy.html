@@ -375,21 +375,48 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
     </div>
 
     {# Mensaje de sugerencia #}
-    {% if ac.sugerencia == "reducir_cuotas" %}
-      <div class="extra-msg verde">
-        ✅ <strong>Acción recomendada: configurar máximo {{ ac.cuotas_recomendadas_max }} cuotas</strong>
-        (cubre al {{ ac.compradores_cubiertos_pct }}% de tus compradores reales)
-        <br>{{ ac.mensaje }}
-      </div>
-    {% elif ac.sugerencia == "cuotas_son_driver" %}
+    {# Mensaje principal #}
+    {% if ac.sugerencia == "cuotas_son_driver" %}
       <div class="extra-msg naranja">
         ⚠️ <strong>No reducir:</strong> {{ ac.mensaje }}
-        <br><small>Reducir cuotas en este producto bajaría la conversión → ML te bajaría en el ranking → menos ventas todavía. El ahorro de fee no compensa ese riesgo.</small>
       </div>
+    {% elif ac.sugerencia == "reducir_escalonado" %}
+      <div class="extra-msg verde">✅ <strong>Reducción segura disponible:</strong> {{ ac.mensaje }}</div>
     {% else %}
-      <div class="extra-msg gris">
-        ℹ️ {{ ac.mensaje }}
+      <div class="extra-msg gris">ℹ️ {{ ac.mensaje }}</div>
+    {% endif %}
+
+    {# Pasos escalonados #}
+    {% if ac.pasos %}
+    <div style="margin-top:.6rem; display:flex; flex-direction:column; gap:.4rem;">
+      {% for paso in ac.pasos %}
+      <div style="font-size:.81rem; padding:.45rem .7rem; border-radius:6px; border:1px solid var(--color-border);
+                  background:{% if paso.recomendado %}rgba(22,163,74,.06){% else %}rgba(234,88,12,.05){% endif %}">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.3rem;">
+          <span>
+            <strong>{{ paso.de_max }}→{{ paso.a_max }} cuotas</strong>
+            · Solo afecta al <strong>{{ paso.pct_afectados }}%</strong> que usaba más de {{ paso.a_max }}
+            · El <strong>{{ paso.pct_no_afectados }}%</strong> no nota ningún cambio
+          </span>
+          <span style="white-space:nowrap">
+            {% if paso.riesgo == "muy_bajo" %}<span style="color:#16a34a">● Riesgo muy bajo</span>
+            {% elif paso.riesgo == "bajo" %}<span style="color:#ca8a04">● Riesgo bajo</span>
+            {% elif paso.riesgo == "medio" %}<span style="color:#ea580c">● Riesgo medio</span>
+            {% else %}<span style="color:#dc2626">● Riesgo alto</span>{% endif %}
+            {% if paso.recomendado %} · <strong style="color:#16a34a">Recomendado ✓</strong>{% endif %}
+          </span>
+        </div>
+        {% if paso.ahorro_mensual_ars > 0 %}
+        <div style="color:var(--color-neutral-500); margin-top:.2rem">
+          Ahorro estimado en financiamiento: ~${{ "{:,.0f}".format(paso.ahorro_mensual_ars) }}/mes
+        </div>
+        {% endif %}
       </div>
+      {% endfor %}
+      <div style="font-size:.75rem; color:var(--color-neutral-400)">
+        Estrategia sugerida: aplicar primero el paso de menor riesgo y monitorear conversión 15 días antes de continuar.
+      </div>
+    </div>
     {% endif %}
   </div>
   {% endif %}
