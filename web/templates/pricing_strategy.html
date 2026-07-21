@@ -95,6 +95,67 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
 .icon-warn { font-size: .9rem; }
 .icon-bad  { font-size: .9rem; }
 
+/* ── Secciones extra (cuotas + envío) ── */
+.extra-section {
+  border-top: 1px solid var(--color-border);
+  padding: .85rem 1rem;
+}
+.extra-section h6 {
+  font-size: .82rem; font-weight: 700;
+  color: var(--color-neutral-600);
+  margin: 0 0 .6rem;
+  text-transform: uppercase; letter-spacing: .03em;
+}
+.extra-msg {
+  font-size: .84rem; line-height: 1.5;
+  padding: .55rem .8rem;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+  margin-bottom: .5rem;
+}
+.extra-msg.verde  { background: rgba(22,163,74,.08);  border-color: #16a34a; color: #15803d; }
+.extra-msg.azul   { background: rgba(37,99,235,.07);  border-color: #2563eb; color: #1d4ed8; }
+.extra-msg.naranja{ background: rgba(234,88,12,.07);  border-color: #ea580c; color: #c2410c; }
+.extra-msg.gris   { background: rgba(107,114,128,.07);border-color: #9ca3af; color: var(--color-neutral-600); }
+
+/* Cuotas breakdown mini-bars */
+.cuotas-breakdown { display: flex; gap: .4rem; flex-wrap: wrap; margin: .5rem 0; }
+.cuota-bar { font-size: .75rem; color: var(--color-neutral-600); }
+.cuota-bar .lbl { display: block; margin-bottom: .15rem; }
+.cuota-bar .bar-outer {
+  height: 6px; width: 60px; background: var(--color-border);
+  border-radius: 3px; overflow: hidden;
+}
+.cuota-bar .bar-inner { height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* Envío gratis tabla comparativa */
+.envio-compare {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: .5rem; margin: .6rem 0;
+}
+.envio-col {
+  background: var(--color-neutral-50, #f9fafb);
+  border: 1px solid var(--color-border);
+  border-radius: 6px; padding: .5rem .6rem;
+  font-size: .8rem;
+}
+.envio-col .titulo-col { font-weight: 700; font-size: .75rem; margin-bottom: .35rem; }
+.envio-col .val { font-size: 1rem; font-weight: 700; }
+.envio-col .sub { color: var(--color-neutral-400); font-size: .72rem; }
+.envio-col.actual { border-top: 3px solid var(--color-neutral-400); }
+.envio-col.nueva  { border-top: 3px solid var(--accent); }
+
+:root[data-theme="dark"] .envio-col { background: var(--color-neutral-800, #1f2937); }
+:root[data-theme="dark"] .extra-msg.verde  { color: #86efac; }
+:root[data-theme="dark"] .extra-msg.azul   { color: #93c5fd; }
+:root[data-theme="dark"] .extra-msg.naranja{ color: #fdba74; }
+@media (prefers-color-scheme: dark) {
+  .envio-col { background: var(--color-neutral-800, #1f2937); }
+  .extra-msg.verde  { color: #86efac; }
+  .extra-msg.azul   { color: #93c5fd; }
+  .extra-msg.naranja{ color: #fdba74; }
+}
+
 /* ── Empty state ── */
 .ps-empty {
   background: var(--color-surface);
@@ -286,6 +347,117 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
     Elasticidad estimada: <strong>{{ r.elasticidad }}</strong> ·
     La conv. estimada asume que bajar precio genera uplift proporcional según posición en el catálogo. No considera temporalidad ni campañas.
   </div>
+
+  {# ── Sección cuotas ── #}
+  {% if r.analisis_cuotas %}
+  {% set ac = r.analisis_cuotas %}
+  <div class="extra-section">
+    <h6>💳 Análisis de Cuotas — {{ ac.n_ordenes }} ventas analizadas</h6>
+
+    {# Breakdown de cuotas #}
+    <div class="cuotas-breakdown">
+      {% for bucket, pct in ac.cuotas_breakdown.items() %}
+      <div class="cuota-bar">
+        <span class="lbl">
+          {% if bucket == "1" %}Contado{% else %}{{ bucket }} cuotas{% endif %}
+          · {{ pct }}%
+        </span>
+        <div class="bar-outer"><div class="bar-inner" style="width:{{ [pct, 100]|min }}%"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {# Costo de financiamiento actual #}
+    <div style="font-size:.81rem; color:var(--color-neutral-500); margin-bottom:.5rem;">
+      Costo de financiamiento estimado actual:
+      <strong>{{ ac.costo_financiamiento_pct }}% del precio por orden</strong>
+      (promedio {{ ac.cuotas_promedio }} cuotas por compra)
+    </div>
+
+    {# Mensaje de sugerencia #}
+    {% if ac.sugerencia == "reducir_cuotas" %}
+      <div class="extra-msg verde">
+        ✅ <strong>Oportunidad:</strong> {{ ac.mensaje }}
+        {% if ac.ahorro_fee_pct > 0 %}
+        <br><small>Ahorro estimado reduciendo a 3 cuotas: −{{ ac.ahorro_fee_pct }}% del fee por orden → <strong>${{ "{:,.0f}".format(ac.ahorro_mensual_ars) }}/mes</strong></small>
+        {% endif %}
+      </div>
+    {% elif ac.sugerencia == "cuotas_son_driver" %}
+      <div class="extra-msg naranja">
+        ⚠️ <strong>No reducir:</strong> {{ ac.mensaje }}
+      </div>
+    {% else %}
+      <div class="extra-msg gris">
+        ℹ️ {{ ac.mensaje }}
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── Sección umbral envío gratis ── #}
+  {% if r.analisis_envio %}
+  {% set ae = r.analisis_envio %}
+  <div class="extra-section">
+    <h6>🚚 Estrategia: Cruzar el Umbral de Envío Gratis ($33.000)</h6>
+
+    <div class="extra-msg azul" style="margin-bottom:.7rem">
+      Tu publicación está a <strong>${{ "{:,.0f}".format(ae.precio_actual) }}</strong>
+      (envío gratis obligatorio · fee {{ ae.fee_rate_actual }}%).
+      El envío gratis representa ~<strong>{{ ae.shipping_pct_estimado }}%</strong> del fee.
+      Si bajás a <strong>${{ "{:,.0f}".format(ae.precio_bajo_umbral) }}</strong>,
+      ML ya no te obliga a incluirlo → fee baja a ~{{ ae.fee_rate_sin_envio }}%.
+    </div>
+
+    {# Tabla comparativa #}
+    <div class="envio-compare">
+      <div class="envio-col actual">
+        <div class="titulo-col">Publicación actual</div>
+        <div class="val">${{ "{:,.0f}".format(ae.precio_actual) }}</div>
+        <div class="sub">Con envío gratis</div>
+        <div class="sub">Fee {{ ae.fee_rate_actual }}%</div>
+        <div class="sub">Ganancia/u ${{ "{:,.0f}".format(ae.ganancia_unit_actual) }}</div>
+        <div class="sub">{{ ae.ventas_actuales }} ventas/mes</div>
+        <div class="sub"><strong>${{ "{:,.0f}".format(ae.ganancia_mensual_actual) }}/mes</strong></div>
+      </div>
+      <div class="envio-col nueva">
+        <div class="titulo-col">Nueva pub. sin envío gratis</div>
+        <div class="val">${{ "{:,.0f}".format(ae.precio_bajo_umbral) }}</div>
+        <div class="sub">Sin envío gratis obligatorio</div>
+        <div class="sub">Fee ~{{ ae.fee_rate_sin_envio }}%</div>
+        <div class="sub">Ganancia/u ${{ "{:,.0f}".format(ae.ganancia_unit_nueva) }}</div>
+        <div class="sub" style="font-size:.7rem; color:var(--color-neutral-400)">Ventas estimadas →</div>
+      </div>
+      <div class="envio-col" style="border-top:3px solid #ca8a04">
+        <div class="titulo-col">Impacto por caída de ventas</div>
+        <div class="sub">−10% ventas · {{ ae.ventas_optimista }} u →
+          <span class="{% if ae.delta_optimista_pct >= 0 %}delta-win{% elif ae.delta_optimista_pct >= -10 %}delta-ok{% else %}delta-bad{% endif %}">
+            {{ ae.delta_optimista_pct:+.1f }}%
+          </span>
+        </div>
+        <div class="sub">−20% ventas · {{ ae.ventas_realista }} u →
+          <span class="{% if ae.delta_realista_pct >= 0 %}delta-win{% elif ae.delta_realista_pct >= -10 %}delta-ok{% else %}delta-bad{% endif %}">
+            {{ ae.delta_realista_pct:+.1f }}%
+          </span>
+        </div>
+        <div class="sub">−30% ventas · {{ ae.ventas_pesimista }} u →
+          <span class="{% if ae.delta_pesimista_pct >= 0 %}delta-win{% elif ae.delta_pesimista_pct >= -10 %}delta-ok{% else %}delta-bad{% endif %}">
+            {{ ae.delta_pesimista_pct:+.1f }}%
+          </span>
+        </div>
+      </div>
+    </div>
+
+    {# Veredicto #}
+    {% if ae.estrategia == "nueva_publicacion" %}
+      <div class="extra-msg verde">🏆 <strong>Recomendado:</strong> {{ ae.mensaje }}</div>
+    {% elif ae.estrategia == "analizar_con_cuidado" %}
+      <div class="extra-msg naranja">⚠️ <strong>Analizar:</strong> {{ ae.mensaje }}</div>
+    {% else %}
+      <div class="extra-msg gris">🚫 <strong>No recomendado:</strong> {{ ae.mensaje }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
 </div>
 {% endfor %}
 

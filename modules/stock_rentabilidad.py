@@ -95,35 +95,77 @@ def _get_all_orders_30d(client: MLClient) -> list[dict]:
 def _compute_item_stats(orders: list[dict]) -> dict:
     """
     A partir de todas las órdenes, calcula por item:
-      - total_units: unidades vendidas en 30d
-      - fee_rates: lista de sale_fee/precio por orden (para promedio real)
-    Devuelve {item_id: {'units': N, 'fee_rate': F}}
+      - units: unidades vendidas en 30d
+      - fee_rate: promedio real de comisión ML (incluye envío y financiamiento)
+      - pct_contado: % de órdenes en 1 cuota (sin financiamiento)
+      - cuotas_promedio: promedio ponderado de cuotas usadas
+      - cuotas_breakdown: distribución de cuotas {1: %, 3: %, 6: %, 12: %, 18: %}
+    Devuelve {item_id: {...}}
     """
     stats: dict[str, dict] = {}
     for order in orders:
+        # Cuotas de esta orden: tomamos el primer pago (una orden = un pago en ML)
+        cuotas_orden = 1
+        payments = order.get("payments", [])
+        if payments:
+            cuotas_orden = int(payments[0].get("installments") or 1)
+
         for oi in order.get("order_items", []):
             item_id = (oi.get("item") or {}).get("id")
             if not item_id:
                 continue
-            qty       = oi.get("quantity", 0)
-            price     = float(oi.get("unit_price") or 0)
-            sale_fee  = oi.get("sale_fee")
+            qty      = oi.get("quantity", 0)
+            price    = float(oi.get("unit_price") or 0)
+            sale_fee = oi.get("sale_fee")
 
             if item_id not in stats:
-                stats[item_id] = {"units": 0, "fee_amounts": [], "prices": []}
+                stats[item_id] = {
+                    "units": 0,
+                    "fee_amounts": [], "prices": [],
+                    "cuotas_lista": [],
+                }
             stats[item_id]["units"] += qty
             if sale_fee is not None and price > 0:
                 stats[item_id]["fee_amounts"].append(float(sale_fee))
                 stats[item_id]["prices"].append(price * qty)
+            stats[item_id]["cuotas_lista"].append(cuotas_orden)
 
     result = {}
     for item_id, s in stats.items():
         total_fees   = sum(s["fee_amounts"])
         total_income = sum(s["prices"])
         fee_rate = (total_fees / total_income) if total_income > 0 else None
+
+        cuotas_lista = s.get("cuotas_lista", [])
+        n = len(cuotas_lista)
+        pct_contado     = sum(1 for c in cuotas_lista if c == 1) / n if n > 0 else None
+        cuotas_promedio = sum(cuotas_lista) / n if n > 0 else None
+
+        # Agrupamos en buckets: 1, 2-3, 4-6, 7-12, 13+
+        bkd: dict[str, int] = {}
+        for c in cuotas_lista:
+            if c == 1:
+                k = "1"
+            elif c <= 3:
+                k = "2-3"
+            elif c <= 6:
+                k = "4-6"
+            elif c <= 12:
+                k = "7-12"
+            else:
+                k = "13+"
+            bkd[k] = bkd.get(k, 0) + 1
+        orden_buckets = ["1", "2-3", "4-6", "7-12", "13+"]
+        cuotas_breakdown = {
+            k: round(bkd[k] / n * 100) for k in orden_buckets if k in bkd
+        } if n > 0 else None
+
         result[item_id] = {
-            "units":    s["units"],
-            "fee_rate": round(fee_rate, 4) if fee_rate else None,
+            "units":            s["units"],
+            "fee_rate":         round(fee_rate, 4) if fee_rate else None,
+            "pct_contado":      round(pct_contado, 4) if pct_contado is not None else None,
+            "cuotas_promedio":  round(cuotas_promedio, 2) if cuotas_promedio is not None else None,
+            "cuotas_breakdown": cuotas_breakdown,
         }
     return result
 
@@ -319,10 +361,13 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
         costo   = costo_data.get("costo") if costo_data else None
 
         # Velocidad y fee_rate real desde las órdenes ya descargadas
-        stats         = item_stats.get(item_id, {})
-        ventas_30d    = stats.get("units", 0)
-        velocidad     = round(ventas_30d / DIAS_ANALISIS, 2)
-        real_fee_rate = stats.get("fee_rate")
+        stats            = item_stats.get(item_id, {})
+        ventas_30d       = stats.get("units", 0)
+        velocidad        = round(ventas_30d / DIAS_ANALISIS, 2)
+        real_fee_rate    = stats.get("fee_rate")
+        pct_contado      = stats.get("pct_contado")
+        cuotas_promedio  = stats.get("cuotas_promedio")
+        cuotas_breakdown = stats.get("cuotas_breakdown")
 
         # Visitas y conversión
         visitas_30d    = visits_map.get(item_id, 0)
@@ -381,6 +426,9 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             "alerta_margen":     alerta_margen,
             "seo_gaps":          seo_gaps,
             "seo_all_keywords":  cat_keywords,
+            "pct_contado":       pct_contado,
+            "cuotas_promedio":   cuotas_promedio,
+            "cuotas_breakdown":  cuotas_breakdown,
         })
 
     # Mostrar tabla
