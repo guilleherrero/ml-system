@@ -209,12 +209,29 @@ def _analizar_cuotas(item: dict, precio: float, ventas_30d: int) -> Optional[Ana
             f"Son un driver clave de ventas en este producto — no las reduzcas."
         )
     else:
+        # Mix: calcular cuántas cuotas usan en promedio los compradores que SÍ usan cuotas
+        if pct_con_cuotas > 0:
+            cuotas_promedio_cuoteros = round((cuotas_promedio - pct_contado) / pct_con_cuotas, 1)
+        else:
+            cuotas_promedio_cuoteros = 1.0
+
         sugerencia = "mantener"
-        mensaje = (
-            f"Mix equilibrado: {round(pct_contado * 100)}% contado, "
-            f"{round(pct_con_cuotas * 100)}% en cuotas (promedio {cuotas_promedio:.1f}). "
-            f"Las cuotas agregan algo de costo de financiamiento pero también facilitan ventas."
-        )
+        if cuotas_promedio_cuoteros > 5:
+            mensaje = (
+                f"Mix real: {round(pct_contado * 100)}% paga contado, "
+                f"{round(pct_con_cuotas * 100)}% usa cuotas (promedio {cuotas_promedio_cuoteros:.0f} cuotas entre ellos). "
+                f"Estrategia recomendada: reducir el máximo de 12 a 6 cuotas. "
+                f"Conservás al 90%+ de compradores reales (los de 6 cuotas) "
+                f"y eliminás el costo de financiamiento más caro (12 cuotas). "
+                f"Monitoreá la conversión los primeros 15 días después del cambio."
+            )
+        else:
+            mensaje = (
+                f"Mix equilibrado: {round(pct_contado * 100)}% contado, "
+                f"{round(pct_con_cuotas * 100)}% en cuotas (promedio {cuotas_promedio_cuoteros:.0f} cuotas entre ellos). "
+                f"Los compradores que usan cuotas eligen pocas — el costo de financiamiento ya es bajo. "
+                f"No vale la pena reducirlas: el ahorro sería mínimo y el riesgo de perder ventas no compensa."
+            )
 
     return AnalisisCuotas(
         n_ordenes=n_ordenes,
