@@ -77,9 +77,11 @@
 .esc-nombre { font-weight: 600; display: flex; align-items: center; gap: .4rem; }
 .esc-badge-mejor {
   font-size: .65rem; font-weight: 700;
-  background: var(--accent); color: #fff;
+  background: #2563eb; color: #fff;
   padding: .1rem .4rem; border-radius: 10px;
 }
+tr.row-recomendada { background: rgba(37, 99, 235, 0.07); }
+tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
 
 /* ── Delta de ganancia ── */
 .delta-win    { color: #16a34a; font-weight: 700; }
@@ -196,7 +198,7 @@
     </thead>
     <tbody>
     {% for e in r.escenarios %}
-      <tr>
+      <tr class="{% if r.mejor_escenario == e.nombre %}row-recomendada{% endif %}">
         <!-- Nombre + badge mejor -->
         <td>
           <div class="esc-nombre">
@@ -210,9 +212,10 @@
               <span class="icon-bad">🚫</span>
             {% endif %}
             {{ e.nombre }} (-{{ e.descuento_pct }}%)
-            {% if r.mejor_escenario == e.nombre and not e.es_win_win %}
-              <span class="esc-badge-mejor">Recomendada</span>
-            {% elif e.es_win_win %}
+            {% if r.mejor_escenario == e.nombre %}
+              <span class="esc-badge-mejor">⭐ Recomendada</span>
+            {% endif %}
+            {% if e.es_win_win %}
               <span class="esc-badge-mejor" style="background:#16a34a">Win-Win</span>
             {% endif %}
           </div>

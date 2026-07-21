@@ -174,12 +174,21 @@ def analizar_producto(
 
     tiene_win_win = any(e.es_win_win for e in escenarios)
 
-    # Mejor escenario: el más agresivo que siga siendo viable (o win-win)
-    mejor = None
-    for e in reversed(escenarios):   # de más agresivo a más conservador
-        if e.es_viable:
-            mejor = e.nombre
-            break
+    # Mejor escenario:
+    # - Si hay múltiples win-win → recomienda Moderada (balance riesgo/proyección)
+    # - Si solo un win-win → ese
+    # - Si ningún win-win → el más agresivo que siga siendo viable
+    win_wins = [e for e in escenarios if e.es_win_win]
+    if len(win_wins) > 1:
+        mejor = next((e.nombre for e in escenarios if e.nombre == "Moderada"), win_wins[0].nombre)
+    elif len(win_wins) == 1:
+        mejor = win_wins[0].nombre
+    else:
+        mejor = None
+        for e in reversed(escenarios):
+            if e.es_viable:
+                mejor = e.nombre
+                break
 
     return ProductoPricingAnalysis(
         item_id=iid,
