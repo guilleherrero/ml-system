@@ -188,6 +188,15 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   <p>Simulador de estrategias con impacto cuantificado en rentabilidad. Considera fee ML, envío y elasticidad precio-demanda.</p>
 </div>
 
+<div style="font-size:.8rem; background:var(--color-surface); border:1px solid var(--color-border);
+            border-left:3px solid var(--accent); border-radius:6px; padding:.6rem .9rem; margin-bottom:1.2rem;
+            color:var(--color-neutral-500); line-height:1.6">
+  <strong style="color:var(--color-neutral-700)">Qué es real y qué es proyección:</strong>
+  <span style="color:#16a34a">●</span> <strong>Datos reales de tus órdenes:</strong> fee, ventas, visitas, conversión, distribución de cuotas, envío gratis.
+  <span style="color:#ca8a04; margin-left:.5rem">●</span> <strong>Proyecciones estimadas:</strong> conversión nueva al bajar precio (modelo de elasticidad precio-demanda), ahorro de cuotas (~0.9%/cuota), impacto por pérdida de badge envío gratis.
+  Los números de los escenarios son orientativos, no garantizados.
+</div>
+
 <!-- Summary -->
 <div class="ps-summary">
   <div class="ps-stat info">
@@ -283,7 +292,12 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
         </td>
 
         <!-- Precio nuevo -->
-        <td>${{ "{:,.0f}".format(e.precio_nuevo) }}</td>
+        <td>
+          ${{ "{:,.0f}".format(e.precio_nuevo) }}
+          {% if e.cruza_umbral_envio %}
+          <br><small style="color:#ca8a04; font-size:.7rem">⚠️ Cruza umbral envío · fee {{ e.fee_aplicado }}%</small>
+          {% endif %}
+        </td>
 
         <!-- Margen nuevo -->
         <td>

@@ -52,6 +52,8 @@ class Escenario:
     es_viable: bool                # delta >= UMBRAL_ACEPTABLE_PCT
     es_win_win: bool               # delta >= 0
     precio_bajo_piso: bool         # precio cae bajo el breakeven (costo + fee)
+    fee_aplicado: float            # fee_rate usado en este escenario (puede diferir si cruza umbral)
+    cruza_umbral_envio: bool       # True si precio_nuevo < $33k y item tenía envío gratis
 
 
 @dataclass
@@ -439,25 +441,27 @@ def analizar_producto(
 
     Devuelve None si faltan datos mínimos (precio, costo).
     """
-    precio   = float(item.get("precio") or 0)
-    fee_rate = float(item.get("fee_rate") or 0.15)
-    vis      = int(item.get("visitas_30d") or 0)
-    vtas     = int(item.get("ventas_30d") or 0)
-    conv     = float(item.get("conversion_pct") or 0)
-    titulo   = (item.get("titulo") or "")
-    iid      = item.get("id", "")
+    precio        = float(item.get("precio") or 0)
+    fee_rate      = float(item.get("fee_rate") or 0.15)
+    free_shipping = item.get("free_shipping", False)
+    listing_type  = item.get("listing_type", "gold_special")
+    vis           = int(item.get("visitas_30d") or 0)
+    vtas          = int(item.get("ventas_30d") or 0)
+    conv          = float(item.get("conversion_pct") or 0)
+    titulo        = (item.get("titulo") or "")
+    iid           = item.get("id", "")
 
     if precio <= 0 or costo <= 0:
         return None
+
+    # Fee base sin envío gratis (comisión pura) — usado si un escenario cruza el umbral
+    fee_base = get_rate(listing_type, fees) if fees else fee_rate
 
     # ── Estado actual ────────────────────────────────────────────────────────
     neto_actual          = precio * (1.0 - fee_rate)
     ganancia_unit_actual = neto_actual - costo
     ganancia_mensual_act = vtas * ganancia_unit_actual
     margen_actual_pct    = (ganancia_unit_actual / precio * 100.0) if precio > 0 else 0.0
-
-    # Breakeven: precio donde ganancia_unitaria = 0
-    precio_piso = costo / (1.0 - fee_rate) if fee_rate < 1.0 else costo * 2.0
 
     elasticidad = _estimar_elasticidad(conv, avg_conv)
 
@@ -468,13 +472,25 @@ def analizar_producto(
     escenarios: list[Escenario] = []
 
     for nombre, desc_ratio in ESCENARIOS:
-        precio_nuevo   = round(precio * (1.0 - desc_ratio))
-        neto_nuevo     = precio_nuevo * (1.0 - fee_rate)
+        precio_nuevo = round(precio * (1.0 - desc_ratio))
+
+        # Si el item tiene envío gratis obligatorio y el precio nuevo cae bajo el umbral,
+        # el fee cambia: ya no incluye el costo de envío gratis.
+        cruza_umbral = free_shipping and precio > UMBRAL_ENVIO_GRATIS and precio_nuevo < UMBRAL_ENVIO_GRATIS
+        fee_escenario = fee_base if cruza_umbral else fee_rate
+
+        neto_nuevo     = precio_nuevo * (1.0 - fee_escenario)
         gan_unit_nvo   = neto_nuevo - costo
         margen_nvo_pct = (gan_unit_nvo / precio_nuevo * 100.0) if precio_nuevo > 0 else 0.0
 
+        # Breakeven para este escenario (puede diferir si cruza umbral)
+        precio_piso_esc = costo / (1.0 - fee_escenario) if fee_escenario < 1.0 else costo * 2.0
+
         # Uplift de conversión por elasticidad precio-demanda
+        # Nota: si cruza umbral de envío gratis se aplica penalización por pérdida del badge
         uplift = elasticidad * desc_ratio
+        if cruza_umbral:
+            uplift = max(0.0, uplift - IMPACTO_CONV_SIN_ENVIO)  # descuento por perder badge
         if conv > 0:
             conv_est = min(conv * (1.0 + uplift), conv_max)
         else:
@@ -491,7 +507,7 @@ def analizar_producto(
         else:
             delta_pct = 0.0
 
-        bajo_piso  = precio_nuevo < precio_piso
+        bajo_piso  = precio_nuevo < precio_piso_esc
         es_win_win = (delta_pct >= 0) and not bajo_piso
         es_viable  = (delta_pct >= UMBRAL_ACEPTABLE_PCT) and not bajo_piso
 
@@ -507,6 +523,8 @@ def analizar_producto(
             es_viable=es_viable,
             es_win_win=es_win_win,
             precio_bajo_piso=bajo_piso,
+            fee_aplicado=round(fee_escenario * 100, 1),
+            cruza_umbral_envio=cruza_umbral,
         ))
 
     tiene_win_win = any(e.es_win_win for e in escenarios)
