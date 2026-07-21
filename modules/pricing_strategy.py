@@ -197,8 +197,9 @@ def _analizar_cuotas(item: dict, precio: float, ventas_30d: int) -> Optional[Ana
         mensaje = (
             f"El {round(pct_contado * 100)}% de tus compradores paga en efectivo (1 cuota). "
             f"Las cuotas sin interés te cuestan financiamiento pero pocos las aprovechan. "
-            f"Reducir a 3 cuotas máximas podría ahorrarte ~${ahorro_mensual_ars:,.0f}/mes "
-            f"sin impacto significativo en ventas."
+            f"Reducir a 3 cuotas máximas podría ahorrarte ~${ahorro_mensual_ars:,.0f}/mes. "
+            f"Dado que la mayoría ya paga contado, el riesgo de caída en conversión y "
+            f"posicionamiento es bajo — ML rankea según ventas y conversión, no por cuotas disponibles."
         )
     elif pct_con_cuotas >= 0.60:
         sugerencia = "cuotas_son_driver"

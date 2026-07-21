@@ -385,6 +385,7 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
     {% elif ac.sugerencia == "cuotas_son_driver" %}
       <div class="extra-msg naranja">
         ⚠️ <strong>No reducir:</strong> {{ ac.mensaje }}
+        <br><small>Reducir cuotas en este producto bajaría la conversión → ML te bajaría en el ranking → menos ventas todavía. El ahorro de fee no compensa ese riesgo.</small>
       </div>
     {% else %}
       <div class="extra-msg gris">
