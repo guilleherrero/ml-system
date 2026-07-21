@@ -263,6 +263,9 @@
 
     <!-- 💰 Pricing -->
     <div class="sec" title="Repricing automático y carga de costos">💰 Pricing</div>
+    <a href="/pricing-strategy/{{ acc.alias }}" class="{{ 'active' if request.path == '/pricing-strategy/'~acc.alias else '' }}">
+      <i class="bi bi-graph-up"></i> Políticas de Precio
+    </a>
     <a href="/repricing/{{ acc.alias }}" class="{{ 'active' if request.path == '/repricing/'~acc.alias else '' }}">
       <i class="bi bi-tags"></i> Repricing
     </a>

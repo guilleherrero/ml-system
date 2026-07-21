@@ -9051,6 +9051,26 @@ def lanzamientos():
                            accounts=get_accounts())
 
 
+@app.route('/pricing-strategy/<alias>')
+def pricing_strategy(alias):
+    from modules.pricing_strategy import analizar_catalogo
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+    resultados  = analizar_catalogo(stock_data.get('items', []), costos_data)
+    win_win_count = sum(1 for r in resultados if r.tiene_win_win)
+    viables_count = sum(
+        1 for r in resultados
+        if any(e.es_viable for e in r.escenarios)
+    )
+    return render_template('pricing_strategy.html',
+        alias=alias,
+        resultados=resultados,
+        win_win_count=win_win_count,
+        viables_count=viables_count,
+        total=len(resultados),
+    )
+
+
 @app.route('/repricing/<alias>')
 def repricing(alias):
     data  = load_json(os.path.join(CONFIG_DIR, 'repricing.json'))

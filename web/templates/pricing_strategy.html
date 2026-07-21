@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Políticas de Precio — {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+.ps-header { margin-bottom: 1.5rem; }
+.ps-header h2 { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.ps-header p  { color: var(--color-neutral-500); margin: .25rem 0 0; font-size: .9rem; }
+
+/* ── Summary bar ── */
+.ps-summary {
+  display: flex; gap: 1rem; flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.ps-stat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: .6rem 1rem;
+  min-width: 140px;
+}
+.ps-stat .val { font-size: 1.5rem; font-weight: 700; line-height: 1; }
+.ps-stat .lbl { font-size: .75rem; color: var(--color-neutral-500); margin-top: .15rem; }
+.ps-stat.win  .val { color: #16a34a; }
+.ps-stat.info .val { color: var(--accent); }
+
+/* ── Producto card ── */
+.prod-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.prod-card.has-win { border-left: 4px solid #16a34a; }
+
+.prod-head {
+  display: flex; align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+.prod-titulo { font-weight: 600; font-size: .95rem; margin-bottom: .25rem; }
+.prod-meta   { font-size: .8rem; color: var(--color-neutral-500); display: flex; gap: 1rem; flex-wrap: wrap; }
+.prod-meta span { white-space: nowrap; }
+.badge-win {
+  background: #dcfce7; color: #15803d; border: 1px solid #86efac;
+  font-size: .72rem; font-weight: 700; padding: .2rem .5rem;
+  border-radius: 20px; white-space: nowrap; align-self: flex-start;
+}
+.badge-win-dark { background: #14532d; color: #86efac; border-color: #166534; }
+
+/* ── Escenarios tabla ── */
+.escenarios-table {
+  width: 100%; border-collapse: collapse; font-size: .85rem;
+}
+.escenarios-table th {
+  background: var(--color-neutral-50, #f9fafb);
+  color: var(--color-neutral-500);
+  font-weight: 600; font-size: .75rem;
+  padding: .45rem .75rem;
+  text-align: right; border-bottom: 1px solid var(--color-border);
+}
+.escenarios-table th:first-child { text-align: left; }
+.escenarios-table td {
+  padding: .55rem .75rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: right; vertical-align: middle;
+}
+.escenarios-table td:first-child { text-align: left; }
+.escenarios-table tr:last-child td { border-bottom: none; }
+.escenarios-table tr:hover { background: var(--color-neutral-50, #f9fafb); }
+
+/* ── Nombre escenario ── */
+.esc-nombre { font-weight: 600; display: flex; align-items: center; gap: .4rem; }
+.esc-badge-mejor {
+  font-size: .65rem; font-weight: 700;
+  background: var(--accent); color: #fff;
+  padding: .1rem .4rem; border-radius: 10px;
+}
+
+/* ── Delta de ganancia ── */
+.delta-win    { color: #16a34a; font-weight: 700; }
+.delta-ok     { color: #ca8a04; font-weight: 600; }
+.delta-warn   { color: #ea580c; font-weight: 600; }
+.delta-bad    { color: var(--color-neutral-400); }
+.delta-piso   { color: var(--color-neutral-400); font-style: italic; font-size: .8rem; }
+
+.icon-win  { font-size: .9rem; }
+.icon-ok   { font-size: .9rem; }
+.icon-warn { font-size: .9rem; }
+.icon-bad  { font-size: .9rem; }
+
+/* ── Empty state ── */
+.ps-empty {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 2.5rem; text-align: center;
+  color: var(--color-neutral-500);
+}
+.ps-empty i { font-size: 2rem; display: block; margin-bottom: .75rem; }
+
+/* ── Disclaimer ── */
+.ps-disclaimer {
+  font-size: .78rem; color: var(--color-neutral-400);
+  padding: .6rem .75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+@media (prefers-color-scheme: dark) {
+  .escenarios-table th { background: var(--color-neutral-800, #1f2937); }
+  .escenarios-table tr:hover { background: var(--color-neutral-800, #1f2937); }
+  .badge-win { background: #14532d; color: #86efac; border-color: #166534; }
+}
+:root[data-theme="dark"] .escenarios-table th { background: var(--color-neutral-800, #1f2937); }
+:root[data-theme="dark"] .escenarios-table tr:hover { background: var(--color-neutral-800, #1f2937); }
+:root[data-theme="dark"] .badge-win { background: #14532d; color: #86efac; border-color: #166534; }
+</style>
+
+<div class="ps-header">
+  <h2><i class="bi bi-graph-up me-2" style="color:var(--accent)"></i>Políticas de Precio — {{ alias }}</h2>
+  <p>Simulador de estrategias con impacto cuantificado en rentabilidad. Considera fee ML, envío y elasticidad precio-demanda.</p>
+</div>
+
+<!-- Summary -->
+<div class="ps-summary">
+  <div class="ps-stat info">
+    <div class="val">{{ total }}</div>
+    <div class="lbl">Productos analizados</div>
+  </div>
+  <div class="ps-stat win">
+    <div class="val">{{ win_win_count }}</div>
+    <div class="lbl">Win-Win disponibles</div>
+  </div>
+  <div class="ps-stat">
+    <div class="val">{{ viables_count }}</div>
+    <div class="lbl">Con estrategia viable (&lt;5% impacto)</div>
+  </div>
+</div>
+
+{% if not resultados %}
+<div class="ps-empty">
+  <i class="bi bi-cash-stack"></i>
+  <strong>Sin productos para analizar</strong>
+  <p class="mb-0 mt-1">
+    Necesitás tener costos cargados y al menos 20 visitas en 30 días.<br>
+    Cargá costos desde <a href="/costos/wizard?alias={{ alias | urlencode }}">Cargar costos</a>.
+  </p>
+</div>
+
+{% else %}
+
+{% if win_win_count > 0 %}
+<div class="alert alert-success d-flex align-items-center gap-2 mb-3 py-2" style="font-size:.88rem">
+  <i class="bi bi-stars fs-5"></i>
+  <span><strong>{{ win_win_count }} producto{% if win_win_count != 1 %}s{% endif %} con escenario Win-Win</strong> — bajar el precio en ese nivel aumenta la ganancia mensual total porque el volumen extra compensa el margen menor.</span>
+</div>
+{% endif %}
+
+{% for r in resultados %}
+<div class="prod-card {% if r.tiene_win_win %}has-win{% endif %}">
+
+  <!-- Cabecera del producto -->
+  <div class="prod-head">
+    <div style="flex:1; min-width:0">
+      <div class="prod-titulo">{{ r.titulo[:70] }}{% if r.titulo|length > 70 %}…{% endif %}</div>
+      <div class="prod-meta">
+        <span><i class="bi bi-tag-fill me-1"></i><strong>${{ "{:,.0f}".format(r.precio_actual) }}</strong></span>
+        <span>Costo ${{ "{:,.0f}".format(r.costo) }}</span>
+        <span>Fee {{ r.fee_rate_pct }}%</span>
+        <span>Margen <strong>{{ r.margen_pct_actual }}%</strong></span>
+        <span>{{ r.visitas_30d }} vis · {{ r.ventas_30d }} ventas · {{ r.conv_pct_actual }}% conv</span>
+        <span style="color:var(--color-neutral-600)">Ganancia actual <strong>${{ "{:,.0f}".format(r.ganancia_mensual_actual) }}/mes</strong></span>
+      </div>
+    </div>
+    {% if r.tiene_win_win %}
+    <div class="badge-win"><i class="bi bi-stars me-1"></i>Win-Win disponible</div>
+    {% endif %}
+  </div>
+
+  <!-- Tabla de escenarios -->
+  <table class="escenarios-table">
+    <thead>
+      <tr>
+        <th>Estrategia</th>
+        <th>Precio nuevo</th>
+        <th>Margen nuevo</th>
+        <th>Conv. estimada</th>
+        <th>Ventas est.</th>
+        <th>Ganancia/mes</th>
+        <th>Impacto</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for e in r.escenarios %}
+      <tr>
+        <!-- Nombre + badge mejor -->
+        <td>
+          <div class="esc-nombre">
+            {% if e.es_win_win %}
+              <span class="icon-win">🏆</span>
+            {% elif e.es_viable %}
+              <span class="icon-ok">✅</span>
+            {% elif not e.precio_bajo_piso %}
+              <span class="icon-warn">⚠️</span>
+            {% else %}
+              <span class="icon-bad">🚫</span>
+            {% endif %}
+            {{ e.nombre }} (-{{ e.descuento_pct }}%)
+            {% if r.mejor_escenario == e.nombre and not e.es_win_win %}
+              <span class="esc-badge-mejor">Recomendada</span>
+            {% elif e.es_win_win %}
+              <span class="esc-badge-mejor" style="background:#16a34a">Win-Win</span>
+            {% endif %}
+          </div>
+        </td>
+
+        <!-- Precio nuevo -->
+        <td>${{ "{:,.0f}".format(e.precio_nuevo) }}</td>
+
+        <!-- Margen nuevo -->
+        <td>
+          {% if e.precio_bajo_piso %}
+            <span style="color:var(--color-neutral-400)">—</span>
+          {% else %}
+            <span class="{% if e.margen_nuevo_pct >= r.margen_pct_actual * 0.85 %}delta-win{% elif e.margen_nuevo_pct >= 0 %}delta-ok{% else %}delta-warn{% endif %}">
+              {{ e.margen_nuevo_pct }}%
+            </span>
+          {% endif %}
+        </td>
+
+        <!-- Conv estimada -->
+        <td>
+          {% if e.precio_bajo_piso %}—
+          {% else %}{{ e.conv_estimada_pct }}%
+            <small style="color:var(--color-neutral-400)">
+              (+{{ "%.0f"|format((e.conv_estimada_pct - r.conv_pct_actual) / r.conv_pct_actual * 100) if r.conv_pct_actual > 0 else "—" }}%)
+            </small>
+          {% endif %}
+        </td>
+
+        <!-- Ventas estimadas -->
+        <td>
+          {% if e.precio_bajo_piso %}—
+          {% else %}
+            {{ e.ventas_estimadas }} u
+            <small style="color:var(--color-neutral-400)">(+{{ "%.0f"|format(e.ventas_estimadas - r.ventas_30d) }})</small>
+          {% endif %}
+        </td>
+
+        <!-- Ganancia mensual nueva -->
+        <td>
+          {% if e.precio_bajo_piso %}
+            <span class="delta-piso">Bajo costo+fee</span>
+          {% else %}
+            <strong>${{ "{:,.0f}".format(e.ganancia_mensual_nueva) }}</strong>
+          {% endif %}
+        </td>
+
+        <!-- Impacto (delta %) -->
+        <td>
+          {% if e.precio_bajo_piso %}
+            <span class="delta-bad">🚫 No viable</span>
+          {% elif e.es_win_win %}
+            <span class="delta-win">+{{ e.delta_ganancia_pct }}%</span>
+          {% elif e.es_viable %}
+            <span class="delta-ok">{{ e.delta_ganancia_pct }}%</span>
+          {% elif e.delta_ganancia_pct >= -10 %}
+            <span class="delta-warn">{{ e.delta_ganancia_pct }}%</span>
+          {% else %}
+            <span class="delta-bad">{{ e.delta_ganancia_pct }}%</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="ps-disclaimer">
+    Elasticidad estimada: <strong>{{ r.elasticidad }}</strong> ·
+    La conv. estimada asume que bajar precio genera uplift proporcional según posición en el catálogo. No considera temporalidad ni campañas.
+  </div>
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}
