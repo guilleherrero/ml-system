@@ -174,15 +174,12 @@ def analizar_producto(
 
     tiene_win_win = any(e.es_win_win for e in escenarios)
 
-    # Mejor escenario:
-    # - Si hay múltiples win-win → recomienda Moderada (balance riesgo/proyección)
-    # - Si solo un win-win → ese
-    # - Si ningún win-win → el más agresivo que siga siendo viable
+    # Mejor escenario: el que maximize la ganancia mensual absoluta
+    # - Entre win-wins → el de mayor ganancia_mensual_nueva
+    # - Sin win-wins → el más agresivo que siga siendo viable
     win_wins = [e for e in escenarios if e.es_win_win]
-    if len(win_wins) > 1:
-        mejor = next((e.nombre for e in escenarios if e.nombre == "Moderada"), win_wins[0].nombre)
-    elif len(win_wins) == 1:
-        mejor = win_wins[0].nombre
+    if win_wins:
+        mejor = max(win_wins, key=lambda e: e.ganancia_mensual_nueva).nombre
     else:
         mejor = None
         for e in reversed(escenarios):
