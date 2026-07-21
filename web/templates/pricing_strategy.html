@@ -431,17 +431,17 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
         <div class="titulo-col">Impacto por caída de ventas</div>
         <div class="sub">−10% ventas · {{ ae.ventas_optimista }} u →
           <span class="{% if ae.delta_optimista_pct >= 0 %}delta-win{% elif ae.delta_optimista_pct >= -10 %}delta-ok{% else %}delta-bad{% endif %}">
-            {{ ae.delta_optimista_pct:+.1f }}%
+            {{ "%+.1f" % ae.delta_optimista_pct }}%
           </span>
         </div>
         <div class="sub">−20% ventas · {{ ae.ventas_realista }} u →
           <span class="{% if ae.delta_realista_pct >= 0 %}delta-win{% elif ae.delta_realista_pct >= -10 %}delta-ok{% else %}delta-bad{% endif %}">
-            {{ ae.delta_realista_pct:+.1f }}%
+            {{ "%+.1f" % ae.delta_realista_pct }}%
           </span>
         </div>
         <div class="sub">−30% ventas · {{ ae.ventas_pesimista }} u →
           <span class="{% if ae.delta_pesimista_pct >= 0 %}delta-win{% elif ae.delta_pesimista_pct >= -10 %}delta-ok{% else %}delta-bad{% endif %}">
-            {{ ae.delta_pesimista_pct:+.1f }}%
+            {{ "%+.1f" % ae.delta_pesimista_pct }}%
           </span>
         </div>
       </div>
