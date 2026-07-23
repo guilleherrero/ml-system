@@ -454,8 +454,12 @@ def analizar_producto(
     if precio <= 0 or costo <= 0:
         return None
 
-    # Fee base sin envío gratis (comisión pura) — usado si un escenario cruza el umbral
-    fee_base = get_rate(listing_type, fees) if fees else fee_rate
+    # Fee base sin envío gratis (comisión pura) — usado si un escenario cruza el umbral.
+    # get_rate() usa precio de referencia $10k, que puede tener tasa distinta al precio real.
+    # Solo es válido si fee_base < fee_rate (caso contrario significa que el rate de $10k no
+    # aplica a este precio y no podemos estimar el fee sin envío de forma confiable).
+    _fee_base_raw = get_rate(listing_type, fees) if fees else fee_rate
+    fee_base = _fee_base_raw if _fee_base_raw < fee_rate else None
 
     # ── Estado actual ────────────────────────────────────────────────────────
     neto_actual          = precio * (1.0 - fee_rate)
@@ -475,8 +479,14 @@ def analizar_producto(
         precio_nuevo = round(precio * (1.0 - desc_ratio))
 
         # Si el item tiene envío gratis obligatorio y el precio nuevo cae bajo el umbral,
-        # el fee cambia: ya no incluye el costo de envío gratis.
-        cruza_umbral = free_shipping and precio > UMBRAL_ENVIO_GRATIS and precio_nuevo < UMBRAL_ENVIO_GRATIS
+        # el fee cambia — pero solo si tenemos un fee_base válido (menor al fee actual).
+        # Si fee_base es None (tasa de referencia inválida para este producto), no ajustamos.
+        cruza_umbral = (
+            free_shipping
+            and precio > UMBRAL_ENVIO_GRATIS
+            and precio_nuevo < UMBRAL_ENVIO_GRATIS
+            and fee_base is not None
+        )
         fee_escenario = fee_base if cruza_umbral else fee_rate
 
         neto_nuevo     = precio_nuevo * (1.0 - fee_escenario)
