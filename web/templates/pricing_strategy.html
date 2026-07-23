@@ -57,13 +57,30 @@
   width: 100%; border-collapse: collapse; font-size: .85rem;
 }
 .escenarios-table th {
-  background: var(--color-neutral-50, #f9fafb);
   color: var(--color-neutral-500);
-  font-weight: 600; font-size: .75rem;
-  padding: .45rem .75rem;
+  font-weight: 600; font-size: .72rem;
+  padding: .35rem .75rem;
   text-align: right; border-bottom: 1px solid var(--color-border);
+  background: var(--color-neutral-50, #f9fafb);
 }
 .escenarios-table th:first-child { text-align: left; }
+/* Sección "real" en el header superior */
+.th-real {
+  background: rgba(22,163,74,.07) !important;
+  color: #15803d !important;
+  font-weight: 700; font-size: .7rem;
+  text-align: center; letter-spacing: .03em;
+}
+/* Sección "estimada" en el header superior */
+.th-est {
+  background: rgba(202,138,4,.07) !important;
+  color: #92400e !important;
+  font-weight: 700; font-size: .7rem;
+  text-align: center; letter-spacing: .03em;
+}
+/* Columnas estimadas: header y celdas ligeramente atenuados */
+.col-est th, th.col-est { color: #a16207 !important; }
+.col-est-cell { color: var(--color-neutral-400) !important; font-size: .82rem; }
 .escenarios-table td {
   padding: .55rem .75rem;
   border-bottom: 1px solid var(--color-border);
@@ -72,6 +89,11 @@
 .escenarios-table td:first-child { text-align: left; }
 .escenarios-table tr:last-child td { border-bottom: none; }
 .escenarios-table tr:hover { background: var(--color-neutral-50, #f9fafb); }
+/* Celdas de margen cedido */
+.cedido-bajo   { color: #16a34a; font-weight: 700; }  /* < 5% del margen */
+.cedido-medio  { color: #ca8a04; font-weight: 700; }  /* 5–15% */
+.cedido-alto   { color: #ea580c; font-weight: 700; }  /* 15–25% */
+.cedido-critico{ color: #dc2626; font-weight: 700; }  /* > 25% */
 
 /* ── Nombre escenario ── */
 .esc-nombre { font-weight: 600; display: flex; align-items: center; gap: .4rem; }
@@ -177,10 +199,16 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   .escenarios-table th { background: var(--color-neutral-800, #1f2937); }
   .escenarios-table tr:hover { background: var(--color-neutral-800, #1f2937); }
   .badge-win { background: #14532d; color: #86efac; border-color: #166534; }
+  .th-real { background: rgba(22,163,74,.12) !important; color: #86efac !important; }
+  .th-est  { background: rgba(202,138,4,.12) !important; color: #fde68a !important; }
+  .col-est-cell { color: var(--color-neutral-500) !important; }
 }
 :root[data-theme="dark"] .escenarios-table th { background: var(--color-neutral-800, #1f2937); }
 :root[data-theme="dark"] .escenarios-table tr:hover { background: var(--color-neutral-800, #1f2937); }
 :root[data-theme="dark"] .badge-win { background: #14532d; color: #86efac; border-color: #166534; }
+:root[data-theme="dark"] .th-real { background: rgba(22,163,74,.12) !important; color: #86efac !important; }
+:root[data-theme="dark"] .th-est  { background: rgba(202,138,4,.12) !important; color: #fde68a !important; }
+:root[data-theme="dark"] .col-est-cell { color: var(--color-neutral-500) !important; }
 </style>
 
 <div class="ps-header">
@@ -192,9 +220,9 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
             border-left:3px solid var(--accent); border-radius:6px; padding:.6rem .9rem; margin-bottom:1.2rem;
             color:var(--color-neutral-500); line-height:1.6">
   <strong style="color:var(--color-neutral-700)">Qué es real y qué es proyección:</strong>
-  <span style="color:#16a34a">●</span> <strong>Datos reales de tus órdenes:</strong> fee, ventas, visitas, conversión, distribución de cuotas, envío gratis.
-  <span style="color:#ca8a04; margin-left:.5rem">●</span> <strong>Proyecciones estimadas:</strong> conversión nueva al bajar precio (modelo de elasticidad precio-demanda), ahorro de cuotas (~0.9%/cuota), impacto por pérdida de badge envío gratis.
-  Los números de los escenarios son orientativos, no garantizados.
+  <span style="color:#16a34a">●</span> <strong>Datos reales (exactos):</strong> fee, costo, ganancia por unidad, <strong>margen cedido por unidad</strong>, distribución de cuotas, envío gratis.
+  <span style="color:#ca8a04; margin-left:.5rem">●</span> <strong>Proyecciones estimadas (orientativas):</strong> ventas nuevas al bajar precio (modelo de elasticidad), ganancia mensual proyectada, ahorro de cuotas (~0.9%/cuota), impacto por pérdida de badge envío gratis.
+  <strong>Decidí primero en base al margen cedido/u (real), y usá la proyección como referencia.</strong>
 </div>
 
 <!-- Summary -->
@@ -244,6 +272,7 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
         <span>Costo ${{ "{:,.0f}".format(r.costo) }}</span>
         <span>Fee {{ r.fee_rate_pct }}%</span>
         <span>Margen <strong>{{ r.margen_pct_actual }}%</strong></span>
+        <span>Ganancia/u <strong>${{ "{:,.0f}".format(r.ganancia_unit_actual) }}</strong></span>
         <span>{{ r.visitas_30d }} vis · {{ r.ventas_30d }} ventas · {{ r.conv_pct_actual }}% conv</span>
         <span style="color:var(--color-neutral-600)">Ganancia actual <strong>${{ "{:,.0f}".format(r.ganancia_mensual_actual) }}/mes</strong></span>
       </div>
@@ -256,14 +285,20 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   <!-- Tabla de escenarios -->
   <table class="escenarios-table">
     <thead>
+      <!-- Fila 1: separación real vs estimado -->
+      <tr>
+        <th colspan="4" class="th-real">● Datos reales (calculados con fee + costo)</th>
+        <th colspan="3" class="th-est">● Proyección estimada (orientativa — no garantizada)</th>
+      </tr>
+      <!-- Fila 2: nombres de columnas -->
       <tr>
         <th>Estrategia</th>
         <th>Precio nuevo</th>
-        <th>Margen nuevo</th>
-        <th>Conv. estimada</th>
-        <th>Ventas est.</th>
-        <th>Ganancia/mes</th>
-        <th>Impacto</th>
+        <th>Cedés por unidad</th>
+        <th>Margen/u actual → nuevo</th>
+        <th style="color:#a16207">Ventas est.</th>
+        <th style="color:#a16207">Gan./mes est.</th>
+        <th style="color:#a16207">Impacto est.</th>
       </tr>
     </thead>
     <tbody>
@@ -299,57 +334,68 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
           {% endif %}
         </td>
 
-        <!-- Margen nuevo -->
+        <!-- Cedés por unidad — MÉTRICA PRINCIPAL REAL -->
         <td>
           {% if e.precio_bajo_piso %}
-            <span style="color:var(--color-neutral-400)">—</span>
+            <span style="color:var(--color-neutral-400)">— Bajo piso</span>
           {% else %}
-            <span class="{% if e.margen_nuevo_pct >= r.margen_pct_actual * 0.85 %}delta-win{% elif e.margen_nuevo_pct >= 0 %}delta-ok{% else %}delta-warn{% endif %}">
-              {{ e.margen_nuevo_pct }}%
+            {# Clasifica la severidad del margen cedido #}
+            {% set pct_cedido = e.margen_cedido_pct_margen %}
+            <span class="{% if pct_cedido < 5 %}cedido-bajo{% elif pct_cedido < 15 %}cedido-medio{% elif pct_cedido < 25 %}cedido-alto{% else %}cedido-critico{% endif %}">
+              −${{ "{:,.0f}".format(e.margen_cedido_unit_ars) }}/u
             </span>
-          {% endif %}
-        </td>
-
-        <!-- Conv estimada -->
-        <td>
-          {% if e.precio_bajo_piso %}—
-          {% else %}{{ e.conv_estimada_pct }}%
-            <small style="color:var(--color-neutral-400)">
-              (+{{ "%.0f"|format((e.conv_estimada_pct - r.conv_pct_actual) / r.conv_pct_actual * 100) if r.conv_pct_actual > 0 else "—" }}%)
+            <br><small style="color:var(--color-neutral-400); font-size:.72rem">
+              (−{{ e.margen_cedido_pct_margen }}% de tu gan./u)
             </small>
           {% endif %}
         </td>
 
-        <!-- Ventas estimadas -->
+        <!-- Margen/u actual → nuevo -->
         <td>
+          {% if e.precio_bajo_piso %}
+            <span style="color:var(--color-neutral-400)">—</span>
+          {% else %}
+            <span style="color:var(--color-neutral-400); font-size:.78rem">${{ "{:,.0f}".format(r.ganancia_unit_actual) }}</span>
+            <span style="color:var(--color-neutral-400); font-size:.78rem"> → </span>
+            <span class="{% if e.margen_nuevo_pct >= r.margen_pct_actual * 0.90 %}delta-win{% elif e.margen_nuevo_pct >= r.margen_pct_actual * 0.75 %}delta-ok{% else %}delta-warn{% endif %}">
+              ${{ "{:,.0f}".format(e.ganancia_unit_nueva) }}
+            </span>
+            <br><small style="color:var(--color-neutral-400); font-size:.72rem">
+              {{ r.margen_pct_actual }}% → {{ e.margen_nuevo_pct }}%
+            </small>
+          {% endif %}
+        </td>
+
+        <!-- Ventas estimadas (est.) -->
+        <td class="col-est-cell">
           {% if e.precio_bajo_piso %}—
           {% else %}
             {{ e.ventas_estimadas }} u
-            <small style="color:var(--color-neutral-400)">(+{{ "%.0f"|format(e.ventas_estimadas - r.ventas_30d) }})</small>
+            <br><small>(vs {{ r.ventas_30d }} actual)</small>
           {% endif %}
         </td>
 
-        <!-- Ganancia mensual nueva -->
-        <td>
+        <!-- Ganancia mensual nueva (est.) -->
+        <td class="col-est-cell">
           {% if e.precio_bajo_piso %}
             <span class="delta-piso">Bajo costo+fee</span>
           {% else %}
-            <strong>${{ "{:,.0f}".format(e.ganancia_mensual_nueva) }}</strong>
+            ${{ "{:,.0f}".format(e.ganancia_mensual_nueva) }}
           {% endif %}
         </td>
 
-        <!-- Impacto (delta %) -->
-        <td>
+        <!-- Impacto (delta %) — est. -->
+        <td class="col-est-cell">
           {% if e.precio_bajo_piso %}
             <span class="delta-bad">🚫 No viable</span>
           {% elif e.es_win_win %}
-            <span class="delta-win">+{{ e.delta_ganancia_pct }}%</span>
+            <span class="delta-win">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
           {% elif e.es_viable %}
-            <span class="delta-ok">{{ e.delta_ganancia_pct }}%</span>
+            <span class="delta-ok">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
           {% elif e.delta_ganancia_pct >= -10 %}
-            <span class="delta-warn">{{ e.delta_ganancia_pct }}%</span>
+            <span class="delta-warn">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
           {% else %}
-            <span class="delta-bad">{{ e.delta_ganancia_pct }}%</span>
+            <span class="delta-bad">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
           {% endif %}
         </td>
       </tr>
@@ -358,8 +404,8 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   </table>
 
   <div class="ps-disclaimer">
-    Elasticidad estimada: <strong>{{ r.elasticidad }}</strong> ·
-    La conv. estimada asume que bajar precio genera uplift proporcional según posición en el catálogo. No considera temporalidad ni campañas.
+    <strong>Cedés/u</strong> = ganancia actual/u − ganancia nueva/u, calculado con fee real + costo. Sin estimaciones.
+    La <span style="color:#a16207">proyección</span> usa elasticidad <strong>{{ r.elasticidad }}</strong> (posición en catálogo) — orientativa, no garantizada.
   </div>
 
   {# ── Sección cuotas ── #}

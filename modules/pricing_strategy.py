@@ -47,13 +47,17 @@ class Escenario:
     margen_nuevo_pct: float        # % neto sobre precio nuevo
     conv_estimada_pct: float
     ventas_estimadas: float        # unidades/mes proyectadas
-    ganancia_mensual_nueva: float  # ARS/mes
-    delta_ganancia_pct: float      # cambio vs actual (ej. +4.7 o -3.2)
+    ganancia_mensual_nueva: float  # ARS/mes (estimado — depende de volumen proyectado)
+    delta_ganancia_pct: float      # cambio vs actual (estimado, ej. +4.7 o -3.2)
     es_viable: bool                # delta >= UMBRAL_ACEPTABLE_PCT
     es_win_win: bool               # delta >= 0
     precio_bajo_piso: bool         # precio cae bajo el breakeven (costo + fee)
     fee_aplicado: float            # fee_rate usado en este escenario (puede diferir si cruza umbral)
     cruza_umbral_envio: bool       # True si precio_nuevo < $33k y item tenía envío gratis
+    # ── Datos reales (sin estimaciones de volumen) ──────────────────────────────
+    ganancia_unit_nueva: float = 0.0      # ganancia por unidad al precio nuevo (REAL)
+    margen_cedido_unit_ars: float = 0.0   # cuánto cedés por cada unidad vendida (REAL)
+    margen_cedido_pct_margen: float = 0.0 # % del margen/u actual que cedés (REAL)
 
 
 @dataclass
@@ -127,6 +131,7 @@ class ProductoPricingAnalysis:
     visitas_30d: int
     conv_pct_actual: float
     ganancia_mensual_actual: float
+    ganancia_unit_actual: float    # ganancia por unidad al precio actual (REAL)
     costo: float
     fee_rate_pct: float            # ej. 26.6
     elasticidad: float
@@ -521,6 +526,13 @@ def analizar_producto(
         es_win_win = (delta_pct >= 0) and not bajo_piso
         es_viable  = (delta_pct >= UMBRAL_ACEPTABLE_PCT) and not bajo_piso
 
+        # Margen cedido por unidad: dato 100% real, no depende de estimaciones de volumen
+        margen_cedido_unit = ganancia_unit_actual - gan_unit_nvo
+        margen_cedido_pct_mg = (
+            (margen_cedido_unit / ganancia_unit_actual * 100.0)
+            if ganancia_unit_actual > 0 else 0.0
+        )
+
         escenarios.append(Escenario(
             nombre=nombre,
             descuento_pct=round(desc_ratio * 100, 1),
@@ -535,6 +547,9 @@ def analizar_producto(
             precio_bajo_piso=bajo_piso,
             fee_aplicado=round(fee_escenario * 100, 1),
             cruza_umbral_envio=cruza_umbral,
+            ganancia_unit_nueva=round(gan_unit_nvo),
+            margen_cedido_unit_ars=round(margen_cedido_unit),
+            margen_cedido_pct_margen=round(margen_cedido_pct_mg, 1),
         ))
 
     tiene_win_win = any(e.es_win_win for e in escenarios)
@@ -568,6 +583,7 @@ def analizar_producto(
         visitas_30d=vis,
         conv_pct_actual=round(conv, 2),
         ganancia_mensual_actual=round(ganancia_mensual_act),
+        ganancia_unit_actual=round(ganancia_unit_actual),
         costo=round(costo, 2),
         fee_rate_pct=round(fee_rate * 100, 1),
         elasticidad=round(elasticidad, 1),
