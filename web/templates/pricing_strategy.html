@@ -178,6 +178,76 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   .extra-msg.naranja{ color: #fdba74; }
 }
 
+/* ── Diagnóstico de causa (banner) ── */
+.diag-banner {
+  display: flex; align-items: flex-start; gap: .85rem;
+  padding: .75rem 1rem .7rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.diag-icon { font-size: 1.7rem; flex-shrink: 0; line-height: 1; margin-top: .05rem; }
+.diag-body { flex: 1; min-width: 0; }
+.diag-titulo { font-weight: 800; font-size: 1rem; letter-spacing: -.01em; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.diag-confianza {
+  font-size: .65rem; font-weight: 700; padding: .15rem .45rem;
+  border-radius: 10px; white-space: nowrap;
+}
+.diag-señales { font-size: .79rem; margin-top: .3rem; line-height: 1.6; }
+.diag-elas    { font-size: .74rem; margin-top: .3rem; opacity: .7; }
+
+/* Variante PRECIO */
+.diag-precio { background: rgba(220,38,38,.08); border-left: 4px solid #dc2626; }
+.diag-precio .diag-titulo  { color: #991b1b; }
+.diag-precio .diag-confianza { background: #fecaca; color: #991b1b; }
+.diag-precio .diag-señales { color: #7f1d1d; }
+/* Variante VISIBILIDAD / RANKING */
+.diag-visibilidad { background: rgba(37,99,235,.08); border-left: 4px solid #2563eb; }
+.diag-visibilidad .diag-titulo  { color: #1e40af; }
+.diag-visibilidad .diag-confianza { background: #bfdbfe; color: #1e40af; }
+.diag-visibilidad .diag-señales { color: #1e3a8a; }
+/* Variante AMBOS */
+.diag-ambos { background: rgba(234,88,12,.08); border-left: 4px solid #ea580c; }
+.diag-ambos .diag-titulo  { color: #9a3412; }
+.diag-ambos .diag-confianza { background: #fed7aa; color: #9a3412; }
+.diag-ambos .diag-señales { color: #7c2d12; }
+/* Variante NO ES PRECIO */
+.diag-no-precio { background: rgba(22,163,74,.08); border-left: 4px solid #16a34a; }
+.diag-no-precio .diag-titulo  { color: #15803d; }
+.diag-no-precio .diag-confianza { background: #bbf7d0; color: #15803d; }
+.diag-no-precio .diag-señales { color: #14532d; }
+/* Variante SIN DATOS */
+.diag-sin-datos { background: rgba(107,114,128,.08); border-left: 4px solid #9ca3af; }
+.diag-sin-datos .diag-titulo  { color: var(--color-neutral-600); }
+.diag-sin-datos .diag-confianza { background: var(--color-border); color: var(--color-neutral-500); }
+.diag-sin-datos .diag-señales { color: var(--color-neutral-500); }
+
+/* Dark mode para el banner */
+@media (prefers-color-scheme: dark) {
+  .diag-precio      { background: rgba(220,38,38,.14); }
+  .diag-precio .diag-titulo { color: #fca5a5; }
+  .diag-precio .diag-señales { color: #fca5a5; opacity: .85; }
+  .diag-visibilidad { background: rgba(37,99,235,.14); }
+  .diag-visibilidad .diag-titulo { color: #93c5fd; }
+  .diag-visibilidad .diag-señales { color: #93c5fd; opacity: .85; }
+  .diag-ambos       { background: rgba(234,88,12,.14); }
+  .diag-ambos .diag-titulo { color: #fdba74; }
+  .diag-ambos .diag-señales { color: #fdba74; opacity: .85; }
+  .diag-no-precio   { background: rgba(22,163,74,.14); }
+  .diag-no-precio .diag-titulo { color: #86efac; }
+  .diag-no-precio .diag-señales { color: #86efac; opacity: .85; }
+}
+:root[data-theme="dark"] .diag-precio      { background: rgba(220,38,38,.14); }
+:root[data-theme="dark"] .diag-precio .diag-titulo { color: #fca5a5; }
+:root[data-theme="dark"] .diag-precio .diag-señales { color: #fca5a5; opacity: .85; }
+:root[data-theme="dark"] .diag-visibilidad { background: rgba(37,99,235,.14); }
+:root[data-theme="dark"] .diag-visibilidad .diag-titulo { color: #93c5fd; }
+:root[data-theme="dark"] .diag-visibilidad .diag-señales { color: #93c5fd; opacity: .85; }
+:root[data-theme="dark"] .diag-ambos       { background: rgba(234,88,12,.14); }
+:root[data-theme="dark"] .diag-ambos .diag-titulo { color: #fdba74; }
+:root[data-theme="dark"] .diag-ambos .diag-señales { color: #fdba74; opacity: .85; }
+:root[data-theme="dark"] .diag-no-precio   { background: rgba(22,163,74,.14); }
+:root[data-theme="dark"] .diag-no-precio .diag-titulo { color: #86efac; }
+:root[data-theme="dark"] .diag-no-precio .diag-señales { color: #86efac; opacity: .85; }
+
 /* ── Empty state ── */
 .ps-empty {
   background: var(--color-surface);
@@ -281,6 +351,38 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
     <div class="badge-win"><i class="bi bi-stars me-1"></i>Win-Win disponible</div>
     {% endif %}
   </div>
+
+  <!-- Banner de diagnóstico -->
+  {% if r.diagnostico %}
+  {% set d = r.diagnostico %}
+  <div class="diag-banner diag-{% if d.causa == 'precio' %}precio{% elif d.causa == 'visibilidad' %}visibilidad{% elif d.causa == 'precio_y_visibilidad' %}ambos{% elif d.causa == 'no_es_precio' %}no-precio{% else %}sin-datos{% endif %}">
+    <div class="diag-icon">
+      {% if d.causa == 'precio' %}🎯
+      {% elif d.causa == 'visibilidad' %}📉
+      {% elif d.causa == 'precio_y_visibilidad' %}⚠️
+      {% elif d.causa == 'no_es_precio' %}✅
+      {% else %}❓{% endif %}
+    </div>
+    <div class="diag-body">
+      <div class="diag-titulo">
+        {{ d.titulo }}
+        <span class="diag-confianza">Confianza {{ d.confianza }}</span>
+      </div>
+      <div class="diag-señales">
+        {% for s in d.señales %}<div>· {{ s }}</div>{% endfor %}
+      </div>
+      {% if d.causa == 'visibilidad' %}
+      <div class="diag-elas">
+        La proyección de volumen usa elasticidad reducida ({{ d.elasticidad_ajustada }}) — bajar precio no genera más visitas; el problema está en el ranking.
+      </div>
+      {% elif d.causa == 'precio_y_visibilidad' %}
+      <div class="diag-elas">
+        Proyección con elasticidad moderada ({{ d.elasticidad_ajustada }}) — el precio ayuda pero el ranking también limita el impacto.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Tabla de escenarios -->
   <table class="escenarios-table">

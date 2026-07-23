@@ -124,6 +124,21 @@ class AnalisisUmbralEnvio:
 
 
 @dataclass
+class DiagnosticoPrecio:
+    """Diagnóstico de la causa principal de bajo desempeño en ventas.
+
+    Combina tres señales: ratio de conversión vs. categoría, volumen de visitas,
+    y dependencia de cuotas. El resultado ajusta la elasticidad usada en proyecciones.
+    """
+    causa: str                    # "precio" | "visibilidad" | "precio_y_visibilidad" | "no_es_precio" | "sin_datos"
+    confianza: str                # "alta" | "media" | "baja"
+    titulo: str                   # texto del banner, e.g. "El problema es el PRECIO"
+    señales: list[str]            # bullets de evidencia
+    elasticidad_ajustada: float   # elasticidad refinada para proyecciones
+    conv_ratio: float             # conv_actual / avg_conv
+
+
+@dataclass
 class ProductoPricingAnalysis:
     item_id: str
     titulo: str
@@ -140,6 +155,7 @@ class ProductoPricingAnalysis:
     escenarios: list[Escenario] = field(default_factory=list)
     tiene_win_win: bool = False
     mejor_escenario: Optional[str] = None
+    diagnostico: Optional[DiagnosticoPrecio] = None
     analisis_cuotas: Optional[AnalisisCuotas] = None
     analisis_envio: Optional[AnalisisUmbralEnvio] = None
 
@@ -436,6 +452,143 @@ def _analizar_umbral_envio(
     )
 
 
+# ── Diagnóstico de causa de bajo desempeño ───────────────────────────────────
+
+def _diagnosticar_precio(
+    conv_actual: float,
+    avg_conv: float,
+    visitas_30d: int,
+    pct_cuotas: float,
+) -> DiagnosticoPrecio:
+    """Diagnostica si el problema de ventas es precio, visibilidad/ranking, ambos o ninguno.
+
+    Señales:
+      1. Ratio de conversión vs. promedio de categoría (principal)
+      2. Volumen de visitas (¿el listing tiene exposición suficiente?)
+      3. Dependencia de cuotas (proxy de sensibilidad al precio)
+
+    Alta visitas + baja conversión → precio es la barrera (la gente te ve pero no compra).
+    Baja visitas → problema de ranking/visibilidad (aunque bajes precio, nadie te ve).
+    Ambas bajas → los dos problemas.
+    """
+    señales: list[str] = []
+    conv_ratio = (conv_actual / avg_conv) if (avg_conv > 0 and conv_actual >= 0) else 1.0
+
+    if visitas_30d < 50:
+        return DiagnosticoPrecio(
+            causa="sin_datos",
+            confianza="baja",
+            titulo="Datos insuficientes para diagnosticar",
+            señales=["Menos de 50 visitas/mes — muestra insuficiente para determinar la causa"],
+            elasticidad_ajustada=2.0,
+            conv_ratio=round(conv_ratio, 2),
+        )
+
+    score_precio = 0
+    score_visibilidad = 0
+
+    # ── Señal 1: conversión vs. categoría ────────────────────────────────────
+    if conv_ratio < 0.30:
+        score_precio += 3
+        señales.append(
+            f"Tu conversión ({conv_actual:.1f}%) es solo el {round(conv_ratio*100)}% "
+            f"del promedio de categoría ({avg_conv:.1f}%) — muy por debajo"
+        )
+    elif conv_ratio < 0.50:
+        score_precio += 2
+        señales.append(
+            f"Conversión ({conv_actual:.1f}%) por debajo del promedio de categoría ({avg_conv:.1f}%)"
+        )
+    elif conv_ratio < 0.80:
+        score_precio += 1
+        señales.append(
+            f"Conversión levemente bajo el promedio ({conv_actual:.1f}% vs {avg_conv:.1f}% de categoría)"
+        )
+    else:
+        señales.append(
+            f"Conversión en línea con la categoría ({conv_actual:.1f}% vs {avg_conv:.1f}% promedio)"
+        )
+
+    # ── Señal 2: volumen de visitas ───────────────────────────────────────────
+    if visitas_30d >= 400:
+        if conv_ratio < 0.50:
+            score_precio += 1
+            señales.append(
+                f"Buena exposición ({visitas_30d} vis/mes) pero baja conversión — "
+                f"los compradores te encuentran pero el precio los frena"
+            )
+        else:
+            señales.append(f"Buena exposición ({visitas_30d} vis/mes)")
+    elif visitas_30d >= 150:
+        señales.append(f"Exposición moderada ({visitas_30d} vis/mes)")
+    else:
+        score_visibilidad += 2
+        señales.append(
+            f"Poca exposición ({visitas_30d} vis/mes) — "
+            f"el ranking bajo hace que pocos compradores vean tu publicación"
+        )
+
+    # ── Señal 3: cuotas como proxy de accesibilidad ───────────────────────────
+    if pct_cuotas > 0.55:
+        score_precio += 1
+        señales.append(
+            f"El {round(pct_cuotas*100)}% de tus compradores usa cuotas — "
+            f"el precio es una barrera de accesibilidad para este producto"
+        )
+
+    # ── Elasticidad base según ratio de conversión ────────────────────────────
+    if conv_ratio < 0.30:
+        elas_base = 3.0
+    elif conv_ratio < 0.60:
+        elas_base = 2.5
+    elif conv_ratio < 0.90:
+        elas_base = 2.0
+    else:
+        elas_base = 1.5
+
+    # ── Veredicto ─────────────────────────────────────────────────────────────
+    if score_precio >= 3 and score_visibilidad <= 1:
+        causa = "precio"
+        confianza = "alta" if score_precio >= 4 else "media"
+        titulo = "El problema principal es el PRECIO"
+        # El precio es la barrera → elasticidad base es válida
+        elasticidad_ajustada = elas_base
+
+    elif score_visibilidad >= 2 and score_precio <= 1:
+        causa = "visibilidad"
+        confianza = "alta" if score_visibilidad >= 3 else "media"
+        titulo = "El problema es el RANKING / VISIBILIDAD, no el precio"
+        # Bajar precio no genera más visitas → la elasticidad real es mucho menor
+        elasticidad_ajustada = round(elas_base * 0.45, 1)
+
+    elif score_precio >= 2 and score_visibilidad >= 2:
+        causa = "precio_y_visibilidad"
+        confianza = "media"
+        titulo = "Problema mixto: PRECIO y RANKING/VISIBILIDAD"
+        elasticidad_ajustada = round(elas_base * 0.65, 1)
+
+    elif conv_ratio >= 0.80:
+        causa = "no_es_precio"
+        confianza = "media" if conv_ratio >= 0.95 else "baja"
+        titulo = "El precio no parece ser el problema"
+        elasticidad_ajustada = round(elas_base * 0.70, 1)
+
+    else:
+        causa = "precio"
+        confianza = "baja"
+        titulo = "Posible problema de precio (señales mixtas)"
+        elasticidad_ajustada = elas_base
+
+    return DiagnosticoPrecio(
+        causa=causa,
+        confianza=confianza,
+        titulo=titulo,
+        señales=señales,
+        elasticidad_ajustada=round(max(0.5, min(elasticidad_ajustada, 4.0)), 1),
+        conv_ratio=round(conv_ratio, 2),
+    )
+
+
 # ── Análisis principal de escenarios de precio ───────────────────────────────
 
 def analizar_producto(
@@ -474,7 +627,10 @@ def analizar_producto(
     ganancia_mensual_act = vtas * ganancia_unit_actual
     margen_actual_pct    = (ganancia_unit_actual / precio * 100.0) if precio > 0 else 0.0
 
-    elasticidad = _estimar_elasticidad(conv, avg_conv)
+    # Diagnóstico de causa + elasticidad ajustada según señales de comportamiento
+    pct_cuotas_diag = max(0.0, 1.0 - float(item.get("pct_contado") or 0))
+    diagnostico = _diagnosticar_precio(conv, avg_conv, vis, pct_cuotas_diag)
+    elasticidad = diagnostico.elasticidad_ajustada
 
     # Cap de conversión para evitar proyecciones irreales
     conv_max = min(conv * 3.0, avg_conv * 2.5) if conv > 0 else avg_conv * 2.0
@@ -605,6 +761,7 @@ def analizar_producto(
         escenarios=escenarios,
         tiene_win_win=tiene_win_win,
         mejor_escenario=mejor,
+        diagnostico=diagnostico,
         analisis_cuotas=analisis_cuotas,
         analisis_envio=analisis_envio,
     )
