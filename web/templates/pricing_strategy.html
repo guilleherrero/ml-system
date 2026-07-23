@@ -347,6 +347,11 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
             <br><small style="color:var(--color-neutral-400); font-size:.72rem">
               (−{{ e.margen_cedido_pct_margen }}% de tu gan./u)
             </small>
+            {% if e.unidades_extra_bep > 0 %}
+            <br><small style="color:#ca8a04; font-size:.72rem">
+              Para recuperar: +{{ e.unidades_extra_bep }} u/mes
+            </small>
+            {% endif %}
           {% endif %}
         </td>
 
@@ -362,6 +367,9 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
             </span>
             <br><small style="color:var(--color-neutral-400); font-size:.72rem">
               {{ r.margen_pct_actual }}% → {{ e.margen_nuevo_pct }}%
+              <strong style="color:{% if e.delta_margen_pp < 3 %}#16a34a{% elif e.delta_margen_pp < 6 %}#ca8a04{% else %}#ea580c{% endif %}">
+                (−{{ e.delta_margen_pp }} pp)
+              </strong>
             </small>
           {% endif %}
         </td>

@@ -58,6 +58,8 @@ class Escenario:
     ganancia_unit_nueva: float = 0.0      # ganancia por unidad al precio nuevo (REAL)
     margen_cedido_unit_ars: float = 0.0   # cuánto cedés por cada unidad vendida (REAL)
     margen_cedido_pct_margen: float = 0.0 # % del margen/u actual que cedés (REAL)
+    delta_margen_pp: float = 0.0          # puntos porcentuales de margen perdidos (REAL)
+    unidades_extra_bep: float = 0.0       # unidades adicionales para no perder ganancia total (REAL)
 
 
 @dataclass
@@ -532,6 +534,17 @@ def analizar_producto(
             (margen_cedido_unit / ganancia_unit_actual * 100.0)
             if ganancia_unit_actual > 0 else 0.0
         )
+        delta_margen_pp = round(margen_actual_pct - margen_nvo_pct, 1)
+
+        # Unidades adicionales para mantener la misma ganancia mensual al precio actual
+        # Es el breakeven real sin estimación de elasticidad:
+        #   necesitás vender (ventas_actual × ganancia_unit_actual / ganancia_unit_nueva) unidades
+        if gan_unit_nvo > 0 and vtas > 0:
+            unidades_extra_bep = round(
+                max(0.0, (vtas * ganancia_unit_actual / gan_unit_nvo) - vtas), 1
+            )
+        else:
+            unidades_extra_bep = 0.0
 
         escenarios.append(Escenario(
             nombre=nombre,
@@ -550,6 +563,8 @@ def analizar_producto(
             ganancia_unit_nueva=round(gan_unit_nvo),
             margen_cedido_unit_ars=round(margen_cedido_unit),
             margen_cedido_pct_margen=round(margen_cedido_pct_mg, 1),
+            delta_margen_pp=delta_margen_pp,
+            unidades_extra_bep=unidades_extra_bep,
         ))
 
     tiene_win_win = any(e.es_win_win for e in escenarios)
