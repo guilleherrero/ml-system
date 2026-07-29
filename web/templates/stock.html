@@ -336,6 +336,8 @@
                   <button class="diag-chip diag-titulo" onclick="toggleAcciones('{{ item.id }}')">Conv. baja ▾</button>
                 {% elif c is not none and c < 3 %}
                   <button class="diag-chip" style="background:var(--color-info-100);color:#1e40af" onclick="toggleAcciones('{{ item.id }}')">Mejorable ▾</button>
+                {% elif c is none %}
+                  <button class="diag-chip" style="background:var(--color-neutral-100);color:var(--color-neutral-500)" onclick="toggleAcciones('{{ item.id }}')">Sin datos ▾</button>
                 {% else %}
                   <button class="diag-chip diag-ok" onclick="toggleAcciones('{{ item.id }}')">Óptimo ▾</button>
                 {% endif %}
@@ -613,10 +615,10 @@ async function loadItemHealth(alias, itemId, container) {
     else                pubItems.push({col:'#059669', txt:`✓ Descripción: ${descLen} caracteres`});
     if (emptyAttrs > 0) pubItems.push({col:'var(--color-critical-500)', txt:`📋 ${emptyAttrs} atributo${emptyAttrs!==1?'s':''} vacío${emptyAttrs!==1?'s':''} en ficha técnica`});
     else                pubItems.push({col:'#059669', txt:'✓ Ficha técnica completa'});
-    if (listType === 'gold_special' || listType === 'gold_premium') {
+    if (listType === 'gold_special' || listType === 'gold_premium' || listType === 'gold_pro') {
       pubItems.push({col:'#059669', txt:`✓ Publicación Premium (más exposición)`});
     } else if (listType) {
-      pubItems.push({col:'var(--color-neutral-500)', txt:`Tipo: ${listType.replace('gold_','').replace('_',' ')}`});
+      pubItems.push({col:'var(--color-warning-500)', txt:`Publicación CLÁSICA (${listType.replace('gold_','').replace('_',' ')}) — menos visibilidad que Premium`});
     }
     for (const t of tags) {
       if (t.status === 'problem') pubItems.push({col:'var(--color-critical-500)', txt:t.label});
@@ -868,7 +870,7 @@ function buildAcciones(d) {
   const repReclamos  = parseFloat(d.repReclamos) || 0;
   const repDemoras   = parseFloat(d.repDemoras) || 0;
   const titulo       = d.titulo || '';
-  const isPremium    = listingType === 'gold_special' || listingType === 'gold_pro';
+  const isPremium    = listingType === 'gold_special' || listingType === 'gold_premium' || listingType === 'gold_pro';
 
   const trendIcon = { subiendo: '📈', bajando: '📉', estable: '➡️' };
   const cards = [];
@@ -968,7 +970,7 @@ function buildAcciones(d) {
       titulo: `Tráfico muy bajo — ${visitas} visitas en 30 días (${(visitas/30).toFixed(1)}/día)`,
       acciones: [
         titulo.length < 50 ? `Título corto (${titulo.length}/60 chars) — estás desperdiciando espacio para keywords` : `Título: ${titulo.length}/60 chars`,
-        !isPremium ? 'Publicación CLÁSICA — Premium aumenta exposición 40% y mejora posición orgánica' : null,
+        !isPremium ? 'Publicación CLÁSICA — Premium mejora posición orgánica y da más exposición en el catálogo' : null,
         !freeShip && precio < 150000 ? `Sin envío gratis ($${precio.toLocaleString('es-AR')}) — activarlo mejora el ranking por defecto de ML` : null,
         'Usar "Optimizar con IA" → "Investigar keywords" para ver búsquedas reales del motor ML',
       ].filter(Boolean)
@@ -978,8 +980,8 @@ function buildAcciones(d) {
       tipo: 'importante', icono: '📈',
       titulo: `Tráfico moderado — ${visitas} visitas/mes (${(visitas/30).toFixed(1)}/día)`,
       acciones: [
-        posicion !== null && posicion !== 999 ? `Posición #${posicion} — subir al top 5 duplicaría el tráfico estimado` : null,
-        !isPremium ? 'Evaluar Premium — suele subir 5-10 posiciones y aumentar visitas significativamente' : null,
+        posicion !== null && posicion !== 999 ? `Posición actual: #${posicion} — los primeros 5 resultados concentran la mayoría del tráfico` : null,
+        !isPremium ? 'Evaluar Premium — mejora posición orgánica y exposición en el catálogo de ML' : null,
         'Investigar keywords del autosuggest ML para descubrir variantes de mayor volumen',
       ].filter(Boolean)
     });
@@ -1003,7 +1005,7 @@ function buildAcciones(d) {
       titulo: `Conversión crítica — ${conv.toFixed(1)}% (${ventas} ventas de ${visitas} visitas)`,
       acciones: [
         `Hay tráfico (${visitas} visitas/mes) pero casi nadie compra — el problema está en la publicación, no en las keywords`,
-        !freeShip && precio < 150000 ? `Sin envío gratis a $${precio.toLocaleString('es-AR')} — activarlo puede subir la conversión 20-30%` : null,
+        !freeShip && precio < 150000 ? `Sin envío gratis a $${precio.toLocaleString('es-AR')} — los compradores que filtran por envío gratis no te ven` : null,
         'Comparar precio con los 5 primeros competidores en ML ahora mismo',
         'Foto principal: en miniatura debe diferenciarse y verse más atractiva que la competencia',
         'Usar "Optimizar con IA" con foco en descripción y argumentos de conversión',
@@ -1014,7 +1016,7 @@ function buildAcciones(d) {
       tipo: 'importante', icono: '🔧',
       titulo: `Conversión mejorable — ${conv.toFixed(1)}% (${ventas} ventas de ${visitas} visitas)`,
       acciones: [
-        `Con ${visitas} visitas/mes y ${conv.toFixed(1)}% conversión → ${ventas} ventas. Subir a 4% daría ~${Math.round(visitas * 0.04)} ventas/mes`,
+        `Con ${visitas} visitas/mes y ${conv.toFixed(1)}% conversión → ${ventas} ventas reales. Para duplicarlos necesitás subir la conversión o las visitas`,
         !freeShip ? 'Envío gratis puede subir conversión directamente — calculá si el precio lo absorbe' : null,
         'Agregar más fotos mostrando el producto en uso real (mínimo 6 fotos)',
         'Responder todas las preguntas públicas de la publicación',
@@ -1075,9 +1077,8 @@ function buildAcciones(d) {
       titulo: `Stock crítico — aproximadamente ${Math.round(diasStock)} días restantes`,
       acciones: [
         `Con ${velocidad.toFixed(2)} u/día de ritmo de venta, el stock dura ~${Math.round(diasStock)} días`,
-        'Iniciar reposición hoy considerando lead time de importación (30-45 días desde China)',
-        'Si es proveedor local, hacer pedido de emergencia esta semana',
-        'Ver módulo de Reposición para calcular cantidad exacta',
+        'Iniciar reposición ahora — cada día sin stock pierde posición en ML',
+        'Ver módulo de Reposición para calcular cantidad y timing exacto según tu proveedor',
       ]
     });
   } else if (alertaStock === 'ADVERTENCIA' && diasStock > 0) {
@@ -1086,8 +1087,8 @@ function buildAcciones(d) {
       titulo: `Stock para ~${Math.round(diasStock)} días — planificar reposición`,
       acciones: [
         `Ritmo actual: ${velocidad.toFixed(2)} u/día → stock se agota en ~${Math.round(diasStock)} días`,
-        'Buen momento para planificar la próxima importación con tiempo',
-        'Ver módulo de Reposición para cantidad óptima',
+        'Buen momento para planificar la reposición antes de quedar sin stock',
+        'Ver módulo de Reposición para cantidad óptima según tu lead time y proveedor',
       ]
     });
   }
@@ -1116,12 +1117,12 @@ function buildAcciones(d) {
   if (!isPremium && visitas > 0 && (conv === null || conv >= 2)) {
     cards.push({
       tipo: 'oportunidad', icono: '⭐',
-      titulo: 'Publicación CLÁSICA — Premium puede aumentar visitas 40%',
+      titulo: 'Publicación CLÁSICA — Premium da más visibilidad en el catálogo',
       acciones: [
-        `Con ${visitas} visitas/mes en CLÁSICA, Premium podría llevar a ~${Math.round(visitas * 1.4)} visitas/mes`,
-        conv !== null ? `Conversión actual ${conv.toFixed(1)}% × más visitas = más ventas directamente` : null,
-        'Evaluar si el costo adicional de Premium se recupera con las ventas extra',
-        'Especialmente recomendado si posición es > 5 — Premium sube posición directamente',
+        `Esta publicación está en modo CLÁSICA (${listingType}) — los anuncios Premium aparecen antes en el ordenamiento de ML`,
+        conv !== null && conv >= 2 ? `Conversión de ${conv.toFixed(1)}% es buena — con más visitas mejorarían las ventas directamente` : null,
+        'Evaluá si la comisión adicional de Premium se recupera con el volumen extra de tu categoría',
+        posicion !== null && posicion !== 999 && posicion > 10 ? `Posición actual #${posicion} — Premium suele mejorar el ranking orgánico` : null,
       ].filter(Boolean)
     });
   }
