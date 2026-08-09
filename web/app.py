@@ -2756,16 +2756,38 @@ def api_aplicar_precio(alias):
         return jsonify({'ok': False, 'error': str(e)}), 401
 
     heads_json = {**heads, 'Content-Type': 'application/json'}
+
+    # Verificar si el ítem tiene variantes
+    g = req_lib.get(
+        f'https://api.mercadolibre.com/items/{item_id}',
+        headers=heads,
+        params={'attributes': 'id,price,variations'},
+        timeout=10,
+    )
+    if not g.ok:
+        return jsonify({'ok': False, 'error': f'No se pudo obtener el ítem: {g.text[:200]}'}), g.status_code
+
+    item_data  = g.json()
+    variations = item_data.get('variations') or []
+
+    if variations:
+        # Actualizar todas las variantes al mismo precio
+        body = {'variations': [{'id': v['id'], 'price': precio} for v in variations]}
+    else:
+        body = {'price': precio}
+
     r = req_lib.put(
         f'https://api.mercadolibre.com/items/{item_id}',
         headers=heads_json,
-        json={'price': precio},
+        json=body,
         timeout=10,
     )
     if r.ok:
-        nuevo = r.json().get('price', precio)
-        _audit('CAMBIAR_PRECIO', alias=alias, item_id=item_id, precio_nuevo=nuevo)
-        return jsonify({'ok': True, 'precio_nuevo': nuevo})
+        nuevo = r.json().get('price') or precio
+        n_vars = len(variations)
+        _audit('CAMBIAR_PRECIO', alias=alias, item_id=item_id, precio_nuevo=nuevo,
+               variantes=n_vars)
+        return jsonify({'ok': True, 'precio_nuevo': nuevo, 'variantes': n_vars})
     return jsonify({'ok': False, 'error': r.text[:200]}), r.status_code
 
 

@@ -889,7 +889,8 @@ async function aplicarPrecio(btn) {
     const data = await resp.json();
 
     if (data.ok) {
-      btn.textContent = `✅ Aplicado $${data.precio_nuevo.toLocaleString('es-AR')}`;
+      const varLabel = data.variantes > 0 ? ` (${data.variantes} var.)` : '';
+      btn.textContent = `✅ Aplicado $${data.precio_nuevo.toLocaleString('es-AR')}${varLabel}`;
       btn.classList.add('ok');
       // Actualizar todos los otros botones del mismo item para reflejar nuevo precio actual
       document.querySelectorAll(`.btn-aplicar-precio[data-item-id="${itemId}"]`).forEach(b => {
