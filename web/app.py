@@ -9057,14 +9057,13 @@ def pricing_strategy(alias):
     stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
     resultados  = analizar_catalogo(stock_data.get('items', []), costos_data)
+    urgentes    = sum(1 for r in resultados if r.recomendacion and r.recomendacion.urgencia == 'urgente')
     win_win_count = sum(1 for r in resultados if r.tiene_win_win)
-    viables_count = sum(
-        1 for r in resultados
-        if any(e.es_viable for e in r.escenarios)
-    )
+    viables_count = sum(1 for r in resultados if any(e.es_viable for e in r.escenarios))
     return render_template('pricing_strategy.html',
         alias=alias,
         resultados=resultados,
+        urgentes=urgentes,
         win_win_count=win_win_count,
         viables_count=viables_count,
         total=len(resultados),
@@ -10054,7 +10053,11 @@ def duplicados(alias):
     stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_items = stock_data.get('items', [])
 
-    clusters = detectar_duplicados(stock_items, alias, DATA_DIR)
+    try:
+        _, _, _dup_heads = _ml_auth(alias)
+    except Exception:
+        _dup_heads = None
+    clusters = detectar_duplicados(stock_items, alias, DATA_DIR, auth_headers=_dup_heads)
     # Las dataclasses se pasan directo al template — Jinja accede por atributo.
     # NO convertir a dict porque c.items chocaría con el método dict.items() de Jinja.
 
@@ -10677,7 +10680,7 @@ def api_alertas():
         # ── Detector de duplicados / canibalización ───────────────────
         try:
             from modules.detector_duplicados import detectar_duplicados
-            _dup_clusters = detectar_duplicados(stock_items, alias, DATA_DIR)
+            _dup_clusters = detectar_duplicados(stock_items, alias, DATA_DIR, auth_headers=_heads)
             for _c in _dup_clusters:
                 _nivel = U if _c.severidad == 'puro' else I
                 _icono = 'bi-files' if _c.severidad == 'puro' else 'bi-shuffle'

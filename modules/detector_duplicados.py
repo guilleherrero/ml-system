@@ -526,7 +526,8 @@ def _attrs_cache_vigente(entry: dict) -> bool:
         return False
 
 
-def fetch_items_attributes(item_ids: list, alias: str, data_dir: str) -> dict:
+def fetch_items_attributes(item_ids: list, alias: str, data_dir: str,
+                           auth_headers: dict = None) -> dict:
     """Trae metadata por item via API pública de ML (/items multiget).
 
     Cachea localmente con TTL 24h. Solo fetchea los que faltan o están vencidos.
@@ -565,6 +566,8 @@ def fetch_items_attributes(item_ids: list, alias: str, data_dir: str) -> dict:
                        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'),
         'Accept': 'application/json',
     }
+    if auth_headers:
+        headers.update(auth_headers)
 
     now_iso = datetime.now().astimezone().isoformat(timespec='seconds')
     for i in range(0, len(a_fetchear), 20):
@@ -681,16 +684,21 @@ def _son_variantes_por_attributes(items_attrs: list) -> tuple:
 
 
 def _extraer_token_variante(titulo: str, tokens_set: frozenset) -> str:
-    """Devuelve el primer token de variante (color o talle) encontrado en el
+    """Devuelve el ÚLTIMO token de variante (color o talle) encontrado en el
     título normalizado, o cadena vacía si no hay match.
 
     Fallback usado cuando los attributes oficiales de ML no devuelven el dato.
+    Usa el ÚLTIMO match (no el primero) porque en los títulos de ML las variantes
+    van al final, mientras que palabras ambiguas como "café" (= coffee, parte del
+    nombre del producto) aparecen antes y falsearían la detección de color.
+    Ejemplo: "Vaso Térmico Jarro Café Rosa" → devuelve 'rosa', no 'cafe'.
     """
     norm = _normalizar_titulo(titulo)
+    last_match = ''
     for tok in norm.split():
         if tok in tokens_set:
-            return tok
-    return ''
+            last_match = tok
+    return last_match
 
 
 def _clave_duplicacion(item: dict, metadata) -> tuple:
@@ -1087,7 +1095,8 @@ def _titulo_corto(cluster_items: list[dict]) -> str:
 
 def detectar_duplicados(stock_items: list[dict], alias: str,
                         data_dir: str,
-                        incluir_sanos: bool = False) -> list[Cluster]:
+                        incluir_sanos: bool = False,
+                        auth_headers: dict = None) -> list[Cluster]:
     """Detecta clusters de publicaciones duplicadas/canibalizándose.
 
     Args:
@@ -1133,7 +1142,7 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                 if iid:
                     ids_en_clusters.append(iid)
         if ids_en_clusters:
-            attrs_por_item = fetch_items_attributes(ids_en_clusters, alias, data_dir)
+            attrs_por_item = fetch_items_attributes(ids_en_clusters, alias, data_dir, auth_headers)
     except Exception:
         attrs_por_item = {}
 
@@ -1198,13 +1207,36 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
         ejes_diff = _detectar_ejes_diferentes(sub_grupos, attrs_por_item) if hubo_split else []
         for grupo in dup_groups:
             severidad = 'mixto' if hubo_split else 'puro'
+
+            # Detectar si falta datos de cuotas/logística de la API de ML.
+            # Cuando falta, no podemos confirmar que sean duplicados reales:
+            # dos listings pueden compartir título y precio pero tener diferentes
+            # condiciones de cuotas, en cuyo caso ML NO los considera duplicados.
+            sin_datos_cuotas = all(
+                not (isinstance(attrs_por_item.get(it.get('id', '')), dict)
+                     and attrs_por_item[it.get('id', '')].get('installments'))
+                for it in grupo
+            )
+
             if severidad == 'puro':
-                nota_leg = 'Coinciden en los 7 ejes (precio, listing, envío, color, talle, cuotas, logistic). Duplicado prohibido por ML.'
+                if sin_datos_cuotas:
+                    nota_leg = (
+                        '⚠️ Sin datos de cuotas ML — '
+                        'estas publicaciones tienen título y precio idénticos, '
+                        'pero podrían tener distintas condiciones de pago (cuotas), '
+                        'en cuyo caso NO serían duplicados para ML. '
+                        'Verificá manualmente las condiciones de cada publicación antes de pausar.'
+                    )
+                else:
+                    nota_leg = 'Coinciden en los 7 ejes (precio, listing, envío, color, talle, cuotas, logistic). Duplicado prohibido por ML.'
             else:
                 nota_leg = 'Duplicado dentro de un cluster con variantes legítimas'
                 if ejes_diff:
                     nota_leg += f' (las otras publicaciones del cluster difieren en: {", ".join(ejes_diff)})'
-                nota_leg += '. Pausá las extras de este sub-cluster.'
+                if sin_datos_cuotas:
+                    nota_leg += '. ⚠️ Sin datos de cuotas ML — verificá condiciones de pago antes de pausar.'
+                else:
+                    nota_leg += '. Pausá las extras de este sub-cluster.'
 
             mapa_leg = {it.get('id', ''): False for it in grupo}
             ganadora_id = _identificar_ganadora(grupo)
@@ -1229,6 +1261,17 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
 
             cluster_id = _generar_cluster_id(it.id for it in items_cluster)
             recomendaciones, resumen_rec = _generar_recomendaciones(grupo, ganadora_id)
+
+            # Cuando faltan datos de cuotas, deshabilitar pre-selección de pausa
+            # para evitar que el usuario pause publicaciones que podrían ser legítimas.
+            if sin_datos_cuotas:
+                for mla, rec in recomendaciones.items():
+                    if rec.accion.startswith('pausar'):
+                        recomendaciones[mla] = Recomendacion(
+                            accion='revisar',
+                            motivo=rec.motivo + ' — verificá condiciones de cuotas antes de pausar.',
+                            pre_seleccionar=False,
+                        )
 
             clusters.append(Cluster(
                 cluster_id=cluster_id,

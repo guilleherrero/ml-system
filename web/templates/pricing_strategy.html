@@ -265,6 +265,63 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   border-top: 1px solid var(--color-border);
 }
 
+/* ── Recomendación section ── */
+.rec-section {
+  border-top: 1px solid var(--color-border);
+  padding: .85rem 1rem;
+}
+.rec-header {
+  display: flex; align-items: center; gap: .6rem;
+  margin-bottom: .6rem; flex-wrap: wrap;
+}
+.rec-header h6 {
+  font-size: .78rem; font-weight: 700; margin: 0;
+  text-transform: uppercase; letter-spacing: .03em;
+  color: var(--color-neutral-500);
+}
+.badge-urgente { background:#dc2626; color:#fff; font-size:.68rem; font-weight:700; padding:.18rem .5rem; border-radius:10px; }
+.badge-revisar { background:#ca8a04; color:#fff; font-size:.68rem; font-weight:700; padding:.18rem .5rem; border-radius:10px; }
+.badge-ok      { background:#16a34a; color:#fff; font-size:.68rem; font-weight:700; padding:.18rem .5rem; border-radius:10px; }
+.badge-sin-datos { background:var(--color-neutral-400); color:#fff; font-size:.68rem; font-weight:700; padding:.18rem .5rem; border-radius:10px; }
+
+.rec-accion-box {
+  display: flex; gap: .8rem; align-items: flex-start; flex-wrap: wrap;
+  padding: .65rem .85rem;
+  border-radius: 8px;
+  border-left: 4px solid transparent;
+  margin-bottom: .5rem;
+  font-size: .855rem; line-height: 1.6;
+}
+.rec-accion-box.bajar   { background: rgba(37,99,235,.07);  border-color: #2563eb; }
+.rec-accion-box.cuotas  { background: rgba(22,163,74,.07);  border-color: #16a34a; }
+.rec-accion-box.mantener{ background: rgba(22,163,74,.06);  border-color: #16a34a; }
+.rec-accion-box.sin-dat { background: rgba(107,114,128,.07);border-color: #9ca3af; }
+
+.rec-precio-chip {
+  white-space: nowrap; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: 6px;
+  padding: .4rem .7rem; font-size: .82rem; flex-shrink: 0;
+}
+.rec-precio-chip .val { font-size: 1.05rem; font-weight: 800; display:block; }
+.rec-precio-chip .lbl { font-size: .68rem; color:var(--color-neutral-400); }
+
+.rec-alt-cuotas {
+  font-size: .82rem; padding: .5rem .75rem;
+  border-radius: 6px;
+  background: rgba(22,163,74,.06);
+  border: 1px dashed #16a34a;
+  margin-top: .4rem; line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rec-accion-box.bajar   { background: rgba(37,99,235,.13); }
+  .rec-accion-box.cuotas  { background: rgba(22,163,74,.12); }
+  .rec-accion-box.mantener{ background: rgba(22,163,74,.10); }
+}
+:root[data-theme="dark"] .rec-accion-box.bajar   { background: rgba(37,99,235,.13); }
+:root[data-theme="dark"] .rec-accion-box.cuotas  { background: rgba(22,163,74,.12); }
+:root[data-theme="dark"] .rec-accion-box.mantener{ background: rgba(22,163,74,.10); }
+
 @media (prefers-color-scheme: dark) {
   .escenarios-table th { background: var(--color-neutral-800, #1f2937); }
   .escenarios-table tr:hover { background: var(--color-neutral-800, #1f2937); }
@@ -301,6 +358,12 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
     <div class="val">{{ total }}</div>
     <div class="lbl">Productos analizados</div>
   </div>
+  {% if urgentes %}
+  <div class="ps-stat" style="border-color:#dc2626">
+    <div class="val" style="color:#dc2626">{{ urgentes }}</div>
+    <div class="lbl">Urgentes — bajar precio</div>
+  </div>
+  {% endif %}
   <div class="ps-stat win">
     <div class="val">{{ win_win_count }}</div>
     <div class="lbl">Win-Win disponibles</div>
@@ -381,6 +444,53 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
       </div>
       {% endif %}
     </div>
+  </div>
+  {% endif %}
+
+  {# ── Recomendación principal ── #}
+  {% if r.recomendacion %}
+  {% set rec = r.recomendacion %}
+  <div class="rec-section">
+    <div class="rec-header">
+      <h6>🎯 Recomendación</h6>
+      {% if rec.urgencia == 'urgente' %}<span class="badge-urgente">URGENTE</span>
+      {% elif rec.urgencia == 'revisar' %}<span class="badge-revisar">Revisar</span>
+      {% elif rec.urgencia == 'ok' %}<span class="badge-ok">OK</span>
+      {% else %}<span class="badge-sin-datos">Sin datos</span>{% endif %}
+    </div>
+
+    {% if rec.accion in ('bajar_precio', 'cuotas_y_precio') %}
+    <div class="rec-accion-box {% if rec.accion == 'cuotas_y_precio' %}cuotas{% else %}bajar{% endif %}">
+      <div class="rec-precio-chip">
+        <span class="lbl">Precio sugerido</span>
+        <span class="val">${{ "{:,.0f}".format(rec.precio_objetivo) }}</span>
+        <span class="lbl" style="color:var(--color-neutral-500)">−{{ rec.descuento_pct|int }}% · {{ rec.margen_pct }}% margen</span>
+        <span class="lbl">Cedés ${{ "{:,.0f}".format(rec.cedido_unit) }}/u ({{ rec.cedido_pct }}%)</span>
+      </div>
+      <div style="flex:1; min-width:200px">{{ rec.mensaje }}</div>
+    </div>
+    {% if rec.tiene_alt_cuotas %}
+    <div class="rec-alt-cuotas">
+      <strong>💳 Alternativa sin ceder margen:</strong> {{ rec.mensaje_cuotas }}
+      <div style="margin-top:.35rem; font-weight:700; color:#15803d">
+        → Precio alternativo con cuotas {{ rec.cuotas_de }}→{{ rec.cuotas_a }}: ${{ "{:,.0f}".format(rec.precio_alt_cuotas) }}
+        (mismo margen/u que hoy · solo {{ rec.pct_afectados_cuotas }}% de compradores afectados)
+      </div>
+    </div>
+    {% endif %}
+
+    {% elif rec.accion == 'mantener' %}
+    <div class="rec-accion-box mantener">
+      <span style="font-size:1.2rem;flex-shrink:0">✅</span>
+      <div>{{ rec.mensaje }}</div>
+    </div>
+
+    {% else %}
+    <div class="rec-accion-box sin-dat">
+      <span style="font-size:1.2rem;flex-shrink:0">❓</span>
+      <div>{{ rec.mensaje }}</div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 

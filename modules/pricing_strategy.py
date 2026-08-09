@@ -1,14 +1,18 @@
 """
 Simulador de políticas de precio.
 
-Para cada publicación con costo cargado analiza tres dimensiones:
-  1. Escenarios de baja de precio (-5%, -10%, -20%)
-  2. Optimización de cuotas (¿cuántos compradores realmente las usan?)
-  3. Estrategia de umbral de envío gratis ($33k → ¿conviene cruzar hacia abajo?)
+Para cada publicación con costo cargado analiza cuatro dimensiones:
+  1. Buy Box (catalog_product_id): precio exacto para ganar/mantener el Buy Box
+  2. Escenarios de baja de precio (-5%, -10%, -20%)
+  3. Optimización de cuotas (¿cuántos compradores realmente las usan?)
+  4. Estrategia de umbral de envío gratis ($33k → ¿conviene cruzar hacia abajo?)
 
 Todos los cálculos parten del fee_rate real de órdenes históricas, que incluye
 comisión ML + IVA + costo de envío gratis. No se usan tasas estimadas cuando
 hay datos reales disponibles.
+
+Buy Box usa catalog_product_id (no keywords) — identifica el mismo producto
+exacto agrupado por ML, sin riesgo de comparar productos distintos.
 """
 
 from __future__ import annotations
@@ -38,6 +42,27 @@ IMPACTO_CONV_SIN_ENVIO = 0.20    # caída estimada de conversión al perder badg
 
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
+
+@dataclass
+class Recomendacion:
+    """Síntesis de escenarios + cuotas en una acción concreta por producto."""
+    accion: str             # "bajar_precio" | "cuotas_y_precio" | "mantener" | "sin_datos"
+    urgencia: str           # "urgente" | "revisar" | "ok" | "sin_datos"
+    precio_objetivo: float  # precio sugerido (0 si mantener)
+    descuento_pct: float    # % de baja sobre precio actual
+    margen_pct: float       # margen % al precio objetivo
+    ganancia_unit: float    # ganancia/u al precio objetivo
+    cedido_unit: float      # ARS cedidos/u vs precio actual
+    cedido_pct: float       # % del margen/u actual que cedés
+    mensaje: str
+    # Alternativa con reducción de cuotas (opcional)
+    tiene_alt_cuotas: bool = False
+    precio_alt_cuotas: float = 0.0  # precio al que podés ir reduciendo cuotas (mismo margen/u)
+    cuotas_de: int = 0
+    cuotas_a: int = 0
+    pct_afectados_cuotas: float = 0.0
+    mensaje_cuotas: str = ""
+
 
 @dataclass
 class Escenario:
@@ -158,6 +183,7 @@ class ProductoPricingAnalysis:
     diagnostico: Optional[DiagnosticoPrecio] = None
     analisis_cuotas: Optional[AnalisisCuotas] = None
     analisis_envio: Optional[AnalisisUmbralEnvio] = None
+    recomendacion: Optional[Recomendacion] = None
 
 
 # ── Modelo de elasticidad precio-demanda ──────────────────────────────────────
@@ -589,6 +615,140 @@ def _diagnosticar_precio(
     )
 
 
+# ── Recomendación sintetizada ─────────────────────────────────────────────────
+
+def _calcular_recomendacion(
+    diagnostico: Optional[DiagnosticoPrecio],
+    escenarios: list,
+    analisis_cuotas: Optional[AnalisisCuotas],
+    precio_actual: float,
+    gan_unit_actual: float,
+    margen_pct_actual: float,
+    costo: float,
+    fee_rate: float,
+    precio_piso: float,
+) -> Recomendacion:
+    """Sintetiza escenarios y cuotas en una acción concreta.
+
+    Lógica:
+    - Sin diagnóstico o sin datos → sin_datos
+    - Problema no es precio (no_es_precio / visibilidad) → mantener, urgencia ok/revisar
+    - Problema es precio → elegir el escenario más conservador que sea win-win o viable
+    - Si reducir cuotas genera un ahorro de fee, calcular el precio alternativo que
+      mantiene el mismo margen/u con la nueva tasa: precio_alt = (gan_unit + costo) / (1 - fee_nueva)
+    """
+    if not diagnostico or diagnostico.causa == 'sin_datos':
+        return Recomendacion(
+            accion='sin_datos', urgencia='sin_datos',
+            precio_objetivo=0, descuento_pct=0,
+            margen_pct=margen_pct_actual, ganancia_unit=round(gan_unit_actual),
+            cedido_unit=0, cedido_pct=0,
+            mensaje='Datos insuficientes (menos de 50 visitas/mes). Esperá a tener más tráfico para hacer un diagnóstico confiable.',
+        )
+
+    if diagnostico.causa == 'no_es_precio':
+        return Recomendacion(
+            accion='mantener', urgencia='ok',
+            precio_objetivo=precio_actual, descuento_pct=0,
+            margen_pct=margen_pct_actual, ganancia_unit=round(gan_unit_actual),
+            cedido_unit=0, cedido_pct=0,
+            mensaje='Tu conversión está en línea con el promedio de la categoría — el precio no es la barrera. '
+                    'Enfocate en SEO, imágenes y atributos completos para ganar más posiciones.',
+        )
+
+    if diagnostico.causa == 'visibilidad':
+        return Recomendacion(
+            accion='mantener', urgencia='revisar',
+            precio_objetivo=precio_actual, descuento_pct=0,
+            margen_pct=margen_pct_actual, ganancia_unit=round(gan_unit_actual),
+            cedido_unit=0, cedido_pct=0,
+            mensaje='El problema es de ranking/visibilidad, no de precio. Bajar el precio no generará '
+                    'más ventas porque pocos compradores ven tu publicación. Mejorá el SEO y la ficha técnica primero.',
+        )
+
+    # Causa = precio o precio_y_visibilidad → evaluar escenarios de baja
+    urgencia = 'urgente' if (diagnostico.causa == 'precio' and diagnostico.confianza in ('alta', 'media')) else 'revisar'
+
+    # Elegir el escenario más conservador que sea win-win; si no hay, el más conservador viable
+    viables_ok = [e for e in escenarios if (e.es_win_win or e.es_viable) and not e.precio_bajo_piso]
+    if not viables_ok:
+        return Recomendacion(
+            accion='sin_datos', urgencia='revisar',
+            precio_objetivo=precio_actual, descuento_pct=0,
+            margen_pct=margen_pct_actual, ganancia_unit=round(gan_unit_actual),
+            cedido_unit=0, cedido_pct=0,
+            mensaje='El precio es probable causa de bajo rendimiento, pero todos los escenarios de baja '
+                    'impactan el margen más del umbral aceptable (-5%). '
+                    'Evaluá si podés reducir costos antes de bajar precios.',
+        )
+
+    esc = viables_ok[0]  # el más conservador (menor descuento)
+    cedido_unit = gan_unit_actual - esc.ganancia_unit_nueva
+    cedido_pct  = (cedido_unit / gan_unit_actual * 100.0) if gan_unit_actual > 0 else 0.0
+    accion = 'bajar_precio'
+
+    if esc.es_win_win:
+        mensaje = (
+            f"Bajá el precio a ${esc.precio_nuevo:,.0f} (−{esc.descuento_pct:.0f}%). "
+            f"Es un escenario Win-Win: el aumento estimado de ventas compensa el margen menor. "
+            f"Cedés ${cedido_unit:,.0f}/u ({cedido_pct:.1f}% de tu ganancia/u actual)."
+        )
+    else:
+        mensaje = (
+            f"Bajá el precio a ${esc.precio_nuevo:,.0f} (−{esc.descuento_pct:.0f}%). "
+            f"No es Win-Win pero el impacto estimado en ganancia mensual está dentro del umbral aceptable. "
+            f"Cedés ${cedido_unit:,.0f}/u ({cedido_pct:.1f}% de tu ganancia/u)."
+        )
+
+    # ── Alternativa con reducción de cuotas ──────────────────────────────────
+    tiene_alt_cuotas = False
+    precio_alt_cuotas = 0.0
+    cuotas_de = cuotas_a = 0
+    pct_afectados_cuotas = 0.0
+    mensaje_cuotas = ''
+
+    if analisis_cuotas and analisis_cuotas.sugerencia == 'reducir_escalonado':
+        pasos_rec = [p for p in analisis_cuotas.pasos if p.recomendado]
+        if pasos_rec:
+            paso = pasos_rec[0]
+            ahorro_fee = paso.ahorro_fee_pct / 100.0
+            nueva_fee  = fee_rate - ahorro_fee
+            if nueva_fee > 0 and nueva_fee < 1:
+                # Precio que, con la nueva fee, mantiene la misma ganancia/u que hoy
+                precio_alt = (gan_unit_actual + costo) / (1.0 - nueva_fee)
+                if precio_alt < precio_actual - 100 and precio_alt > precio_piso:
+                    tiene_alt_cuotas    = True
+                    precio_alt_cuotas   = round(precio_alt)
+                    cuotas_de           = paso.de_max
+                    cuotas_a            = paso.a_max
+                    pct_afectados_cuotas = paso.pct_afectados
+                    accion = 'cuotas_y_precio'
+                    mensaje_cuotas = (
+                        f"Alternativa sin sacrificar margen: reducí cuotas {paso.de_max}→{paso.a_max} "
+                        f"(solo el {paso.pct_afectados}% de compradores usaba más de {paso.a_max} cuotas). "
+                        f"El ahorro de fee (~{paso.ahorro_fee_pct:.2f}%) te permite bajar el precio a "
+                        f"${precio_alt_cuotas:,.0f} manteniendo exactamente el mismo margen/u que hoy."
+                    )
+
+    return Recomendacion(
+        accion=accion,
+        urgencia=urgencia,
+        precio_objetivo=esc.precio_nuevo,
+        descuento_pct=esc.descuento_pct,
+        margen_pct=esc.margen_nuevo_pct,
+        ganancia_unit=round(esc.ganancia_unit_nueva),
+        cedido_unit=round(cedido_unit),
+        cedido_pct=round(cedido_pct, 1),
+        mensaje=mensaje,
+        tiene_alt_cuotas=tiene_alt_cuotas,
+        precio_alt_cuotas=precio_alt_cuotas,
+        cuotas_de=cuotas_de,
+        cuotas_a=cuotas_a,
+        pct_afectados_cuotas=pct_afectados_cuotas,
+        mensaje_cuotas=mensaje_cuotas,
+    )
+
+
 # ── Análisis principal de escenarios de precio ───────────────────────────────
 
 def analizar_producto(
@@ -745,6 +905,20 @@ def analizar_producto(
         item, costo, vtas, ganancia_mensual_act, fees
     )
 
+    # ── Recomendación sintetizada ─────────────────────────────────────────────
+    precio_piso = costo / (1.0 - fee_rate) if fee_rate < 1.0 else costo * 2.0
+    recomendacion = _calcular_recomendacion(
+        diagnostico=diagnostico,
+        escenarios=escenarios,
+        analisis_cuotas=analisis_cuotas,
+        precio_actual=precio,
+        gan_unit_actual=ganancia_unit_actual,
+        margen_pct_actual=margen_actual_pct,
+        costo=costo,
+        fee_rate=fee_rate,
+        precio_piso=precio_piso,
+    )
+
     return ProductoPricingAnalysis(
         item_id=iid,
         titulo=titulo,
@@ -764,6 +938,7 @@ def analizar_producto(
         diagnostico=diagnostico,
         analisis_cuotas=analisis_cuotas,
         analisis_envio=analisis_envio,
+        recomendacion=recomendacion,
     )
 
 
@@ -776,9 +951,8 @@ def analizar_catalogo(
 ) -> list[ProductoPricingAnalysis]:
     """Analiza todos los items con costo cargado y visitas suficientes.
 
-    Retorna lista ordenada: win-win primero, luego por visitas descendente.
+    Retorna lista ordenada: urgentes primero, luego win-win, luego por visitas descendente.
     """
-    # Cargar tasas base de comisión (sin envío gratis) para el análisis de umbral
     fees = get_fee_rates()
 
     convs = [
@@ -806,5 +980,11 @@ def analizar_catalogo(
         if analisis:
             resultados.append(analisis)
 
-    resultados.sort(key=lambda x: (not x.tiene_win_win, -x.visitas_30d))
+    # Urgentes primero, luego win-win, luego por visitas
+    _urgencia_orden = {'urgente': 0, 'revisar': 1, 'ok': 2, 'sin_datos': 3}
+    resultados.sort(key=lambda x: (
+        _urgencia_orden.get(x.recomendacion.urgencia if x.recomendacion else 'sin_datos', 3),
+        not x.tiene_win_win,
+        -x.visitas_30d,
+    ))
     return resultados
