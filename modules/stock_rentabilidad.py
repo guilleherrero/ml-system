@@ -775,3 +775,8 @@ def _save_snapshot(alias: str, resultados: list[dict]):
     path = os.path.join(DATA_DIR, f"stock_{safe}.json")
     db_save(path, {"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "items": resultados})
     console.print(f"\n[dim]Guardado en data/stock_{safe}.json[/dim]")
+    try:
+        from modules.conv_history import registrar_snapshot
+        registrar_snapshot(alias, resultados, DATA_DIR)
+    except Exception:
+        pass

@@ -9054,12 +9054,16 @@ def lanzamientos():
 @app.route('/pricing-strategy/<alias>')
 def pricing_strategy(alias):
     from modules.pricing_strategy import analizar_catalogo
+    from modules.conv_history import cargar_tendencias
     stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
-    resultados  = analizar_catalogo(stock_data.get('items', []), costos_data)
+    items       = stock_data.get('items', [])
+    resultados  = analizar_catalogo(items, costos_data)
     urgentes    = sum(1 for r in resultados if r.recomendacion and r.recomendacion.urgencia == 'urgente')
     win_win_count = sum(1 for r in resultados if r.tiene_win_win)
     viables_count = sum(1 for r in resultados if any(e.es_viable for e in r.escenarios))
+    item_ids    = [it.get('id') for it in items if it.get('id')]
+    tendencias  = cargar_tendencias(alias, DATA_DIR, item_ids)
     return render_template('pricing_strategy.html',
         alias=alias,
         resultados=resultados,
@@ -9067,6 +9071,7 @@ def pricing_strategy(alias):
         win_win_count=win_win_count,
         viables_count=viables_count,
         total=len(resultados),
+        tendencias=tendencias,
     )
 
 
