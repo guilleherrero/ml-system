@@ -313,6 +313,23 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   margin-top: .4rem; line-height: 1.5;
 }
 
+/* ── Botón aplicar precio ── */
+.btn-aplicar-precio {
+  display: inline-flex; align-items: center; gap: .3rem;
+  background: var(--accent, #2563eb); color: #fff;
+  border: none; border-radius: 6px; cursor: pointer;
+  font-size: .75rem; font-weight: 700;
+  padding: .3rem .65rem; line-height: 1.3;
+  transition: opacity .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn-aplicar-precio:hover  { opacity: .88; }
+.btn-aplicar-precio:active { transform: scale(.97); }
+.btn-aplicar-precio:disabled { opacity: .5; cursor: not-allowed; }
+.btn-aplicar-precio.ok   { background: #16a34a; }
+.btn-aplicar-precio.err  { background: #dc2626; }
+.btn-aplicar-sm { font-size: .68rem; padding: .2rem .5rem; }
+
 @media (prefers-color-scheme: dark) {
   .rec-accion-box.bajar   { background: rgba(37,99,235,.13); }
   .rec-accion-box.cuotas  { background: rgba(22,163,74,.12); }
@@ -466,6 +483,13 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
         <span class="val">${{ "{:,.0f}".format(rec.precio_objetivo) }}</span>
         <span class="lbl" style="color:var(--color-neutral-500)">−{{ rec.descuento_pct|int }}% · {{ rec.margen_pct }}% margen</span>
         <span class="lbl">Cedés ${{ "{:,.0f}".format(rec.cedido_unit) }}/u ({{ rec.cedido_pct }}%)</span>
+        <button class="btn-aplicar-precio mt-2"
+                data-item-id="{{ r.item_id }}"
+                data-precio="{{ rec.precio_objetivo|int }}"
+                data-precio-actual="{{ r.precio_actual|int }}"
+                onclick="aplicarPrecio(this)">
+          Aplicar ${{ "{:,.0f}".format(rec.precio_objetivo) }}
+        </button>
       </div>
       <div style="flex:1; min-width:200px">{{ rec.mensaje }}</div>
     </div>
@@ -604,18 +628,28 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
           {% endif %}
         </td>
 
-        <!-- Impacto (delta %) — est. -->
+        <!-- Impacto (delta %) + botón aplicar — est. -->
         <td class="col-est-cell">
           {% if e.precio_bajo_piso %}
             <span class="delta-bad">🚫 No viable</span>
-          {% elif e.es_win_win %}
-            <span class="delta-win">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
-          {% elif e.es_viable %}
-            <span class="delta-ok">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
-          {% elif e.delta_ganancia_pct >= -10 %}
-            <span class="delta-warn">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
           {% else %}
-            <span class="delta-bad">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
+            {% if e.es_win_win %}
+              <span class="delta-win">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
+            {% elif e.es_viable %}
+              <span class="delta-ok">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
+            {% elif e.delta_ganancia_pct >= -10 %}
+              <span class="delta-warn">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
+            {% else %}
+              <span class="delta-bad">{{ "%+.1f" % e.delta_ganancia_pct }}%</span>
+            {% endif %}
+            <br>
+            <button class="btn-aplicar-precio btn-aplicar-sm mt-1"
+                    data-item-id="{{ r.item_id }}"
+                    data-precio="{{ e.precio_nuevo|int }}"
+                    data-precio-actual="{{ r.precio_actual|int }}"
+                    onclick="aplicarPrecio(this)">
+              Aplicar ${{ "{:,.0f}".format(e.precio_nuevo) }}
+            </button>
           {% endif %}
         </td>
       </tr>
@@ -769,4 +803,60 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
 {% endfor %}
 
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PS_ALIAS = '{{ alias }}';
+
+async function aplicarPrecio(btn) {
+  const itemId       = btn.dataset.itemId;
+  const precioNuevo  = parseInt(btn.dataset.precio, 10);
+  const precioActual = parseInt(btn.dataset.precioActual, 10);
+  const diff         = precioNuevo - precioActual;
+  const pct          = (diff / precioActual * 100).toFixed(1);
+  const signo        = diff >= 0 ? '+' : '';
+
+  const ok = confirm(
+    `¿Aplicar cambio de precio?\n\n` +
+    `  Publicación: ${itemId}\n` +
+    `  Precio actual:  $${precioActual.toLocaleString('es-AR')}\n` +
+    `  Precio nuevo:   $${precioNuevo.toLocaleString('es-AR')}  (${signo}${pct}%)\n\n` +
+    `Este cambio se aplica de inmediato en MercadoLibre.`
+  );
+  if (!ok) return;
+
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Aplicando...';
+
+  try {
+    const resp = await fetch(`/api/aplicar-precio/${PS_ALIAS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemId, precio: precioNuevo }),
+    });
+    const data = await resp.json();
+
+    if (data.ok) {
+      btn.textContent = `✅ Aplicado $${data.precio_nuevo.toLocaleString('es-AR')}`;
+      btn.classList.add('ok');
+      // Actualizar todos los otros botones del mismo item para reflejar nuevo precio actual
+      document.querySelectorAll(`.btn-aplicar-precio[data-item-id="${itemId}"]`).forEach(b => {
+        b.dataset.precioActual = data.precio_nuevo;
+      });
+    } else {
+      btn.textContent = '❌ Error — reintentar';
+      btn.classList.add('err');
+      btn.disabled = false;
+      alert(`Error al aplicar precio:\n${data.error || 'Sin detalle'}`);
+    }
+  } catch (e) {
+    btn.textContent = '❌ Error — reintentar';
+    btn.classList.add('err');
+    btn.disabled = false;
+    alert(`Error de conexión: ${e.message}`);
+  }
+}
+</script>
 {% endblock %}
