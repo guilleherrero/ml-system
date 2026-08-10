@@ -42,7 +42,10 @@
   border-bottom: 1px solid var(--color-border);
   flex-wrap: wrap;
 }
-.prod-titulo { font-weight: 600; font-size: .95rem; margin-bottom: .25rem; }
+.prod-titulo { font-weight: 600; font-size: .95rem; margin-bottom: .25rem; display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap; }
+.prod-ml-link { font-size: .78rem; color: var(--color-primary); opacity: .7; text-decoration: none; flex-shrink: 0; }
+.prod-ml-link:hover { opacity: 1; }
+.prod-item-id { font-size: .72rem; font-weight: 400; color: var(--color-neutral-400); font-family: monospace; flex-shrink: 0; }
 .prod-meta   { font-size: .8rem; color: var(--color-neutral-500); display: flex; gap: 1rem; flex-wrap: wrap; }
 .prod-meta span { white-space: nowrap; }
 .badge-win {
@@ -447,7 +450,14 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   <!-- Cabecera del producto -->
   <div class="prod-head">
     <div style="flex:1; min-width:0">
-      <div class="prod-titulo">{{ r.titulo[:70] }}{% if r.titulo|length > 70 %}…{% endif %}</div>
+      <div class="prod-titulo">
+        {{ r.titulo[:70] }}{% if r.titulo|length > 70 %}…{% endif %}
+        <a href="https://articulo.mercadolibre.com.ar/{{ r.item_id[:3] }}-{{ r.item_id[3:] }}" target="_blank" rel="noopener"
+           class="prod-ml-link" title="Ver en MercadoLibre">
+          <i class="bi bi-box-arrow-up-right"></i>
+        </a>
+        <span class="prod-item-id">{{ r.item_id }}</span>
+      </div>
       <div class="prod-meta">
         <span><i class="bi bi-tag-fill me-1"></i><strong>${{ "{:,.0f}".format(r.precio_actual) }}</strong></span>
         <span>Costo ${{ "{:,.0f}".format(r.costo) }}</span>
