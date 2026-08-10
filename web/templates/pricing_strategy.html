@@ -865,57 +865,136 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
 {% endif %}
 {% endblock %}
 
+<!-- Modal aplicar precio -->
+<div class="modal fade" id="modalPrecio" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Aplicar precio</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="mpLoading" class="text-center py-3 text-muted">
+          <div class="spinner-border spinner-border-sm me-2"></div>Buscando publicaciones de la familia…
+        </div>
+        <div id="mpContent" style="display:none">
+          <label class="form-label fw-semibold">Precio a aplicar</label>
+          <div class="input-group mb-3">
+            <span class="input-group-text">$</span>
+            <input type="number" id="mpPrecioInput" class="form-control form-control-lg"
+                   min="1" step="1">
+          </div>
+          <div class="mb-1 text-muted" style="font-size:.82rem">Publicaciones que se van a actualizar:</div>
+          <div id="mpSiblingList" style="font-size:.82rem; max-height:220px; overflow-y:auto"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" id="mpConfirmarBtn" disabled
+                onclick="confirmarPrecio()">
+          Confirmar y aplicar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% block scripts %}
 <script>
 const PS_ALIAS = '{{ alias }}';
+let _mpBtn     = null;   // botón que disparó el modal
+let _mpSibling = [];     // lista de siblings cargados
 
 async function aplicarPrecio(btn) {
-  const itemId       = btn.dataset.itemId;
-  const precioNuevo  = parseInt(btn.dataset.precio, 10);
-  const precioActual = parseInt(btn.dataset.precioActual, 10);
-  const diff         = precioNuevo - precioActual;
-  const pct          = (diff / precioActual * 100).toFixed(1);
-  const signo        = diff >= 0 ? '+' : '';
+  _mpBtn = btn;
+  _mpSibling = [];
 
-  const ok = confirm(
-    `¿Aplicar cambio de precio?\n\n` +
-    `  Publicación: ${itemId}\n` +
-    `  Precio actual:  $${precioActual.toLocaleString('es-AR')}\n` +
-    `  Precio nuevo:   $${precioNuevo.toLocaleString('es-AR')}  (${signo}${pct}%)\n\n` +
-    `Este cambio se aplica de inmediato en MercadoLibre.`
-  );
-  if (!ok) return;
+  const itemId      = btn.dataset.itemId;
+  const precioSug   = parseInt(btn.dataset.precio, 10);
 
-  btn.disabled = true;
-  const orig = btn.textContent;
-  btn.textContent = '⏳ Aplicando...';
+  // Reset modal
+  document.getElementById('mpLoading').style.display = '';
+  document.getElementById('mpContent').style.display = 'none';
+  document.getElementById('mpConfirmarBtn').disabled = true;
+  document.getElementById('mpPrecioInput').value = precioSug;
+
+  const modal = new bootstrap.Modal(document.getElementById('modalPrecio'));
+  modal.show();
+
+  // Cargar familia de publicaciones
+  try {
+    const resp = await fetch(`/api/item-siblings/${PS_ALIAS}?item_id=${encodeURIComponent(itemId)}`);
+    const data = await resp.json();
+    _mpSibling = data.ok ? data.siblings : [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }];
+  } catch {
+    _mpSibling = [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }];
+  }
+
+  // Renderizar lista
+  const list = document.getElementById('mpSiblingList');
+  list.innerHTML = _mpSibling.map(s => `
+    <div class="d-flex justify-content-between align-items-center border-bottom py-1 gap-2">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.titulo || s.id}">
+        <span class="text-muted" style="font-family:monospace">${s.id}</span>
+        ${s.titulo ? ' — ' + s.titulo.substring(0, 55) + (s.titulo.length > 55 ? '…' : '') : ''}
+      </span>
+      <span class="text-nowrap text-muted">actual $${(s.precio||0).toLocaleString('es-AR')}</span>
+    </div>`).join('');
+
+  document.getElementById('mpLoading').style.display = 'none';
+  document.getElementById('mpContent').style.display = '';
+  document.getElementById('mpConfirmarBtn').disabled = false;
+}
+
+async function confirmarPrecio() {
+  const precio   = parseFloat(document.getElementById('mpPrecioInput').value);
+  const item_ids = _mpSibling.map(s => s.id);
+  const confirmBtn = document.getElementById('mpConfirmarBtn');
+
+  if (!precio || precio <= 0) {
+    alert('Ingresá un precio válido.');
+    return;
+  }
+
+  confirmBtn.disabled = true;
+  confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando…';
 
   try {
     const resp = await fetch(`/api/aplicar-precio/${PS_ALIAS}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_id: itemId, precio: precioNuevo }),
+      body: JSON.stringify({ item_ids, precio }),
     });
     const data = await resp.json();
 
+    bootstrap.Modal.getInstance(document.getElementById('modalPrecio')).hide();
+
     if (data.ok) {
-      const varLabel = data.variantes > 0 ? ` (${data.variantes} var.)` : '';
-      btn.textContent = `✅ Aplicado $${data.precio_nuevo.toLocaleString('es-AR')}${varLabel}`;
-      btn.classList.add('ok');
-      // Actualizar todos los otros botones del mismo item para reflejar nuevo precio actual
-      document.querySelectorAll(`.btn-aplicar-precio[data-item-id="${itemId}"]`).forEach(b => {
-        b.dataset.precioActual = data.precio_nuevo;
+      const label = `✅ Aplicado $${data.precio_nuevo.toLocaleString('es-AR')}` +
+                    (data.total > 1 ? ` (${data.aplicados}/${data.total} pub.)` : '');
+      // Marcar todos los botones de los items afectados
+      item_ids.forEach(iid => {
+        document.querySelectorAll(`.btn-aplicar-precio[data-item-id="${iid}"]`).forEach(b => {
+          b.textContent = label;
+          b.classList.add('ok');
+          b.dataset.precioActual = data.precio_nuevo;
+        });
       });
     } else {
-      btn.textContent = '❌ Error — reintentar';
-      btn.classList.add('err');
-      btn.disabled = false;
-      alert(`Error al aplicar precio:\n${data.error || 'Sin detalle'}`);
+      if (_mpBtn) {
+        _mpBtn.textContent = '❌ Error — reintentar';
+        _mpBtn.classList.add('err');
+        _mpBtn.disabled = false;
+      }
+      alert(`Error:\n${data.error || 'Sin detalle'}`);
     }
   } catch (e) {
-    btn.textContent = '❌ Error — reintentar';
-    btn.classList.add('err');
-    btn.disabled = false;
+    if (_mpBtn) {
+      _mpBtn.textContent = '❌ Error — reintentar';
+      _mpBtn.classList.add('err');
+      _mpBtn.disabled = false;
+    }
+    bootstrap.Modal.getInstance(document.getElementById('modalPrecio'))?.hide();
     alert(`Error de conexión: ${e.message}`);
   }
 }

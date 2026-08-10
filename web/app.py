@@ -2734,15 +2734,83 @@ def salud(alias):
                            resumen=resumen, accounts=get_accounts())
 
 
+@app.route('/api/item-siblings/<alias>')
+def api_item_siblings(alias):
+    """Devuelve todos los items del vendedor que comparten catalog_product_id con el item dado."""
+    item_id    = request.args.get('item_id', '').strip()
+    stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    items      = stock_data.get('items', [])
+    stock_map  = {it.get('id'): it for it in items if it.get('id')}
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    # Obtener catalog_product_id del ítem objetivo
+    g = req_lib.get(
+        f'https://api.mercadolibre.com/items/{item_id}',
+        headers=heads,
+        params={'attributes': 'id,catalog_product_id'},
+        timeout=10,
+    )
+    catalog_id = g.json().get('catalog_product_id') if g.ok else None
+
+    if not catalog_id:
+        # Sin catalog_id: devolver solo el item actual
+        it = stock_map.get(item_id, {})
+        return jsonify({'ok': True, 'siblings': [
+            {'id': item_id, 'titulo': it.get('titulo', ''), 'precio': it.get('precio', 0)}
+        ]})
+
+    # Buscar en batch los catalog_product_id de todos los items del stock
+    other_ids = [iid for iid in stock_map if iid != item_id]
+    sibling_ids = [item_id]
+    BATCH = 20
+    for i in range(0, len(other_ids), BATCH):
+        batch = other_ids[i:i + BATCH]
+        rb = req_lib.get(
+            'https://api.mercadolibre.com/items',
+            headers=heads,
+            params={'ids': ','.join(batch), 'attributes': 'id,catalog_product_id'},
+            timeout=15,
+        )
+        if rb.ok:
+            for entry in rb.json():
+                body = entry.get('body') or {}
+                if body.get('catalog_product_id') == catalog_id:
+                    sibling_ids.append(body['id'])
+
+    siblings = [
+        {'id': iid,
+         'titulo': stock_map.get(iid, {}).get('titulo', ''),
+         'precio': stock_map.get(iid, {}).get('precio', 0)}
+        for iid in sibling_ids
+    ]
+    return jsonify({'ok': True, 'siblings': siblings, 'catalog_product_id': catalog_id})
+
+
 @app.route('/api/aplicar-precio/<alias>', methods=['POST'])
 def api_aplicar_precio(alias):
-    """Actualiza el precio de una publicación directamente via ML API."""
+    """Actualiza el precio de una o varias publicaciones via ML API.
+
+    Acepta:
+      { "item_id": "MLA123", "precio": 85000 }          — un solo ítem
+      { "item_ids": ["MLA123","MLA456"], "precio": 85000 } — varios ítems (familia)
+    """
     data    = request.get_json(silent=True) or {}
-    item_id = str(data.get('item_id', '')).strip()
     precio  = data.get('precio')
 
-    if not item_id or precio is None:
-        return jsonify({'ok': False, 'error': 'item_id y precio requeridos'}), 400
+    # Normalizar a lista de item_ids
+    if 'item_ids' in data:
+        item_ids = [str(i).strip() for i in data['item_ids'] if str(i).strip()]
+    elif data.get('item_id'):
+        item_ids = [str(data['item_id']).strip()]
+    else:
+        item_ids = []
+
+    if not item_ids or precio is None:
+        return jsonify({'ok': False, 'error': 'item_id(s) y precio requeridos'}), 400
     try:
         precio = float(precio)
     except (TypeError, ValueError):
@@ -2757,38 +2825,40 @@ def api_aplicar_precio(alias):
 
     heads_json = {**heads, 'Content-Type': 'application/json'}
 
-    # Verificar si el ítem tiene variantes
-    g = req_lib.get(
-        f'https://api.mercadolibre.com/items/{item_id}',
-        headers=heads,
-        params={'attributes': 'id,price,variations'},
-        timeout=10,
-    )
-    if not g.ok:
-        return jsonify({'ok': False, 'error': f'No se pudo obtener el ítem: {g.text[:200]}'}), g.status_code
+    def _aplicar_uno(iid):
+        g = req_lib.get(
+            f'https://api.mercadolibre.com/items/{iid}',
+            headers=heads,
+            params={'attributes': 'id,price,variations'},
+            timeout=10,
+        )
+        if not g.ok:
+            return {'id': iid, 'ok': False, 'error': g.text[:120]}
+        variations = g.json().get('variations') or []
+        body = {'variations': [{'id': v['id'], 'price': precio} for v in variations]} \
+               if variations else {'price': precio}
+        r = req_lib.put(
+            f'https://api.mercadolibre.com/items/{iid}',
+            headers=heads_json, json=body, timeout=10,
+        )
+        if r.ok:
+            nuevo = r.json().get('price') or precio
+            _audit('CAMBIAR_PRECIO', alias=alias, item_id=iid, precio_nuevo=nuevo,
+                   variantes=len(variations))
+            return {'id': iid, 'ok': True, 'precio_nuevo': nuevo, 'variantes': len(variations)}
+        return {'id': iid, 'ok': False, 'error': r.text[:120]}
 
-    item_data  = g.json()
-    variations = item_data.get('variations') or []
+    resultados = [_aplicar_uno(iid) for iid in item_ids]
+    ok_count   = sum(1 for r in resultados if r['ok'])
+    precio_nuevo = next((r['precio_nuevo'] for r in resultados if r.get('ok')), precio)
 
-    if variations:
-        # Actualizar todas las variantes al mismo precio
-        body = {'variations': [{'id': v['id'], 'price': precio} for v in variations]}
-    else:
-        body = {'price': precio}
-
-    r = req_lib.put(
-        f'https://api.mercadolibre.com/items/{item_id}',
-        headers=heads_json,
-        json=body,
-        timeout=10,
-    )
-    if r.ok:
-        nuevo = r.json().get('price') or precio
-        n_vars = len(variations)
-        _audit('CAMBIAR_PRECIO', alias=alias, item_id=item_id, precio_nuevo=nuevo,
-               variantes=n_vars)
-        return jsonify({'ok': True, 'precio_nuevo': nuevo, 'variantes': n_vars})
-    return jsonify({'ok': False, 'error': r.text[:200]}), r.status_code
+    return jsonify({
+        'ok':          ok_count > 0,
+        'precio_nuevo': precio_nuevo,
+        'aplicados':   ok_count,
+        'total':       len(item_ids),
+        'detalle':     resultados,
+    })
 
 
 @app.route('/api/salud-config/<alias>', methods=['POST', 'DELETE'])
