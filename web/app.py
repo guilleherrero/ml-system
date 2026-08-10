@@ -2736,7 +2736,7 @@ def salud(alias):
 
 @app.route('/api/item-siblings/<alias>')
 def api_item_siblings(alias):
-    """Devuelve todos los items del vendedor que comparten family_id con el item dado."""
+    """Devuelve los items del vendedor con el mismo catalog_product_id (misma variante sincronizada)."""
     item_id    = request.args.get('item_id', '').strip()
     stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     items      = stock_data.get('items', [])
@@ -2747,22 +2747,22 @@ def api_item_siblings(alias):
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 401
 
-    # Obtener family_id del ítem objetivo
+    # Obtener catalog_product_id del ítem (identifica la variante específica)
     g = req_lib.get(
         f'https://api.mercadolibre.com/items/{item_id}',
         headers=heads,
-        params={'attributes': 'id,family_id'},
+        params={'attributes': 'id,catalog_product_id'},
         timeout=10,
     )
-    family_id = g.json().get('family_id') if g.ok else None
+    catalog_id = g.json().get('catalog_product_id') if g.ok else None
 
-    if not family_id:
+    if not catalog_id:
         it = stock_map.get(item_id, {})
         return jsonify({'ok': True, 'siblings': [
             {'id': item_id, 'titulo': it.get('titulo', ''), 'precio': it.get('precio', 0)}
         ]})
 
-    # Buscar en batch el family_id de todos los items del stock
+    # Buscar en batch el catalog_product_id del resto de items del stock
     other_ids = [iid for iid in stock_map if iid != item_id]
     sibling_ids = [item_id]
     BATCH = 20
@@ -2771,13 +2771,13 @@ def api_item_siblings(alias):
         rb = req_lib.get(
             'https://api.mercadolibre.com/items',
             headers=heads,
-            params={'ids': ','.join(batch), 'attributes': 'id,family_id'},
+            params={'ids': ','.join(batch), 'attributes': 'id,catalog_product_id'},
             timeout=15,
         )
         if rb.ok:
             for entry in rb.json():
                 body = entry.get('body') or {}
-                if body.get('family_id') == family_id:
+                if body.get('catalog_product_id') == catalog_id:
                     sibling_ids.append(body['id'])
 
     siblings = [
@@ -2786,7 +2786,7 @@ def api_item_siblings(alias):
          'precio': stock_map.get(iid, {}).get('precio', 0)}
         for iid in sibling_ids
     ]
-    return jsonify({'ok': True, 'siblings': siblings, 'family_id': family_id})
+    return jsonify({'ok': True, 'siblings': siblings, 'catalog_product_id': catalog_id})
 
 
 @app.route('/api/aplicar-precio/<alias>', methods=['POST'])
