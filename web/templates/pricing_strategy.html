@@ -886,8 +886,15 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
             <input type="number" id="mpPrecioInput" class="form-control form-control-lg"
                    min="1" step="1">
           </div>
-          <div class="mb-1 text-muted" style="font-size:.82rem">Publicaciones que se van a actualizar:</div>
-          <div id="mpSiblingList" style="font-size:.82rem; max-height:220px; overflow-y:auto"></div>
+          <div class="mb-1 fw-semibold" style="font-size:.82rem">Publicaciones que se van a actualizar:</div>
+          <div id="mpSiblingList" style="font-size:.82rem; max-height:160px; overflow-y:auto"></div>
+          <div id="mpFamiliaWrap" style="display:none; margin-top:.75rem">
+            <div class="mb-1 text-muted" style="font-size:.78rem">
+              <i class="bi bi-info-circle me-1"></i>
+              Misma página de catálogo (no se modifican, solo referencia):
+            </div>
+            <div id="mpFamiliaList" style="font-size:.78rem; max-height:120px; overflow-y:auto; opacity:.7"></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -927,20 +934,33 @@ async function aplicarPrecio(btn) {
     const resp = await fetch(`/api/item-siblings/${PS_ALIAS}?item_id=${encodeURIComponent(itemId)}`);
     const data = await resp.json();
     _mpSibling = data.ok ? data.siblings : [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }];
+
+    // Renderizar publicaciones que se actualizan
+    const renderRow = (s, muted) => `
+      <div class="d-flex justify-content-between align-items-center border-bottom py-1 gap-2">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.titulo || s.id}">
+          <span class="${muted ? 'text-muted' : ''}" style="font-family:monospace;font-size:.75rem">${s.id}</span>
+          ${s.titulo ? ' — ' + s.titulo.substring(0, 50) + (s.titulo.length > 50 ? '…' : '') : ''}
+        </span>
+        <span class="text-nowrap text-muted">$${(s.precio||0).toLocaleString('es-AR')}</span>
+      </div>`;
+
+    document.getElementById('mpSiblingList').innerHTML = _mpSibling.map(s => renderRow(s, false)).join('');
+
+    // Renderizar contexto de familia (otras variantes en la misma página de catálogo)
+    const familia = (data.ok && data.familia) ? data.familia : [];
+    const familiaWrap = document.getElementById('mpFamiliaWrap');
+    if (familia.length > 0) {
+      document.getElementById('mpFamiliaList').innerHTML = familia.map(s => renderRow(s, true)).join('');
+      familiaWrap.style.display = '';
+    } else {
+      familiaWrap.style.display = 'none';
+    }
   } catch {
     _mpSibling = [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }];
+    document.getElementById('mpSiblingList').innerHTML = '';
+    document.getElementById('mpFamiliaWrap').style.display = 'none';
   }
-
-  // Renderizar lista
-  const list = document.getElementById('mpSiblingList');
-  list.innerHTML = _mpSibling.map(s => `
-    <div class="d-flex justify-content-between align-items-center border-bottom py-1 gap-2">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.titulo || s.id}">
-        <span class="text-muted" style="font-family:monospace">${s.id}</span>
-        ${s.titulo ? ' — ' + s.titulo.substring(0, 55) + (s.titulo.length > 55 ? '…' : '') : ''}
-      </span>
-      <span class="text-nowrap text-muted">actual $${(s.precio||0).toLocaleString('es-AR')}</span>
-    </div>`).join('');
 
   document.getElementById('mpLoading').style.display = 'none';
   document.getElementById('mpContent').style.display = '';

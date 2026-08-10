@@ -2786,7 +2786,44 @@ def api_item_siblings(alias):
          'precio': stock_map.get(iid, {}).get('precio', 0)}
         for iid in sibling_ids
     ]
-    return jsonify({'ok': True, 'siblings': siblings, 'catalog_product_id': catalog_id})
+
+    # También traer los ítems de la misma familia (family_id) para mostrar como contexto
+    g2 = req_lib.get(
+        f'https://api.mercadolibre.com/items/{item_id}',
+        headers=heads,
+        params={'attributes': 'id,family_id'},
+        timeout=10,
+    )
+    family_id   = g2.json().get('family_id') if g2.ok else None
+    familia_ctx = []
+    if family_id:
+        other_ids2 = [iid for iid in stock_map if iid not in sibling_ids]
+        for i in range(0, len(other_ids2), BATCH):
+            batch = other_ids2[i:i + BATCH]
+            rb2 = req_lib.get(
+                'https://api.mercadolibre.com/items',
+                headers=heads,
+                params={'ids': ','.join(batch), 'attributes': 'id,family_id,title'},
+                timeout=15,
+            )
+            if rb2.ok:
+                for entry in rb2.json():
+                    body = entry.get('body') or {}
+                    if body.get('family_id') == family_id:
+                        it = stock_map.get(body['id'], {})
+                        familia_ctx.append({
+                            'id':     body['id'],
+                            'titulo': it.get('titulo', body.get('title', '')),
+                            'precio': it.get('precio', 0),
+                        })
+
+    return jsonify({
+        'ok':        True,
+        'siblings':  siblings,
+        'familia':   familia_ctx,
+        'catalog_product_id': catalog_id,
+        'family_id': family_id,
+    })
 
 
 @app.route('/api/aplicar-precio/<alias>', methods=['POST'])
