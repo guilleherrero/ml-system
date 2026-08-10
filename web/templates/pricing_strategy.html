@@ -863,8 +863,10 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
 {% endfor %}
 
 {% endif %}
+
 {% endblock %}
 
+{% block scripts %}
 <!-- Modal aplicar precio -->
 <div class="modal fade" id="modalPrecio" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -899,7 +901,6 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
   </div>
 </div>
 
-{% block scripts %}
 <script>
 const PS_ALIAS = '{{ alias }}';
 let _mpBtn     = null;   // botón que disparó el modal
