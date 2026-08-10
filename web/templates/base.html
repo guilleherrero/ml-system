@@ -221,8 +221,13 @@
       <i class="bi bi-shop"></i>{{ acc.alias }}
     </div>
 
+    <!-- Dashboard de inicio -->
+    <a href="/inicio/{{ acc.alias }}" class="nav-primary {{ 'active' if request.path == '/inicio/'~acc.alias else '' }}">
+      <i class="bi bi-speedometer2"></i> Inicio
+    </a>
+
     <!-- Consultor IA (per-cuenta, primer item del acc-group) -->
-    <a href="/analisis-experto/{{ acc.alias }}" class="nav-primary {{ 'active' if request.path == '/analisis-experto/'~acc.alias else '' }}">
+    <a href="/analisis-experto/{{ acc.alias }}" class="{{ 'active' if request.path == '/analisis-experto/'~acc.alias else '' }}">
       <i class="bi bi-stethoscope"></i> Consultor IA
     </a>
 

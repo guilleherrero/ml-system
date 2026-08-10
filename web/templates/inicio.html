@@ -1,0 +1,546 @@
+{% extends 'base.html' %}
+{% block title %} — Inicio {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Layout ─────────────────────────────────────── */
+  .ini-summary {
+    display:flex; gap:12px; flex-wrap:wrap; margin-bottom:22px;
+  }
+  .ini-stat {
+    background:#fff; border-radius:10px; padding:12px 20px;
+    border:1px solid #e5e7eb; display:flex; flex-direction:column;
+    gap:2px; min-width:130px;
+  }
+  .ini-stat .val {
+    font-size:1.55rem; font-weight:700; line-height:1;
+  }
+  .ini-stat .lbl { font-size:.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:.06em; }
+  .ini-stat.urgente .val { color:#dc2626; }
+  .ini-stat.win     .val { color:#16a34a; }
+  .ini-stat.bajando .val { color:#d97706; }
+
+  /* ── Section ────────────────────────────────────── */
+  .ini-sec {
+    margin-bottom:28px;
+  }
+  .ini-sec-hdr {
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:12px; cursor:pointer; user-select:none;
+  }
+  .ini-sec-hdr h2 {
+    font-size:1rem; font-weight:700; margin:0; color:#111827;
+  }
+  .ini-sec-badge {
+    background:#e5e7eb; color:#374151; border-radius:20px;
+    padding:1px 9px; font-size:.72rem; font-weight:700;
+  }
+  .ini-sec-badge.red    { background:#fee2e2; color:#dc2626; }
+  .ini-sec-badge.amber  { background:#fef3c7; color:#d97706; }
+  .ini-sec-badge.green  { background:#dcfce7; color:#16a34a; }
+  .ini-sec-badge.blue   { background:#dbeafe; color:#1d4ed8; }
+  .ini-sec-badge.gray   { background:#f3f4f6; color:#6b7280; }
+  .ini-toggle { color:#9ca3af; font-size:.8rem; margin-left:auto; transition:transform .2s; }
+  .ini-toggle.collapsed { transform:rotate(-90deg); }
+
+  /* ── Cards ──────────────────────────────────────── */
+  .ini-cards {
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .ini-card {
+    background:#fff; border-radius:10px; border:1px solid #e5e7eb;
+    padding:14px 18px; display:flex; align-items:flex-start; gap:14px;
+  }
+  .ini-card.urgente { border-left:4px solid #dc2626; }
+  .ini-card.bajando { border-left:4px solid #d97706; }
+  .ini-card.win     { border-left:4px solid #16a34a; }
+  .ini-card.revisar { border-left:4px solid #6366f1; }
+  .ini-card.ok      { border-left:4px solid #d1d5db; }
+  .ini-card.no-costo{ border-left:4px solid #9ca3af; }
+
+  .ini-card-body { flex:1; min-width:0; }
+  .ini-card-title {
+    font-size:.88rem; font-weight:600; color:#111827;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    margin-bottom:3px;
+  }
+  .ini-card-meta {
+    font-size:.75rem; color:#6b7280; display:flex; align-items:center; gap:8px;
+    flex-wrap:wrap; margin-bottom:7px;
+  }
+  .ini-card-meta a { color:#6b7280; text-decoration:none; }
+  .ini-card-meta a:hover { color:#2563eb; }
+  .ini-card-metrics {
+    display:flex; gap:14px; flex-wrap:wrap; align-items:center;
+  }
+  .ini-metric {
+    display:flex; flex-direction:column; gap:1px;
+  }
+  .ini-metric .mv {
+    font-size:.88rem; font-weight:700; color:#111827; line-height:1;
+  }
+  .ini-metric .ml { font-size:.65rem; color:#9ca3af; text-transform:uppercase; }
+  .ini-metric.hi .mv { color:#dc2626; }
+  .ini-metric.ok .mv { color:#16a34a; }
+
+  /* Trend pill */
+  .tend-pill {
+    font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:20px;
+    white-space:nowrap;
+  }
+  .tend-baja  { background:#fef3c7; color:#92400e; }
+  .tend-sube  { background:#dcfce7; color:#166534; }
+  .tend-estable { background:#f3f4f6; color:#6b7280; }
+
+  /* Causa pill */
+  .causa-pill {
+    font-size:.68rem; padding:2px 7px; border-radius:20px; font-weight:600;
+    white-space:nowrap;
+  }
+  .causa-precio      { background:#fee2e2; color:#dc2626; }
+  .causa-visibilidad { background:#dbeafe; color:#1d4ed8; }
+  .causa-mixta       { background:#fef3c7; color:#d97706; }
+  .causa-ok          { background:#dcfce7; color:#16a34a; }
+
+  /* Diag label */
+  .ini-diag-txt {
+    font-size:.75rem; color:#6b7280; margin-top:4px;
+  }
+
+  /* ── Actions ────────────────────────────────────── */
+  .ini-card-actions {
+    display:flex; flex-direction:column; gap:6px; flex-shrink:0;
+  }
+  .ini-btn {
+    padding:6px 12px; border-radius:7px; font-size:.78rem; font-weight:600;
+    cursor:pointer; border:none; white-space:nowrap; text-decoration:none;
+    display:inline-flex; align-items:center; gap:5px;
+  }
+  .ini-btn-primary   { background:#2563eb; color:#fff; }
+  .ini-btn-primary:hover { background:#1d4ed8; color:#fff; }
+  .ini-btn-outline   { background:#fff; color:#374151; border:1px solid #d1d5db; }
+  .ini-btn-outline:hover { background:#f9fafb; color:#111827; }
+  .ini-btn-success   { background:#16a34a; color:#fff; }
+  .ini-btn-success:hover { background:#15803d; color:#fff; }
+  .ini-btn-amber     { background:#d97706; color:#fff; }
+  .ini-btn-amber:hover { background:#b45309; color:#fff; }
+
+  /* empty state */
+  .ini-empty {
+    padding:18px; text-align:center; color:#9ca3af; font-size:.82rem;
+    border:1px dashed #e5e7eb; border-radius:10px;
+  }
+
+  /* ── Modal ──────────────────────────────────────── */
+  .mp-modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,.5);
+    display:flex; align-items:center; justify-content:center; z-index:1050;
+  }
+  .mp-modal {
+    background:#fff; border-radius:14px; padding:24px 28px;
+    width:460px; max-width:95vw; max-height:90vh; overflow-y:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,.2);
+  }
+  .mp-modal h3 { font-size:1rem; font-weight:700; margin-bottom:4px; }
+  .mp-modal .mp-sub { font-size:.78rem; color:#6b7280; margin-bottom:18px; }
+  .mp-group-block {
+    background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;
+    padding:12px 14px; margin-bottom:12px;
+  }
+  .mp-group-block h4 { font-size:.8rem; font-weight:600; margin-bottom:6px; }
+  .mp-group-items { font-size:.72rem; color:#6b7280; margin-bottom:8px; }
+  .mp-price-row { display:flex; align-items:center; gap:8px; }
+  .mp-price-row label { font-size:.78rem; color:#374151; font-weight:600; white-space:nowrap; }
+  .mp-price-row input {
+    flex:1; padding:6px 10px; border:1px solid #d1d5db; border-radius:7px;
+    font-size:.9rem; font-weight:700;
+  }
+  .mp-modal-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .mp-spinner { display:none; }
+  #mpStatus { font-size:.8rem; margin-top:10px; min-height:1.2rem; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-speedometer2" style="color:#2563eb;margin-right:8px"></i>Inicio — {{ alias }}</h1>
+    <div class="sub">Última actualización: {{ ultima_act }}</div>
+  </div>
+  <a href="/pricing-strategy/{{ alias }}" class="ini-btn ini-btn-outline">
+    <i class="bi bi-graph-up"></i> Políticas de precio
+  </a>
+</div>
+
+<!-- Summary stats -->
+<div class="ini-summary">
+  <div class="ini-stat">
+    <span class="val">{{ total_items }}</span>
+    <span class="lbl">Total publicaciones</span>
+  </div>
+  <div class="ini-stat">
+    <span class="val">{{ con_costos }}</span>
+    <span class="lbl">Con costos</span>
+  </div>
+  {% if urgentes %}
+  <div class="ini-stat urgente">
+    <span class="val">{{ urgentes|length }}</span>
+    <span class="lbl">Urgentes</span>
+  </div>
+  {% endif %}
+  {% if conv_bajando %}
+  <div class="ini-stat bajando">
+    <span class="val">{{ conv_bajando|length }}</span>
+    <span class="lbl">Conv. bajando</span>
+  </div>
+  {% endif %}
+  {% if win_win %}
+  <div class="ini-stat win">
+    <span class="val">{{ win_win|length }}</span>
+    <span class="lbl">Win-Win</span>
+  </div>
+  {% endif %}
+  {% if sin_costos %}
+  <div class="ini-stat">
+    <span class="val">{{ sin_costos|length }}</span>
+    <span class="lbl">Sin costo cargado</span>
+  </div>
+  {% endif %}
+  <div class="ini-stat">
+    <span class="val">{{ avg_conv }}%</span>
+    <span class="lbl">Conv. promedio</span>
+  </div>
+</div>
+
+{# ─── macro: card para items con análisis ─────────────────────────────── #}
+{% macro render_card(r, tipo) %}
+  {% set tend = tendencias.get(r.item_id, {}) %}
+  {% set precio_obj = r.recomendacion.precio_objetivo if r.recomendacion else 0 %}
+  {% set conv_vs = (r.conv_pct_actual / avg_conv * 100)|round(0)|int if avg_conv > 0 else 0 %}
+  <div class="ini-card {{ tipo }}">
+    <div class="ini-card-body">
+      <div class="ini-card-title">{{ r.titulo[:80] }}{% if r.titulo|length > 80 %}…{% endif %}</div>
+      <div class="ini-card-meta">
+        <span>{{ r.item_id }}</span>
+        <a href="https://articulo.mercadolibre.com.ar/{{ r.item_id[:3] }}-{{ r.item_id[3:] }}"
+           target="_blank" title="Ver en ML"><i class="bi bi-box-arrow-up-right"></i></a>
+        <span>${{ '{:,.0f}'.format(r.precio_actual) }}</span>
+        {% if r.diagnostico %}
+          {% if r.diagnostico.causa == 'precio' %}
+            <span class="causa-pill causa-precio">Problema: precio</span>
+          {% elif r.diagnostico.causa == 'visibilidad' %}
+            <span class="causa-pill causa-visibilidad">Problema: visibilidad</span>
+          {% elif r.diagnostico.causa == 'precio_y_visibilidad' %}
+            <span class="causa-pill causa-mixta">Precio + visibilidad</span>
+          {% elif r.diagnostico.causa == 'no_es_precio' %}
+            <span class="causa-pill causa-ok">No es precio</span>
+          {% endif %}
+        {% endif %}
+        {% if r.tiene_win_win %}
+          <span class="causa-pill" style="background:#dcfce7;color:#166534;">🏆 Win-Win</span>
+        {% endif %}
+      </div>
+      <div class="ini-card-metrics">
+        <div class="ini-metric {% if r.conv_pct_actual < avg_conv * 0.7 %}hi{% elif r.conv_pct_actual >= avg_conv %}ok{% endif %}">
+          <span class="mv">{{ r.conv_pct_actual }}%</span>
+          <span class="ml">Conv.</span>
+        </div>
+        <div class="ini-metric">
+          <span class="mv">{{ avg_conv }}%</span>
+          <span class="ml">Prom. catálogo</span>
+        </div>
+        {% if tend %}
+          <span class="tend-pill {% if tend.tendencia == 'bajando' %}tend-baja{% elif tend.tendencia == 'subiendo' %}tend-sube{% else %}tend-estable{% endif %}">
+            {% if tend.tendencia == 'bajando' %}▼{% elif tend.tendencia == 'subiendo' %}▲{% else %}→{% endif %}
+            {{ tend.conv_inicial }}%→{{ tend.conv_final }}%
+          </span>
+        {% endif %}
+        <div class="ini-metric">
+          <span class="mv">{{ r.ventas_30d }}</span>
+          <span class="ml">Ventas/mes</span>
+        </div>
+        <div class="ini-metric">
+          <span class="mv">{{ r.visitas_30d }}</span>
+          <span class="ml">Visitas/mes</span>
+        </div>
+        {% if precio_obj > 0 %}
+        <div class="ini-metric">
+          <span class="mv" style="color:#16a34a">${{ '{:,.0f}'.format(precio_obj) }}</span>
+          <span class="ml">Precio sugerido</span>
+        </div>
+        {% endif %}
+      </div>
+      {% if r.recomendacion and r.recomendacion.mensaje %}
+        <div class="ini-diag-txt">{{ r.recomendacion.mensaje[:120] }}{% if r.recomendacion.mensaje|length > 120 %}…{% endif %}</div>
+      {% endif %}
+    </div>
+    <div class="ini-card-actions">
+      {% if precio_obj > 0 %}
+      <button class="ini-btn {% if tipo == 'urgente' %}ini-btn-primary{% elif tipo == 'win' %}ini-btn-success{% else %}ini-btn-amber{% endif %}"
+              onclick="abrirModal('{{ r.item_id }}', {{ precio_obj }}, '{{ r.titulo[:50]|replace("'", "") }}')">
+        <i class="bi bi-currency-dollar"></i> Aplicar ${{ '{:,.0f}'.format(precio_obj) }}
+      </button>
+      {% endif %}
+      <a href="/pricing-strategy/{{ alias }}#item-{{ r.item_id }}"
+         class="ini-btn ini-btn-outline">
+        <i class="bi bi-graph-up"></i> Ver estrategia
+      </a>
+    </div>
+  </div>
+{% endmacro %}
+
+{# ─── URGENTES ─────────────────────────────────────────────────────────── #}
+{% if urgentes %}
+<div class="ini-sec" id="sec-urgentes">
+  <div class="ini-sec-hdr" onclick="toggleSec('urgentes')">
+    <span style="font-size:1.1rem">🚨</span>
+    <h2>Acción urgente</h2>
+    <span class="ini-sec-badge red">{{ urgentes|length }}</span>
+    <i class="bi bi-chevron-down ini-toggle" id="tog-urgentes"></i>
+  </div>
+  <div id="body-urgentes" class="ini-cards">
+    {% for r in urgentes %}{{ render_card(r, 'urgente') }}{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ─── CONV BAJANDO ─────────────────────────────────────────────────────── #}
+{% if conv_bajando %}
+<div class="ini-sec" id="sec-bajando">
+  <div class="ini-sec-hdr" onclick="toggleSec('bajando')">
+    <span style="font-size:1.1rem">📉</span>
+    <h2>Conversión bajando</h2>
+    <span class="ini-sec-badge amber">{{ conv_bajando|length }}</span>
+    <i class="bi bi-chevron-down ini-toggle" id="tog-bajando"></i>
+  </div>
+  <div id="body-bajando" class="ini-cards">
+    {% for r in conv_bajando %}{{ render_card(r, 'bajando') }}{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ─── WIN WIN ──────────────────────────────────────────────────────────── #}
+{% if win_win %}
+<div class="ini-sec" id="sec-win">
+  <div class="ini-sec-hdr" onclick="toggleSec('win')">
+    <span style="font-size:1.1rem">🏆</span>
+    <h2>Oportunidad Win-Win</h2>
+    <span class="ini-sec-badge green">{{ win_win|length }}</span>
+    <i class="bi bi-chevron-down ini-toggle" id="tog-win"></i>
+  </div>
+  <div id="body-win" class="ini-cards">
+    {% for r in win_win %}{{ render_card(r, 'win') }}{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ─── REVISAR ──────────────────────────────────────────────────────────── #}
+{% if revisar %}
+<div class="ini-sec" id="sec-revisar">
+  <div class="ini-sec-hdr" onclick="toggleSec('revisar')">
+    <span style="font-size:1.1rem">🔍</span>
+    <h2>Revisar</h2>
+    <span class="ini-sec-badge blue">{{ revisar|length }}</span>
+    <i class="bi bi-chevron-down ini-toggle" id="tog-revisar"></i>
+  </div>
+  <div id="body-revisar" class="ini-cards">
+    {% for r in revisar %}{{ render_card(r, 'revisar') }}{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ─── SIN COSTOS ───────────────────────────────────────────────────────── #}
+{% if sin_costos %}
+<div class="ini-sec" id="sec-nocosto">
+  <div class="ini-sec-hdr" onclick="toggleSec('nocosto')">
+    <span style="font-size:1.1rem">💰</span>
+    <h2>Sin costo cargado (con tráfico)</h2>
+    <span class="ini-sec-badge gray">{{ sin_costos|length }}</span>
+    <i class="bi bi-chevron-down ini-toggle" id="tog-nocosto"></i>
+  </div>
+  <div id="body-nocosto" class="ini-cards">
+    {% for it in sin_costos %}
+    <div class="ini-card no-costo">
+      <div class="ini-card-body">
+        <div class="ini-card-title">{{ it.titulo[:80] if it.titulo else it.id }}{% if it.titulo and it.titulo|length > 80 %}…{% endif %}</div>
+        <div class="ini-card-meta">
+          <span>{{ it.id }}</span>
+          <a href="https://articulo.mercadolibre.com.ar/{{ it.id[:3] }}-{{ it.id[3:] }}"
+             target="_blank"><i class="bi bi-box-arrow-up-right"></i></a>
+          <span>${{ '{:,.0f}'.format(it.precio|float) }}</span>
+        </div>
+        <div class="ini-card-metrics">
+          <div class="ini-metric">
+            <span class="mv">{{ it.visitas_30d|int }}</span>
+            <span class="ml">Visitas/mes</span>
+          </div>
+          <div class="ini-metric">
+            <span class="mv">{{ it.ventas_30d|int if it.ventas_30d else 0 }}</span>
+            <span class="ml">Ventas/mes</span>
+          </div>
+          <div class="ini-metric">
+            <span class="mv">{{ (it.conversion_pct or 0)|float|round(1) }}%</span>
+            <span class="ml">Conv.</span>
+          </div>
+        </div>
+        <div class="ini-diag-txt" style="color:#d97706;margin-top:6px;">
+          <i class="bi bi-exclamation-triangle"></i> Sin costo cargado — no se puede analizar rentabilidad
+        </div>
+      </div>
+      <div class="ini-card-actions">
+        <a href="/costos/wizard?alias={{ alias }}" class="ini-btn ini-btn-outline">
+          <i class="bi bi-cash-coin"></i> Cargar costo
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ─── OK ───────────────────────────────────────────────────────────────── #}
+{% if ok_items %}
+<div class="ini-sec" id="sec-ok">
+  <div class="ini-sec-hdr" onclick="toggleSec('ok')">
+    <span style="font-size:1.1rem">✅</span>
+    <h2>Sin problemas detectados</h2>
+    <span class="ini-sec-badge gray">{{ ok_items|length }}</span>
+    <i class="bi bi-chevron-down ini-toggle collapsed" id="tog-ok"></i>
+  </div>
+  <div id="body-ok" class="ini-cards" style="display:none">
+    {% for r in ok_items %}{{ render_card(r, 'ok') }}{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if not urgentes and not conv_bajando and not win_win and not revisar and not sin_costos and not ok_items %}
+<div class="ini-empty">
+  <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px;"></i>
+  No hay datos disponibles. Ejecutá la actualización de stock primero.
+</div>
+{% endif %}
+
+<!-- Modal aplicar precio -->
+<div class="mp-modal-overlay" id="mpOverlay" style="display:none" onclick="if(event.target===this)cerrarModal()">
+  <div class="mp-modal">
+    <h3 id="mpTitulo">Aplicar precio</h3>
+    <div class="mp-sub" id="mpSub">Cargando variantes…</div>
+    <div id="mpGruposContainer"></div>
+    <div id="mpStatus"></div>
+    <div class="mp-modal-footer">
+      <button class="ini-btn ini-btn-outline" onclick="cerrarModal()">Cancelar</button>
+      <button class="ini-btn ini-btn-primary" id="mpConfirmar" onclick="confirmarPrecio()">
+        <span class="mp-spinner" id="mpSpinner"><i class="bi bi-arrow-repeat"></i> </span>
+        Confirmar
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const INI_ALIAS = {{ alias|tojson }};
+let _mpItemId = null;
+let _mpGrupos = [];
+
+function toggleSec(id) {
+  const body = document.getElementById('body-' + id);
+  const tog  = document.getElementById('tog-' + id);
+  if (!body) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? 'flex' : 'none';
+  body.style.flexDirection = 'column';
+  tog.classList.toggle('collapsed', !hidden);
+}
+
+async function abrirModal(itemId, precioSug, titulo) {
+  _mpItemId = itemId;
+  _mpGrupos = [];
+  document.getElementById('mpOverlay').style.display = 'flex';
+  document.getElementById('mpTitulo').textContent = titulo || 'Aplicar precio';
+  document.getElementById('mpSub').textContent = 'Cargando variantes…';
+  document.getElementById('mpGruposContainer').innerHTML = '';
+  document.getElementById('mpStatus').textContent = '';
+
+  try {
+    const res = await fetch(`/api/item-siblings/${INI_ALIAS}?item_id=${itemId}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error al cargar variantes');
+    _mpGrupos = data.grupos || [{
+      catalog_product_id: null,
+      titulo_variante: 'Sin variantes',
+      items: [{ id: itemId }],
+      es_principal: true,
+    }];
+  } catch(e) {
+    _mpGrupos = [{ catalog_product_id: null, titulo_variante: '', items: [{ id: itemId }], es_principal: true }];
+  }
+
+  const multi = _mpGrupos.length > 1;
+  document.getElementById('mpSub').textContent = multi
+    ? `${_mpGrupos.length} grupos de variantes — editá el precio de cada uno`
+    : 'Revisá el precio y confirmá';
+
+  const container = document.getElementById('mpGruposContainer');
+  container.innerHTML = _mpGrupos.map((g, idx) => {
+    const precio = g.es_principal ? precioSug : (g.items[0]?.precio || precioSug);
+    const label  = g.titulo_variante || (multi ? `Grupo ${idx + 1}` : 'Precio');
+    const ids    = g.items.map(s => s.id).join(', ');
+    return `<div class="mp-group-block">
+      <h4>${label}</h4>
+      <div class="mp-group-items">${ids}</div>
+      <div class="mp-price-row">
+        <label>$</label>
+        <input type="number" id="mpPrecio_${idx}" value="${precio}" min="1" step="1">
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function cerrarModal() {
+  document.getElementById('mpOverlay').style.display = 'none';
+  _mpItemId = null;
+  _mpGrupos = [];
+}
+
+async function confirmarPrecio() {
+  const btn = document.getElementById('mpConfirmar');
+  const spin = document.getElementById('mpSpinner');
+  const status = document.getElementById('mpStatus');
+  btn.disabled = true;
+  spin.style.display = 'inline';
+  status.textContent = '';
+
+  const grupos = _mpGrupos.map((g, idx) => ({
+    item_ids: g.items.map(s => s.id),
+    precio: parseFloat(document.getElementById(`mpPrecio_${idx}`)?.value || 0),
+  })).filter(g => g.item_ids.length > 0 && g.precio > 0);
+
+  try {
+    const res = await fetch(`/api/aplicar-precio/${INI_ALIAS}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grupos }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const oks  = (data.resultados || []).filter(r => r.ok).length;
+      const errs = (data.resultados || []).filter(r => !r.ok).length;
+      status.style.color = errs ? '#d97706' : '#16a34a';
+      status.textContent = errs
+        ? `${oks} actualizado(s), ${errs} error(es)`
+        : `✓ ${oks} publicación(es) actualizada(s)`;
+      setTimeout(() => cerrarModal(), 1800);
+    } else {
+      status.style.color = '#dc2626';
+      status.textContent = data.error || 'Error al aplicar precio';
+    }
+  } catch(e) {
+    status.style.color = '#dc2626';
+    status.textContent = 'Error de conexión';
+  } finally {
+    btn.disabled = false;
+    spin.style.display = 'none';
+  }
+}
+</script>
+{% endblock %}

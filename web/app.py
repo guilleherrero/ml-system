@@ -9220,6 +9220,68 @@ def lanzamientos():
                            accounts=get_accounts())
 
 
+@app.route('/inicio/<alias>')
+def inicio(alias):
+    from modules.pricing_strategy import analizar_catalogo
+    from modules.conv_history import cargar_tendencias
+
+    stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+    items       = stock_data.get('items', [])
+    ultima_act  = stock_data.get('fecha', '—')
+
+    convs    = [float(i.get('conversion_pct') or 0) for i in items if int(i.get('visitas_30d') or 0) > 0]
+    avg_conv = round(sum(convs) / len(convs), 2) if convs else 1.5
+
+    resultados = analizar_catalogo(items, costos_data)
+    item_ids   = [it.get('id') for it in items if it.get('id')]
+    tendencias = cargar_tendencias(alias, DATA_DIR, item_ids)
+
+    urgentes_list      = []
+    conv_bajando_list  = []
+    win_win_list       = []
+    revisar_list       = []
+    ok_list            = []
+
+    for r in resultados:
+        urgencia = r.recomendacion.urgencia if r.recomendacion else 'sin_datos'
+        tend     = tendencias.get(r.item_id, {}).get('tendencia', '')
+        if urgencia == 'urgente':
+            urgentes_list.append(r)
+        elif tend == 'bajando':
+            conv_bajando_list.append(r)
+        elif r.tiene_win_win:
+            win_win_list.append(r)
+        elif urgencia in ('revisar', 'sin_datos'):
+            revisar_list.append(r)
+        else:
+            ok_list.append(r)
+
+    costos_map = costos_data
+    sin_costos = sorted(
+        [it for it in items
+         if int(it.get('visitas_30d') or 0) >= 50
+         and not (costos_map.get(it.get('id'), {}) or {}).get('costo')
+         and not float(it.get('costo') or 0)],
+        key=lambda x: -int(x.get('visitas_30d') or 0),
+    )
+
+    return render_template('inicio.html',
+        alias=alias,
+        ultima_act=ultima_act,
+        total_items=len(items),
+        con_costos=len(resultados),
+        avg_conv=avg_conv,
+        urgentes=urgentes_list,
+        conv_bajando=conv_bajando_list,
+        win_win=win_win_list,
+        revisar=revisar_list,
+        ok_items=ok_list,
+        sin_costos=sin_costos,
+        tendencias=tendencias,
+    )
+
+
 @app.route('/pricing-strategy/<alias>')
 def pricing_strategy(alias):
     from modules.pricing_strategy import analizar_catalogo
