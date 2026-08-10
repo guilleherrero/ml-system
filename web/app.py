@@ -2736,94 +2736,114 @@ def salud(alias):
 
 @app.route('/api/item-siblings/<alias>')
 def api_item_siblings(alias):
-    """Devuelve los items del vendedor con el mismo catalog_product_id (misma variante sincronizada)."""
+    """Devuelve grupos de variantes de la misma familia de publicaciones.
+
+    Cada grupo agrupa items con el mismo catalog_product_id (misma variante/color).
+    El grupo del item solicitado viene primero (es_principal=True).
+    Retorna grupos con titulo_variante derivado del sufijo diferencial del título.
+    """
     item_id    = request.args.get('item_id', '').strip()
     stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
-    items      = stock_data.get('items', [])
-    stock_map  = {it.get('id'): it for it in items if it.get('id')}
+    stock_map  = {it.get('id'): it for it in stock_data.get('items', []) if it.get('id')}
 
     try:
         token, user_id, heads = _ml_auth(alias)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 401
 
-    # Obtener catalog_product_id del ítem (identifica la variante específica)
+    # Obtener catalog_product_id + family_id del ítem objetivo en una sola llamada
     g = req_lib.get(
         f'https://api.mercadolibre.com/items/{item_id}',
         headers=heads,
-        params={'attributes': 'id,catalog_product_id'},
+        params={'attributes': 'id,catalog_product_id,family_id'},
         timeout=10,
     )
-    catalog_id = g.json().get('catalog_product_id') if g.ok else None
-
-    if not catalog_id:
+    if not g.ok:
         it = stock_map.get(item_id, {})
-        return jsonify({'ok': True, 'siblings': [
-            {'id': item_id, 'titulo': it.get('titulo', ''), 'precio': it.get('precio', 0)}
+        return jsonify({'ok': True, 'grupos': [
+            {'catalog_product_id': None, 'titulo_variante': '',
+             'items': [{'id': item_id, 'titulo': it.get('titulo',''), 'precio': it.get('precio',0)}],
+             'es_principal': True}
         ]})
 
-    # Buscar en batch el catalog_product_id del resto de items del stock
+    gdata      = g.json()
+    catalog_id = gdata.get('catalog_product_id')
+    family_id  = gdata.get('family_id')
+
+    # Sin catalog: devolver solo el item solicitado
+    if not catalog_id and not family_id:
+        it = stock_map.get(item_id, {})
+        return jsonify({'ok': True, 'grupos': [
+            {'catalog_product_id': None, 'titulo_variante': '',
+             'items': [{'id': item_id, 'titulo': it.get('titulo',''), 'precio': it.get('precio',0)}],
+             'es_principal': True}
+        ]})
+
+    # Batch fetch catalog_product_id + family_id de todos los otros items del stock
     other_ids = [iid for iid in stock_map if iid != item_id]
-    sibling_ids = [item_id]
     BATCH = 20
+    api_data = {item_id: {'catalog_product_id': catalog_id, 'family_id': family_id}}
     for i in range(0, len(other_ids), BATCH):
         batch = other_ids[i:i + BATCH]
         rb = req_lib.get(
             'https://api.mercadolibre.com/items',
             headers=heads,
-            params={'ids': ','.join(batch), 'attributes': 'id,catalog_product_id'},
+            params={'ids': ','.join(batch), 'attributes': 'id,catalog_product_id,family_id'},
             timeout=15,
         )
         if rb.ok:
             for entry in rb.json():
                 body = entry.get('body') or {}
-                if body.get('catalog_product_id') == catalog_id:
-                    sibling_ids.append(body['id'])
+                if body.get('id'):
+                    api_data[body['id']] = {
+                        'catalog_product_id': body.get('catalog_product_id'),
+                        'family_id':          body.get('family_id'),
+                    }
 
-    siblings = [
-        {'id': iid,
-         'titulo': stock_map.get(iid, {}).get('titulo', ''),
-         'precio': stock_map.get(iid, {}).get('precio', 0)}
-        for iid in sibling_ids
-    ]
+    # Agrupar por catalog_product_id, filtrando por family_id
+    from collections import defaultdict, OrderedDict
+    grupos_map = OrderedDict()  # catalog_id -> [item_dicts]
+    # El grupo principal primero
+    grupos_map[catalog_id] = []
+    for iid, adata in api_data.items():
+        if adata.get('family_id') == family_id:
+            cat = adata.get('catalog_product_id') or ''
+            if cat not in grupos_map:
+                grupos_map[cat] = []
+            it = stock_map.get(iid, {})
+            grupos_map[cat].append({
+                'id':     iid,
+                'titulo': it.get('titulo', ''),
+                'precio': it.get('precio', 0),
+            })
 
-    # También traer los ítems de la misma familia (family_id) para mostrar como contexto
-    g2 = req_lib.get(
-        f'https://api.mercadolibre.com/items/{item_id}',
-        headers=heads,
-        params={'attributes': 'id,family_id'},
-        timeout=10,
-    )
-    family_id   = g2.json().get('family_id') if g2.ok else None
-    familia_ctx = []
-    if family_id:
-        other_ids2 = [iid for iid in stock_map if iid not in sibling_ids]
-        for i in range(0, len(other_ids2), BATCH):
-            batch = other_ids2[i:i + BATCH]
-            rb2 = req_lib.get(
-                'https://api.mercadolibre.com/items',
-                headers=heads,
-                params={'ids': ','.join(batch), 'attributes': 'id,family_id,title'},
-                timeout=15,
-            )
-            if rb2.ok:
-                for entry in rb2.json():
-                    body = entry.get('body') or {}
-                    if body.get('family_id') == family_id:
-                        it = stock_map.get(body['id'], {})
-                        familia_ctx.append({
-                            'id':     body['id'],
-                            'titulo': it.get('titulo', body.get('title', '')),
-                            'precio': it.get('precio', 0),
-                        })
+    # Derivar título de variante: prefijo común a todos los grupos → lo que diferencia
+    all_titulos = [it['titulo'] for g in grupos_map.values() for it in g if it['titulo']]
+    common_words = 0
+    if len(all_titulos) > 1:
+        words_sets = [t.split() for t in all_titulos]
+        min_len = min(len(w) for w in words_sets)
+        for idx in range(min_len):
+            if len(set(w[idx].lower() for w in words_sets)) == 1:
+                common_words += 1
+            else:
+                break
 
-    return jsonify({
-        'ok':        True,
-        'siblings':  siblings,
-        'familia':   familia_ctx,
-        'catalog_product_id': catalog_id,
-        'family_id': family_id,
-    })
+    grupos = []
+    for cat, items in grupos_map.items():
+        if not items:
+            continue
+        titulo_var = ' '.join(items[0]['titulo'].split()[common_words:]) if items else ''
+        grupos.append({
+            'catalog_product_id': cat,
+            'titulo_variante':    titulo_var or cat or 'Variante',
+            'items':              items,
+            'es_principal':       cat == catalog_id,
+        })
+    # Garantizar que el grupo principal quede primero
+    grupos.sort(key=lambda g: 0 if g['es_principal'] else 1)
+
+    return jsonify({'ok': True, 'grupos': grupos, 'family_id': family_id})
 
 
 @app.route('/api/aplicar-precio/<alias>', methods=['POST'])
@@ -2834,25 +2854,41 @@ def api_aplicar_precio(alias):
       { "item_id": "MLA123", "precio": 85000 }          — un solo ítem
       { "item_ids": ["MLA123","MLA456"], "precio": 85000 } — varios ítems (familia)
     """
-    data    = request.get_json(silent=True) or {}
-    precio  = data.get('precio')
+    data = request.get_json(silent=True) or {}
 
-    # Normalizar a lista de item_ids
-    if 'item_ids' in data:
-        item_ids = [str(i).strip() for i in data['item_ids'] if str(i).strip()]
-    elif data.get('item_id'):
-        item_ids = [str(data['item_id']).strip()]
+    # Normalizar entrada a lista de {item_ids, precio}
+    # Formatos aceptados:
+    #   { "grupos": [{"item_ids": [...], "precio": X}, ...] }   ← multi-variante
+    #   { "item_ids": [...], "precio": X }                       ← un grupo
+    #   { "item_id": "MLA123", "precio": X }                     ← un item
+    if 'grupos' in data:
+        grupos = []
+        for g in data['grupos']:
+            ids    = [str(i).strip() for i in (g.get('item_ids') or []) if str(i).strip()]
+            precio = g.get('precio')
+            if ids and precio is not None:
+                try:
+                    p = float(precio)
+                except (TypeError, ValueError):
+                    continue
+                if p > 0:
+                    grupos.append({'item_ids': ids, 'precio': p})
     else:
-        item_ids = []
+        precio = data.get('precio')
+        if 'item_ids' in data:
+            ids = [str(i).strip() for i in data['item_ids'] if str(i).strip()]
+        elif data.get('item_id'):
+            ids = [str(data['item_id']).strip()]
+        else:
+            ids = []
+        try:
+            p = float(precio) if precio is not None else 0
+        except (TypeError, ValueError):
+            p = 0
+        grupos = [{'item_ids': ids, 'precio': p}] if ids and p > 0 else []
 
-    if not item_ids or precio is None:
-        return jsonify({'ok': False, 'error': 'item_id(s) y precio requeridos'}), 400
-    try:
-        precio = float(precio)
-    except (TypeError, ValueError):
-        return jsonify({'ok': False, 'error': 'precio inválido'}), 400
-    if precio <= 0:
-        return jsonify({'ok': False, 'error': 'precio debe ser mayor a 0'}), 400
+    if not grupos:
+        return jsonify({'ok': False, 'error': 'Datos de precio inválidos o faltantes'}), 400
 
     try:
         token, user_id, heads = _ml_auth(alias)
@@ -2861,7 +2897,7 @@ def api_aplicar_precio(alias):
 
     heads_json = {**heads, 'Content-Type': 'application/json'}
 
-    def _aplicar_uno(iid):
+    def _aplicar_uno(iid, precio):
         g = req_lib.get(
             f'https://api.mercadolibre.com/items/{iid}',
             headers=heads,
@@ -2881,19 +2917,24 @@ def api_aplicar_precio(alias):
             nuevo = r.json().get('price') or precio
             _audit('CAMBIAR_PRECIO', alias=alias, item_id=iid, precio_nuevo=nuevo,
                    variantes=len(variations))
-            return {'id': iid, 'ok': True, 'precio_nuevo': nuevo, 'variantes': len(variations)}
+            return {'id': iid, 'ok': True, 'precio_nuevo': nuevo}
         return {'id': iid, 'ok': False, 'error': r.text[:120]}
 
-    resultados = [_aplicar_uno(iid) for iid in item_ids]
-    ok_count   = sum(1 for r in resultados if r['ok'])
-    precio_nuevo = next((r['precio_nuevo'] for r in resultados if r.get('ok')), precio)
+    all_resultados = []
+    for grupo in grupos:
+        for iid in grupo['item_ids']:
+            all_resultados.append(_aplicar_uno(iid, grupo['precio']))
 
+    ok_count  = sum(1 for r in all_resultados if r['ok'])
+    precio_nuevo = next((r['precio_nuevo'] for r in all_resultados if r.get('ok')), grupos[0]['precio'])
+
+    total = sum(len(g['item_ids']) for g in grupos)
     return jsonify({
-        'ok':          ok_count > 0,
+        'ok':           ok_count > 0,
         'precio_nuevo': precio_nuevo,
-        'aplicados':   ok_count,
-        'total':       len(item_ids),
-        'detalle':     resultados,
+        'aplicados':    ok_count,
+        'total':        total,
+        'detalle':      all_resultados,
     })
 
 

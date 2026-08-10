@@ -871,33 +871,17 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
 <div class="modal fade" id="modalPrecio" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Aplicar precio</h5>
+      <div class="modal-header py-2">
+        <h5 class="modal-title fs-6">Aplicar precio</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <div id="mpLoading" class="text-center py-3 text-muted">
-          <div class="spinner-border spinner-border-sm me-2"></div>Buscando publicaciones de la familia…
+          <div class="spinner-border spinner-border-sm me-2"></div>Buscando variantes…
         </div>
-        <div id="mpContent" style="display:none">
-          <label class="form-label fw-semibold">Precio a aplicar</label>
-          <div class="input-group mb-3">
-            <span class="input-group-text">$</span>
-            <input type="number" id="mpPrecioInput" class="form-control form-control-lg"
-                   min="1" step="1">
-          </div>
-          <div class="mb-1 fw-semibold" style="font-size:.82rem">Publicaciones que se van a actualizar:</div>
-          <div id="mpSiblingList" style="font-size:.82rem; max-height:160px; overflow-y:auto"></div>
-          <div id="mpFamiliaWrap" style="display:none; margin-top:.75rem">
-            <div class="mb-1 text-muted" style="font-size:.78rem">
-              <i class="bi bi-info-circle me-1"></i>
-              Misma página de catálogo (no se modifican, solo referencia):
-            </div>
-            <div id="mpFamiliaList" style="font-size:.78rem; max-height:120px; overflow-y:auto; opacity:.7"></div>
-          </div>
-        </div>
+        <div id="mpGrupos" style="display:none"></div>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer py-2">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-primary btn-sm" id="mpConfirmarBtn" disabled
                 onclick="confirmarPrecio()">
@@ -910,72 +894,85 @@ tr.row-recomendada td { border-color: rgba(37, 99, 235, 0.2); }
 
 <script>
 const PS_ALIAS = '{{ alias }}';
-let _mpBtn     = null;   // botón que disparó el modal
-let _mpSibling = [];     // lista de siblings cargados
+let _mpBtn    = null;
+let _mpGrupos = [];   // [{catalog_product_id, titulo_variante, items, es_principal}]
 
 async function aplicarPrecio(btn) {
-  _mpBtn = btn;
-  _mpSibling = [];
+  _mpBtn    = btn;
+  _mpGrupos = [];
 
-  const itemId      = btn.dataset.itemId;
-  const precioSug   = parseInt(btn.dataset.precio, 10);
+  const itemId    = btn.dataset.itemId;
+  const precioSug = parseInt(btn.dataset.precio, 10);
 
-  // Reset modal
   document.getElementById('mpLoading').style.display = '';
-  document.getElementById('mpContent').style.display = 'none';
+  document.getElementById('mpGrupos').style.display = 'none';
   document.getElementById('mpConfirmarBtn').disabled = true;
-  document.getElementById('mpPrecioInput').value = precioSug;
+  new bootstrap.Modal(document.getElementById('modalPrecio')).show();
 
-  const modal = new bootstrap.Modal(document.getElementById('modalPrecio'));
-  modal.show();
-
-  // Cargar familia de publicaciones
   try {
     const resp = await fetch(`/api/item-siblings/${PS_ALIAS}?item_id=${encodeURIComponent(itemId)}`);
     const data = await resp.json();
-    _mpSibling = data.ok ? data.siblings : [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }];
 
-    // Renderizar publicaciones que se actualizan
-    const renderRow = (s, muted) => `
-      <div class="d-flex justify-content-between align-items-center border-bottom py-1 gap-2">
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.titulo || s.id}">
-          <span class="${muted ? 'text-muted' : ''}" style="font-family:monospace;font-size:.75rem">${s.id}</span>
-          ${s.titulo ? ' — ' + s.titulo.substring(0, 50) + (s.titulo.length > 50 ? '…' : '') : ''}
-        </span>
-        <span class="text-nowrap text-muted">$${(s.precio||0).toLocaleString('es-AR')}</span>
-      </div>`;
-
-    document.getElementById('mpSiblingList').innerHTML = _mpSibling.map(s => renderRow(s, false)).join('');
-
-    // Renderizar contexto de familia (otras variantes en la misma página de catálogo)
-    const familia = (data.ok && data.familia) ? data.familia : [];
-    const familiaWrap = document.getElementById('mpFamiliaWrap');
-    if (familia.length > 0) {
-      document.getElementById('mpFamiliaList').innerHTML = familia.map(s => renderRow(s, true)).join('');
-      familiaWrap.style.display = '';
+    if (data.ok && data.grupos && data.grupos.length) {
+      _mpGrupos = data.grupos;
     } else {
-      familiaWrap.style.display = 'none';
+      // Fallback: un solo grupo con el item actual
+      _mpGrupos = [{
+        catalog_product_id: null,
+        titulo_variante: '',
+        items: [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }],
+        es_principal: true,
+      }];
     }
   } catch {
-    _mpSibling = [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }];
-    document.getElementById('mpSiblingList').innerHTML = '';
-    document.getElementById('mpFamiliaWrap').style.display = 'none';
+    _mpGrupos = [{
+      catalog_product_id: null,
+      titulo_variante: '',
+      items: [{ id: itemId, titulo: '', precio: parseInt(btn.dataset.precioActual, 10) }],
+      es_principal: true,
+    }];
   }
 
+  // Renderizar un bloque por grupo con su propio input de precio
+  const container = document.getElementById('mpGrupos');
+  container.innerHTML = _mpGrupos.map((g, idx) => {
+    const precioInicial = g.es_principal ? precioSug : (g.items[0]?.precio || 0);
+    const rows = g.items.map(s => `
+      <div class="d-flex justify-content-between gap-2 py-1 border-bottom" style="font-size:.78rem">
+        <span class="text-muted text-truncate" style="font-family:monospace">${s.id}</span>
+        <span class="text-nowrap text-muted">actual $${(s.precio||0).toLocaleString('es-AR')}</span>
+      </div>`).join('');
+    const label = g.titulo_variante || (g.es_principal ? 'Esta variante' : 'Otra variante');
+    return `
+      <div class="mb-3 p-2 rounded" style="background:var(--color-surface);border:1px solid var(--color-border)">
+        <div class="fw-semibold mb-2" style="font-size:.85rem">${label}</div>
+        <div class="input-group input-group-sm mb-2">
+          <span class="input-group-text">$</span>
+          <input type="number" class="form-control mp-precio-input" id="mpPrecio_${idx}"
+                 data-grupo-idx="${idx}" value="${precioInicial}" min="1" step="1">
+        </div>
+        <div>${rows}</div>
+      </div>`;
+  }).join('');
+
   document.getElementById('mpLoading').style.display = 'none';
-  document.getElementById('mpContent').style.display = '';
+  container.style.display = '';
   document.getElementById('mpConfirmarBtn').disabled = false;
 }
 
 async function confirmarPrecio() {
-  const precio   = parseFloat(document.getElementById('mpPrecioInput').value);
-  const item_ids = _mpSibling.map(s => s.id);
   const confirmBtn = document.getElementById('mpConfirmarBtn');
 
-  if (!precio || precio <= 0) {
-    alert('Ingresá un precio válido.');
-    return;
-  }
+  // Construir payload de grupos
+  const grupos = _mpGrupos.map((g, idx) => {
+    const input = document.getElementById(`mpPrecio_${idx}`);
+    return {
+      item_ids: g.items.map(s => s.id),
+      precio: parseFloat(input?.value || 0),
+    };
+  }).filter(g => g.item_ids.length > 0 && g.precio > 0);
+
+  if (!grupos.length) { alert('Ingresá precios válidos.'); return; }
 
   confirmBtn.disabled = true;
   confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando…';
@@ -984,37 +981,29 @@ async function confirmarPrecio() {
     const resp = await fetch(`/api/aplicar-precio/${PS_ALIAS}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_ids, precio }),
+      body: JSON.stringify({ grupos }),
     });
     const data = await resp.json();
-
     bootstrap.Modal.getInstance(document.getElementById('modalPrecio')).hide();
 
     if (data.ok) {
       const label = `✅ Aplicado $${data.precio_nuevo.toLocaleString('es-AR')}` +
                     (data.total > 1 ? ` (${data.aplicados}/${data.total} pub.)` : '');
-      // Marcar todos los botones de los items afectados
-      item_ids.forEach(iid => {
-        document.querySelectorAll(`.btn-aplicar-precio[data-item-id="${iid}"]`).forEach(b => {
-          b.textContent = label;
-          b.classList.add('ok');
-          b.dataset.precioActual = data.precio_nuevo;
+      grupos.forEach(g => {
+        g.item_ids.forEach(iid => {
+          document.querySelectorAll(`.btn-aplicar-precio[data-item-id="${iid}"]`).forEach(b => {
+            b.textContent = label;
+            b.classList.add('ok');
+            b.dataset.precioActual = g.precio;
+          });
         });
       });
     } else {
-      if (_mpBtn) {
-        _mpBtn.textContent = '❌ Error — reintentar';
-        _mpBtn.classList.add('err');
-        _mpBtn.disabled = false;
-      }
+      if (_mpBtn) { _mpBtn.textContent = '❌ Error — reintentar'; _mpBtn.classList.add('err'); _mpBtn.disabled = false; }
       alert(`Error:\n${data.error || 'Sin detalle'}`);
     }
   } catch (e) {
-    if (_mpBtn) {
-      _mpBtn.textContent = '❌ Error — reintentar';
-      _mpBtn.classList.add('err');
-      _mpBtn.disabled = false;
-    }
+    if (_mpBtn) { _mpBtn.textContent = '❌ Error — reintentar'; _mpBtn.classList.add('err'); _mpBtn.disabled = false; }
     bootstrap.Modal.getInstance(document.getElementById('modalPrecio'))?.hide();
     alert(`Error de conexión: ${e.message}`);
   }
