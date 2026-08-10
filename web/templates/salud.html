@@ -45,13 +45,35 @@
   </div>
 </div>
 
+<!-- ══ TABS ════════════════════════════════════════════════════════════ -->
+<ul class="nav nav-tabs mb-4" id="saludTabs">
+  <li class="nav-item">
+    <button class="nav-link active" data-tab="catalogo" onclick="switchTab('catalogo',this)">
+      <i class="bi bi-tag me-1"></i>En catálogo
+      <span class="badge bg-secondary ms-1">{{ resumen.total }}</span>
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-tab="sin-catalogo" onclick="switchTab('sin-catalogo',this)">
+      <i class="bi bi-search me-1"></i>Sin catálogo
+      <span class="badge bg-secondary ms-1">{{ resumen.no_catalogo }}</span>
+      {% if resumen.no_catalogo_trafico %}
+        <span class="badge ms-1" style="background:#fef3c7;color:#d97706">{{ resumen.no_catalogo_trafico }} con tráfico</span>
+      {% endif %}
+    </button>
+  </li>
+</ul>
+
+<!-- ══ TAB: EN CATÁLOGO ══════════════════════════════════════════════ -->
+<div id="tab-catalogo">
+
 {% if not items %}
 <div class="alert alert-info">
   No se encontraron publicaciones en catálogo para esta cuenta, o no se pudo conectar.
 </div>
 {% else %}
 
-{# ══ Sprint 4.3 — Banner BB perdido → wizard de repricing ══ #}
+{# Banner perdiendo buy box #}
 {% if resumen.perdiendo and resumen.perdiendo > 0 %}
 <div class="alert d-flex align-items-center justify-content-between gap-3 mb-4"
      style="border:1px solid #fecaca;background:linear-gradient(90deg,#fef2f2 0%,#fff7ed 100%);">
@@ -59,67 +81,61 @@
     <i class="bi bi-exclamation-triangle-fill" style="font-size:1.6rem;color:var(--color-critical-500)"></i>
     <div>
       <div style="font-weight:700;color:var(--color-critical-700)">
-        Estás perdiendo el Buy Box en {{ resumen.perdiendo }}
-        publicación{{ 'es' if resumen.perdiendo != 1 else '' }}
+        Perdés el Buy Box en {{ resumen.perdiendo }} publicación{{ 'es' if resumen.perdiendo != 1 else '' }}
       </div>
       <div style="font-size:.82rem;color:#7c2d12">
-        Configurá repricing automático en 5 minutos — simulación dry-run obligatoria antes de activar.
+        {% if resumen.perdiendo_precio %}
+          <span class="me-3">💰 {{ resumen.perdiendo_precio }} por precio más alto</span>
+        {% endif %}
+        {% if resumen.perdiendo_reputacion %}
+          <span class="me-3">⭐ {{ resumen.perdiendo_reputacion }} por reputación u otro factor</span>
+        {% endif %}
+        {% if resumen.perdiendo_oportunidad %}
+          <span style="color:#15803d">🟢 {{ resumen.perdiendo_oportunidad }} con ganador sin stock — oportunidad</span>
+        {% endif %}
       </div>
     </div>
   </div>
-  <a href="/repricing/wizard?alias={{ alias | urlencode }}"
-     class="btn btn-danger flex-shrink-0">
+  <a href="/repricing/wizard?alias={{ alias | urlencode }}" class="btn btn-danger flex-shrink-0">
     <i class="bi bi-magic me-1"></i>Recuperar Buy Box
   </a>
 </div>
 {% endif %}
 
-<!-- ══ RESUMEN ═══════════════════════════════════════════════════════ -->
-<!-- 5 KPIs: los primeros 4 son disjuntos (EN CATÁLOGO = GANANDO + PERDIENDO + SIN DATOS).
-     CON RANGO es ortogonal — métrica de configuración, no parte de la suma. -->
+<!-- KPIs -->
 <div class="row row-cols-2 row-cols-md-5 g-3 mb-4">
-  <div>
-    <div class="card text-center p-3 h-100" style="border-top:3px solid #6366f1">
-      <div style="font-size:2rem;font-weight:800;color:#6366f1">{{ resumen.total }}</div>
-      <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">EN CATÁLOGO</div>
-      <div style="font-size:.68rem;color:var(--color-neutral-400)">publicaciones activas</div>
+  <div><div class="card text-center p-3 h-100" style="border-top:3px solid #6366f1">
+    <div style="font-size:2rem;font-weight:800;color:#6366f1">{{ resumen.total }}</div>
+    <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">EN CATÁLOGO</div>
+    <div style="font-size:.68rem;color:var(--color-neutral-400)">publicaciones activas</div>
+  </div></div>
+  <div><div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-success-400)">
+    <div style="font-size:2rem;font-weight:800;color:#059669">{{ resumen.ganando }}</div>
+    <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">GANANDO</div>
+    <div style="font-size:.68rem;color:var(--color-neutral-400)">buy box activo</div>
+  </div></div>
+  <div><div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-critical-400)">
+    <div style="font-size:2rem;font-weight:800;color:var(--color-critical-500)">{{ resumen.perdiendo }}</div>
+    <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">PERDIENDO</div>
+    <div style="font-size:.68rem;color:var(--color-neutral-400)">otro gana el buy box</div>
+  </div></div>
+  <div><div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-neutral-400)">
+    <div style="font-size:2rem;font-weight:800;color:var(--color-neutral-600)">{{ resumen.sin_datos or 0 }}</div>
+    <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">SIN DATOS</div>
+    <div style="font-size:.68rem;color:var(--color-neutral-400)">sin info de Buy Box</div>
+  </div></div>
+  <div><div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-warning-400);cursor:help"
+       title="Cuántas publicaciones tienen rango de precio configurado para repricing automático.">
+    <div style="font-size:2rem;font-weight:800;color:var(--color-warning-500)">
+      {{ resumen.configurados }}
+      <i class="bi bi-info-circle" style="font-size:.75rem;color:var(--color-neutral-400);vertical-align:super;margin-left:2px"></i>
     </div>
-  </div>
-  <div>
-    <div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-success-400)">
-      <div style="font-size:2rem;font-weight:800;color:#059669">{{ resumen.ganando }}</div>
-      <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">GANANDO</div>
-      <div style="font-size:.68rem;color:var(--color-neutral-400)">buy box activo</div>
-    </div>
-  </div>
-  <div>
-    <div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-critical-400)">
-      <div style="font-size:2rem;font-weight:800;color:var(--color-critical-500)">{{ resumen.perdiendo }}</div>
-      <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">PERDIENDO</div>
-      <div style="font-size:.68rem;color:var(--color-neutral-400)">otro gana el buy box</div>
-    </div>
-  </div>
-  <div>
-    <div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-neutral-400)">
-      <div style="font-size:2rem;font-weight:800;color:var(--color-neutral-600)">{{ resumen.sin_datos or 0 }}</div>
-      <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">SIN DATOS</div>
-      <div style="font-size:.68rem;color:var(--color-neutral-400)">publicaciones sin info de Buy Box</div>
-    </div>
-  </div>
-  <div>
-    <div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-warning-400);cursor:help"
-         title="Métrica de configuración (ortogonal). Indica cuántas publicaciones tienen rango de precio para repricing automático. No suma con las otras categorías.">
-      <div style="font-size:2rem;font-weight:800;color:var(--color-warning-500)">
-        {{ resumen.configurados }}
-        <i class="bi bi-info-circle" style="font-size:.75rem;color:var(--color-neutral-400);vertical-align:super;margin-left:2px"></i>
-      </div>
-      <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">CON RANGO</div>
-      <div style="font-size:.68rem;color:var(--color-neutral-400)">repricing automático</div>
-    </div>
-  </div>
+    <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">CON RANGO</div>
+    <div style="font-size:.68rem;color:var(--color-neutral-400)">repricing automático</div>
+  </div></div>
 </div>
 
-<!-- ══ FILTROS ════════════════════════════════════════════════════════ -->
+<!-- Filtros -->
 <div class="d-flex gap-2 flex-wrap mb-3" id="filtros">
   <button class="filter-pill active" onclick="filtrar('todos',this)">
     Todos <span class="ms-1 badge bg-secondary">{{ resumen.total }}</span>
@@ -134,7 +150,7 @@
   </button>
 </div>
 
-<!-- ══ TABLA ══════════════════════════════════════════════════════════ -->
+<!-- Tabla -->
 <div class="card">
   <div class="table-responsive">
     <table class="table mb-0" style="font-size:.85rem">
@@ -148,8 +164,7 @@
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Stock ganador</th>
           <th class="text-end" style="padding:.75rem .75rem;white-space:nowrap">Precio ideal</th>
           <th style="padding:.75rem .75rem;white-space:nowrap">
-            Rango
-            <span style="font-weight:400;color:var(--color-neutral-400);font-size:.68rem;margin-left:3px">min — max</span>
+            Rango <span style="font-weight:400;color:var(--color-neutral-400);font-size:.68rem;margin-left:3px">min — max</span>
           </th>
           <th class="text-center" style="padding:.75rem .75rem">Compets.</th>
           <th style="padding:.75rem .75rem"></th>
@@ -202,6 +217,13 @@
             <span class="badge-win"><i class="bi bi-trophy-fill me-1"></i>Ganando</span>
           {% elif it.we_win == false %}
             <span class="badge-lose"><i class="bi bi-x-circle me-1"></i>Perdiendo</span>
+            {% if it.razon_perdida == 'precio' %}
+              <div style="font-size:.65rem;color:#dc2626;margin-top:2px">💰 precio más alto</div>
+            {% elif it.razon_perdida == 'ganador_sin_stock' %}
+              <div style="font-size:.65rem;color:#16a34a;margin-top:2px">🟢 ganador sin stock</div>
+            {% elif it.razon_perdida == 'reputacion' %}
+              <div style="font-size:.65rem;color:#d97706;margin-top:2px">⭐ reputación / otro</div>
+            {% endif %}
           {% else %}
             <span class="badge-nd">Sin datos</span>
           {% endif %}
@@ -215,8 +237,8 @@
               <span style="color:var(--color-success-500);font-size:.75rem">sin competidores</span>
             {% endif %}
           {% elif it.winner_stock is not none %}
-            <span style="font-weight:600;color:var(--color-neutral-800)">{{ it.winner_stock }}</span>
-            <div style="font-size:.68rem;color:var(--color-neutral-400)">stock ganador</div>
+            <span style="font-weight:600;color:{% if it.winner_stock <= 3 %}#16a34a{% else %}var(--color-neutral-800){% endif %}">{{ it.winner_stock }}</span>
+            <div style="font-size:.68rem;color:var(--color-neutral-400)">stock ganador{% if it.winner_stock <= 3 %} ⚠️{% endif %}</div>
           {% else %}
             <span class="text-muted">—</span>
           {% endif %}
@@ -313,11 +335,155 @@
 </div>
 
 {% endif %}
+
+</div>{# /tab-catalogo #}
+
+<!-- ══ TAB: SIN CATÁLOGO ════════════════════════════════════════════ -->
+<div id="tab-sin-catalogo" style="display:none">
+
+<div class="d-flex align-items-center justify-content-between mb-3 gap-3 flex-wrap">
+  <div style="font-size:.85rem;color:#6b7280">
+    Publicaciones fuera de catálogo ML. Para las que tienen tráfico significativo
+    podés detectar si existe un catálogo donde convendría participar.
+  </div>
+  {% set candidatos = no_catalog | selectattr('visitas_30d', 'ge', 50) | list %}
+  {% if candidatos %}
+  <button class="btn btn-sm btn-outline-primary" id="btnScan" onclick="iniciarScan()">
+    <i class="bi bi-search me-1"></i>Detectar oportunidades de catálogo
+    <span class="badge bg-primary ms-1">{{ candidatos | length }}</span>
+  </button>
+  {% endif %}
+</div>
+
+<div id="scanStatus" style="display:none" class="alert alert-info mb-3">
+  <i class="bi bi-arrow-repeat me-1" style="animation:spin 1s linear infinite"></i>
+  Buscando catálogos… esto puede tomar hasta 30 segundos.
+</div>
+
+{% if no_catalog %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table mb-0" style="font-size:.85rem">
+      <thead style="background:var(--color-neutral-50);font-size:.75rem;color:var(--color-neutral-600);font-weight:700;text-transform:uppercase;letter-spacing:.04em">
+        <tr>
+          <th style="padding:.75rem 1rem">Publicación</th>
+          <th class="text-end" style="padding:.75rem .75rem">Precio</th>
+          <th class="text-end" style="padding:.75rem .75rem">Visitas/mes</th>
+          <th class="text-end" style="padding:.75rem .75rem">Ventas/mes</th>
+          <th class="text-end" style="padding:.75rem .75rem">Conv%</th>
+          <th style="padding:.75rem .75rem">Catálogo ML</th>
+          <th style="padding:.75rem .75rem"></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for it in no_catalog %}
+      <tr class="cat-row" data-id="{{ it.id }}">
+        <td style="padding:.75rem 1rem;max-width:260px">
+          <div style="font-weight:600;color:var(--color-neutral-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.titulo }}</div>
+          <div style="font-size:.7rem;color:var(--color-neutral-400)">
+            {{ it.id }}{% if it.status == 'paused' %} · <span class="text-warning">pausada</span>{% endif %}
+          </div>
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap;font-weight:600">
+          ${{ '{:,.0f}'.format(it.precio) }}
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem">
+          {% if it.visitas_30d %}
+            <span style="font-weight:{% if it.visitas_30d >= 50 %}600{% else %}400{% endif %}">{{ it.visitas_30d }}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem">
+          {{ it.ventas_30d if it.ventas_30d else '—' }}
+        </td>
+        <td class="text-end" style="padding:.75rem .75rem">
+          {{ '%.1f'|format(it.conv_pct) if it.conv_pct else '—' }}%
+        </td>
+        <td style="padding:.75rem .75rem" id="scan-{{ it.id }}">
+          {% if it.visitas_30d >= 50 %}
+            <span class="text-muted" style="font-size:.75rem">— pendiente de scan</span>
+          {% else %}
+            <span class="text-muted" style="font-size:.75rem">poco tráfico</span>
+          {% endif %}
+        </td>
+        <td style="padding:.75rem .75rem">
+          {% if it.permalink %}
+          <a href="{{ it.permalink }}" target="_blank" class="btn btn-xs btn-outline-secondary" style="font-size:.7rem;padding:2px 8px">Ver →</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-success">
+  Todas tus publicaciones activas están participando en catálogo ML. ✓
+</div>
+{% endif %}
+
+</div>{# /tab-sin-catalogo #}
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
 const ALIAS = {{ alias | tojson }};
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('#saludTabs .nav-link').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-catalogo').style.display      = name === 'catalogo'     ? '' : 'none';
+  document.getElementById('tab-sin-catalogo').style.display  = name === 'sin-catalogo' ? '' : 'none';
+}
+
+// ── Scan de oportunidades de catálogo ─────────────────────────────────────────
+async function iniciarScan() {
+  const btn = document.getElementById('btnScan');
+  const status = document.getElementById('scanStatus');
+  if (!btn) return;
+
+  // Recolectar IDs de filas con tráfico (visitas >= 50, indicadas por "pendiente de scan")
+  const ids = [];
+  document.querySelectorAll('#tab-sin-catalogo tr[data-id]').forEach(row => {
+    const cell = document.getElementById('scan-' + row.dataset.id);
+    if (cell && cell.textContent.includes('pendiente')) ids.push(row.dataset.id);
+  });
+  if (!ids.length) return;
+
+  btn.disabled = true;
+  status.style.display = '';
+
+  try {
+    const r   = await fetch(`/api/salud-catalog-scan/${encodeURIComponent(ALIAS)}?ids=${ids.join(',')}`);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'error');
+
+    Object.entries(data.resultados || {}).forEach(([iid, res]) => {
+      const cell = document.getElementById('scan-' + iid);
+      if (!cell) return;
+      if (res.catalog_existe) {
+        cell.innerHTML = `<span style="background:#fef3c7;color:#d97706;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:12px">
+          ⚠️ Catálogo disponible — no participás
+        </span>
+        <div style="font-size:.65rem;color:#6b7280;margin-top:3px">${res.catalog_titulo || ''}</div>`;
+      } else {
+        cell.innerHTML = `<span style="color:#6b7280;font-size:.75rem">Sin catálogo detectado</span>`;
+      }
+    });
+  } catch(e) {
+    status.textContent = 'Error al escanear: ' + e.message;
+    status.className   = 'alert alert-danger mb-3';
+  } finally {
+    status.style.display = 'none';
+    btn.disabled         = false;
+  }
+}
 
 // ── Filtros ───────────────────────────────────────────────────────────────────
 function filtrar(tipo, btn) {

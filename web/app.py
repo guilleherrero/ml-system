@@ -2570,14 +2570,14 @@ def salud(alias):
     all_accs = get_accounts()
     account  = next((a for a in all_accs if a.get('alias') == alias), None)
     if not account:
-        return render_template('salud.html', alias=alias, items=[], resumen={},
-                               accounts=get_accounts())
+        return render_template('salud.html', alias=alias, items=[], no_catalog=[],
+                               resumen={}, accounts=get_accounts())
 
     try:
         token, user_id, heads = _ml_auth(alias)
     except Exception:
-        return render_template('salud.html', alias=alias, items=[], resumen={},
-                               accounts=get_accounts())
+        return render_template('salud.html', alias=alias, items=[], no_catalog=[],
+                               resumen={}, accounts=get_accounts())
     ML = 'https://api.mercadolibre.com'
 
     # 1 — Recolectar todos los IDs (activos + pausados, catálogo puede quedar paused)
@@ -2598,11 +2598,12 @@ def salud(alias):
                 break
             _time_module.sleep(0.1)
 
-    # 2 — Fetch en lotes, quedarse solo con los que tienen catalog_product_id
+    # 2 — Fetch en lotes, separar catalog_items y no_catalog_items
     seen = set()
     unique_ids = [i for i in all_ids if not (i in seen or seen.add(i))]
 
-    catalog_items = []
+    catalog_items    = []
+    no_catalog_items = []
     for b in range(0, len(unique_ids), 20):
         batch = unique_ids[b:b+20]
         try:
@@ -2616,24 +2617,34 @@ def salud(alias):
                         continue
                     body = e.get('body', {})
                     cpid = body.get('catalog_product_id')
-                    if not cpid:
-                        continue
-                    catalog_items.append({
+                    base = {
                         'id':                 body.get('id', ''),
                         'titulo':             body.get('title', '')[:70],
                         'precio':             float(body.get('price', 0) or 0),
                         'permalink':          body.get('permalink', ''),
                         'status':             body.get('status', ''),
                         'catalog_product_id': cpid,
-                        'buy_box_price':      None,
-                        'buy_box_winner_id':  None,
-                        'we_win':             None,
-                        'competidores':       0,
-                        'diferencia_pct':     None,
-                        'precio_ideal':       None,
-                        'winner_stock':       None,
-                        'segundo_precio':     None,   # precio del 2do competidor
-                    })
+                    }
+                    if cpid:
+                        catalog_items.append({
+                            **base,
+                            'buy_box_price':     None,
+                            'buy_box_winner_id': None,
+                            'we_win':            None,
+                            'competidores':      0,
+                            'diferencia_pct':    None,
+                            'precio_ideal':      None,
+                            'winner_stock':      None,
+                            'segundo_precio':    None,
+                            'razon_perdida':     None,
+                        })
+                    else:
+                        no_catalog_items.append({
+                            **base,
+                            'visitas_30d':    0,
+                            'ventas_30d':     0,
+                            'conv_pct':       0.0,
+                        })
         except Exception:
             pass
         _time_module.sleep(0.1)
@@ -2653,10 +2664,7 @@ def salud(alias):
                     it['buy_box_price']     = bb_price
                     it['buy_box_winner_id'] = winner_id
                     it['we_win']            = (winner_id == it['id'])
-                    # diferencia_pct: si ganamos → margen sobre 2do competidor
-                    #                 si perdemos → cuánto más caro estamos vs el buy box
 
-                    # 2do competidor: si ganamos es sellers[1], si perdemos también hay uno detrás
                     if it['we_win'] and len(sellers) >= 2:
                         it['segundo_precio'] = float(sellers[1].get('price') or 0)
                     elif not it['we_win'] and len(sellers) >= 2:
@@ -2666,24 +2674,25 @@ def salud(alias):
                                 it['segundo_precio'] = float(s.get('price') or 0)
                                 break
 
-                    # diferencia_pct: referencia según si ganamos o perdemos
                     if it['we_win']:
                         if it['segundo_precio'] and it['segundo_precio'] > 0:
                             it['diferencia_pct'] = round((it['precio'] - it['segundo_precio']) / it['segundo_precio'] * 100, 1)
-                        # si no hay 2do competidor, no hay diferencia relevante
                     elif bb_price > 0:
                         it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
 
-                    # Precio ideal:
-                    # - Perdiendo → buy_box_price - 1
-                    # - Ganando con 2do competidor → segundo_precio - 1 (solo si es mayor al precio actual)
-                    # - Ganando sin 2do → precio actual está bien
                     if not it['we_win'] and bb_price > 0:
                         it['precio_ideal'] = max(1.0, bb_price - 1)
                     elif it['we_win'] and it['segundo_precio'] and it['segundo_precio'] - 1 > it['precio']:
                         it['precio_ideal'] = max(1.0, it['segundo_precio'] - 1)
                     else:
                         it['precio_ideal'] = it['precio']
+
+                    # Razón por la que se pierde el buy box
+                    if not it['we_win'] and bb_price > 0:
+                        if it['precio'] > bb_price * 1.02:
+                            it['razon_perdida'] = 'precio'
+                        else:
+                            it['razon_perdida'] = 'reputacion'
         except Exception:
             pass
         _time_module.sleep(0.1)
@@ -2698,30 +2707,48 @@ def salud(alias):
                                  timeout=6)
                 if rw.ok:
                     it['winner_stock'] = rw.json().get('available_quantity')
+                    # Si el ganador tiene poco stock, es una oportunidad inminente
+                    if it['winner_stock'] is not None and it['winner_stock'] <= 3:
+                        it['razon_perdida'] = 'ganador_sin_stock'
             except Exception:
                 pass
             _time_module.sleep(0.1)
 
-    # 4 — Ordenar: ganando primero, luego perdiendo, luego pausadas/sin datos
+    # 4 — Join no_catalog_items con stock data para visitas/ventas/conv
+    stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    stock_map  = {it.get('id'): it for it in stock_data.get('items', []) if it.get('id')}
+    for it in no_catalog_items:
+        sd = stock_map.get(it['id'], {})
+        it['visitas_30d'] = int(sd.get('visitas_30d') or 0)
+        it['ventas_30d']  = int(sd.get('ventas_30d') or 0)
+        it['conv_pct']    = float(sd.get('conversion_pct') or 0)
+    no_catalog_items.sort(key=lambda x: -x['visitas_30d'])
+
+    # 5 — Ordenar catalog_items
     def _sort_key(x):
         paused = x.get('status') == 'paused'
         if x['we_win'] is True and not paused:
-            return (0, -(x['diferencia_pct'] or 0))   # ganando: mayor margen primero
+            return (0, -(x['diferencia_pct'] or 0))
         if x['we_win'] is False and not paused:
-            return (1, x['diferencia_pct'] or 0)       # perdiendo: más caro primero
+            return (1, x['diferencia_pct'] or 0)
         if paused:
             return (3, 0)
-        return (2, 0)                                   # sin datos
+        return (2, 0)
     catalog_items.sort(key=_sort_key)
 
     resumen = {
-        'total':     len(catalog_items),
-        'ganando':   sum(1 for i in catalog_items if i['we_win'] is True),
-        'perdiendo': sum(1 for i in catalog_items if i['we_win'] is False),
-        'sin_datos': sum(1 for i in catalog_items if i['we_win'] is None),
+        'total':               len(catalog_items),
+        'ganando':             sum(1 for i in catalog_items if i['we_win'] is True),
+        'perdiendo':           sum(1 for i in catalog_items if i['we_win'] is False),
+        'sin_datos':           sum(1 for i in catalog_items if i['we_win'] is None),
+        'perdiendo_precio':    sum(1 for i in catalog_items if i.get('razon_perdida') == 'precio'),
+        'perdiendo_reputacion':sum(1 for i in catalog_items if i.get('razon_perdida') == 'reputacion'),
+        'perdiendo_oportunidad':sum(1 for i in catalog_items if i.get('razon_perdida') == 'ganador_sin_stock'),
+        'no_catalogo':         len(no_catalog_items),
+        'no_catalogo_trafico': sum(1 for i in no_catalog_items if i['visitas_30d'] >= 50),
     }
 
-    # 5 — Incorporar rangos de repricing configurados
+    # 6 — Incorporar rangos de repricing configurados
     repricing_cfg = load_json(os.path.join(CONFIG_DIR, 'repricing.json')) or {}
     items_cfg = repricing_cfg.get('items', {})
     for it in catalog_items:
@@ -2731,6 +2758,7 @@ def salud(alias):
     resumen['configurados'] = sum(1 for i in catalog_items if i.get('precio_min') is not None)
 
     return render_template('salud.html', alias=alias, items=catalog_items,
+                           no_catalog=no_catalog_items,
                            resumen=resumen, accounts=get_accounts())
 
 
@@ -2936,6 +2964,79 @@ def api_aplicar_precio(alias):
         'total':        total,
         'detalle':      all_resultados,
     })
+
+
+@app.route('/api/salud-catalog-scan/<alias>')
+def api_salud_catalog_scan(alias):
+    """Detecta si existe un catálogo de ML para cada item sin catalog_product_id.
+
+    Recibe item_ids como query param (comma-separated).
+    Busca el título de cada item en la API de búsqueda de ML y reporta si algún
+    resultado tiene catalog_product_id → el producto existe en catálogo y el
+    vendedor podría sumarse.
+    """
+    ids_param = request.args.get('ids', '').strip()
+    if not ids_param:
+        return jsonify({'ok': False, 'error': 'ids requerido'}), 400
+
+    item_ids = [i.strip() for i in ids_param.split(',') if i.strip()][:30]
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    stock_map  = {it.get('id'): it for it in stock_data.get('items', []) if it.get('id')}
+
+    # Fetch títulos de los items solicitados
+    titulos = {}
+    for b in range(0, len(item_ids), 20):
+        batch = item_ids[b:b+20]
+        try:
+            r = req_lib.get('https://api.mercadolibre.com/items', headers=heads,
+                            params={'ids': ','.join(batch), 'attributes': 'id,title'},
+                            timeout=10)
+            if r.ok:
+                for e in r.json():
+                    if e.get('code') == 200:
+                        body = e.get('body', {})
+                        titulos[body.get('id', '')] = body.get('title', '')
+        except Exception:
+            pass
+        _time_module.sleep(0.1)
+
+    resultados = {}
+    for iid in item_ids:
+        titulo = titulos.get(iid) or (stock_map.get(iid, {}).get('titulo', ''))
+        if not titulo:
+            resultados[iid] = {'catalog_existe': False}
+            continue
+        q = titulo[:60]
+        catalog_product_id = None
+        catalog_titulo     = None
+        try:
+            r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
+                            headers=heads,
+                            params={'q': q, 'limit': 5},
+                            timeout=8)
+            if r.ok:
+                for res in r.json().get('results', []):
+                    cpid = res.get('catalog_product_id')
+                    if cpid and res.get('seller', {}).get('id') != user_id:
+                        catalog_product_id = cpid
+                        catalog_titulo     = res.get('title', '')[:70]
+                        break
+        except Exception:
+            pass
+        resultados[iid] = {
+            'catalog_existe':       bool(catalog_product_id),
+            'catalog_product_id':   catalog_product_id,
+            'catalog_titulo':       catalog_titulo,
+        }
+        _time_module.sleep(0.15)
+
+    return jsonify({'ok': True, 'resultados': resultados})
 
 
 @app.route('/api/salud-config/<alias>', methods=['POST', 'DELETE'])
