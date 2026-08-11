@@ -239,8 +239,24 @@
           {% elif it.winner_stock is not none %}
             <span style="font-weight:600;color:{% if it.winner_stock <= 3 %}#16a34a{% else %}var(--color-neutral-800){% endif %}">{{ it.winner_stock }}</span>
             <div style="font-size:.68rem;color:var(--color-neutral-400)">stock ganador{% if it.winner_stock <= 3 %} ⚠️{% endif %}</div>
+            {% if it.catalog_product_id %}
+            <div style="margin-top:3px">
+              <a href="https://www.mercadolibre.com.ar/p/{{ it.catalog_product_id }}"
+                 target="_blank" style="font-size:.65rem;color:#2563eb;text-decoration:none">
+                <i class="bi bi-people"></i> Ver todos los vendedores
+              </a>
+            </div>
+            {% endif %}
           {% else %}
             <span class="text-muted">—</span>
+            {% if it.catalog_product_id %}
+            <div style="margin-top:3px">
+              <a href="https://www.mercadolibre.com.ar/p/{{ it.catalog_product_id }}"
+                 target="_blank" style="font-size:.65rem;color:#2563eb;text-decoration:none">
+                <i class="bi bi-people"></i> Ver todos los vendedores
+              </a>
+            </div>
+            {% endif %}
           {% endif %}
         </td>
         <td class="text-end" style="padding:.75rem .75rem;white-space:nowrap">
