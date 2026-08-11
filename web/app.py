@@ -2631,6 +2631,7 @@ def salud(alias):
                             'buy_box_price':     None,
                             'buy_box_winner_id': None,
                             'we_win':            None,
+                            'ganador_propio':    False,
                             'competidores':      0,
                             'diferencia_pct':    None,
                             'precio_ideal':      None,
@@ -2674,29 +2675,31 @@ def salud(alias):
                     it['we_win']           = winner_es_nuestro
                     it['ganador_propio']   = winner_es_nuestro and winner_id != it['id']
 
-                    # 2do competidor: el siguiente en la lista que no sea nuestro
-                    for s in sellers[1:]:
-                        sid = s.get('id') or s.get('item_id', '')
-                        if sid != winner_id:
-                            it['segundo_precio'] = float(s.get('price') or 0)
-                            break
-
                     if it['we_win']:
-                        # Buscar el primer competidor externo para diferencia_pct
+                        # Buscar primer competidor EXTERNO para diferencia_pct y precio_ideal
                         for s in sellers:
                             sid = s.get('id') or s.get('item_id', '')
                             if sid not in our_ids:
                                 ext_price = float(s.get('price') or 0)
                                 if ext_price > 0:
-                                    it['segundo_precio']  = ext_price
-                                    it['diferencia_pct']  = round((it['precio'] - ext_price) / ext_price * 100, 1)
+                                    it['segundo_precio'] = ext_price
+                                    it['diferencia_pct'] = round((it['precio'] - ext_price) / ext_price * 100, 1)
                                 break
+                        # precio_ideal: subir hasta justo debajo del externo (si existe y es mayor)
                         it['precio_ideal'] = it['precio']
-                        if it['segundo_precio'] and it['segundo_precio'] - 1 > it['precio']:
-                            it['precio_ideal'] = max(1.0, it['segundo_precio'] - 1)
+                        ext = it['segundo_precio']
+                        if ext and ext - 1 > it['precio']:
+                            it['precio_ideal'] = max(1.0, ext - 1)
                     elif bb_price > 0:
+                        # Perdiendo contra competidor externo
                         it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
                         it['precio_ideal']   = max(1.0, bb_price - 1)
+                        # 2do competidor externo (para referencia en la UI)
+                        for s in sellers[1:]:
+                            sid = s.get('id') or s.get('item_id', '')
+                            if sid not in our_ids and sid != winner_id:
+                                it['segundo_precio'] = float(s.get('price') or 0)
+                                break
 
                     # Razón por la que se pierde el buy box (solo aplica a pérdidas reales)
                     if not it['we_win'] and bb_price > 0:
