@@ -237,7 +237,9 @@
           {% if it.we_win == true %}
             {% if it.segundo_precio %}
               <span style="font-weight:600;color:var(--color-neutral-800)">${{ '{:,.0f}'.format(it.segundo_precio) }}</span>
-              <div style="font-size:.68rem;color:var(--color-neutral-400)">2do competidor</div>
+              <div style="font-size:.68rem;color:var(--color-neutral-400)">
+                {%- if it.ganador_propio %}compet. externo{% else %}2do competidor{% endif %}
+              </div>
             {% else %}
               <span style="color:var(--color-success-500);font-size:.75rem">sin competidores</span>
             {% endif %}
