@@ -3051,6 +3051,7 @@ def api_salud_catalog_scan(alias):
 
         catalog_product_id = None
         catalog_titulo     = None
+        sold_quantity      = 0
         try:
             r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
                             headers=heads,
@@ -3062,6 +3063,7 @@ def api_salud_catalog_scan(alias):
                     if cpid and res.get('seller', {}).get('id') != user_id:
                         catalog_product_id = cpid
                         catalog_titulo     = res.get('title', '')[:70]
+                        sold_quantity      = int(res.get('sold_quantity') or 0)
                         break
         except Exception:
             pass
@@ -3069,6 +3071,7 @@ def api_salud_catalog_scan(alias):
         resultados[iid] = {
             'catalog_existe':     bool(catalog_product_id),
             'catalog_product_id': catalog_product_id,
+            'sold_quantity':      sold_quantity,
             'catalog_titulo':     catalog_titulo,
             'metodo':             metodo,
             'ean':                ean,

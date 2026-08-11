@@ -487,15 +487,20 @@ async function iniciarScan() {
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'error');
 
+    // Actualizar celdas con resultado del scan
     Object.entries(data.resultados || {}).forEach(([iid, res]) => {
       const cell = document.getElementById('scan-' + iid);
       if (!cell) return;
+      cell.dataset.sold = res.sold_quantity || 0;
+      cell.dataset.catalogo = res.catalog_existe ? '1' : '0';
       if (res.catalog_existe) {
         const confianza = res.metodo === 'ean'
           ? `<span style="background:#dcfce7;color:#16a34a;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px">EAN ✓</span>`
           : `<span style="background:#f3f4f6;color:#6b7280;font-size:.62rem;padding:1px 6px;border-radius:10px;margin-left:5px">por título</span>`;
-        const eanLabel = res.ean ? `<div style="font-size:.62rem;color:#9ca3af;margin-top:1px">EAN: ${res.ean}</div>` : '';
-        const catLink = res.catalog_product_id
+        const eanLabel  = res.ean ? `<div style="font-size:.62rem;color:#9ca3af;margin-top:1px">EAN: ${res.ean}</div>` : '';
+        const soldLabel = res.sold_quantity
+          ? `<div style="font-size:.62rem;color:#6b7280;margin-top:1px">~${res.sold_quantity.toLocaleString('es-AR')} vendidos (vendedor principal)</div>` : '';
+        const catLink   = res.catalog_product_id
           ? `<a href="https://www.mercadolibre.com.ar/p/${res.catalog_product_id}" target="_blank"
                style="font-size:.68rem;color:#2563eb;text-decoration:none;display:inline-flex;align-items:center;gap:3px;margin-top:4px">
                <i class="bi bi-box-arrow-up-right"></i> Ver catálogo en ML
@@ -505,12 +510,29 @@ async function iniciarScan() {
             ⚠️ Catálogo disponible
           </span>${confianza}
           <div style="font-size:.65rem;color:#6b7280;margin-top:3px">${res.catalog_titulo || ''}</div>
-          ${eanLabel}${catLink}`;
+          ${eanLabel}${soldLabel}${catLink}`;
       } else {
         const metodoLabel = res.metodo === 'ean' ? ` (EAN: ${res.ean})` : '';
         cell.innerHTML = `<span style="color:#6b7280;font-size:.75rem">Sin catálogo detectado${metodoLabel}</span>`;
       }
     });
+
+    // Reordenar filas: catálogos detectados por sold_quantity desc → sin catálogo → pendiente
+    const tbody = document.querySelector('#tab-sin-catalogo tbody');
+    if (tbody) {
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {
+        const ca = document.getElementById('scan-' + a.dataset.id);
+        const cb = document.getElementById('scan-' + b.dataset.id);
+        const catA = ca ? parseInt(ca.dataset.catalogo || '0') : 0;
+        const catB = cb ? parseInt(cb.dataset.catalogo || '0') : 0;
+        if (catA !== catB) return catB - catA;           // catalogo detectado primero
+        const soldA = ca ? parseInt(ca.dataset.sold || '0') : 0;
+        const soldB = cb ? parseInt(cb.dataset.sold || '0') : 0;
+        return soldB - soldA;                             // mayor sold_quantity primero
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    }
   } catch(e) {
     status.textContent = 'Error al escanear: ' + e.message;
     status.className   = 'alert alert-danger mb-3';
