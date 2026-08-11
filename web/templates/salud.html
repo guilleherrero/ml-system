@@ -491,12 +491,19 @@ async function iniciarScan() {
       const cell = document.getElementById('scan-' + iid);
       if (!cell) return;
       if (res.catalog_existe) {
-        cell.innerHTML = `<span style="background:#fef3c7;color:#d97706;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:12px">
-          ⚠️ Catálogo disponible — no participás
-        </span>
-        <div style="font-size:.65rem;color:#6b7280;margin-top:3px">${res.catalog_titulo || ''}</div>`;
+        const confianza = res.metodo === 'ean'
+          ? `<span style="background:#dcfce7;color:#16a34a;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px">EAN ✓</span>`
+          : `<span style="background:#f3f4f6;color:#6b7280;font-size:.62rem;padding:1px 6px;border-radius:10px;margin-left:5px">por título</span>`;
+        const eanLabel = res.ean ? `<div style="font-size:.62rem;color:#9ca3af;margin-top:1px">EAN: ${res.ean}</div>` : '';
+        cell.innerHTML = `
+          <span style="background:#fef3c7;color:#d97706;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:12px">
+            ⚠️ Catálogo disponible
+          </span>${confianza}
+          <div style="font-size:.65rem;color:#6b7280;margin-top:3px">${res.catalog_titulo || ''}</div>
+          ${eanLabel}`;
       } else {
-        cell.innerHTML = `<span style="color:#6b7280;font-size:.75rem">Sin catálogo detectado</span>`;
+        const metodoLabel = res.metodo === 'ean' ? ` (EAN: ${res.ean})` : '';
+        cell.innerHTML = `<span style="color:#6b7280;font-size:.75rem">Sin catálogo detectado${metodoLabel}</span>`;
       }
     });
   } catch(e) {

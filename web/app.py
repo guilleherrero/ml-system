@@ -2985,10 +2985,12 @@ def api_aplicar_precio(alias):
 def api_salud_catalog_scan(alias):
     """Detecta si existe un catálogo de ML para cada item sin catalog_product_id.
 
-    Recibe item_ids como query param (comma-separated).
-    Busca el título de cada item en la API de búsqueda de ML y reporta si algún
-    resultado tiene catalog_product_id → el producto existe en catálogo y el
-    vendedor podría sumarse.
+    Prioridad de búsqueda:
+      1. EAN/GTIN/ISBN — coincidencia exacta, alta confianza
+      2. Título (primeras 5 palabras) — coincidencia aproximada, baja confianza
+
+    Devuelve por item: catalog_existe, catalog_product_id, catalog_titulo,
+    metodo ('ean' | 'titulo'), ean (si disponible).
     """
     ids_param = request.args.get('ids', '').strip()
     if not ids_param:
@@ -3004,30 +3006,49 @@ def api_salud_catalog_scan(alias):
     stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_map  = {it.get('id'): it for it in stock_data.get('items', []) if it.get('id')}
 
-    # Fetch títulos de los items solicitados
-    titulos = {}
+    # Fetch título + atributos (EAN/GTIN) en lotes
+    item_info = {}  # {id: {'title': str, 'ean': str|None}}
     for b in range(0, len(item_ids), 20):
         batch = item_ids[b:b+20]
         try:
             r = req_lib.get('https://api.mercadolibre.com/items', headers=heads,
-                            params={'ids': ','.join(batch), 'attributes': 'id,title'},
+                            params={'ids': ','.join(batch),
+                                    'attributes': 'id,title,attributes'},
                             timeout=10)
             if r.ok:
                 for e in r.json():
                     if e.get('code') == 200:
-                        body = e.get('body', {})
-                        titulos[body.get('id', '')] = body.get('title', '')
+                        body  = e.get('body', {})
+                        iid   = body.get('id', '')
+                        attrs = body.get('attributes') or []
+                        ean   = next(
+                            (a.get('value_name') for a in attrs
+                             if a.get('id') in ('EAN', 'GTIN', 'ISBN', 'UPC')
+                             and a.get('value_name')),
+                            None,
+                        )
+                        item_info[iid] = {'title': body.get('title', ''), 'ean': ean}
         except Exception:
             pass
         _time_module.sleep(0.1)
 
     resultados = {}
     for iid in item_ids:
-        titulo = titulos.get(iid) or (stock_map.get(iid, {}).get('titulo', ''))
-        if not titulo:
-            resultados[iid] = {'catalog_existe': False}
+        info   = item_info.get(iid, {})
+        titulo = info.get('title') or stock_map.get(iid, {}).get('titulo', '')
+        ean    = info.get('ean')
+
+        if ean:
+            q      = ean
+            metodo = 'ean'
+        elif titulo:
+            # 5 palabras del título para reducir falsos positivos
+            q      = ' '.join(titulo.split()[:5])
+            metodo = 'titulo'
+        else:
+            resultados[iid] = {'catalog_existe': False, 'metodo': 'sin_datos', 'ean': None}
             continue
-        q = titulo[:60]
+
         catalog_product_id = None
         catalog_titulo     = None
         try:
@@ -3044,10 +3065,13 @@ def api_salud_catalog_scan(alias):
                         break
         except Exception:
             pass
+
         resultados[iid] = {
-            'catalog_existe':       bool(catalog_product_id),
-            'catalog_product_id':   catalog_product_id,
-            'catalog_titulo':       catalog_titulo,
+            'catalog_existe':     bool(catalog_product_id),
+            'catalog_product_id': catalog_product_id,
+            'catalog_titulo':     catalog_titulo,
+            'metodo':             metodo,
+            'ean':                ean,
         }
         _time_module.sleep(0.15)
 
