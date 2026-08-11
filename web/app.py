@@ -2649,6 +2649,9 @@ def salud(alias):
             pass
         _time_module.sleep(0.1)
 
+    # IDs propios para detectar cuando el "competidor" es otra publicación nuestra
+    our_ids = {it['id'] for it in catalog_items}
+
     # 3 — Para cada item de catálogo, obtener el buy box actual + stock del ganador
     for it in catalog_items:
         try:
@@ -2656,38 +2659,46 @@ def salud(alias):
                             headers=heads, params={'limit': 10}, timeout=8)
             if r.ok:
                 sellers = r.json().get('results', [])
-                it['competidores'] = len(sellers)
+                # Contar solo competidores externos (excluir nuestras propias publicaciones)
+                external_sellers = [s for s in sellers
+                                    if (s.get('id') or s.get('item_id', '')) not in our_ids]
+                it['competidores'] = len(external_sellers)
                 if sellers:
                     winner    = sellers[0]
                     winner_id = winner.get('id') or winner.get('item_id', '')
                     bb_price  = float(winner.get('price') or 0)
                     it['buy_box_price']     = bb_price
                     it['buy_box_winner_id'] = winner_id
-                    it['we_win']            = (winner_id == it['id'])
+                    # Ganamos si el winner es cualquiera de nuestras publicaciones
+                    winner_es_nuestro = winner_id in our_ids
+                    it['we_win']           = winner_es_nuestro
+                    it['ganador_propio']   = winner_es_nuestro and winner_id != it['id']
 
-                    if it['we_win'] and len(sellers) >= 2:
-                        it['segundo_precio'] = float(sellers[1].get('price') or 0)
-                    elif not it['we_win'] and len(sellers) >= 2:
-                        for s in sellers[1:]:
-                            sid = s.get('id') or s.get('item_id', '')
-                            if sid != winner_id:
-                                it['segundo_precio'] = float(s.get('price') or 0)
-                                break
+                    # 2do competidor: el siguiente en la lista que no sea nuestro
+                    for s in sellers[1:]:
+                        sid = s.get('id') or s.get('item_id', '')
+                        if sid != winner_id:
+                            it['segundo_precio'] = float(s.get('price') or 0)
+                            break
 
                     if it['we_win']:
-                        if it['segundo_precio'] and it['segundo_precio'] > 0:
-                            it['diferencia_pct'] = round((it['precio'] - it['segundo_precio']) / it['segundo_precio'] * 100, 1)
+                        # Buscar el primer competidor externo para diferencia_pct
+                        for s in sellers:
+                            sid = s.get('id') or s.get('item_id', '')
+                            if sid not in our_ids:
+                                ext_price = float(s.get('price') or 0)
+                                if ext_price > 0:
+                                    it['segundo_precio']  = ext_price
+                                    it['diferencia_pct']  = round((it['precio'] - ext_price) / ext_price * 100, 1)
+                                break
+                        it['precio_ideal'] = it['precio']
+                        if it['segundo_precio'] and it['segundo_precio'] - 1 > it['precio']:
+                            it['precio_ideal'] = max(1.0, it['segundo_precio'] - 1)
                     elif bb_price > 0:
                         it['diferencia_pct'] = round((it['precio'] - bb_price) / bb_price * 100, 1)
+                        it['precio_ideal']   = max(1.0, bb_price - 1)
 
-                    if not it['we_win'] and bb_price > 0:
-                        it['precio_ideal'] = max(1.0, bb_price - 1)
-                    elif it['we_win'] and it['segundo_precio'] and it['segundo_precio'] - 1 > it['precio']:
-                        it['precio_ideal'] = max(1.0, it['segundo_precio'] - 1)
-                    else:
-                        it['precio_ideal'] = it['precio']
-
-                    # Razón por la que se pierde el buy box
+                    # Razón por la que se pierde el buy box (solo aplica a pérdidas reales)
                     if not it['we_win'] and bb_price > 0:
                         if it['precio'] > bb_price * 1.02:
                             it['razon_perdida'] = 'precio'
@@ -2697,7 +2708,7 @@ def salud(alias):
             pass
         _time_module.sleep(0.1)
 
-        # Stock del ganador (solo si no somos nosotros)
+        # Stock del ganador (solo si no somos nosotros — ni con otra publicación propia)
         winner_id = it.get('buy_box_winner_id')
         if winner_id and not it.get('we_win'):
             try:
@@ -2741,6 +2752,7 @@ def salud(alias):
         'ganando':             sum(1 for i in catalog_items if i['we_win'] is True),
         'perdiendo':           sum(1 for i in catalog_items if i['we_win'] is False),
         'sin_datos':           sum(1 for i in catalog_items if i['we_win'] is None),
+        'duplicado_propio':    sum(1 for i in catalog_items if i.get('ganador_propio')),
         'perdiendo_precio':    sum(1 for i in catalog_items if i.get('razon_perdida') == 'precio'),
         'perdiendo_reputacion':sum(1 for i in catalog_items if i.get('razon_perdida') == 'reputacion'),
         'perdiendo_oportunidad':sum(1 for i in catalog_items if i.get('razon_perdida') == 'ganador_sin_stock'),

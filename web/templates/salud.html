@@ -214,7 +214,12 @@
         </td>
         <td class="text-center" style="padding:.75rem .75rem">
           {% if it.we_win == true %}
-            <span class="badge-win"><i class="bi bi-trophy-fill me-1"></i>Ganando</span>
+            {% if it.ganador_propio %}
+              <span class="badge-win"><i class="bi bi-trophy-fill me-1"></i>Ganando</span>
+              <div style="font-size:.65rem;color:#6b7280;margin-top:2px">otra pub. tuya tiene BB</div>
+            {% else %}
+              <span class="badge-win"><i class="bi bi-trophy-fill me-1"></i>Ganando</span>
+            {% endif %}
           {% elif it.we_win == false %}
             <span class="badge-lose"><i class="bi bi-x-circle me-1"></i>Perdiendo</span>
             {% if it.razon_perdida == 'precio' %}
