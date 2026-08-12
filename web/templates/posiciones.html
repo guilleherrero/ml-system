@@ -168,8 +168,8 @@
 {% set ventas_rastread = con_ventas | sum(attribute='ventas_30d') %}
 {% set ventas_total    = ventas_total_cuenta or ventas_rastread %}
 {% set ventas_gap      = ventas_total - ventas_rastread %}
-{% set facturado_total = namespace(val=0) %}
-{% for item in items %}{% set facturado_total.val = facturado_total.val + (item.facturado_30d if item.facturado_30d else (item.precio or 0) * (item.ventas_30d or 0)) %}{% endfor %}
+{% set facturado_total = namespace(val=0, tiene_real=false) %}
+{% for item in items %}{% if item.facturado_30d %}{% set facturado_total.val = facturado_total.val + item.facturado_30d %}{% set facturado_total.tiene_real = true %}{% endif %}{% endfor %}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="mon-stat"><div class="num">{{ items|length }}</div><div class="lbl">Publicaciones</div></div>
@@ -183,7 +183,7 @@
   <div class="col-6 col-md-3">
     <div class="mon-stat top">
       <div class="num" style="white-space:nowrap;font-size:1.1rem">
-        ${{ "{:,.0f}".format(facturado_total.val) }}
+        {% if facturado_total.tiene_real %}${{ "{:,.0f}".format(facturado_total.val) }}{% else %}—{% endif %}
       </div>
       <div class="lbl">Facturado 30d</div>
     </div>
@@ -207,7 +207,7 @@
     </tr></thead>
     <tbody>
     {% for item in items | sort(attribute='ventas_30d', reverse=True) %}
-    {% set facturado = item.facturado_30d if item.facturado_30d else (item.precio or 0) * (item.ventas_30d or 0) %}
+    {% set facturado = item.facturado_30d if item.facturado_30d else None %}
     <tr>
       <td>
         <div class="fw-semibold text-truncate" style="max-width:260px" title="{{ item.title }}">{{ item.title }}</div>
