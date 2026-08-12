@@ -162,6 +162,7 @@ def _compute_item_stats(orders: list[dict]) -> dict:
 
         result[item_id] = {
             "units":            s["units"],
+            "total_income":     round(total_income, 2),   # facturado real desde órdenes
             "fee_rate":         round(fee_rate, 4) if fee_rate else None,
             "pct_contado":      round(pct_contado, 4) if pct_contado is not None else None,
             "cuotas_promedio":  round(cuotas_promedio, 2) if cuotas_promedio is not None else None,
@@ -363,6 +364,7 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
         # Velocidad y fee_rate real desde las órdenes ya descargadas
         stats            = item_stats.get(item_id, {})
         ventas_30d       = stats.get("units", 0)
+        facturado_30d    = stats.get("total_income", 0)   # suma real de unit_price × qty
         velocidad        = round(ventas_30d / DIAS_ANALISIS, 2)
         real_fee_rate    = stats.get("fee_rate")
         pct_contado      = stats.get("pct_contado")
@@ -415,6 +417,7 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             "fee_rate":      margen_data["fee_rate"],
             "fee_source":    margen_data["fee_source"],
             "ventas_30d":    ventas_30d,
+            "facturado_30d": facturado_30d,
             "visitas_30d":   visitas_30d,
             "conversion_pct": conversion_pct,
             "neto":          margen_data["neto"],
