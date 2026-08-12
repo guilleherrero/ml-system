@@ -3006,14 +3006,14 @@ def api_salud_catalog_scan(alias):
     stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     stock_map  = {it.get('id'): it for it in stock_data.get('items', []) if it.get('id')}
 
-    # Fetch título + atributos (EAN/GTIN) en lotes
-    item_info = {}  # {id: {'title': str, 'ean': str|None}}
+    # Fetch título + atributos (EAN/GTIN) + categoría en lotes
+    item_info = {}  # {id: {'title': str, 'ean': str|None, 'category_id': str|None}}
     for b in range(0, len(item_ids), 20):
         batch = item_ids[b:b+20]
         try:
             r = req_lib.get('https://api.mercadolibre.com/items', headers=heads,
                             params={'ids': ','.join(batch),
-                                    'attributes': 'id,title,attributes'},
+                                    'attributes': 'id,title,attributes,category_id'},
                             timeout=10)
             if r.ok:
                 for e in r.json():
@@ -3027,23 +3027,38 @@ def api_salud_catalog_scan(alias):
                              and a.get('value_name')),
                             None,
                         )
-                        item_info[iid] = {'title': body.get('title', ''), 'ean': ean}
+                        item_info[iid] = {
+                            'title':       body.get('title', ''),
+                            'ean':         ean,
+                            'category_id': body.get('category_id', ''),
+                        }
         except Exception:
             pass
         _time_module.sleep(0.1)
 
+    def _title_query(title, max_chars=38):
+        """Toma palabras del título hasta llegar a ~38 caracteres."""
+        words = title.split()
+        q = ''
+        for w in words:
+            candidate = (q + ' ' + w).strip()
+            if len(candidate) > max_chars:
+                break
+            q = candidate
+        return q or ' '.join(words[:4])
+
     resultados = {}
     for iid in item_ids:
-        info   = item_info.get(iid, {})
-        titulo = info.get('title') or stock_map.get(iid, {}).get('titulo', '')
-        ean    = info.get('ean')
+        info        = item_info.get(iid, {})
+        titulo      = info.get('title') or stock_map.get(iid, {}).get('titulo', '')
+        ean         = info.get('ean')
+        category_id = info.get('category_id') or stock_map.get(iid, {}).get('category_id', '')
 
         if ean:
             q      = ean
             metodo = 'ean'
         elif titulo:
-            # 5 palabras del título para reducir falsos positivos
-            q      = ' '.join(titulo.split()[:5])
+            q      = _title_query(titulo)
             metodo = 'titulo'
         else:
             resultados[iid] = {'catalog_existe': False, 'metodo': 'sin_datos', 'ean': None}
@@ -3052,21 +3067,66 @@ def api_salud_catalog_scan(alias):
         catalog_product_id = None
         catalog_titulo     = None
         sold_quantity      = 0
+        debug_hits         = []
+
+        def _search_products(query, cat=None):
+            """Busca en /products/search filtrando por categoría si está disponible."""
+            nonlocal debug_hits
+            try:
+                params = {'site_id': 'MLA', 'q': query, 'limit': 5}
+                if cat:
+                    params['category'] = cat
+                r = req_lib.get('https://api.mercadolibre.com/products/search',
+                                headers=heads, params=params, timeout=8)
+                if not r.ok:
+                    return None, None
+                hits = r.json().get('results', [])
+                for h in hits[:3]:
+                    debug_hits.append({
+                        'id':    h.get('id'),
+                        'name':  (h.get('name') or '')[:60],
+                        'cpid':  h.get('catalog_product_id') or h.get('id'),
+                        'cat':   cat,
+                    })
+                for res in hits:
+                    cpid = res.get('catalog_product_id') or res.get('id')
+                    name = res.get('name', '')
+                    if cpid and name:
+                        return cpid, name[:70]
+            except Exception as exc:
+                debug_hits.append({'error': str(exc)})
+            return None, None
+
         try:
-            r = req_lib.get('https://api.mercadolibre.com/sites/MLA/search',
-                            headers=heads,
-                            params={'q': q, 'limit': 5},
-                            timeout=8)
-            if r.ok:
-                for res in r.json().get('results', []):
-                    cpid = res.get('catalog_product_id')
-                    if cpid and res.get('seller', {}).get('id') != user_id:
-                        catalog_product_id = cpid
-                        catalog_titulo     = res.get('title', '')[:70]
-                        sold_quantity      = int(res.get('sold_quantity') or 0)
-                        break
-        except Exception:
-            pass
+            if ean:
+                # Busca por EAN con categoría; si no hay resultados, cae a título con categoría
+                catalog_product_id, catalog_titulo = _search_products(ean, cat=category_id)
+                if not catalog_product_id and titulo:
+                    q_title = _title_query(titulo)
+                    catalog_product_id, catalog_titulo = _search_products(q_title, cat=category_id)
+                    if catalog_product_id:
+                        metodo = 'titulo'
+            else:
+                # Sin EAN: título con categoría; si no hay resultados, sin categoría
+                catalog_product_id, catalog_titulo = _search_products(q, cat=category_id)
+                if not catalog_product_id:
+                    catalog_product_id, catalog_titulo = _search_products(q)
+
+            if catalog_product_id:
+                # Intentar obtener sold_quantity del ítem ganador del catálogo
+                try:
+                    ri = req_lib.get(
+                        f'https://api.mercadolibre.com/products/{catalog_product_id}/items',
+                        headers=heads, timeout=5)
+                    if ri.ok:
+                        items_data = ri.json()
+                        bb = (items_data.get('buy_box_winner') or
+                              (items_data.get('results') or [{}])[0])
+                        sold_quantity = int(bb.get('sold_quantity') or 0)
+                except Exception:
+                    pass
+        except Exception as exc:
+            debug_hits.append({'error': str(exc)})
 
         resultados[iid] = {
             'catalog_existe':     bool(catalog_product_id),
@@ -3075,10 +3135,87 @@ def api_salud_catalog_scan(alias):
             'catalog_titulo':     catalog_titulo,
             'metodo':             metodo,
             'ean':                ean,
+            'debug_query':        q,
+            'debug_hits':         debug_hits,
         }
         _time_module.sleep(0.15)
 
     return jsonify({'ok': True, 'resultados': resultados})
+
+
+@app.route('/api/debug-catalog-search/<alias>')
+def api_debug_catalog_search(alias):
+    """Debug: busca en /products/search y /sites/MLA/search para un item o query."""
+    item_id = request.args.get('item_id', '').strip()
+    q_override = request.args.get('q', '').strip()
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 401
+
+    out = {'user_id': user_id, 'item_id': item_id}
+
+    if item_id:
+        try:
+            r = req_lib.get('https://api.mercadolibre.com/items', headers=heads,
+                            params={'ids': item_id, 'attributes': 'id,title,attributes,category_id'},
+                            timeout=10)
+            if r.ok:
+                data = r.json()
+                body = data[0].get('body', {}) if isinstance(data, list) and data else {}
+                attrs = body.get('attributes') or []
+                ean = next((a.get('value_name') for a in attrs
+                            if a.get('id') in ('EAN','GTIN','ISBN','UPC') and a.get('value_name')), None)
+                out['item'] = {'title': body.get('title',''), 'ean': ean,
+                               'category': body.get('category_id',''),
+                               'all_attrs': [{'id': a.get('id'), 'val': a.get('value_name')} for a in attrs[:10]]}
+                q_from_ean   = ean
+                q_from_title = ' '.join((body.get('title','') or '').split()[:6])
+        except Exception as ex:
+            out['item_error'] = str(ex)
+            q_from_ean = None; q_from_title = ''
+    else:
+        q_from_ean = None; q_from_title = q_override
+
+    for label, q in [('EAN', q_from_ean or ''), ('titulo', q_override or q_from_title)]:
+        if not q:
+            continue
+        out[f'products_search_{label}'] = {'q': q}
+        try:
+            r = req_lib.get('https://api.mercadolibre.com/products/search', headers=heads,
+                            params={'site_id': 'MLA', 'q': q, 'limit': 5}, timeout=8)
+            out[f'products_search_{label}']['status'] = r.status_code
+            if r.ok:
+                hits = r.json().get('results', [])
+                out[f'products_search_{label}']['total']   = r.json().get('paging', {}).get('total', len(hits))
+                out[f'products_search_{label}']['results'] = [
+                    {'id': h.get('id'), 'name': (h.get('name') or '')[:80],
+                     'cpid': h.get('catalog_product_id')}
+                    for h in hits
+                ]
+            else:
+                out[f'products_search_{label}']['body'] = r.text[:300]
+        except Exception as ex:
+            out[f'products_search_{label}']['error'] = str(ex)
+
+        out[f'items_search_{label}'] = {'q': q}
+        try:
+            r2 = req_lib.get('https://api.mercadolibre.com/sites/MLA/search', headers=heads,
+                             params={'q': q, 'limit': 5}, timeout=8)
+            out[f'items_search_{label}']['status'] = r2.status_code
+            if r2.ok:
+                hits2 = r2.json().get('results', [])
+                out[f'items_search_{label}']['results'] = [
+                    {'id': h.get('id'), 'title': (h.get('title') or '')[:60],
+                     'cpid': h.get('catalog_product_id'),
+                     'seller_id': h.get('seller', {}).get('id')}
+                    for h in hits2
+                ]
+        except Exception as ex:
+            out[f'items_search_{label}']['error'] = str(ex)
+
+    return jsonify(out)
 
 
 @app.route('/api/salud-config/<alias>', methods=['POST', 'DELETE'])

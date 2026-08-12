@@ -164,21 +164,6 @@
 </div>
 
 {% elif all_search_blocked %}
-<!-- ── API DE SEARCH PÚBLICA DE ML CAÍDA (hotfix 04/05/2026) ──── -->
-<div class="alert alert-warning d-flex gap-2 align-items-start mb-4">
-  <i class="bi bi-cloud-slash mt-1 flex-shrink-0" style="font-size:1.3rem"></i>
-  <div>
-    <strong>API pública de búsqueda de MercadoLibre temporalmente caída.</strong><br>
-    El endpoint <code>/sites/MLA/search</code> está devolviendo HTTP 403 a nivel global de CloudFront —
-    no es problema de tu cuenta ni de tus permisos (la verificamos: tu app está OK).
-    Esta sección vuelve sola cuando ML resuelva el bug.<br>
-    <span style="font-size:.85rem;color:var(--color-warning-700)">
-      <i class="bi bi-info-circle"></i>
-      Mientras tanto, podés ver el <strong>score de popularidad de tus keywords</strong>
-      en <a href="/optimizar/{{ alias }}" class="alert-link">Optimizar IA</a> (autosuggest sí funciona).
-    </span>
-  </div>
-</div>
 {% set con_ventas      = items | selectattr('ventas_30d', 'gt', 0) | list %}
 {% set ventas_rastread = con_ventas | sum(attribute='ventas_30d') %}
 {% set ventas_total    = ventas_total_cuenta or ventas_rastread %}
