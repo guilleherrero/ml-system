@@ -215,7 +215,7 @@
       </td>
       <td class="text-end text-muted small">{% if item.precio %}${{ "{:,.0f}".format(item.precio) }}{% else %}—{% endif %}</td>
       <td class="text-end">{% if item.ventas_30d > 0 %}<span class="fw-semibold text-success">{{ item.ventas_30d }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
-      <td class="text-end">{% if facturado > 0 %}<span class="fw-semibold">${{ "{:,.0f}".format(facturado) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+      <td class="text-end">{% if facturado %}<span class="fw-semibold">${{ "{:,.0f}".format(facturado) }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
       <td class="text-end" style="font-size:.82rem">{% if item.visitas_30d is not none %}{{ item.visitas_30d }}{% else %}—{% endif %}</td>
       <td class="text-end" style="font-size:.82rem">{% if item.conversion_pct is not none %}{{ "%.1f"|format(item.conversion_pct) }}%{% else %}—{% endif %}</td>
       <td class="text-center">
