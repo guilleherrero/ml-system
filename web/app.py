@@ -4166,6 +4166,7 @@ def posiciones(alias):
                 'latest':         latest,
                 'has_pos':        has_pos,
                 'ventas_30d':     si.get('ventas_30d', 0),
+                'facturado_30d':  si.get('facturado_30d'),
                 'precio':         si.get('precio') or si.get('precio_actual', 0),
                 'stock':          si.get('stock') if si.get('stock') is not None else '—',
                 'alerta':         si.get('alerta_stock', ''),
