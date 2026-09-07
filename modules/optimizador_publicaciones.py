@@ -22,6 +22,7 @@ from rich import box
 from core.ml_client import MLClient
 from modules.seo_optimizer import run_full_optimization
 from modules.monitor_posicionamiento import _get_all_active_items
+from core.db_storage import db_load, db_save
 
 console = Console()
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -32,20 +33,19 @@ def _save_report(alias: str, report: dict):
     safe = alias.replace(" ", "_").replace("/", "-")
     path = os.path.join(DATA_DIR, f"optimizaciones_{safe}.json")
     existing = {}
-    if os.path.exists(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                existing = json.load(f)
-        except Exception:
-            pass
+    # Cimientos 12.1 — mismo almacenamiento que usa el panel para leer estas
+    # optimizaciones; antes el CLI escribia un archivo que la web no veia.
+    try:
+        existing = db_load(path) or existing
+    except Exception:
+        pass
     opts = existing.get("optimizaciones", [])
     item_id = report.get("item_id", "")
     opts = [o for o in opts if o.get("item_id") != item_id]
     opts.insert(0, report)
     existing["optimizaciones"] = opts[:20]
     existing["fecha"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(existing, f, indent=2, ensure_ascii=False)
+    db_save(path, existing)
 
 
 def _apply_changes(item_id: str, new_title: str, new_description: str, client: MLClient):

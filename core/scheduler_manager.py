@@ -29,6 +29,7 @@ import time
 from collections import deque
 from datetime import datetime
 from typing import Callable
+from core.db_storage import db_load, db_save
 
 _logger = logging.getLogger(__name__)
 
@@ -249,12 +250,10 @@ def _history_path(data_dir: str) -> str:
 
 
 def _load_history(data_dir: str) -> dict:
-    path = _history_path(data_dir)
-    if not os.path.exists(path):
-        return {}
+    # Cimientos 12.1 — en Render el historial de corridas se borraba en cada
+    # deploy, y con el la unica evidencia de si un cron viene fallando.
     try:
-        with open(path, encoding='utf-8') as f:
-            return json.load(f) or {}
+        return db_load(_history_path(data_dir)) or {}
     except Exception:
         return {}
 
@@ -279,9 +278,7 @@ def _record_run(data_dir: str, job_id: str,
         runs.append(entry)
         history[job_id] = list(runs)
         try:
-            os.makedirs(data_dir, exist_ok=True)
-            with open(_history_path(data_dir), 'w', encoding='utf-8') as f:
-                json.dump(history, f, ensure_ascii=False, indent=2)
+            db_save(_history_path(data_dir), history)
         except Exception as e:
             _logger.error("[scheduler] No se pudo persistir historial: %s", e)
 
@@ -293,20 +290,16 @@ def _overrides_path(config_dir: str) -> str:
 
 
 def _load_overrides(config_dir: str) -> dict:
-    path = _overrides_path(config_dir)
-    if not os.path.exists(path):
-        return {}
+    # Los overrides son decisiones del usuario (pausar un job): perderlas en un
+    # deploy significa que un cron que el usuario apago vuelve a encenderse solo.
     try:
-        with open(path, encoding='utf-8') as f:
-            return json.load(f) or {}
+        return db_load(_overrides_path(config_dir)) or {}
     except Exception:
         return {}
 
 
 def _save_overrides(config_dir: str, ovs: dict) -> None:
     try:
-        os.makedirs(config_dir, exist_ok=True)
-        with open(_overrides_path(config_dir), 'w', encoding='utf-8') as f:
-            json.dump(ovs, f, ensure_ascii=False, indent=2)
+        db_save(_overrides_path(config_dir), ovs)
     except Exception as e:
         _logger.error("[scheduler] No se pudo persistir overrides: %s", e)

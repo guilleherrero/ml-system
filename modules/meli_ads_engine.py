@@ -995,12 +995,11 @@ _ACTIONS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'actions',
 
 def load_action_states() -> dict:
     """Lee data/actions/actions.json. Devuelve dict {sku: {action, status, fecha}}."""
-    if not os.path.exists(_ACTIONS_PATH):
-        return {}
+    # Cimientos 12.1 — esto es estado del usuario (que acciones de Ads aprobo o
+    # ejecuto), no un archivo de entrada: en Render se perdia en cada deploy.
     try:
-        import json
-        with open(_ACTIONS_PATH, encoding='utf-8') as f:
-            return json.load(f)
+        from core.db_storage import db_load
+        return db_load(_ACTIONS_PATH) or {}
     except Exception as e:
         logging.warning(f'[meli_ads] Error leyendo actions.json: {e}')
         return {}
@@ -1020,8 +1019,8 @@ def save_action_state(sku: str, action: str, status: str,
         **(extra or {}),
     }
     try:
-        with open(_ACTIONS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(states, f, indent=2, ensure_ascii=False)
+        from core.db_storage import db_save
+        db_save(_ACTIONS_PATH, states)
     except Exception as e:
         logging.warning(f'[meli_ads] Error guardando actions.json: {e}')
 

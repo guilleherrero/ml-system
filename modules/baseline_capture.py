@@ -42,6 +42,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 import requests
+from core.db_storage import db_load, db_save
 
 _logger = logging.getLogger(__name__)
 _ML = 'https://api.mercadolibre.com'
@@ -606,17 +607,16 @@ def _safe(alias: str) -> str:
     return alias.replace(' ', '_').replace('/', '-')
 
 
+# Cimientos 12.1 — persistencia unificada. Estos JSON se escribian con
+# open() directo al disco, pero en Render el disco es efimero: lo que se
+# guardaba se perdia en cada deploy y quien lo leia via kv_store no lo
+# veia nunca. Todo pasa por core/db_storage.
 def _load_json(path: str):
     try:
-        with open(path, encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
+        return db_load(path)
     except Exception:
         return None
 
 
 def _save_json(path: str, data) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    db_save(path, data)

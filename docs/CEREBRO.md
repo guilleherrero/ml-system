@@ -497,6 +497,25 @@ las correcciones 7, 8, 9 y 11. Cerebro es el candidato natural a ser la unica
 serie temporal: todos leen de ahi y nadie mas guarda su propia version. Meta:
 ningun modulo abre archivos con `open()`; todo pasa por `core/db_storage`.
 
+**Estado: hecho (2026-09-07).** Se ruteo por `core/db_storage` todo lo que era
+estado del sistema y se escribia con `open()` al disco:
+
+| Modulo | Que se perdia en cada deploy |
+|---|---|
+| `conv_history.py` | El historial de conversion por item — la base para detectar tendencias |
+| `baseline_capture.py` | El baseline de cada optimizacion, que alimenta al Veredicto IA y al backtest |
+| `permisos_checker.py` | El cache de permisos de la API |
+| `detector_duplicados.py` | El cache de attributes: se re-consultaba ML de cero cada vez |
+| `meli_ads_engine.py` | `actions.json`: que acciones de Ads aprobo o ejecuto el usuario |
+| `core/scheduler_manager.py` | El historial de corridas de los crons **y los overrides**: un job que el usuario pauso volvia a encenderse solo en el siguiente deploy |
+| `dashboard.py`, `historial.py`, `multicuenta.py`, `optimizador_publicaciones.py`, `lanzador_productos.py` | Leian del disco archivos que la web escribe en el kv_store: veian vacio o desactualizado |
+
+Quedan con `open()` a proposito: `core/db_storage.py` (es la capa) y los CSV de
+entrada y los export de `meli_ads_engine.py` (son archivos que entran y salen,
+no estado).
+
+Auditoria repetible: ningun modulo debe abrir archivos de datos por su cuenta.
+
 ### 12.2 Un solo motor de decision
 Hay logica de precio en `repricing.py`, `pricing_strategy.py`,
 `top_acciones_diarias.py` y `web/app.py`. Cuatro lugares que pueden
@@ -567,6 +586,7 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 18 | El impacto de pausar duplicados se calculaba como visitas x conversion x PRECIO: usaba facturacion en vez de margen, asumia que el 100% de las visitas se transfieren y no descontaba lo que los duplicados ya venden | `modules/detector_duplicados.py` `_calcular_impacto_monetario` | Prometia $5.071.784/mes por pausar un duplicado del Cortador; el numero real es ~$362.000. El Top 3 se ordena por impacto, asi que priorizaba mal. **Resuelto** | A |
 | 19 | La deteccion de contaminacion solo miraba la ventana posterior a la accion | `modules/cerebro.py` `evaluar_accion` | Una accion en la ventana previa mueve la linea de base y generaba un aprendizaje falso. Lo encontro un test. **Resuelto** | A |
 | 20 | `meli_ads_connector` consulta `/advertising/product_ads/items/{id}` para todas las publicaciones y ML devuelve 404 en las que no estan en campana | `modules/meli_ads_engine.py` | Cientos de llamadas inutiles por corrida y logs tan ruidosos que tapan un error real | B |
+| 21 | Persistencia partida: doce modulos escribian estado del sistema con `open()` al disco mientras el panel usaba el kv_store | `conv_history`, `baseline_capture`, `permisos_checker`, `detector_duplicados`, `meli_ads_engine`, `scheduler_manager`, y cinco modulos CLI | En Render el disco es efimero: se perdia en cada deploy. Lo mas grave, los overrides del scheduler (un cron pausado por el usuario se re-encendia solo) y el baseline de las optimizaciones. **Resuelto** | A |
 
 ### Estado al cierre del Sprint A
 

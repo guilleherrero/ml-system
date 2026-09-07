@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import unicodedata
@@ -30,6 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Iterable
+from core.db_storage import db_load, db_save
 
 # ── Configuración ────────────────────────────────────────────────────────────
 
@@ -487,23 +489,19 @@ def _cargar_cache_attrs(alias: str, data_dir: str) -> dict:
     Schema legacy (anterior al hotfix #3, todavía soportado en read):
       {item_id: {fetched_at, attributes}}
     """
-    path = _attrs_cache_path(alias, data_dir)
-    if not os.path.exists(path):
-        return {}
+    # Cimientos 12.1 — el cache tambien por la capa de persistencia: en Render
+    # se perdia en cada deploy y se re-consultaba ML de cero cada vez.
     try:
-        with open(path, encoding='utf-8') as f:
-            return json.load(f) or {}
+        return db_load(_attrs_cache_path(alias, data_dir)) or {}
     except Exception:
         return {}
 
 
 def _guardar_cache_attrs(alias: str, data_dir: str, cache: dict) -> None:
-    path = _attrs_cache_path(alias, data_dir)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(cache, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    try:
+        db_save(_attrs_cache_path(alias, data_dir), cache)
+    except Exception as e:
+        logging.warning('[duplicados] no pude guardar el cache de attrs: %s', e)
 
 
 def _attrs_cache_vigente(entry: dict) -> bool:

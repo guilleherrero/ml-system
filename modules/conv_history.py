@@ -2,6 +2,7 @@
 import json
 import os
 from datetime import date
+from core.db_storage import db_load, db_save
 
 MAX_SNAPSHOTS = 16  # ~4 meses con frecuencia semanal
 
@@ -11,10 +12,10 @@ def registrar_snapshot(alias: str, items: list, data_dir: str) -> None:
     safe = alias.replace(" ", "_").replace("/", "-")
     path = os.path.join(data_dir, f"conv_history_{safe}.json")
 
-    try:
-        with open(path, encoding="utf-8") as f:
-            historial = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    # Cimientos 12.1 — persistencia unificada: en Render el disco es efimero,
+    # lo que se escribia ahi se perdia en cada deploy. Todo por core/db_storage.
+    historial = db_load(path) or {}
+    if not isinstance(historial, dict):
         historial = {}
 
     hoy = date.today().isoformat()
@@ -42,9 +43,7 @@ def registrar_snapshot(alias: str, items: list, data_dir: str) -> None:
 
         historial[iid] = snaps[-MAX_SNAPSHOTS:]
 
-    os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(historial, f, ensure_ascii=False)
+    db_save(path, historial)
 
 
 def cargar_tendencias(alias: str, data_dir: str, item_ids: list = None) -> dict:
@@ -64,10 +63,8 @@ def cargar_tendencias(alias: str, data_dir: str, item_ids: list = None) -> dict:
     safe = alias.replace(" ", "_").replace("/", "-")
     path = os.path.join(data_dir, f"conv_history_{safe}.json")
 
-    try:
-        with open(path, encoding="utf-8") as f:
-            historial = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    historial = db_load(path)
+    if not isinstance(historial, dict) or not historial:
         return {}
 
     target_ids = set(item_ids) if item_ids else set(historial.keys())

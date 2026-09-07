@@ -17,6 +17,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.rule import Rule
 from rich import box
+from core.db_storage import db_load, db_save
 
 console = Console()
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -27,10 +28,9 @@ NOT_FOUND_POS = 999
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _load_json(path: str):
-    if not os.path.exists(path):
-        return None
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    # Cimientos 12.1 — leer por la capa de persistencia, no del disco: en Render
+    # estos JSON viven en el kv_store y el archivo no existe.
+    return db_load(path)
 
 
 def _safe(alias: str) -> str:

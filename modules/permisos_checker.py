@@ -31,6 +31,7 @@ from datetime import datetime, timezone, timedelta
 import requests
 
 from core.ml_client import MLClient
+from core.db_storage import db_load, db_save
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 ML_BASE  = 'https://api.mercadolibre.com'
@@ -92,22 +93,19 @@ def _inferencia_path(alias: str) -> str:
     return os.path.join(DATA_DIR, f'permisos_inferencia_{_safe_alias(alias)}.json')
 
 
+# Cimientos 12.1 — persistencia unificada. Estos JSON se escribian con
+# open() directo al disco, pero en Render el disco es efimero: lo que se
+# guardaba se perdia en cada deploy y quien lo leia via kv_store no lo
+# veia nunca. Todo pasa por core/db_storage.
 def _read_json(path: str) -> dict:
-    if not os.path.exists(path):
-        return {}
     try:
-        with open(path, encoding='utf-8') as f:
-            return json.load(f) or {}
+        return db_load(path) or {}
     except Exception:
         return {}
 
 
 def _write_json(path: str, data: dict) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    db_save(path, data)
 
 
 def _now_iso() -> str:

@@ -27,6 +27,7 @@ from rich import box
 from rich.prompt import FloatPrompt
 from core.ml_client import MLClient
 from modules.seo_optimizer import run_new_listing
+from core.db_storage import db_load, db_save
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 console  = Console()
@@ -64,8 +65,7 @@ def _save_report(product_idea: str, result: dict):
         "analisis":             result.get("seo_result", {}).get("analysis", ""),
     }
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
+    db_save(path, report)
     return path
 
 
