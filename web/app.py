@@ -434,6 +434,12 @@ def require_login():
         return
     # Storefront público Biobella: /tienda*, /api/carrito*, /api/reviews*, /api/checkout*, /api/mp/*,
     # /sitemap.xml, /robots.txt no requieren login (también accesibles por crawlers de Google)
+    # Webhook de Telegram: lo llama Telegram, que no tiene sesion. Sin esta
+    # excepcion el before_request lo redirige al login y Telegram descarta el
+    # update con "Wrong response from the webhook: 302 Found". La ruta se
+    # protege con el secreto del path, que se valida dentro del endpoint.
+    if request.path.startswith('/api/telegram/webhook/'):
+        return
     if (request.path.startswith('/tienda') or
         request.path.startswith('/api/carrito') or
         request.path.startswith('/api/reviews') or
