@@ -589,8 +589,17 @@ def _hubo_otra_accion(alias: str, item_id: str, accion_id: str,
 
 
 def evaluar_accion(alias: str, accion: dict, ventana: int,
-                   acciones: list[dict] | None = None) -> dict:
-    """Evalua una accion a N dias contra control. No escribe: devuelve el dict."""
+                   acciones: list[dict] | None = None,
+                   metrica_forzada: str | None = None) -> dict:
+    """Evalua una accion a N dias contra control. No escribe: devuelve el dict.
+
+    `metrica_forzada` fija cual manda el veredicto en vez de elegirla sola. Lo
+    usa el backtest: sobre el historico reconstruido, las unidades previas son
+    una estimacion del baseline y las posteriores salen de diferencias de
+    ventas acumuladas, asi que compararlas seria mezclar dos cosas distintas y
+    el resultado se iria sistematicamente hacia "empeoro". Las visitas, en
+    cambio, vienen de la misma fuente en las dos ventanas.
+    """
     item_id = accion.get('item_id')
     base = _fecha(accion.get('aplicada_ts') or accion.get('ts'))
     if not item_id or not base:
@@ -662,8 +671,11 @@ def evaluar_accion(alias: str, accion: dict, ventana: int,
         }
 
     # Metrica que manda el veredicto: unidades si hay ventas, si no visitas
-    principal = 'unidades_dia' if _num(m_post.get('unidades_dia')) or _num(m_pre.get('unidades_dia')) \
-        else 'visitas_organicas_dia'
+    if metrica_forzada and metrica_forzada in deltas:
+        principal = metrica_forzada
+    else:
+        principal = 'unidades_dia' if _num(m_post.get('unidades_dia')) or _num(m_pre.get('unidades_dia')) \
+            else 'visitas_organicas_dia'
     detalle_principal = deltas.get(principal) or deltas.get('visitas_organicas_dia') or {}
     efecto = _num(detalle_principal.get('delta_vs_control_pct'), 0.0)
     ruido = _ruido_historico(serie_pre + serie_post, principal)
@@ -697,7 +709,8 @@ def evaluar_accion(alias: str, accion: dict, ventana: int,
     }
 
 
-def evaluar_acciones_pendientes(alias: str, hoy: str | None = None) -> dict:
+def evaluar_acciones_pendientes(alias: str, hoy: str | None = None,
+                                metrica_forzada: str | None = None) -> dict:
     """Job diario `cerebro_evaluar` (04:30, despues del snapshot).
 
     Busca acciones aplicadas hace 7 y 14 dias y las evalua. Devuelve resumen.
@@ -725,7 +738,8 @@ def evaluar_acciones_pendientes(alias: str, hoy: str | None = None) -> dict:
         if objetivo is None:
             continue
 
-        ev = evaluar_accion(alias, a, objetivo, acciones=acciones)
+        ev = evaluar_accion(alias, a, objetivo, acciones=acciones,
+                            metrica_forzada=metrica_forzada)
         evs = a.get('evaluacion') or {}
         if not isinstance(evs, dict):
             evs = {}

@@ -11727,6 +11727,45 @@ def api_cerebro_eliminar_competidor():
     return jsonify({'ok': cerebro.eliminar_competidor(alias, clave)})
 
 
+@app.route('/cerebro/backtest')
+@app.route('/cerebro/backtest/<alias>')
+def cerebro_backtest_page(alias=None):
+    """Pantalla de auditoria: corre la logica de Cerebro sobre el historico.
+
+    Sirve para juzgar el criterio del evaluador HOY, sin esperar a que junte sus
+    propios 14 dias, poniendolo al lado del Veredicto IA que ya existia.
+    """
+    from modules import cerebro_backtest
+    cuentas = get_accounts()
+    if not alias:
+        alias = (request.args.get('alias')
+                 or (cuentas[0].get('alias') if cuentas else ''))
+    informe = None
+    try:
+        informe = cerebro_backtest.ultimo(alias) if alias else None
+    except Exception as e:
+        app.logger.warning('[cerebro] backtest previo: %s', e)
+    return render_template('cerebro_backtest.html', accounts=cuentas,
+                           alias=alias, informe=informe)
+
+
+@app.route('/api/cerebro/backtest/<alias>', methods=['POST', 'GET'])
+def api_cerebro_backtest(alias):
+    """Corre (POST) o devuelve el ultimo (GET) informe de backtest."""
+    from modules import cerebro_backtest
+    try:
+        if request.method == 'GET':
+            return jsonify({'ok': True, 'informe': cerebro_backtest.ultimo(alias)})
+        limite = request.args.get('limite')
+        informe = cerebro_backtest.correr(alias, limite=int(limite) if limite else None)
+        _audit('CEREBRO_BACKTEST', alias=alias, evaluadas=informe.get('evaluadas'),
+               acuerdo=informe.get('acuerdo_pct'))
+        return jsonify({'ok': True, 'informe': informe})
+    except Exception as e:
+        app.logger.error('[cerebro] backtest fallo: %s', e)
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @app.route('/api/cerebro/resumen/<alias>')
 def api_cerebro_resumen(alias):
     """Estado de Cerebro para una cuenta: acciones, aprendizajes, serie, bandeja."""
