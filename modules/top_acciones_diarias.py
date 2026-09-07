@@ -548,8 +548,13 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
     avg_conv = sum(convs) / len(convs) if convs else 1.5
 
     # ── Constantes ────────────────────────────────────────────────────────────
+    # Cimientos 12.2 — el piso de margen y los umbrales de ML ahora viven en
+    # modules/precio_motor.py, que es el unico lugar donde se define que es el
+    # margen. El MARGEN_MIN de este modulo era -0.10: permitia proponer bajas
+    # que dejaban el margen en -10%, es decir, sugerir vender perdiendo plata
+    # en cada venta. Ahora el piso es el del motor (10% real).
+    from modules import precio_motor
     VIS_MIN       = 100    # visitas mínimas para ser candidato
-    MARGEN_MIN    = -0.10  # margen mínimo post-baja (ratio 0-1); permite hasta -10%
     DESCUENTO_PCT = 0.08   # baja sugerida del 8%
 
     nuevos_cooldown: dict = {}
@@ -604,25 +609,33 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
             neto = precio * (1.0 - fee_rate)
             margen_actual_display = round(max(0.0, (neto - costo) / precio * 100.0), 1)
 
-        # Precio mínimo: nunca debajo de costo + comisión + margen mínimo
-        denominador = 1.0 - fee_rate - MARGEN_MIN
-        if denominador <= 0:
+        # Precio minimo y evaluacion: una sola fuente (bloque 12.2)
+        precio_minimo = precio_motor.precio_piso(costo, fee_rate)
+        if not precio_minimo:
             continue
-        precio_minimo = costo / denominador
-
-        # Precio sugerido: bajar DESCUENTO_PCT%, acotado al mínimo
         precio_sug = max(round(precio * (1.0 - DESCUENTO_PCT)), round(precio_minimo))
 
         if precio_sug >= precio:
             skipped["sin_margen_reducible"] += 1
             continue
 
-        descuento_real_pct = round((precio - precio_sug) / precio * 100.0, 1)
-        neto_nuevo = precio_sug * (1.0 - fee_rate)
-        margen_nuevo = max(0.0, (neto_nuevo - costo) / precio_sug)  # ratio
+        evaluacion = precio_motor.evaluar_cambio(
+            precio, precio_sug, costo, fee_rate,
+            unidades_30d=vtas, conv_actual=conv, conv_referencia=avg_conv)
+        if not evaluacion["viable"]:
+            # El motor manda: si deja el margen debajo del piso, no se propone.
+            skipped["sin_margen_reducible"] += 1
+            continue
 
-        # Impacto estimado si la conversión sube al promedio del catálogo
-        impacto = round(vis * (avg_conv / 100.0) * precio_sug * abs(margen_nuevo))
+        descuento_real_pct = round((precio - precio_sug) / precio * 100.0, 1)
+        margen_nuevo = (evaluacion.get("margen_nuevo_pct") or 0) / 100.0
+
+        # Impacto: antes asumia que la conversion saltaba sola al promedio del
+        # catalogo por bajar el precio, y no descontaba lo que el item ya gana.
+        impacto, impacto_detalle = precio_motor.impacto_estimado_baja(
+            precio, precio_sug, costo, fee_rate,
+            visitas_30d=vis, conv_actual=conv, conv_referencia=avg_conv,
+            unidades_30d=vtas)
         if impacto <= 0:
             continue
 
@@ -663,6 +676,12 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
                 "margen_pct_actual": margen_actual_display,
                 "margen_nuevo_pct":  round(margen_nuevo * 100.0, 1),
                 "costo":             round(costo, 2),
+                # Trazabilidad (12.5): de donde sale el impacto, que avisa el
+                # motor (umbrales de ML, margen ajustado) y — lo mas util para
+                # decidir — cuanto mas hay que vender para no perder plata.
+                "impacto_detalle":   impacto_detalle,
+                "avisos":            evaluacion.get("avisos") or [],
+                "compensacion":      evaluacion.get("resumen_compensacion"),
             },
         )
         candidatos.append((perdida_margen, op))

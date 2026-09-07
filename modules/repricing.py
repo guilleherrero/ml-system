@@ -353,10 +353,16 @@ def _calculate_new_price(
     Garantiza que el nuevo precio esté entre min_price y max_price.
     fee_rate se obtiene de la API de ML vía core/fees.py.
     """
-    # Validar que min_price no sea menor que costo + comisión ML
+    # Cimientos 12.2 — el piso sale del motor unico de precio, no de una cuenta
+    # propia. La version anterior solo cubria costo + comision: dejaba pasar
+    # precios con margen cero, que es vender para no ganar nada.
     if costo:
-        costo_con_fee = costo / (1 - fee_rate)
-        min_price = max(min_price, round(costo_con_fee, 2))
+        from modules import precio_motor
+        piso = precio_motor.precio_piso(costo, fee_rate)
+        if piso:
+            min_price = max(min_price, round(piso, 2))
+        else:
+            min_price = max(min_price, round(costo / (1 - fee_rate), 2))
 
     if competitor_price is None:
         # Sin datos de competencia: subir levemente si podemos

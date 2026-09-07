@@ -522,6 +522,34 @@ Hay logica de precio en `repricing.py`, `pricing_strategy.py`,
 contradecirse y ninguno sabe de los otros. Debe quedar uno, y los demas
 llamarlo.
 
+**Estado: hecho (2026-09-07).** Nuevo `modules/precio_motor.py`: el unico lugar
+donde se define que es el margen, cual es el piso y que pasa al cruzar un umbral
+de ML. Lo usan `top_acciones_diarias` y `repricing`; `pricing_strategy` queda
+como analisis avanzado sobre las mismas constantes.
+
+Lo que estaba mal repartido:
+
+| Donde | Que hacia por su cuenta |
+|---|---|
+| `repricing.py` | competidor x 0.99 / +2%, con un piso que solo cubria costo + comision: dejaba pasar precios de margen cero |
+| `top_acciones_diarias.py` | bajaba 8% fijo con `MARGEN_MIN = -0.10`, es decir, podia **proponer vender perdiendo 10% en cada venta** |
+| `pricing_strategy.py` | el unico que conocia el umbral de envio gratis y el costo de cuotas — y nadie mas lo usaba |
+| `web/app.py` | aplicaba los cambios sin volver a validar nada |
+
+Ahora, en un solo lugar: margen unitario y porcentual, piso de precio con margen
+minimo del 10%, deteccion de cruce del umbral de envio gratis ($33.000), e
+impacto estimado con freno de realismo.
+
+Lo mas util para decidir es `unidades_para_compensar()`: cuantas unidades mas
+hay que vender para que una baja no sea una perdida. No es una prediccion, es
+aritmetica exacta sobre el margen, y hasta ahora ningun modulo la hacia.
+
+Efecto en el caso real de la Faja Reductora (bajar 8%, de $29.000 a $26.680):
+- piso de precio: de $10.335 (margen -10%) a $13.935 (margen 10%)
+- impacto prometido: de $30.578 a $6.692 por mes
+- y ahora dice lo que importa: "necesitas vender 16% mas solo para no perder
+  plata" y "la conversion tendria que mejorar 205% para llegar al promedio"
+
 ### 12.3 El sistema tiene que dudar de si mismo
 Un impacto de 5 millones sobre 1.072 visitas tendria que haber disparado una
 alarma automatica, no llegar a la pantalla del usuario. Cada numero que sale a
@@ -587,6 +615,9 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 19 | La deteccion de contaminacion solo miraba la ventana posterior a la accion | `modules/cerebro.py` `evaluar_accion` | Una accion en la ventana previa mueve la linea de base y generaba un aprendizaje falso. Lo encontro un test. **Resuelto** | A |
 | 20 | `meli_ads_connector` consulta `/advertising/product_ads/items/{id}` para todas las publicaciones y ML devuelve 404 en las que no estan en campana | `modules/meli_ads_engine.py` | Cientos de llamadas inutiles por corrida y logs tan ruidosos que tapan un error real | B |
 | 21 | Persistencia partida: doce modulos escribian estado del sistema con `open()` al disco mientras el panel usaba el kv_store | `conv_history`, `baseline_capture`, `permisos_checker`, `detector_duplicados`, `meli_ads_engine`, `scheduler_manager`, y cinco modulos CLI | En Render el disco es efimero: se perdia en cada deploy. Lo mas grave, los overrides del scheduler (un cron pausado por el usuario se re-encendia solo) y el baseline de las optimizaciones. **Resuelto** | A |
+| 22 | `top_acciones_diarias` usaba `MARGEN_MIN = -0.10` como piso de precio | `modules/top_acciones_diarias.py` | Permitia proponer bajas que dejaban el margen en -10%: el sistema podia recomendar vender perdiendo plata en cada venta. **Resuelto**, ahora el piso es el del motor unico (10%) | A |
+| 23 | El impacto de una baja de precio asumia que la conversion saltaba sola al promedio del catalogo y no descontaba lo que el item ya gana | idem | En la Faja Reductora prometia $30.578/mes cuando exigia triplicar la conversion. **Resuelto**: $6.692 con freno de realismo | A |
+| 24 | El umbral de envio gratis de ML solo lo conocia `pricing_strategy` | `repricing`, `top_acciones_diarias` | Se podian proponer bajas que cruzaban el umbral sin avisar que el margen se mueve de golpe, no de a poco. **Resuelto** | A |
 
 ### Estado al cierre del Sprint A
 
