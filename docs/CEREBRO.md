@@ -472,6 +472,74 @@ posición / buy box share (3.6), rating y reclamos, intensidad competitiva
   con cupón 15%", "Estrella W: competidor bajó, defender".
 - Alimenta el plan de reposición desde China (módulo 10) con cantidades por SKU.
 
+## 12. Cimientos — la ingenieria antes de las funcionalidades
+
+Decision del usuario (2026-09-07): antes de seguir con el Sprint C, un sprint de
+cimientos. El razonamiento es simple: en un solo dia de trabajo aparecieron
+diecisiete correcciones sin buscarlas — una formula que prometia 5 millones de
+pesos que no existian, el repricing leyendo su configuracion de un lado mientras
+el panel la escribia en otro, la buy box calculada asumiendo que el mas barato
+gana, snapshots imposibles de comparar, un endpoint abierto, un hash de
+proteccion que fallaba siempre. Ese ritmo de hallazgos no es mala suerte: es lo
+que pasa cuando nada verifica nada, y cada modulo nuevo agrega superficie para
+que se repita.
+
+Un sistema que mide mal y recomienda con seguridad es peor que no tener sistema,
+porque hace ejecutar el error mas rapido. Lo que hace superadora a una
+herramienta asi no es la cantidad de cosas que hace: es que el dato sea cierto y
+el criterio honesto.
+
+### 12.1 Una sola fuente de verdad
+Hoy la misma informacion vive en `stock_<alias>.json`, `posiciones_<alias>.json`,
+`competencia_<alias>.json`, `monitor_evolucion.json` y ahora los snapshots de
+Cerebro, escrita por modulos distintos con formatos distintos. De ahi salieron
+las correcciones 7, 8, 9 y 11. Cerebro es el candidato natural a ser la unica
+serie temporal: todos leen de ahi y nadie mas guarda su propia version. Meta:
+ningun modulo abre archivos con `open()`; todo pasa por `core/db_storage`.
+
+### 12.2 Un solo motor de decision
+Hay logica de precio en `repricing.py`, `pricing_strategy.py`,
+`top_acciones_diarias.py` y `web/app.py`. Cuatro lugares que pueden
+contradecirse y ninguno sabe de los otros. Debe quedar uno, y los demas
+llamarlo.
+
+### 12.3 El sistema tiene que dudar de si mismo
+Un impacto de 5 millones sobre 1.072 visitas tendria que haber disparado una
+alarma automatica, no llegar a la pantalla del usuario. Cada numero que sale a
+pantalla pasa por una validacion de sensatez: si el resultado es absurdo se
+marca, se topea y se explica; nunca se publica como si fuera cierto.
+
+Primer caso implementado: el impacto de pausar duplicados no puede superar el
+margen que el producto ya genera en el mes (no se puede mas que duplicar), la
+conversion se capea al 12% (por encima habla de la medicion, no del producto) y
+sin costo cargado se dice que falta el dato en vez de estimar con el precio.
+
+### 12.4 Tests de las reglas de negocio, no del codigo
+`tests/test_reglas_negocio.py`: casos con numeros concretos y un porque. Cubre
+el impacto de duplicados, el margen unitario y el veredicto de Cerebro. El
+primer dia ya encontro un agujero real: la deteccion de contaminacion solo
+miraba la ventana posterior, asi que una accion caida en la ventana previa
+—que mueve la linea de base— pasaba desapercibida y generaba un aprendizaje
+falso. Corregido a la ventana completa.
+
+Si un cambio futuro rompe una formula, estos tests tienen que fallar.
+
+### 12.5 Trazabilidad: si no se puede explicar, no se muestra
+Toda recomendacion viaja con el detalle de como se calculo. Implementado en el
+backtest y en el impacto de duplicados (`impacto_detalle`). Debe ser la norma.
+
+### 12.6 Los costos reales en el centro
+Reposicion, devoluciones y umbrales de comision y envio (bloques 10.1, 10.2 y
+10.5) no son un refinamiento: sin ellos, optimizar el precio es optimizar una
+ficcion prolija.
+
+### 12.7 Saber donde no meterse
+Con 68 publicaciones, el resultado esta en unos 10 SKU. Un sistema que trata las
+68 por igual reparte la atencion donde no rinde. La version superadora no es la
+que optimiza todo: es la que dice "aca no hay nada que ganar, anda a otro lado".
+Se apoya en el semaforo de portafolio (bloque 11) y en la confianza de los
+aprendizajes (1.3).
+
 ## Correcciones detectadas (checklist)
 
 Cosas encontradas al revisar el código que no funcionan bien o son riesgosas.
@@ -496,6 +564,9 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 15 | `/api/capturar-competidor` es público: CORS `*` y sin token | idem | Cualquiera que conozca la URL y el alias puede inyectar competidores falsos que después mueven precio | A |
 | 16 | El hash MD5 de `seo_optimizer.py` en la Regla #1 y en `docs/ARQUITECTURA_OPTIMIZAR_IA.md` es `74783469...`; el archivo real es `0389b93a8c4ff11c8eaa97327a6f54c1` (cambió en commits legítimos de julio) | Regla #1 | La verificación previa a cada push falla siempre, y una regla que siempre falla deja de proteger. Requiere decisión del usuario para re-basar el hash | A |
 | 17 | `seo_optimizer.py` usa f-strings anidadas (PEP 701) y solo compila en Python 3.12+. Render corre 3.12.7 por `runtime.txt`, asi que produccion esta bien, pero cualquier entorno con 3.10 u 3.11 falla al importar el modulo | `modules/seo_optimizer.py` linea 2519 | El sistema no arranca fuera de 3.12 y nada lo advierte: el error aparece como SyntaxError en un import lejano (`stock_rentabilidad`), que no dice nada sobre la causa. Encontrado al correr las pruebas del Sprint B | B |
+| 18 | El impacto de pausar duplicados se calculaba como visitas x conversion x PRECIO: usaba facturacion en vez de margen, asumia que el 100% de las visitas se transfieren y no descontaba lo que los duplicados ya venden | `modules/detector_duplicados.py` `_calcular_impacto_monetario` | Prometia $5.071.784/mes por pausar un duplicado del Cortador; el numero real es ~$362.000. El Top 3 se ordena por impacto, asi que priorizaba mal. **Resuelto** | A |
+| 19 | La deteccion de contaminacion solo miraba la ventana posterior a la accion | `modules/cerebro.py` `evaluar_accion` | Una accion en la ventana previa mueve la linea de base y generaba un aprendizaje falso. Lo encontro un test. **Resuelto** | A |
+| 20 | `meli_ads_connector` consulta `/advertising/product_ads/items/{id}` para todas las publicaciones y ML devuelve 404 en las que no estan en campana | `modules/meli_ads_engine.py` | Cientos de llamadas inutiles por corrida y logs tan ruidosos que tapan un error real | B |
 
 ### Estado al cierre del Sprint A
 

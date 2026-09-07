@@ -293,6 +293,9 @@ def _candidates_duplicados(alias: str) -> list[Oportunidad]:
                 "items_a_pausar_count":  n_pausar,
                 "items_ids":             items_ids,
                 "visitas_perdidas_30d":  cl.visitas_perdidas_30d,
+                # Trazabilidad: de donde sale el numero de impacto. Si el
+                # sistema no puede explicar una cifra, no deberia mostrarla.
+                "impacto_detalle":       getattr(cl, "impacto_detalle", {}) or {},
             },
         ))
     _logger.info("[top_acciones] duplicados: %d candidates (skipped=%s)", len(out), skipped)

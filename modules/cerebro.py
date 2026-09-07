@@ -636,8 +636,14 @@ def evaluar_accion(alias: str, accion: dict, ventana: int,
             'evaluada_ts': _ahora(),
         }
 
+    # Contaminacion (4.1): otra accion sobre el mismo item cerca de esta.
+    # Se mira la ventana COMPLETA (antes y despues), no solo la posterior: una
+    # accion que cae en la ventana previa mueve la linea de base contra la que
+    # se compara, y el efecto que midamos va a ser de las dos juntas. Lo
+    # encontro un test que esperaba que dos acciones encimadas no ensenaran
+    # nada y descubrio que la segunda igual generaba un aprendizaje.
     contaminada = _hubo_otra_accion(alias, item_id, accion.get('id'),
-                                    post_desde, post_hasta, acciones)
+                                    pre_desde, post_hasta, acciones)
 
     m_pre  = _metricas_ventana(serie_pre)
     m_post = _metricas_ventana(serie_post)

@@ -110,6 +110,7 @@ class Cluster:
     titulo_corto: str = ''
     visitas_perdidas_30d: int = 0
     impacto_monetario_estimado: float = 0.0
+    impacto_detalle: dict = field(default_factory=dict)
     recomendaciones: dict = field(default_factory=dict)   # {mla_id: Recomendacion}
     resumen_recomendacion: str = ''
     # Sprint Detector v2: explicación de por qué es legítimo (cuando aplique)
@@ -977,26 +978,116 @@ def _identificar_ganadora(cluster_items: list[dict]) -> str:
     ).get('id', '')
 
 
-def _calcular_impacto_monetario(cluster_items: list[dict], ganadora_id: str) -> tuple[int, float]:
-    """Estima impacto: visitas_perdidas × conv_ganadora × precio_ganadora.
+# ── Impacto monetario de pausar duplicados ──────────────────────────────────
+# La formula anterior era: visitas_perdidas x conversion x PRECIO, y prometia
+# cifras imposibles (5 millones por mes por pausar un duplicado con 1.072
+# visitas). Tenia tres errores que se multiplicaban entre si:
+#
+#   1. Usaba el precio, no el margen. Vos no te quedas con lo que factura la
+#      venta, te quedas con lo que sobra despues de la comision de ML y del
+#      costo del producto. En el Cortador eso es ~35% del precio: el numero
+#      salia casi 3 veces mas grande solo por esto.
+#   2. Asumia que el 100% de las visitas del duplicado se mudan a la ganadora
+#      y convierten igual de bien. En la practica buena parte de esas visitas
+#      es la misma persona comparando tus dos publicaciones, y otra parte
+#      simplemente no vuelve.
+#   3. No descontaba lo que los duplicados YA venden. Esas unidades no son
+#      ganancia nueva: ya las tenes.
+#
+# Un numero inflado no es un detalle estetico: el Top 3 se ordena por impacto,
+# asi que una formula mentirosa te pone primero lo que no corresponde.
 
-    Returns (visitas_perdidas_30d, impacto_estimado_en_pesos).
+# Cuanto del trafico del duplicado se recupera al pausarlo. Conservador a
+# proposito: preferimos prometer de menos. Se recalibra cuando Cerebro tenga
+# pausas evaluadas de verdad (bloque 1.3).
+FACTOR_TRANSFERENCIA = 0.35
+
+# Conversion por encima de la cual sospechamos de la medicion, no del producto.
+# Con las visitas subestimadas la conversion se dispara y el impacto con ella.
+CONVERSION_MAX_PLAUSIBLE = 0.12
+
+
+def _margen_unitario(item: dict) -> float | None:
+    """Lo que queda por unidad despues de comision y costo. None si falta el costo."""
+    ganancia = item.get('ganancia')
+    if ganancia is not None:
+        try:
+            return float(ganancia)
+        except (TypeError, ValueError):
+            pass
+    precio = float(item.get('precio') or 0)
+    costo  = item.get('costo')
+    if not precio or costo in (None, ''):
+        return None
+    try:
+        fee = float(item.get('fee_rate') or 0)
+        return precio * (1 - fee) - float(costo)
+    except (TypeError, ValueError):
+        return None
+
+
+def _calcular_impacto_monetario(cluster_items: list[dict],
+                                ganadora_id: str) -> tuple[int, float, dict]:
+    """Margen mensual recuperable al pausar los duplicados del cluster.
+
+    Returns (visitas_perdidas_30d, impacto_en_pesos, detalle_del_calculo).
+    El detalle viaja a la UI: si el sistema no puede mostrar de donde sale un
+    numero, no deberia mostrar el numero.
     """
     ganadora = next((it for it in cluster_items if it.get('id') == ganadora_id), None)
     if not ganadora:
-        return 0, 0.0
+        return 0, 0.0, {'motivo': 'sin publicacion ganadora identificada'}
 
-    conv_g = float(ganadora.get('conversion_pct') or 0) / 100.0  # 1.5 → 0.015
-    precio_g = float(ganadora.get('precio') or 0)
+    duplicados = [it for it in cluster_items if it.get('id') != ganadora_id]
+    visitas_perdidas = sum(int(it.get('visitas_30d') or 0) for it in duplicados)
 
-    visitas_perdidas = sum(
-        int(it.get('visitas_30d') or 0)
-        for it in cluster_items
-        if it.get('id') != ganadora_id
-    )
+    margen_unit = _margen_unitario(ganadora)
+    if margen_unit is None or margen_unit <= 0:
+        # Sin costo cargado no se puede hablar de plata. Antes se inventaba
+        # usando el precio entero; ahora se dice que falta el dato.
+        return visitas_perdidas, 0.0, {
+            'motivo': 'sin costo cargado para esta publicacion, no se puede estimar el margen',
+            'visitas_perdidas_30d': visitas_perdidas,
+        }
 
-    impacto = visitas_perdidas * conv_g * precio_g
-    return visitas_perdidas, round(impacto, 0)
+    conv_medida = float(ganadora.get('conversion_pct') or 0) / 100.0
+    conv_usada  = min(conv_medida, CONVERSION_MAX_PLAUSIBLE)
+
+    ventas_duplicados = sum(int(it.get('ventas_30d') or 0) for it in duplicados)
+    unidades_brutas = visitas_perdidas * conv_usada * FACTOR_TRANSFERENCIA
+    unidades_netas  = max(unidades_brutas - ventas_duplicados, 0.0)
+
+    impacto = unidades_netas * margen_unit
+
+    # Tope de sensatez: pausar duplicados no puede mas que duplicar lo que el
+    # producto ya genera. Si el calculo lo supera, es que algun dato de entrada
+    # esta mal y el numero no sale a pantalla como si fuera cierto.
+    margen_actual_mes = 0.0
+    for it in cluster_items:
+        m = _margen_unitario(it)
+        if m and m > 0:
+            margen_actual_mes += m * int(it.get('ventas_30d') or 0)
+    topeado = False
+    if margen_actual_mes > 0 and impacto > margen_actual_mes:
+        impacto = margen_actual_mes
+        topeado = True
+
+    detalle = {
+        'visitas_perdidas_30d':  visitas_perdidas,
+        'conversion_medida_pct': round(conv_medida * 100, 2),
+        'conversion_usada_pct':  round(conv_usada * 100, 2),
+        'conversion_capeada':    conv_usada < conv_medida,
+        'factor_transferencia':  FACTOR_TRANSFERENCIA,
+        'unidades_estimadas':    round(unidades_brutas, 1),
+        'ventas_duplicados_30d': ventas_duplicados,
+        'unidades_netas':        round(unidades_netas, 1),
+        'margen_unitario':       round(margen_unit, 0),
+        'margen_actual_mes':     round(margen_actual_mes, 0),
+        'topeado_por_sensatez':  topeado,
+        'formula': ('(visitas perdidas x conversion x factor de transferencia '
+                    '- ventas que los duplicados ya hacen) x margen por unidad'),
+    }
+    return visitas_perdidas, round(impacto, 0), detalle
 
 
 def _generar_recomendaciones(cluster_items: list[dict],
@@ -1240,7 +1331,7 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
 
             mapa_leg = {it.get('id', ''): False for it in grupo}
             ganadora_id = _identificar_ganadora(grupo)
-            visitas_perdidas, impacto = _calcular_impacto_monetario(grupo, ganadora_id)
+            visitas_perdidas, impacto, impacto_detalle = _calcular_impacto_monetario(grupo, ganadora_id)
 
             items_cluster = [
                 ItemCluster(
@@ -1280,6 +1371,7 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                 titulo_corto=_titulo_corto(grupo),
                 visitas_perdidas_30d=visitas_perdidas,
                 impacto_monetario_estimado=impacto,
+                impacto_detalle=impacto_detalle,
                 recomendaciones=recomendaciones,
                 resumen_recomendacion=resumen_rec,
                 nota_legitimidad=nota_leg,
