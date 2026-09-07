@@ -106,11 +106,13 @@ def _extract_keywords_for_search(title: str, max_words: int = 4) -> str:
 
 
 def _save_report(alias: str, report: dict):
-    os.makedirs(DATA_DIR, exist_ok=True)
+    # Correccion 9 (Cerebro): esto escribia al disco mientras el resto del
+    # sistema lee por la capa de persistencia. En Render el reporte no llegaba
+    # al kv_store, asi que el optimizador podia trabajar sobre un analisis de
+    # competencia viejo o directamente inexistente.
+    from core.db_storage import db_save
     safe = alias.replace(" ", "_").replace("/", "-")
-    path = os.path.join(DATA_DIR, f"competencia_{safe}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
+    db_save(os.path.join(DATA_DIR, f"competencia_{safe}.json"), report)
 
 
 def run(client: MLClient, alias: str, max_categories: int = 15):

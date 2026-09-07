@@ -1,6 +1,12 @@
 # Arquitectura — Optimizar IA (`modules/seo_optimizer.py`)
 
-**Tamaño:** 2.900 líneas · **Hash MD5 actual:** `74783469aeae1d4c12bec279d034dff3`
+**Tamaño:** 3.786 líneas · **Hash MD5 actual:** `0389b93a8c4ff11c8eaa97327a6f54c1`
+
+> Hash re-basado el 2026-09-07. El baseline anterior (`74783469aeae1d4c12bec279d034dff3`) quedó
+> desactualizado tras los commits legítimos de julio (validador
+> determinístico post-síntesis y corrección del modelo a opus-4-7).
+> La verificación de la Regla #1 fallaba siempre y por eso había dejado
+> de proteger: una regla que siempre falla se ignora.
 (hash original al escribir este doc: `1e7272662f0761fba99bdb07f23fa1cc` — ver sección 9 para historial de modificaciones autorizadas)
 
 Este documento describe la arquitectura interna del motor SEO sin describir

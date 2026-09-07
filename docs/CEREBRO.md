@@ -4,7 +4,7 @@
 > resultados y cómo cambia su comportamiento a partir de ellos. Es la base de los
 > Sprints A–D. Se actualiza a medida que se van definiendo los bloques.
 
-Estado: **en definición** (bloques 1–3, 4.1, 4.2-demanda, 9, 10 y 11 definidos; umbrales de 4.2, 5–8 pendientes)
+Estado: **Sprint A implementado** (bloques 1.1–1.4, 2.3–2.4 y 4.1 en codigo; 3, 4.2, 5–11 definidos o pendientes)
 Última actualización: 2026-09-07
 
 ---
@@ -496,11 +496,53 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 15 | `/api/capturar-competidor` es público: CORS `*` y sin token | idem | Cualquiera que conozca la URL y el alias puede inyectar competidores falsos que después mueven precio | A |
 | 16 | El hash MD5 de `seo_optimizer.py` en la Regla #1 y en `docs/ARQUITECTURA_OPTIMIZAR_IA.md` es `74783469...`; el archivo real es `0389b93a8c4ff11c8eaa97327a6f54c1` (cambió en commits legítimos de julio) | Regla #1 | La verificación previa a cada push falla siempre, y una regla que siempre falla deja de proteger. Requiere decisión del usuario para re-basar el hash | A |
 
+### Estado al cierre del Sprint A
+
+| # | Estado | Donde quedo |
+|---|---|---|
+| 1 | Resuelta | `data/cerebro_<Alias>/competidores.json` via `core/db_storage`; sobrevive reinicios y deploys |
+| 2 | Resuelta | Clave `(item_propio, competidor)`; el bookmarklet propone la publicacion propia por similitud |
+| 3 | Pendiente (C) | La huella y el juez Haiku son del bloque 2.2; ya existe `puntuar_candidato()` con los pesos definidos |
+| 4 | Pendiente (C) | Motor de margen total con postura — bloque 3 completo |
+| 5 | Resuelta en el monitoreo | `buybox_6h` ya usa `price_to_win` (estado, precio para ganar y `boosts`); falta que el motor de precio lo consuma para decidir (3.6) |
+| 6 | Resuelta | Sin tope: recorre todas las publicaciones activas y filtra las de catalogo |
+| 7 | Resuelta | `repricing.py` ruteado por `core/db_storage` |
+| 8 | Resuelta | Historial de precios por `db_storage`, rolling 1000 entradas |
+| 9 | Resuelta | `_save_report` por `db_storage` |
+| 10 | Resuelta | El ganador sale de `price_to_win`, no de asumir que el primero de la lista gana |
+| 11 | Resuelta | Serie diaria real (visitas del dia, unidades del dia), retencion 180 dias |
+| 12 | Resuelta | Cubre todas las publicaciones activas, no solo las del monitor |
+| 13 | Pendiente (B) | Purga de cuentas en `kv_store` |
+| 14 | Resuelta | `GET /api/pending-competidores` dejo de vaciar la cola |
+| 15 | Resuelta | Token opcional `CEREBRO_BOOKMARKLET_TOKEN`; sin token definido sigue abierto y avisa en el log |
+| 16 | Resuelta | Hash re-basado a `0389b93a8c4ff11c8eaa97327a6f54c1` en `docs/ARQUITECTURA_OPTIMIZAR_IA.md`. Falta actualizarlo tambien en la skill `meli-reglas` |
+
+Lo construido en el Sprint A:
+
+- `modules/cerebro.py` — memoria completa: registro de acciones (1.1), evaluacion
+  a 7 y 14 dias contra control de hermanas (1.2), aprendizajes consolidados
+  (1.3), snapshots (1.4) y competidores con clases y puntaje (2.x).
+- `modules/cerebro_snapshot.py` — captura diaria contra la API: visitas del dia,
+  clics de Ads, organicas, unidades, precio, stock, posicion y competidores
+  directos. Honestidad del dato de Ads: ML no da metricas por item, solo por
+  campania; con un item la cifra es exacta (`ads_scope='item'`), con varios se
+  prorratea y queda marcado `ads_scope='campaign'`.
+- Job `cerebro_evaluar` a las 04:30 ART, despues del snapshot de las 04:00.
+- Hooks de registro en: cambio de precio manual, Aplicar TODO (titulo,
+  descripcion y ficha por separado), respuesta a preguntas, pausa de duplicados
+  y repricing automatico.
+- API: `/api/cerebro/bandeja`, `/acciones`, `/aprendizajes`, `/serie`,
+  `/resumen`, `/evaluar`, y `/competidores` con clasificar, asociar y eliminar.
+
+Lo que falta para cerrar el loop (Sprint B en adelante): la pantalla de Cerebro,
+el bot de Telegram sobre la misma bandeja, y que `top_acciones` lea
+`aprendizajes.json` para ordenar por historial propio (bloque 5).
+
 ## Sprints
 
 | Sprint | Contenido | Estado |
 |---|---|---|
-| A | Memoria (1.1–1.4) + competidores persistentes y huella (2.2–2.4) | pendiente |
+| A | Memoria (1.1–1.4) + competidores persistentes y huella (2.2–2.4) | codigo listo, falta deploy y validacion |
 | B | Bandeja única, sección Cerebro en UI (2.5 + 7), bot Telegram | pendiente |
 | C | Motor de precio con postura (3) + cierre del loop (5) + tráfico vs conversión (4) + promociones ex ante (9.2) | pendiente |
 | D | Disparadores de competencia, laboratorio de títulos (8), precisión del sistema (6), evaluación de promos y cupones (9.3–9.5), semáforo de portafolio (11) | pendiente |

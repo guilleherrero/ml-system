@@ -4699,6 +4699,17 @@ def api_responder_pregunta():
             json={'question_id': question_id, 'text': respuesta},
             headers=heads, timeout=10)
         if r.ok:
+            # Cerebro 1.1 — responder rapido y bien mueve conversion; queda
+            # registrado para poder medirlo, no solo suponerlo.
+            _item_preg = (body.get('item_id') or '').strip().upper()
+            if _item_preg:
+                _cerebro_registrar(
+                    alias, tipo='respuesta', item_id=_item_preg, origen='usuario',
+                    hipotesis='responder la pregunta destraba la compra y mejora '
+                              'la conversion de la publicacion',
+                    estado_previo=_cerebro_estado_previo(alias, _item_preg),
+                    detalle={'question_id': question_id, 'largo': len(respuesta)},
+                    ejecutado_por='api:responder-pregunta')
             return jsonify({'ok': True})
         return jsonify({'ok': False, 'error': r.text}), r.status_code
     except Exception as e:
@@ -6268,6 +6279,43 @@ def api_aplicar_optimizacion():
 
         except Exception as e:
             errors.append(f'atributos: {e}')
+
+    # ── Cerebro 1.1 — registrar la optimizacion aplicada ─────────────────────
+    # Una entrada por tipo de cambio: titulo, descripcion y ficha se evaluan por
+    # separado porque no compiten por la misma palanca. El titulo se congela tras
+    # la primera venta, asi que lo que se aprende ahi se aplica en publicaciones
+    # nuevas y clones, no en esta.
+    if applied:
+        _cb_previo = _cerebro_estado_previo(alias, item_id, {
+            'titulo':     titulo_antes,
+            'visitas_7d': visitas_antes,
+            'ventas_30d': ventas_antes,
+            'conversion_7d': conv_antes,
+            'posicion':   posicion_antes,
+            'keyword':    posicion_kw,
+        })
+        if 'titulo' in applied:
+            _cerebro_registrar(alias, tipo='ficha', item_id=item_id, origen='usuario',
+                               hipotesis='titulo optimizado: mas keywords relevantes '
+                                         'deberian traer mas trafico organico',
+                               estado_previo=_cb_previo,
+                               detalle={'campo': 'titulo', 'antes': titulo_antes[:120],
+                                        'despues': titulo[:120]},
+                               ejecutado_por='api:aplicar-optimizacion')
+        if 'descripcion' in applied:
+            _cerebro_registrar(alias, tipo='descripcion', item_id=item_id, origen='usuario',
+                               hipotesis='descripcion optimizada: mejor cobertura de '
+                                         'keywords y mas conversion',
+                               estado_previo=_cb_previo,
+                               detalle={'campo': 'descripcion', 'largo': len(descripcion)},
+                               ejecutado_por='api:aplicar-optimizacion')
+        if attrs_applied:
+            _cerebro_registrar(alias, tipo='ficha', item_id=item_id, origen='usuario',
+                               hipotesis='ficha tecnica completada: mas atributos '
+                                         'mejoran el match de busqueda y los filtros',
+                               estado_previo=_cb_previo,
+                               detalle={'campo': 'atributos', 'cantidad': attrs_applied},
+                               ejecutado_por='api:aplicar-optimizacion')
 
     # ── Persistir en optimizaciones_Alias.json ───────────────────────────────
     json_updated = False
@@ -10680,6 +10728,16 @@ def api_duplicados_pausar_batch():
             )
             if r.ok:
                 pausadas.append(mla)
+                # Cerebro 1.1 — pausar un duplicado deberia concentrar visitas y
+                # ventas en la publicacion que se queda. Se evalua a 7/14 dias.
+                _cerebro_registrar(
+                    alias, tipo='pausa', item_id=mla, origen='usuario',
+                    hipotesis='pausar el duplicado concentra trafico y ventas en '
+                              'la publicacion principal del cluster',
+                    estado_previo=_cerebro_estado_previo(alias, mla),
+                    detalle={'motivo': 'duplicado detectado',
+                             'titulo': (stock_idx.get(mla, {}) or {}).get('titulo', '')[:80]},
+                    ejecutado_por='api:duplicados-pausar-batch')
                 # Registrar trazabilidad
                 registrar_accion_automatica(alias, DATA_DIR, 'pausar_duplicado', {
                     'mla':         mla,
@@ -11667,6 +11725,105 @@ def api_cerebro_eliminar_competidor():
     if not alias or not clave:
         return jsonify({'ok': False, 'error': 'Faltan alias o clave'}), 400
     return jsonify({'ok': cerebro.eliminar_competidor(alias, clave)})
+
+
+@app.route('/api/cerebro/resumen/<alias>')
+def api_cerebro_resumen(alias):
+    """Estado de Cerebro para una cuenta: acciones, aprendizajes, serie, bandeja."""
+    from modules import cerebro
+    return jsonify({'ok': True, 'resumen': cerebro.resumen(alias)})
+
+
+@app.route('/api/cerebro/acciones/<alias>')
+def api_cerebro_acciones(alias):
+    """Historial de acciones registradas, con su veredicto cuando ya se evaluo."""
+    from modules import cerebro
+    return jsonify({
+        'ok': True,
+        'acciones': cerebro.listar_acciones(
+            alias,
+            estado=(request.args.get('estado') or None),
+            tipo=(request.args.get('tipo') or None),
+            item_id=((request.args.get('item_id') or '').strip().upper() or None),
+            limit=int(request.args.get('limit') or 200)),
+    })
+
+
+@app.route('/api/cerebro/bandeja/<alias>')
+def api_cerebro_bandeja(alias):
+    """Bandeja unica: propuestas esperando decision + competidores por confirmar.
+
+    Es la misma cola que consume Telegram: aprobar en un lado es aprobar en el
+    otro, porque el estado vive aca y no en el canal.
+    """
+    from modules import cerebro
+    propuestas = cerebro.acciones_pendientes(alias)
+    candidatos = cerebro.candidatos_pendientes(alias)
+    return jsonify({
+        'ok': True,
+        'propuestas': propuestas,
+        'candidatos_competidor': candidatos,
+        'total': len(propuestas) + len(candidatos),
+    })
+
+
+@app.route('/api/cerebro/accion/aprobar', methods=['POST'])
+def api_cerebro_aprobar_accion():
+    """Aprueba una propuesta. El precio arranca siempre en propone-y-apruebo."""
+    from modules import cerebro
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    aid   = (body.get('accion_id') or '').strip()
+    if not alias or not aid:
+        return jsonify({'ok': False, 'error': 'Faltan alias o accion_id'}), 400
+    acc = cerebro.aprobar_accion(alias, aid, por=session.get('username', 'usuario'))
+    if not acc:
+        return jsonify({'ok': False, 'error': 'Accion no encontrada'}), 404
+    _audit('CEREBRO_APROBAR_ACCION', alias=alias, accion_id=aid, tipo=acc.get('tipo'))
+    return jsonify({'ok': True, 'accion': acc})
+
+
+@app.route('/api/cerebro/accion/rechazar', methods=['POST'])
+def api_cerebro_rechazar_accion():
+    from modules import cerebro
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    aid   = (body.get('accion_id') or '').strip()
+    if not alias or not aid:
+        return jsonify({'ok': False, 'error': 'Faltan alias o accion_id'}), 400
+    acc = cerebro.rechazar_accion(alias, aid, por=session.get('username', 'usuario'),
+                                  motivo=(body.get('motivo') or ''))
+    if not acc:
+        return jsonify({'ok': False, 'error': 'Accion no encontrada'}), 404
+    _audit('CEREBRO_RECHAZAR_ACCION', alias=alias, accion_id=aid)
+    return jsonify({'ok': True, 'accion': acc})
+
+
+@app.route('/api/cerebro/aprendizajes/<alias>')
+def api_cerebro_aprendizajes(alias):
+    """Lo que el sistema aprendio solo, ordenado por confianza."""
+    from modules import cerebro
+    aps = list(cerebro.listar_aprendizajes(alias).values())
+    orden = {'alta': 0, 'media': 1, 'baja': 2}
+    aps.sort(key=lambda a: (orden.get(a.get('confianza'), 3), -a.get('casos', 0)))
+    return jsonify({'ok': True, 'aprendizajes': aps})
+
+
+@app.route('/api/cerebro/serie/<alias>/<item_id>')
+def api_cerebro_serie(alias, item_id):
+    """Serie diaria de una publicacion: organico vs Ads, ventas, precio, posicion."""
+    from modules import cerebro
+    dias = int(request.args.get('dias') or 60)
+    desde = (datetime.now() - timedelta(days=dias)).strftime('%Y-%m-%d')
+    return jsonify({'ok': True,
+                    'serie': cerebro.serie_item(alias, item_id.upper(), desde=desde)})
+
+
+@app.route('/api/cerebro/evaluar/<alias>', methods=['POST'])
+def api_cerebro_evaluar_ahora(alias):
+    """Dispara la evaluacion a mano (el cron la corre solo a las 04:30)."""
+    from modules import cerebro
+    return jsonify({'ok': True, 'resultado': cerebro.evaluar_acciones_pendientes(alias)})
 
 
 @app.route('/api/detalle-competidor', methods=['POST'])

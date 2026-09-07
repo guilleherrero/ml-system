@@ -22,6 +22,7 @@ from rich.prompt import Prompt, Confirm, FloatPrompt
 from rich.table import Table
 from rich import box
 
+from core.db_storage import db_load, db_save
 from core.ml_client import MLClient
 from core.fees import get_fee_rates, get_rate
 from modules.monitor_posicionamiento import _get_all_active_items
@@ -46,10 +47,17 @@ def _now_iso() -> str:
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _load_config() -> dict:
-    if not os.path.exists(CONFIG_PATH):
+    # Correccion 7 (Cerebro): antes esto leia el archivo del disco mientras la
+    # UI escribia en el kv_store de Postgres. Resultado: las reglas cargadas
+    # desde el panel eran invisibles para el cron horario, y en Render el disco
+    # es efimero, asi que la config del modulo se perdia en cada deploy.
+    cfg = db_load(CONFIG_PATH)
+    if not cfg:
         return {"items": {}, "version": _REPRICING_CONFIG_VERSION}
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        cfg = json.load(f)
+    if not isinstance(cfg, dict):
+        _logger.warning("repricing.json con formato invalido; se ignora.")
+        return {"items": {}, "version": _REPRICING_CONFIG_VERSION}
+    cfg.setdefault("items", {})
 
     # Auto-migración: solo corre cuando el archivo viene de una version anterior.
     if cfg.get("version", 1) < _REPRICING_CONFIG_VERSION:
@@ -80,9 +88,7 @@ def _load_config() -> dict:
 
 
 def _save_config(cfg: dict):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    db_save(CONFIG_PATH, cfg)
 
 
 # ── Sprint 4.3: Circuit breakers + audit log + pausa global ────────────────
@@ -127,15 +133,12 @@ def _log_price_change(alias: str, item_id: str, precio_antes: float,
     siguiendo el mismo formato que otras acciones del Sprint 1/3.
     """
     path = _audit_log_path(alias)
-    log: list = []
-    if os.path.exists(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                log = json.load(f) or []
-                if not isinstance(log, list):
-                    log = []
-        except Exception:
-            log = []
+    # Correccion 8 (Cerebro): en el disco de Render este historial se borraba en
+    # cada reinicio, y con el se iba el breaker anti-guerra de precios, que
+    # necesita saber cuanto bajo el item en las ultimas 24h.
+    log = db_load(path) or []
+    if not isinstance(log, list):
+        log = []
 
     delta_pct = ((precio_despues - precio_antes) / precio_antes * 100) if precio_antes else 0
     log.append({
@@ -151,9 +154,7 @@ def _log_price_change(alias: str, item_id: str, precio_antes: float,
         "ejecutado_por":      "cron:repricing_hourly",
     })
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(log, f, ensure_ascii=False, indent=2)
+    db_save(path, log[-1000:])
 
 
 def _calculate_24h_drop(alias: str, item_id: str) -> float:
@@ -163,12 +164,8 @@ def _calculate_24h_drop(alias: str, item_id: str) -> float:
     """
     from datetime import timedelta
     path = _audit_log_path(alias)
-    if not os.path.exists(path):
-        return 0.0
-    try:
-        with open(path, encoding="utf-8") as f:
-            log = json.load(f) or []
-    except Exception:
+    log = db_load(path) or []
+    if not isinstance(log, list):
         return 0.0
 
     cutoff = datetime.now() - timedelta(hours=24)
@@ -603,6 +600,27 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
                         alias, item_id, current_price, new_price,
                         competitor_price, reason, breakers_aplicados,
                     )
+                    # Cerebro 1.1 — el cron mueve precio solo; queda registrado
+                    # con su estado previo para poder evaluarlo a 7 y 14 dias y
+                    # saber si mover el precio en este SKU sirve de algo.
+                    try:
+                        from modules import cerebro
+                        cerebro.registrar_accion(
+                            alias, tipo="precio", item_id=item_id,
+                            origen=cerebro.ORIGEN_AUTO,
+                            hipotesis=reason,
+                            estado_previo=cerebro.capturar_estado_previo(
+                                alias, item_id,
+                                {"precio": current_price,
+                                 "categoria": item_data.get("category_id")}),
+                            detalle={"precio_antes": current_price,
+                                     "precio_despues": new_price,
+                                     "competidor_precio": competitor_price,
+                                     "breakers": breakers_aplicados,
+                                     "match_quality": match_quality},
+                            ejecutado_por="cron:repricing_hourly")
+                    except Exception as _e:
+                        _logger.warning("cerebro: no pude registrar el precio: %s", _e)
                 except Exception as e:
                     console.print(f"\n  [red]Error al actualizar {item_id}: {e}[/red]")
 
