@@ -141,6 +141,28 @@ def safe(alias):
     return alias.replace(' ', '_').replace('/', '-')
 
 
+def _cerebro_registrar(alias: str, **kwargs) -> dict:
+    """Registra una accion en Cerebro sin poder romper el flujo que la ejecuto.
+
+    Cerebro es memoria, no es load-bearing: si falla el registro, la accion del
+    usuario igual se aplico y no tiene por que enterarse de un error de log.
+    """
+    try:
+        from modules import cerebro
+        return cerebro.registrar_accion(alias, **kwargs)
+    except Exception as e:
+        app.logger.warning('[cerebro] no pude registrar la accion: %s', e)
+        return {}
+
+
+def _cerebro_estado_previo(alias: str, item_id: str, extra: dict | None = None) -> dict:
+    try:
+        from modules import cerebro
+        return cerebro.capturar_estado_previo(alias, item_id, extra=extra)
+    except Exception:
+        return extra or {}
+
+
 def _resolve_alias(alias: str) -> str:
     """Devuelve el alias con el casing exacto guardado (case-insensitive lookup).
     Lanza ValueError si no existe."""
@@ -2949,7 +2971,9 @@ def api_aplicar_precio(alias):
         )
         if not g.ok:
             return {'id': iid, 'ok': False, 'error': g.text[:120]}
-        variations = g.json().get('variations') or []
+        _item_actual = g.json()
+        precio_antes = _item_actual.get('price')
+        variations = _item_actual.get('variations') or []
         body = {'variations': [{'id': v['id'], 'price': precio} for v in variations]} \
                if variations else {'price': precio}
         r = req_lib.put(
@@ -2960,6 +2984,16 @@ def api_aplicar_precio(alias):
             nuevo = r.json().get('price') or precio
             _audit('CAMBIAR_PRECIO', alias=alias, item_id=iid, precio_nuevo=nuevo,
                    variantes=len(variations))
+            # Cerebro 1.1 — queda registrado con su estado previo para poder
+            # evaluarlo a 7 y 14 dias contra las publicaciones hermanas.
+            _cerebro_registrar(
+                alias, tipo='precio', item_id=iid, origen='usuario',
+                hipotesis=(data.get('hipotesis') or
+                           'cambio de precio manual desde el panel'),
+                estado_previo=_cerebro_estado_previo(alias, iid, {'precio': precio_antes}),
+                detalle={'precio_antes': precio_antes, 'precio_despues': nuevo,
+                         'variantes': len(variations)},
+                ejecutado_por='api:aplicar-precio')
             return {'id': iid, 'ok': True, 'precio_nuevo': nuevo}
         return {'id': iid, 'ok': False, 'error': r.text[:120]}
 
@@ -11451,72 +11485,188 @@ def api_run():
 
 # ── Optimizador web ──────────────────────────────────────────────────────────
 
-# Cola en memoria: {alias: [competidor, ...]}
-_pending_competitors: dict = {}
+# ── Cerebro: competidores persistentes asociados a una publicacion ───────────
+# Antes vivian en un dict en memoria del proceso: cada reinicio de Render se
+# llevaba puesto el trabajo manual de marcar competidores. Ahora se persisten
+# en data/cerebro_<Alias>/competidores.json y quedan atados a UNA publicacion
+# propia, que es lo unico que sirve para decidir precio por item.
 
-@app.route('/api/capturar-competidor', methods=['POST', 'OPTIONS'])
-def api_capturar_competidor():
-    """Recibe datos de un competidor enviados desde el bookmarklet del navegador."""
-    # CORS — el bookmarklet corre en mercadolibre.com.ar, dominio distinto
-    if request.method == 'OPTIONS':
-        resp = make_response('', 204)
-        resp.headers['Access-Control-Allow-Origin']  = '*'
-        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        return resp
+def _items_propios(alias: str) -> list:
+    """Lista liviana {id, titulo, price, category_id} desde el stock ya cargado."""
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    out = []
+    for it in (stock.get('items') or []):
+        if it.get('id'):
+            out.append({'id': it['id'], 'titulo': it.get('titulo') or '',
+                        'price': it.get('precio') or it.get('price'),
+                        'category_id': it.get('category_id')})
+    return out
 
-    body  = request.get_json(force=True) or {}
-    alias = body.get('alias', '').strip()
-    if not alias:
-        resp = jsonify({'ok': False, 'error': 'Falta alias'})
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp, 400
 
-    comp = {
-        'id':           body.get('id', ''),
-        'title':        body.get('title', ''),
-        'description':  body.get('description', ''),
-        'price':        body.get('price', 0),
-        'thumbnail':    body.get('thumbnail', ''),
-        'pictures':     body.get('pictures', []),
-        'photos_count': body.get('photos_count', 0),
-        'attributes':   body.get('attributes', []),
-        'sold_quantity':body.get('sold_quantity', 0),
-        'free_ship':    body.get('free_ship', False),
-        'premium':      body.get('premium', False),
-        'condition':    body.get('condition', 'new'),
-        'seller':       body.get('seller', '—'),
-        'main_features':[],
-        'reviews_rating': 0.0,
-        'reviews_total':  0,
-        'reviews_sample': [],
-        '_fromBookmarklet': True,
-    }
-
-    if not comp['id'] or not comp['title']:
-        resp = jsonify({'ok': False, 'error': 'Falta id o title'})
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp, 400
-
-    _pending_competitors.setdefault(alias, [])
-    # Evitar duplicados
-    existing_ids = {c['id'] for c in _pending_competitors[alias]}
-    if comp['id'] not in existing_ids:
-        _pending_competitors[alias].append(comp)
-
-    resp = jsonify({'ok': True, 'title': comp['title']})
+def _cors(resp):
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
 
+@app.route('/api/capturar-competidor', methods=['POST', 'OPTIONS'])
+def api_capturar_competidor():
+    """Recibe un competidor desde el bookmarklet y lo PERSISTE (Cerebro 2.3).
+
+    Asocia automaticamente la publicacion propia mas parecida; si no hay una
+    clara, queda sin asociar y la pantalla ofrece una lista corta.
+    """
+    if request.method == 'OPTIONS':
+        resp = make_response('', 204)
+        resp.headers['Access-Control-Allow-Origin']  = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Cerebro-Token'
+        return resp
+
+    body  = request.get_json(force=True) or {}
+    alias = (body.get('alias') or '').strip()
+    if not alias:
+        return _cors(jsonify({'ok': False, 'error': 'Falta alias'})), 400
+
+    # El endpoint es publico por CORS (el bookmarklet corre en mercadolibre.com.ar).
+    # Si hay token configurado se exige; si no, se acepta para no romper el
+    # bookmarklet ya instalado, pero queda avisado en el log.
+    token_ok = os.environ.get('CEREBRO_BOOKMARKLET_TOKEN', '').strip()
+    if token_ok:
+        enviado = (request.headers.get('X-Cerebro-Token')
+                   or body.get('token') or '').strip()
+        if enviado != token_ok:
+            return _cors(jsonify({'ok': False, 'error': 'Token invalido'})), 403
+    else:
+        app.logger.info('[cerebro] captura de competidor sin token '
+                        '(definir CEREBRO_BOOKMARKLET_TOKEN para cerrarlo)')
+
+    comp = {
+        'id':            (body.get('id') or '').strip().upper(),
+        'title':         body.get('title', ''),
+        'price':         body.get('price', 0),
+        'thumbnail':     body.get('thumbnail', ''),
+        'permalink':     body.get('permalink', ''),
+        'attributes':    body.get('attributes', []),
+        'sold_quantity': body.get('sold_quantity', 0),
+        'free_ship':     body.get('free_ship', False),
+        'seller':        body.get('seller', '-'),
+        'seller_id':     body.get('seller_id'),
+        'catalog_product_id': body.get('catalog_product_id'),
+        'available_quantity': body.get('available_quantity'),
+        'status':        body.get('status'),
+        # Senal de stock visible en la pagina: "Ultima disponible", "Ultimas N"
+        'senal_stock':   body.get('senal_stock') or body.get('stock_text') or '',
+    }
+    if not comp['id'] or not comp['title']:
+        return _cors(jsonify({'ok': False, 'error': 'Falta id o title'})), 400
+
+    try:
+        from modules import cerebro
+        propios = _items_propios(alias)
+        item_propio = (body.get('item_propio') or '').strip().upper() or None
+        sugerido, score, corta = cerebro.sugerir_item_propio(comp['title'], propios)
+        if not item_propio:
+            item_propio = sugerido
+
+        puntaje = None
+        if item_propio:
+            propio = next((p for p in propios if p['id'] == item_propio), None)
+            if propio:
+                puntaje = cerebro.puntuar_candidato(propio, comp)
+
+        reg = cerebro.guardar_competidor(alias, comp, item_propio=item_propio,
+                                         clase=cerebro.CLASE_CANDIDATO,
+                                         puntaje=puntaje, origen='bookmarklet')
+        return _cors(jsonify({
+            'ok': True, 'title': comp['title'], 'clave': reg.get('clave'),
+            'item_propio': item_propio, 'similitud': score,
+            'puntaje': puntaje, 'opciones': corta,
+        }))
+    except Exception as e:
+        app.logger.error('[cerebro] capturar competidor fallo: %s', e)
+        return _cors(jsonify({'ok': False, 'error': str(e)})), 500
+
+
 @app.route('/api/pending-competidores', methods=['GET'])
 def api_pending_competidores():
-    """Devuelve y vacía la cola de competidores pendientes para un alias."""
-    alias   = request.args.get('alias', '').strip()
-    pending = list(_pending_competitors.get(alias, []))
-    if pending:
-        _pending_competitors[alias] = []   # vaciar después de leer, no con pop
-    return jsonify({'ok': True, 'competitors': pending})
+    """Competidores capturados esperando confirmacion. NO destructivo.
+
+    Antes vaciaba la cola al leer: si la respuesta se cortaba, el trabajo
+    manual se perdia. Ahora los datos quedan persistidos hasta que el usuario
+    los clasifica.
+    """
+    alias = request.args.get('alias', '').strip()
+    if not alias:
+        return jsonify({'ok': True, 'competitors': []})
+    try:
+        from modules import cerebro
+        item_id = (request.args.get('item_id') or '').strip().upper() or None
+        pendientes = cerebro.candidatos_pendientes(alias, item_propio=item_id)
+        return jsonify({'ok': True, 'competitors': pendientes,
+                        'total': len(pendientes)})
+    except Exception as e:
+        app.logger.error('[cerebro] pending competidores: %s', e)
+        return jsonify({'ok': False, 'competitors': [], 'error': str(e)})
+
+
+@app.route('/api/cerebro/competidores/<alias>')
+def api_cerebro_competidores(alias):
+    """Competidores de una cuenta, opcionalmente de una sola publicacion."""
+    from modules import cerebro
+    item_id = (request.args.get('item_id') or '').strip().upper() or None
+    clase   = (request.args.get('clase') or '').strip() or None
+    comps   = cerebro.listar_competidores(alias, item_propio=item_id, clase=clase)
+    return jsonify({
+        'ok': True, 'competidores': comps,
+        'directos_para_precio': (cerebro.competidores_para_precio(alias, item_id)
+                                 if item_id else []),
+        'resumen': cerebro.resumen_competidores(alias),
+    })
+
+
+@app.route('/api/cerebro/competidor/clasificar', methods=['POST'])
+def api_cerebro_clasificar_competidor():
+    """Confirma con un toque: es competidor directo / sustituto / no lo es."""
+    from modules import cerebro
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    clave = (body.get('clave') or '').strip()
+    clase = (body.get('clase') or '').strip()
+    if not alias or not clave or not clase:
+        return jsonify({'ok': False, 'error': 'Faltan alias, clave o clase'}), 400
+    reg = cerebro.clasificar_competidor(alias, clave, clase,
+                                        por=session.get('username', 'usuario'))
+    if not reg:
+        return jsonify({'ok': False, 'error': 'No encontrado o clase invalida'}), 404
+    _audit('CEREBRO_CLASIFICAR_COMPETIDOR', alias=alias, clave=clave, clase=clase)
+    return jsonify({'ok': True, 'competidor': reg})
+
+
+@app.route('/api/cerebro/competidor/asociar', methods=['POST'])
+def api_cerebro_asociar_competidor():
+    """Mueve un competidor capturado a la publicacion propia que corresponde."""
+    from modules import cerebro
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    clave = (body.get('clave') or '').strip()
+    item  = (body.get('item_propio') or '').strip().upper()
+    if not alias or not clave or not item:
+        return jsonify({'ok': False, 'error': 'Faltan alias, clave o item_propio'}), 400
+    reg = cerebro.asociar_competidor(alias, clave, item)
+    if not reg:
+        return jsonify({'ok': False, 'error': 'No encontrado'}), 404
+    return jsonify({'ok': True, 'competidor': reg})
+
+
+@app.route('/api/cerebro/competidor/eliminar', methods=['POST'])
+def api_cerebro_eliminar_competidor():
+    from modules import cerebro
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    clave = (body.get('clave') or '').strip()
+    if not alias or not clave:
+        return jsonify({'ok': False, 'error': 'Faltan alias o clave'}), 400
+    return jsonify({'ok': cerebro.eliminar_competidor(alias, clave)})
 
 
 @app.route('/api/detalle-competidor', methods=['POST'])
@@ -15894,11 +16044,19 @@ def _job_questions_15min():
 
 
 def _job_buybox_check():
-    """Job 5 — Verificar Buy Box en publicaciones de catálogo cada 6h.
+    """Job 5 — Buy Box en publicaciones de catalogo, cada 6h.
 
-    Compara contra el último snapshot guardado. Si Buy Box se perdió,
-    persiste alerta para que aparezca en /alertas en la próxima carga.
-    Solo procesa cuentas con active=True.
+    Cerebro Sprint A (correcciones 5, 6 y 10):
+      - Ya NO procesa solo las primeras 50 publicaciones por cuenta: con mas de
+        50, las de catalogo que quedaban afuera nunca se monitoreaban.
+      - Ya NO asume que el primer resultado de /products/{id}/items es el
+        ganador. En ML el ganador no se define solo por precio (pesan Full,
+        reputacion, cuotas), asi que esa cuenta daba alertas falsas y se comia
+        alertas reales.
+      - Usa GET /items/{id}/price_to_win?siteId=MLA, que devuelve el estado real
+        (winning / competing / sharing_first_place / listed), el precio exacto
+        para ganar y los `boosts`: que le falta al item frente al ganador que NO
+        es precio. Con eso, "compito solo por precio" pasa a ser un diagnostico.
     """
     from core.account_manager import AccountManager
     mgr = AccountManager()
@@ -15909,6 +16067,7 @@ def _job_buybox_check():
     snap_path = os.path.join(DATA_DIR, 'buybox_snapshots.json')
     snapshots = load_json(snap_path) or {}
     nuevas_perdidas: list = []
+    revisados = 0
 
     for acc in accounts:
         try:
@@ -15917,51 +16076,73 @@ def _job_buybox_check():
             token = client.account.access_token
             heads = {'Authorization': f'Bearer {token}'}
 
-            # Cargar lista de publicaciones de catálogo (ya está en stock JSON)
-            stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(acc.alias)}.json')) or {}
-            for it in stock.get('items', [])[:50]:   # cap a 50 por cuenta para no saturar
-                item_id = it.get('id', '')
-                if not item_id:
-                    continue
-                # Verificar status del catálogo via API
-                try:
-                    r_item = req_lib.get(
-                        f'https://api.mercadolibre.com/items/{item_id}',
-                        headers=heads,
-                        params={'attributes': 'id,catalog_product_id,catalog_listing'},
-                        timeout=6,
-                    )
-                    if not r_item.ok:
-                        continue
-                    body = r_item.json()
-                    cpid = body.get('catalog_product_id')
-                    if not cpid:
-                        continue
-                    # Buy box winner
-                    rp = req_lib.get(
-                        f'https://api.mercadolibre.com/products/{cpid}/items',
-                        headers=heads, params={'limit': 5}, timeout=6,
-                    )
-                    if not rp.ok:
-                        continue
-                    sellers = rp.json().get('results', [])
-                    we_win = bool(sellers) and (sellers[0].get('id') == item_id or
-                                                 sellers[0].get('item_id') == item_id)
+            # Todas las publicaciones activas, sin tope (antes: stock JSON[:50])
+            try:
+                from modules.cerebro_snapshot import _items_activos, _detalle_items
+                item_ids = _items_activos(token, client.account.user_id)
+                detalles = _detalle_items(token, item_ids)
+            except Exception as e:
+                app.logger.warning('[job_buybox] %s — no pude listar items: %s', acc.alias, e)
+                continue
 
-                    prev = snapshots.get(f'{acc.alias}::{item_id}', {})
-                    if prev.get('we_win') and not we_win:
-                        nuevas_perdidas.append({
-                            'alias':   acc.alias,
-                            'item_id': item_id,
-                            'titulo':  it.get('titulo', '')[:80],
-                            'fecha':   datetime.now().strftime('%Y-%m-%d %H:%M'),
-                        })
-                    snapshots[f'{acc.alias}::{item_id}'] = {
-                        'we_win': we_win,
-                        'fecha':  datetime.now().strftime('%Y-%m-%d %H:%M'),
-                    }
+            titulos = {}
+            for it in (load_json(os.path.join(DATA_DIR, f'stock_{safe(acc.alias)}.json')) or {}).get('items', []):
+                if it.get('id'):
+                    titulos[it['id']] = it.get('titulo', '')
+
+            for item_id, body in detalles.items():
+                cpid = body.get('catalog_product_id')
+                if not cpid:
+                    continue   # solo publicaciones de catalogo compiten por buy box
+                revisados += 1
+                try:
+                    rw = req_lib.get(
+                        f'https://api.mercadolibre.com/items/{item_id}/price_to_win',
+                        headers=heads, params={'siteId': 'MLA'}, timeout=8,
+                    )
+                    if not rw.ok:
+                        continue
+                    ptw = rw.json() or {}
                 except Exception:
                     continue
+
+                estado  = (ptw.get('status') or '').lower()
+                we_win  = estado in ('winning', 'sharing_first_place')
+                boosts  = ptw.get('boosts') or {}
+                # Que le falta frente al ganador y NO es precio
+                faltantes = []
+                if isinstance(boosts, dict):
+                    for k, v in boosts.items():
+                        if isinstance(v, dict):
+                            if v.get('status') in ('missing', 'not_applied', False):
+                                faltantes.append(k)
+                        elif v is False:
+                            faltantes.append(k)
+                elif isinstance(boosts, list):
+                    faltantes = [str(b) for b in boosts]
+
+                clave = f'{acc.alias}::{item_id}'
+                prev  = snapshots.get(clave, {})
+                if prev.get('we_win') and not we_win:
+                    nuevas_perdidas.append({
+                        'alias':        acc.alias,
+                        'item_id':      item_id,
+                        'titulo':       (titulos.get(item_id) or body.get('title', ''))[:80],
+                        'estado':       estado,
+                        'price_to_win': ptw.get('price_to_win'),
+                        'precio_actual': body.get('price'),
+                        'falta':        faltantes,
+                        'fecha':        datetime.now().strftime('%Y-%m-%d %H:%M'),
+                    })
+                snapshots[clave] = {
+                    'we_win':       we_win,
+                    'estado':       estado,
+                    'price_to_win': ptw.get('price_to_win'),
+                    'precio':       body.get('price'),
+                    'falta':        faltantes,
+                    'catalog_product_id': cpid,
+                    'fecha':        datetime.now().strftime('%Y-%m-%d %H:%M'),
+                }
                 _time_module.sleep(0.1)
         except Exception as e:
             app.logger.warning('[job_buybox] %s — error: %s', acc.alias, e)
@@ -15969,11 +16150,12 @@ def _job_buybox_check():
 
     save_json(snap_path, snapshots)
     if nuevas_perdidas:
-        # Persistir lista de Buy Box perdidos para que /alertas las muestre
         save_json(os.path.join(DATA_DIR, 'buybox_perdidos_recientes.json'), {
-            'fecha':    datetime.now().strftime('%Y-%m-%d %H:%M'),
-            'items':    nuevas_perdidas,
+            'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'items': nuevas_perdidas,
         })
+    print(f'[job_buybox] {revisados} publicaciones de catalogo revisadas, '
+          f'{len(nuevas_perdidas)} buy box perdidas nuevas')
 
 
 def _job_weekly_reopt():
@@ -16118,6 +16300,14 @@ def _job_daily_snapshots():
     from core.account_manager import AccountManager
     from datetime import datetime as _dtn, timedelta as _tdd
 
+    # Cerebro 1.4 / 4.1 — snapshot enriquecido de TODAS las publicaciones activas.
+    # Va primero y en su propio try: el bloque del monitor tiene returns
+    # tempranos y no puede dejar a Cerebro un dia sin serie.
+    try:
+        _job_cerebro_snapshots()
+    except Exception as e:
+        app.logger.error('[job_daily_snapshots] Cerebro snapshot fallo: %s', e)
+
     mon_path = os.path.join(DATA_DIR, 'monitor_evolucion.json')
     mon = load_json(mon_path) or {'items': []}
     if not isinstance(mon, dict) or not mon.get('items'):
@@ -16201,6 +16391,71 @@ def _job_daily_snapshots():
     save_json(mon_path, mon)
     print(f'[job_daily_snapshots] DONE — {procesados} snapshots ok, {errores} errores '
           f'sobre {sum(len(v) for v in por_alias.values())} items elegibles.')
+
+
+def _job_cerebro_snapshots():
+    """Cerebro 1.4 + 4.1 — serie diaria por publicacion, con Ads separado.
+
+    Guarda por publicacion y por dia: visitas del dia, clics de Product Ads,
+    VISITAS ORGANICAS (totales - ads), unidades vendidas, conversion organica y
+    conversion Ads por separado, precio, stock, posicion, preguntas sin
+    responder, y el precio y stock de cada competidor directo confirmado.
+    Retencion 180 dias.
+
+    Sin esta separacion el sistema le atribuye a una ficha o a una descripcion
+    las visitas que en realidad compro la pauta.
+    """
+    from core.account_manager import AccountManager
+    from modules import cerebro_snapshot
+
+    mgr = AccountManager()
+    accounts = [a for a in mgr.list_accounts() if a.active]
+    if not accounts:
+        print('[cerebro_snapshots] sin cuentas activas — skip')
+        return
+
+    for acc in accounts:
+        try:
+            client = mgr.get_client(acc.alias)
+            posiciones = load_json(os.path.join(DATA_DIR, f'posiciones_{safe(acc.alias)}.json')) or {}
+            preguntas  = load_json(os.path.join(DATA_DIR, f'preguntas_pendientes_{safe(acc.alias)}.json')) or {}
+            res = cerebro_snapshot.capturar_cuenta(client, acc.alias,
+                                                   posiciones=posiciones,
+                                                   preguntas=preguntas)
+            print(f'[cerebro_snapshots] {acc.alias}: {res.get("guardados", 0)}/'
+                  f'{res.get("items", 0)} items del {res.get("dia")} '
+                  f'(con ventas: {res.get("con_ventas", 0)}, con Ads: {res.get("con_ads", 0)})')
+        except Exception as e:
+            app.logger.error('[cerebro_snapshots] %s — error: %s', acc.alias, e)
+
+
+def _job_cerebro_evaluar():
+    """Cerebro 1.2 + 1.3 — evaluacion a 7 y 14 dias, 04:30 ART.
+
+    Corre despues del snapshot. Busca acciones aplicadas hace 7 y 14 dias,
+    las compara contra un control (publicaciones hermanas no tocadas, o la
+    propia publicacion en su historia previa) y deja el veredicto. Despues
+    recalcula aprendizajes.json.
+
+    Es estadistica pura: no llama a Claude, no cuesta nada.
+    """
+    from core.account_manager import AccountManager
+    from modules import cerebro
+
+    mgr = AccountManager()
+    accounts = [a for a in mgr.list_accounts() if a.active]
+    if not accounts:
+        return
+
+    for acc in accounts:
+        try:
+            res = cerebro.evaluar_acciones_pendientes(acc.alias)
+            aps = cerebro.listar_aprendizajes(acc.alias)
+            print(f'[cerebro_evaluar] {acc.alias}: 7d={res["evaluadas_7d"]} '
+                  f'14d={res["evaluadas_14d"]} sin_datos={res["sin_datos"]} '
+                  f'contaminadas={res["contaminadas"]} → {len(aps)} aprendizajes')
+        except Exception as e:
+            app.logger.error('[cerebro_evaluar] %s — error: %s', acc.alias, e)
 
 
 def _job_veredictos_weekly():
@@ -16514,6 +16769,19 @@ def _start_scheduler():
                          'Alimenta al Veredicto IA semanal con timeline completa.'),
         )
 
+        # Job 12 — Cerebro: evaluacion de acciones a 7 y 14 dias — 04:30 ART
+        # Corre despues de daily_snapshots (04:00) para tener la serie del dia.
+        # Estadistica pura, sin costo de IA.
+        jm.register_job(
+            'cerebro_evaluar', _job_cerebro_evaluar,
+            CronTrigger(hour=4, minute=30,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Cerebro — evaluar acciones',
+            description=('Evalua a 7 y 14 dias cada accion aplicada contra un '
+                         'control de publicaciones hermanas, y consolida los '
+                         'aprendizajes que ordenan las recomendaciones.'),
+        )
+
         # Job 9 — Purga de cuentas pausadas (Sprint Admin) — Domingo 03:00 ART
         # Elimina cuentas pausadas hace >90 días (soft delete vencido).
         # Borra del config + JSON históricos asociados.
@@ -16543,7 +16811,7 @@ def _start_scheduler():
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 10 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 11 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')

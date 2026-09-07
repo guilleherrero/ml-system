@@ -23,3 +23,5 @@ venv/
 .coverage
 .coverage.*
 htmlcov/
+.claude_push
+scripts/autopush.log

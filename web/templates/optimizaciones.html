@@ -3215,8 +3215,25 @@ function _buildBookmarkletLink() {
     }
   });
 
+  // Senal de stock visible en la pagina: "Ultima disponible", "Ultimas N unidades".
+  // ML no expone el stock exacto del competidor, pero cuando queda poco lo dice.
+  var senalStock='';
+  var stockEl=document.querySelector('[class*="ui-pdp-stock"],[class*="quantity__available"],[class*="stock-information"]');
+  if(stockEl) senalStock=(stockEl.textContent||'').trim().substring(0,120);
+  if(!senalStock){
+    var m=(document.body.innerText||'').match(/(Ultim[ao]s?\s+\d+\s+(?:unidades|disponibles)|Ultima disponible|Última disponible|Últim[ao]s?\s+\d+\s+(?:unidades|disponibles))/i);
+    if(m) senalStock=m[0];
+  }
+
+  var vendedor='-';
+  var vendEl=document.querySelector('[class*="ui-pdp-seller__link-trigger"] span,[class*="seller__header__title"],a[href*="/perfil/"]');
+  if(vendEl) vendedor=(vendEl.textContent||'').replace(/^Vendido por/i,'').trim().substring(0,60)||'-';
+
+  var permalink=location.href.split('#')[0].split('?')[0];
+
   var data={alias:'${alias}',id:id,title:title,description:desc,price:price,
             thumbnail:thumb,free_ship:freeShip,attributes:attrs,
+            senal_stock:senalStock,seller:vendedor,permalink:permalink,
             photos_count:document.querySelectorAll('[class*="gallery"] img').length};
 
   fetch('${serverUrl}/api/capturar-competidor',{
@@ -3261,20 +3278,21 @@ async function _pollPendingCompetitors() {
     const d = await r.json();
     if (!d.ok || !d.competitors?.length) return;
 
-    d.competitors.forEach(comp => {
-      if (!selectedCompetitors[comp.id]) {
-        selectedCompetitors[comp.id] = comp;
-        updateRecentlyAdded(comp.id);
-      }
+    // Los competidores quedan persistidos, asi que el polling los devuelve
+    // siempre: solo avisamos por los que todavia no teniamos en pantalla.
+    const nuevos = d.competitors.filter(comp => !selectedCompetitors[comp.id]);
+    nuevos.forEach(comp => {
+      selectedCompetitors[comp.id] = comp;
+      updateRecentlyAdded(comp.id);
     });
+    if (!nuevos.length) return;
 
     renderSelectedSection();
 
-    // Mostrar ping visual
     const ping     = document.getElementById('bookmarkletPing');
     const pingText = document.getElementById('bookmarkletPingText');
-    const names    = d.competitors.map(c => c.title.substring(0,30)).join(', ');
-    pingText.textContent = `${d.competitors.length} competidor${d.competitors.length>1?'es':''} recibido${d.competitors.length>1?'s':''}: ${names}`;
+    const names    = nuevos.map(c => (c.title || '').substring(0,30)).join(', ');
+    pingText.textContent = `${nuevos.length} competidor${nuevos.length>1?'es':''} recibido${nuevos.length>1?'s':''}: ${names}`;
     ping.style.display = 'block';
     setTimeout(() => { ping.style.display = 'none'; }, 5000);
 
