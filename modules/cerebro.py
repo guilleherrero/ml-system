@@ -243,6 +243,17 @@ def registrar_accion(alias: str, *, tipo: str, item_id: str,
     if len(data['acciones']) > 5000:
         data['acciones'] = data['acciones'][-5000:]
     _save(alias, 'acciones.json', data)
+
+    # Una propuesta que nadie ve no sirve de nada: avisa apenas nace. Se hace
+    # aca y no en cada llamador para que ninguna propuesta futura quede muda por
+    # olvido. El sandbox del backtest queda afuera.
+    if estado == ESTADO_PENDIENTE and not alias.startswith('_backtest'):
+        try:
+            from modules import telegram_bot
+            telegram_bot.notificar_propuesta(alias, accion)
+        except Exception as e:
+            _logger.warning('[cerebro] aviso de propuesta fallo: %s', e)
+
     return accion
 
 

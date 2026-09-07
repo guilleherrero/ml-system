@@ -495,6 +495,7 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 14 | `GET /api/pending-competidores` vacía la cola al leer | `web/app.py` | Si la respuesta se corta, los competidores capturados se pierden. Queda resuelto al persistir (corrección 1) | A |
 | 15 | `/api/capturar-competidor` es público: CORS `*` y sin token | idem | Cualquiera que conozca la URL y el alias puede inyectar competidores falsos que después mueven precio | A |
 | 16 | El hash MD5 de `seo_optimizer.py` en la Regla #1 y en `docs/ARQUITECTURA_OPTIMIZAR_IA.md` es `74783469...`; el archivo real es `0389b93a8c4ff11c8eaa97327a6f54c1` (cambió en commits legítimos de julio) | Regla #1 | La verificación previa a cada push falla siempre, y una regla que siempre falla deja de proteger. Requiere decisión del usuario para re-basar el hash | A |
+| 17 | `seo_optimizer.py` usa f-strings anidadas (PEP 701) y solo compila en Python 3.12+. Render corre 3.12.7 por `runtime.txt`, asi que produccion esta bien, pero cualquier entorno con 3.10 u 3.11 falla al importar el modulo | `modules/seo_optimizer.py` linea 2519 | El sistema no arranca fuera de 3.12 y nada lo advierte: el error aparece como SyntaxError en un import lejano (`stock_rentabilidad`), que no dice nada sobre la causa. Encontrado al correr las pruebas del Sprint B | B |
 
 ### Estado al cierre del Sprint A
 

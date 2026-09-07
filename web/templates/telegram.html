@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %} — Telegram{% endblock %}
+{% block content %}
+<style>
+  .tg-card { background:var(--color-neutral-0); border-radius:12px; padding:20px 22px;
+             box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:16px; }
+  .tg-card h2 { font-size:1rem; font-weight:700; color:#111827; margin:0 0 4px; }
+  .tg-card p  { font-size:.8125rem; color:#4b5563; margin:0 0 12px; line-height:1.55; max-width:72ch; }
+
+  .tg-estado { display:flex; align-items:center; gap:10px; padding:12px 14px;
+               border-radius:10px; margin-bottom:14px; font-size:.875rem; }
+  .tg-ok   { background:var(--color-success-100); color:var(--color-success-500); }
+  .tg-mal  { background:var(--color-warning-100); color:#92400e; }
+  .tg-estado i { font-size:1.15rem; }
+
+  .tg-paso { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #f3f4f6; }
+  .tg-paso:last-child { border-bottom:none; }
+  .tg-n { width:24px;height:24px;border-radius:50%;background:var(--color-info-100);
+          color:var(--color-info-600);font-size:.75rem;font-weight:700;flex-shrink:0;
+          display:flex;align-items:center;justify-content:center; }
+  .tg-paso.hecho .tg-n { background:var(--color-success-100); color:var(--color-success-500); }
+  .tg-paso div:last-child { font-size:.8125rem; color:#374151; line-height:1.55; }
+  .tg-paso code { background:#f3f4f6; padding:1px 6px; border-radius:4px;
+                  font-size:.78rem; color:#111827; }
+
+  .tg-aviso { display:flex; align-items:center; justify-content:space-between;
+              padding:11px 0; border-bottom:1px solid #f3f4f6; gap:12px; }
+  .tg-aviso:last-child { border-bottom:none; }
+  .tg-aviso .n { font-size:.875rem; color:#111827; font-weight:600; }
+  .tg-aviso .d { font-size:.75rem; color:#6b7280; margin-top:2px; }
+  .tg-sw { flex-shrink:0; }
+</style>
+
+<div class="tg-card">
+  <h2>Telegram</h2>
+  <p>
+    Telegram no es una cola aparte: es otra puerta a la misma bandeja. Lo que
+    aprobás desde el celular queda aprobado en el sistema, y al revés. El estado
+    vive en Cerebro, no en el chat.
+  </p>
+
+  {% if estado.conectado %}
+    <div class="tg-estado tg-ok">
+      <i class="bi bi-check-circle-fill"></i>
+      <div>Conectado{% if estado.bot %} como <b>@{{ estado.bot }}</b>{% endif %} ·
+        {{ estado.chats|length }} chat{{ 's' if estado.chats|length != 1 }}
+        {% if estado.ultimo_envio %}· último envío {{ estado.ultimo_envio }}{% endif %}
+      </div>
+    </div>
+  {% else %}
+    <div class="tg-estado tg-mal">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <div>
+        {% if not estado.token_configurado %}
+          Falta la variable <code>TELEGRAM_BOT_TOKEN</code> en Render.
+        {% elif estado.error %}
+          {{ estado.error }}
+        {% else %}
+          El token está, pero todavía nadie le mandó <code>/start</code> al bot.
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="tg-paso {{ 'hecho' if estado.token_configurado }}">
+    <div class="tg-n">1</div>
+    <div><b>Crear el bot.</b> En Telegram, buscá <b>@BotFather</b> → <code>/newbot</code>.
+      Te da un token. Va como variable de entorno <code>TELEGRAM_BOT_TOKEN</code> en
+      Render (Environment → Add Environment Variable), nunca en el código.</div>
+  </div>
+  <div class="tg-paso {{ 'hecho' if estado.webhook }}">
+    <div class="tg-n">2</div>
+    <div><b>Conectar el webhook.</b> Le dice a Telegram dónde entregar los mensajes.
+      {% if estado.webhook %}Registrado el {{ estado.webhook.registrado }}.{% endif %}</div>
+  </div>
+  <div class="tg-paso {{ 'hecho' if estado.chats }}">
+    <div class="tg-n">3</div>
+    <div><b>Mandale <code>/start</code> a tu bot.</b> Ese mensaje es el que le enseña
+      a dónde escribirte: sin eso no puede mandarte nada.</div>
+  </div>
+
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn btn-primary btn-sm" id="btnWebhook">
+      <i class="bi bi-link-45deg"></i> Conectar webhook</button>
+    <button class="btn btn-outline-secondary btn-sm" id="btnProbar">
+      <i class="bi bi-send"></i> Mandar mensaje de prueba</button>
+    <button class="btn btn-outline-secondary btn-sm" id="btnResumen">
+      <i class="bi bi-list-check"></i> Mandar el resumen ahora</button>
+    <span id="tgMsg" style="font-size:.8125rem;color:#6b7280"></span>
+  </div>
+</div>
+
+<div class="tg-card">
+  <h2>Qué te llega al teléfono</h2>
+  <p>
+    Lo que está activado interrumpe en el momento. Lo demás se junta y sale en un
+    solo mensaje a las 8 de la mañana. Si todo interrumpe, en una semana dejás de
+    leer el canal — por eso conviene reservarlo para lo que se pudre si no lo mirás hoy.
+  </p>
+  <div id="tgAvisos"></div>
+</div>
+
+<div class="tg-card">
+  <h2>Comandos del bot</h2>
+  <p style="margin:0">
+    <code>/bandeja</code> — lo que espera tu decisión, con botones ·
+    <code>/estado</code> — cómo viene cada cuenta ·
+    <code>/resumen</code> — lo juntado hasta ahora
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const AVISOS_INICIAL = {{ estado.avisos|tojson }};
+const NOMBRES = {
+  buybox_perdida:   ['Buy box perdida', 'Cada hora sin la buy box en catálogo es venta que se va'],
+  stock_critico:    ['Quiebre de stock', 'Una publicación con tráfico y sin stock quema posición'],
+  reclamo:          ['Reclamo o mediación', 'La ventana para resolver sin daño a la reputación es corta'],
+  preguntas:        ['Preguntas sin responder', 'Solo cuando aparecen nuevas, no cada 15 minutos'],
+  propuesta_precio: ['Propuestas de precio', 'Con botones para aprobar o rechazar desde el celular'],
+  competidor:       ['Movimientos de competidores', 'Bajó el precio, se quedó sin stock, está liquidando'],
+  veredicto:        ['Veredictos de Cerebro', 'Si lo que hiciste funcionó, fue neutro o empeoró'],
+  top_acciones:     ['Top 3 del día', 'Las oportunidades ordenadas por plata'],
+};
+
+function msg(t, err){ const e=document.getElementById('tgMsg');
+  e.textContent=t; e.style.color = err ? 'var(--color-critical-500)' : '#6b7280'; }
+
+function renderAvisos(avisos){
+  document.getElementById('tgAvisos').innerHTML = Object.keys(NOMBRES).map(k=>{
+    const [n,d] = NOMBRES[k];
+    const on = !!avisos[k];
+    return `<div class="tg-aviso">
+      <div><div class="n">${n}</div><div class="d">${d}</div></div>
+      <div class="form-check form-switch tg-sw">
+        <input class="form-check-input" type="checkbox" data-tipo="${k}" ${on?'checked':''}>
+      </div></div>`;
+  }).join('');
+  document.querySelectorAll('#tgAvisos input').forEach(i=>{
+    i.addEventListener('change', async ()=>{
+      try{
+        const r = await fetch('/api/telegram/aviso', {method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({tipo:i.dataset.tipo, inmediato:i.checked})});
+        const d = await r.json();
+        if(!d.ok) throw new Error(d.error||'error');
+        msg(i.checked ? 'Ahora te llega al momento.' : 'Ahora se junta en el resumen.');
+      }catch(e){ i.checked=!i.checked; msg('No se pudo guardar: '+e.message, true); }
+    });
+  });
+}
+
+async function accion(url, txtOk){
+  msg('...');
+  try{
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify({})});
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.error||'no se pudo');
+    msg(txtOk);
+    return true;
+  }catch(e){ msg(e.message, true); return false; }
+}
+
+document.getElementById('btnWebhook').addEventListener('click', async ()=>{
+  if(await accion('/api/telegram/registrar-webhook','Webhook conectado.')) setTimeout(()=>location.reload(),900);
+});
+document.getElementById('btnProbar').addEventListener('click', ()=>
+  accion('/api/telegram/probar','Mandado. Mirá el celular.'));
+document.getElementById('btnResumen').addEventListener('click', ()=>
+  accion('/api/telegram/resumen','Resumen enviado.'));
+
+renderAvisos(AVISOS_INICIAL);
+</script>
+{% endblock %}

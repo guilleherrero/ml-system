@@ -11727,6 +11727,100 @@ def api_cerebro_eliminar_competidor():
     return jsonify({'ok': cerebro.eliminar_competidor(alias, clave)})
 
 
+# ── Telegram — bandeja unica (Sprint B) ──────────────────────────────────────
+# Telegram no es una cola aparte: es otra puerta a la misma bandeja de Cerebro.
+# Aprobar en el celular deja la accion aprobada en acciones.json, que es lo mismo
+# que lee el panel.
+
+def _telegram_secreto() -> str:
+    """Secreto del path del webhook. Deriva del token si no hay uno propio."""
+    propio = os.environ.get('TELEGRAM_WEBHOOK_SECRET', '').strip()
+    if propio:
+        return propio
+    import hashlib
+    tok = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
+    return hashlib.sha256(f'ml-system:{tok}'.encode()).hexdigest()[:32] if tok else ''
+
+
+@app.route('/api/telegram/webhook/<secreto>', methods=['POST'])
+def api_telegram_webhook(secreto):
+    """Recibe los updates de Telegram. El secreto va en el path (asi lo hace ML/TG)."""
+    esperado = _telegram_secreto()
+    if not esperado or secreto != esperado:
+        return jsonify({'ok': False}), 403
+    from modules import telegram_bot
+    try:
+        res = telegram_bot.procesar_update(request.get_json(force=True) or {})
+        if res.get('accion') in ('aprobada', 'rechazada'):
+            _audit('TELEGRAM_' + res['accion'].upper(), accion_id=res.get('id'))
+    except Exception as e:
+        app.logger.error('[telegram] webhook: %s', e)
+    # Siempre 200: si devolvemos error, Telegram reintenta el mismo update en loop
+    return jsonify({'ok': True})
+
+
+@app.route('/telegram')
+def telegram_config_page():
+    """Pantalla de conexion y avisos de Telegram."""
+    from modules import telegram_bot
+    return render_template('telegram.html', accounts=get_accounts(),
+                           estado=telegram_bot.estado(),
+                           secreto_ok=bool(_telegram_secreto()))
+
+
+@app.route('/api/telegram/estado')
+def api_telegram_estado():
+    from modules import telegram_bot
+    return jsonify({'ok': True, 'estado': telegram_bot.estado()})
+
+
+@app.route('/api/telegram/registrar-webhook', methods=['POST'])
+def api_telegram_registrar_webhook():
+    from modules import telegram_bot
+    secreto = _telegram_secreto()
+    if not secreto:
+        return jsonify({'ok': False, 'error': 'Falta TELEGRAM_BOT_TOKEN'}), 400
+    base = (request.get_json() or {}).get('url_base') or request.url_root
+    res = telegram_bot.registrar_webhook(base, secreto)
+    _audit('TELEGRAM_WEBHOOK', ok=res.get('ok'))
+    return jsonify(res), (200 if res.get('ok') else 400)
+
+
+@app.route('/api/telegram/probar', methods=['POST'])
+def api_telegram_probar():
+    from modules import telegram_bot
+    res = telegram_bot.probar()
+    return jsonify(res), (200 if res.get('ok') else 400)
+
+
+@app.route('/api/telegram/aviso', methods=['POST'])
+def api_telegram_aviso():
+    """Cambia si un tipo de aviso interrumpe o se junta en el resumen."""
+    from modules import telegram_bot
+    body = request.get_json() or {}
+    tipo = (body.get('tipo') or '').strip()
+    if tipo not in telegram_bot.AVISOS_INMEDIATOS:
+        return jsonify({'ok': False, 'error': 'tipo desconocido'}), 400
+    return jsonify({'ok': True,
+                    'avisos': telegram_bot.set_aviso(tipo, bool(body.get('inmediato')))})
+
+
+@app.route('/api/telegram/resumen', methods=['POST'])
+def api_telegram_resumen():
+    from modules import telegram_bot
+    return jsonify({'ok': telegram_bot.enviar_resumen()})
+
+
+def _tg(tipo: str, titulo: str, detalle: str = '', alias: str = '', url: str = ''):
+    """Aviso a Telegram que no puede romper el flujo que lo llama."""
+    try:
+        from modules import telegram_bot
+        return telegram_bot.notificar(tipo, titulo, detalle, alias, url)
+    except Exception as e:
+        app.logger.warning('[telegram] aviso %s fallo: %s', tipo, e)
+        return False
+
+
 @app.route('/cerebro/backtest')
 @app.route('/cerebro/backtest/<alias>')
 def cerebro_backtest_page(alias=None):
@@ -16229,6 +16323,15 @@ def _job_questions_15min():
                 qs = r.json().get('questions', [])
                 # Persistir count para que la UI lo muestre — NO responder automáticamente
                 preg_path = os.path.join(DATA_DIR, f'preguntas_pendientes_{safe(acc.alias)}.json')
+                _prev_count = (load_json(preg_path) or {}).get('count', 0)
+                # Avisar solo cuando aparecen preguntas nuevas: repetir el mismo
+                # numero cada 15 minutos es la forma mas rapida de que deje de leerse.
+                if len(qs) > _prev_count:
+                    _tg('preguntas',
+                        f'{len(qs)} preguntas sin responder',
+                        f'{len(qs) - _prev_count} nuevas desde el ultimo chequeo. '
+                        f'Responder rapido mueve la conversion.',
+                        acc.alias)
                 save_json(preg_path, {
                     'fecha':         datetime.now().strftime('%Y-%m-%d %H:%M'),
                     'count':         len(qs),
@@ -16350,6 +16453,20 @@ def _job_buybox_check():
             'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
             'items': nuevas_perdidas,
         })
+        # Aviso al telefono: perder la buy box cuesta plata cada hora que pasa.
+        # Con los boosts se dice si se perdio por precio o por otra cosa, que es
+        # la diferencia entre bajar el precio y no tocarlo.
+        for _p in nuevas_perdidas[:5]:
+            _falta = ', '.join(_p.get('falta') or [])
+            _det = f"Ahora esta en {_p.get('estado') or 'no ganando'}."
+            if _p.get('price_to_win'):
+                _det += f" Para ganar: ${_p['price_to_win']:,.0f}".replace(',', '.')
+                if _p.get('precio_actual'):
+                    _det += f" (hoy ${_p['precio_actual']:,.0f})".replace(',', '.')
+            if _falta:
+                _det += f" Te falta contra el ganador: {_falta} — no es solo precio."
+            _tg('buybox_perdida', f"Perdiste la buy box: {_p.get('titulo', '')}",
+                _det, _p.get('alias', ''))
     print(f'[job_buybox] {revisados} publicaciones de catalogo revisadas, '
           f'{len(nuevas_perdidas)} buy box perdidas nuevas')
 
@@ -16468,6 +16585,13 @@ def _job_top_acciones_daily():
     for acc in accounts:
         try:
             result = ta.top3(acc.alias, force_recompute=True)
+            try:
+                from modules import telegram_bot
+                for _a in (result.get('top_3') or [])[:3]:
+                    telegram_bot.guardar_para_resumen(
+                        'top_acciones', _a.get('descripcion', '')[:180], acc.alias)
+            except Exception as _e:
+                app.logger.warning('[telegram] top3 al resumen: %s', _e)
             print(f'[job_top_acciones] {acc.alias}: top_3={len(result.get("top_3", []))}, '
                   f'all={len(result.get("all_candidates", []))}, '
                   f'time={result.get("compute_time_ms", 0)}ms')
@@ -16625,6 +16749,15 @@ def _job_cerebro_snapshots():
             app.logger.error('[cerebro_snapshots] %s — error: %s', acc.alias, e)
 
 
+def _job_telegram_resumen():
+    """Resumen diario por Telegram. Skip silencioso si el bot no esta conectado."""
+    from modules import telegram_bot
+    if not telegram_bot.conectado():
+        print('[telegram_resumen] bot no conectado — skip')
+        return
+    print(f'[telegram_resumen] enviado: {telegram_bot.enviar_resumen()}')
+
+
 def _job_cerebro_evaluar():
     """Cerebro 1.2 + 1.3 — evaluacion a 7 y 14 dias, 04:30 ART.
 
@@ -16647,6 +16780,18 @@ def _job_cerebro_evaluar():
         try:
             res = cerebro.evaluar_acciones_pendientes(acc.alias)
             aps = cerebro.listar_aprendizajes(acc.alias)
+            # Los veredictos no son urgentes: van al resumen de la manana
+            try:
+                from modules import telegram_bot
+                _v = res.get('veredictos') or {}
+                if res['evaluadas_7d'] or res['evaluadas_14d']:
+                    telegram_bot.guardar_para_resumen(
+                        'veredicto',
+                        f'{res["evaluadas_7d"] + res["evaluadas_14d"]} acciones evaluadas: '
+                        + ', '.join(f'{k} {v}' for k, v in _v.items()),
+                        acc.alias)
+            except Exception as _e:
+                app.logger.warning('[telegram] veredictos al resumen: %s', _e)
             print(f'[cerebro_evaluar] {acc.alias}: 7d={res["evaluadas_7d"]} '
                   f'14d={res["evaluadas_14d"]} sin_datos={res["sin_datos"]} '
                   f'contaminadas={res["contaminadas"]} → {len(aps)} aprendizajes')
@@ -16965,6 +17110,20 @@ def _start_scheduler():
                          'Alimenta al Veredicto IA semanal con timeline completa.'),
         )
 
+        # Job 13 — Resumen diario por Telegram — 08:00 ART
+        # Junta lo que no interrumpe (Top 3, veredictos, competidores) en un solo
+        # mensaje. Si a la bandeja le entran quince avisos por dia, en una semana
+        # el canal deja de leerse.
+        jm.register_job(
+            'telegram_resumen', _job_telegram_resumen,
+            CronTrigger(hour=8, minute=0,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Resumen diario por Telegram',
+            description=('Manda en un solo mensaje lo que se junto durante el dia '
+                         'anterior mas lo que espera decision. Skip si el bot no '
+                         'esta configurado.'),
+        )
+
         # Job 12 — Cerebro: evaluacion de acciones a 7 y 14 dias — 04:30 ART
         # Corre despues de daily_snapshots (04:00) para tener la serie del dia.
         # Estadistica pura, sin costo de IA.
@@ -17007,7 +17166,7 @@ def _start_scheduler():
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 11 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — 12 jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')

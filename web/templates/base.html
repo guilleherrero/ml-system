@@ -189,6 +189,9 @@
     <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
       <i class="bi bi-speedometer2"></i> Command Center
     </a>
+    <a href="/telegram" class="{{ 'active' if request.path == '/telegram' else '' }}">
+      <i class="bi bi-send"></i> Telegram
+    </a>
     <a href="/alertas" class="{{ 'active' if request.path == '/alertas' else '' }}" id="nav-alertas">
       <i class="bi bi-bell"></i> Alertas
       <span id="alertas-global-badge" style="display:none;background:#dc2626;color:#fff;border-radius:12px;padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
