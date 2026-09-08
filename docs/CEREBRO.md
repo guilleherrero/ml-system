@@ -227,6 +227,64 @@ Pendiente para cerrarlo: la captura de resultados de busqueda desde el
 bookmarklet (que alimenta la comparacion con datos frescos) y el disparador
 automatico del bloque 4.2, que avisa cuando conviene mirar una keyword.
 
+## 2.7 Defensa de la publicacion — autosuggest en el centro (implementado)
+
+Cerebro detecta y aprende; este bloque responde la otra mitad: que hacer para
+que no te ganen. Una publicacion no se defiende con una sola cosa: tiene varias
+puertas, y el competidor entra por la que quedo abierta.
+
+**Autosuggest es el centro.** Es la unica fuente que quedo con demanda real —
+las frases que la gente efectivamente escribe en ML, ordenadas por popularidad.
+Todo el analisis se hace contra el universo de busquedas reales del producto y
+no contra lo que uno cree que se busca. Como autosuggest devuelve pocas frases
+por consulta, se usan varias semillas (una por familia de terminos) y se unen.
+
+### Seis dimensiones
+
+| Dimension | Peso | Que mide |
+|---|---|---|
+| Cobertura | 30 | Por cuantas busquedas reales te encuentran |
+| Concentracion | 15 | Si dependes de una sola keyword, sos fragil |
+| Ficha | 20 | Atributos completos: te mete en los filtros |
+| Contenido | 15 | Fotos y video contra los competidores |
+| Condiciones | 10 | Envio, cuotas, Full |
+| Reputacion | 10 | Rating y reviews |
+
+Sale un indice 0-100 (solida / aceptable / expuesta / muy expuesta) y la lista
+de puertas abiertas ordenadas por lo que cuesta cerrarlas.
+
+### Deteccion de errores de escritura
+
+Cada palabra del titulo se compara contra el vocabulario real de autosuggest: si
+se parece demasiado a una busqueda real sin serlo, es un error que cuesta una
+keyword entera.
+
+**Caso encontrado el 2026-09-08**: el Cortador Ender Pro (MLA1481911017 y
+MLA1932975847) dice **"Abriertas"** donde la gente busca **"abiertas"**. Una
+letra que deja afuera "cortador de puntas abiertas", de las mas buscadas del
+rubro.
+
+### Medicion real del Cortador Ender Pro
+
+- Cobertura: **21,5%** — te encuentran por 2 de 11 busquedas reales
+- Indice de defensa: **48,8 / 100 — publicacion EXPUESTA**
+- Lo que mas rinde agregar: `florecidas` (+5 busquedas), `corta` (+3),
+  `maquina` (+3), `abiertas` (+2)
+- El 75% de las visitas llega por una sola busqueda: si pierde esa posicion,
+  pierde casi todo
+
+### El circulo virtuoso
+
+Cada refuerzo se registra en Cerebro con el indice de defensa como hipotesis. A
+los 7 y 14 dias se sabe si sirvio. Asi el sistema no supone que completar la
+ficha ayuda: lo sabe, con casos propios y por rubro.
+
+Restriccion que ordena todo: ML congela el titulo despues de la primera venta.
+En una publicacion con ventas se corrige por descripcion y ficha, y la forma
+correcta se aplica a las publicaciones nuevas y a los clones (bloque 8).
+
+Modulo: `modules/defensa_publicacion.py`.
+
 ## 3. Precio (Sprint C)
 
 ### 3.1 Regla de fondo
@@ -717,6 +775,7 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 25 | El costo de las cuotas sin interes se modela como (cuotas promedio - 1) x 0.9%, un valor heredado y sin validar | `modules/precio_motor.py` `COSTO_POR_CUOTA` | Determina si reducir cuotas vale $300 o $3.000 por mes, o sea si la palanca sirve o no. Si ML cobra por OFRECER cuotas y no por las que se usan, el ahorro real es mucho mayor. Calibrable contra el `fee_rate` real de las ordenes | B |
 | 26 | `/sites/MLA/search` devuelve 403 tambien desde IP residencial y navegador real (verificado 2026-09-08). No es un bug temporal de ML ni un bloqueo a IPs de datacenter: ML lo desactivo para trafico programatico | `analisis_competencia`, `repricing`, `monitor_posicionamiento`, `find_item_position` | Se cae la fuente principal de competidores y de posiciones por keyword. Los banners del sistema dicen que es un problema de ML que se va a resolver solo, y eso ya no es cierto: hay que rediseñar la estrategia de competencia sobre las fuentes que quedan | A |
 | 27 | Sin `/sites/MLA/search`, `search_competitors` cae a buscar en el catalogo de PRODUCTOS y devuelve resultados sin relacion con el rubro, todos con `price: 0`, `sold: 0` y `no_active_listings: true` | `web/app.py` busqueda de competidores | Para "cortador de puntas cabello" devuelve cortadores de micas, cortadores de unas acrilicas, brocas de taladro y un cortador de chapas metalicas. Si el optimizador de titulos usa esto como referencia de competencia, esta aprendiendo del rubro equivocado | A |
+| 28 | El titulo del Cortador Ender Pro dice "Abriertas" en vez de "Abiertas" en las dos publicaciones del cluster (MLA1481911017 y MLA1932975847) | Publicaciones de la cuenta Novara | Pierde "cortador de puntas abiertas" y "cepillo cortador de puntas abiertas", ambas entre las mas buscadas del rubro. El titulo ya esta congelado por ventas: se corrige por descripcion y ficha, y bien escrito en las publicaciones nuevas | A |
 
 ### Estado al cierre del Sprint A
 
