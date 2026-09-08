@@ -136,6 +136,85 @@ class TestImpactoDeBajar(unittest.TestCase):
             self.assertIn(k, det)
 
 
+class TestPisoDe15(unittest.TestCase):
+    """El usuario definio 15% como piso: no se baja de ahi."""
+
+    def test_el_piso_es_15(self):
+        self.assertEqual(pm.MARGEN_MINIMO_ACEPTABLE, 0.15)
+
+    def test_una_baja_que_deja_14_por_ciento_se_rechaza(self):
+        costo, fee = 8000.0, 0.3259
+        precio_14 = costo / (1 - fee - 0.14)
+        ev = pm.evaluar_cambio(29000, round(precio_14), costo, fee, unidades_30d=2)
+        self.assertFalse(ev['viable'])
+
+    def test_toda_propuesta_muestra_margen_actual_y_nuevo(self):
+        ev = pm.evaluar_cambio(29000, 26680, 8000, 0.3259, unidades_30d=1)
+        self.assertIsNotNone(ev['margen_actual_pct'])
+        self.assertIsNotNone(ev['margen_nuevo_pct'])
+        self.assertGreater(ev['margen_actual_pct'], ev['margen_nuevo_pct'])
+
+
+class TestPalancaCuotas(unittest.TestCase):
+    """Reducir cuotas recupera margen sin tocar el precio de lista.
+
+    La cuenta que importa: bajar de 12 a 6 no molesta a quien ya compraba en 6.
+    Solo afecta a los que necesitaban 7 a 12.
+    """
+
+    POCAS_LARGAS = {'1': 55, '2-3': 25, '4-6': 15, '7-12': 5}
+    MUCHAS_LARGAS = {'1': 20, '2-3': 10, '4-6': 20, '7-12': 45, '13+': 5}
+
+    def test_si_casi_nadie_usa_cuotas_largas_reducir_es_de_bajo_riesgo(self):
+        pasos = pm.analizar_reduccion_cuotas(29000, 6, self.POCAS_LARGAS)
+        paso_12_6 = next(p for p in pasos if p['de_max'] == 12 and p['a_max'] == 6)
+        self.assertLessEqual(paso_12_6['pct_afectados'], 8)
+        self.assertTrue(paso_12_6['recomendado'])
+
+    def test_si_la_mitad_usa_cuotas_largas_no_se_recomienda(self):
+        pasos = pm.analizar_reduccion_cuotas(29000, 6, self.MUCHAS_LARGAS)
+        for p in pasos:
+            if p['a_max'] <= 6:
+                self.assertFalse(p['recomendado'],
+                                 f'no deberia recomendar {p["de_max"]}->{p["a_max"]}')
+
+    def test_no_afecta_a_quien_ya_compraba_con_menos_cuotas(self):
+        """El 95% que compraba en 6 o menos no se entera del cambio 12->6."""
+        pasos = pm.analizar_reduccion_cuotas(29000, 6, self.POCAS_LARGAS)
+        paso = next(p for p in pasos if p['de_max'] == 12 and p['a_max'] == 6)
+        self.assertAlmostEqual(paso['pct_no_afectados'], 95.0, places=0)
+
+    def test_traduce_el_ahorro_a_descuento_equivalente(self):
+        """Para poder compararlo de frente con bajar el precio."""
+        pasos = pm.analizar_reduccion_cuotas(29000, 6, self.POCAS_LARGAS)
+        self.assertTrue(all('equivale_a_descuento_pct' in p for p in pasos))
+
+    def test_sin_datos_de_cuotas_no_inventa_pasos(self):
+        self.assertEqual(pm.analizar_reduccion_cuotas(29000, 6, None), [])
+        self.assertEqual(pm.analizar_reduccion_cuotas(29000, 6, {}), [])
+
+    def test_la_alternativa_aparece_al_evaluar_una_baja(self):
+        ev = pm.evaluar_cambio(29000, 26680, 8000, 0.3259, unidades_30d=6,
+                               cuotas_breakdown=self.POCAS_LARGAS)
+        self.assertIn('alternativa_cuotas', ev)
+        self.assertTrue(any('cuotas' in a for a in ev['avisos']))
+
+    def test_el_menu_compara_las_dos_palancas(self):
+        m = pm.menu_de_palancas(29000, 8000, 0.3259, precio_sugerido=27500,
+                                ventas_30d=20, cuotas_breakdown=self.POCAS_LARGAS)
+        palancas = {o['palanca'] for o in m['opciones']}
+        self.assertIn('bajar_precio', palancas)
+        self.assertIn('reducir_cuotas', palancas)
+        self.assertIn('recomendada', m)
+
+    def test_bajar_precio_es_publico_y_reducir_cuotas_no(self):
+        """Diferencia de fondo: el precio lo ven todos, incluidos los repricers."""
+        m = pm.menu_de_palancas(29000, 8000, 0.3259, precio_sugerido=27500,
+                                ventas_30d=20, cuotas_breakdown=self.POCAS_LARGAS)
+        for o in m['opciones']:
+            self.assertEqual(o['publico'], o['palanca'] == 'bajar_precio')
+
+
 class TestUnaSolaFuente(unittest.TestCase):
     """Las cuatro logicas de precio tienen que dar lo mismo, porque son una."""
 

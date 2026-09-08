@@ -550,6 +550,39 @@ Efecto en el caso real de la Faja Reductora (bajar 8%, de $29.000 a $26.680):
 - y ahora dice lo que importa: "necesitas vender 16% mas solo para no perder
   plata" y "la conversion tendria que mejorar 205% para llegar al promedio"
 
+#### Piso de margen y palanca de cuotas (definido por el usuario, 2026-09-08)
+
+**Piso: 15%.** No se propone ninguna baja que deje el margen debajo de 15%.
+Toda sugerencia muestra el margen actual y el margen resultante, en la
+descripcion y en el snapshot.
+
+**Reducir cuotas antes que bajar el precio.** Bajar el precio es publico,
+universal e incomodo de revertir: lo ven todos los compradores y los repricers
+de la competencia. Reducir las cuotas sin interes recupera margen sin mover el
+precio de lista y solo afecta al segmento que realmente las usaba.
+
+La cuenta clave: bajar de 12 a 6 cuotas NO molesta a quien ya compraba en 6.
+Solo afecta a los que necesitaban entre 7 y 12. Si ese segmento es chico, es
+margen casi gratis. El dato no se estima: sale de las ordenes reales
+(`payments[0].installments`), agrupado en buckets 1 / 2-3 / 4-6 / 7-12 / 13+.
+
+Riesgo por porcentaje de compradores afectados: <=3% muy bajo, <=8% bajo,
+<=20% medio, mas alto. Solo se recomiendan los pasos de riesgo bajo o muy bajo.
+
+El ahorro se traduce a "descuento equivalente" para poder compararlo de frente
+con una baja de precio, y `menu_de_palancas()` las pone lado a lado y elige la
+que consigue el objetivo costando menos margen.
+
+Esta logica existia dentro de `pricing_strategy`, encerrada en una pantalla que
+nada mas usaba; ahora vive en el motor y entra en cada propuesta de precio.
+
+**Pendiente de calibrar (correccion 25):** el costo de financiamiento se modela
+como `(cuotas promedio ponderado - 1) x 0.9%`, un valor heredado. Si ML en
+realidad cobra por OFRECER cuotas sin interes y no en proporcion a las que cada
+comprador usa, el ahorro real de reducirlas es bastante mayor que el que hoy
+muestra el sistema. Se puede calibrar contra el `fee_rate` real que
+`stock_rentabilidad` ya calcula desde las ordenes.
+
 ### 12.3 El sistema tiene que dudar de si mismo
 Un impacto de 5 millones sobre 1.072 visitas tendria que haber disparado una
 alarma automatica, no llegar a la pantalla del usuario. Cada numero que sale a
@@ -618,6 +651,7 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 22 | `top_acciones_diarias` usaba `MARGEN_MIN = -0.10` como piso de precio | `modules/top_acciones_diarias.py` | Permitia proponer bajas que dejaban el margen en -10%: el sistema podia recomendar vender perdiendo plata en cada venta. **Resuelto**, ahora el piso es el del motor unico (10%) | A |
 | 23 | El impacto de una baja de precio asumia que la conversion saltaba sola al promedio del catalogo y no descontaba lo que el item ya gana | idem | En la Faja Reductora prometia $30.578/mes cuando exigia triplicar la conversion. **Resuelto**: $6.692 con freno de realismo | A |
 | 24 | El umbral de envio gratis de ML solo lo conocia `pricing_strategy` | `repricing`, `top_acciones_diarias` | Se podian proponer bajas que cruzaban el umbral sin avisar que el margen se mueve de golpe, no de a poco. **Resuelto** | A |
+| 25 | El costo de las cuotas sin interes se modela como (cuotas promedio - 1) x 0.9%, un valor heredado y sin validar | `modules/precio_motor.py` `COSTO_POR_CUOTA` | Determina si reducir cuotas vale $300 o $3.000 por mes, o sea si la palanca sirve o no. Si ML cobra por OFRECER cuotas y no por las que se usan, el ahorro real es mucho mayor. Calibrable contra el `fee_rate` real de las ordenes | B |
 
 ### Estado al cierre del Sprint A
 

@@ -619,9 +619,13 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
             skipped["sin_margen_reducible"] += 1
             continue
 
+        # El breakdown de cuotas sale de las ordenes reales (con cuantas cuotas
+        # compro cada cliente), asi que el motor puede proponer reducir cuotas
+        # como alternativa a bajar el precio.
         evaluacion = precio_motor.evaluar_cambio(
             precio, precio_sug, costo, fee_rate,
-            unidades_30d=vtas, conv_actual=conv, conv_referencia=avg_conv)
+            unidades_30d=vtas, conv_actual=conv, conv_referencia=avg_conv,
+            cuotas_breakdown=it.get("cuotas_breakdown"))
         if not evaluacion["viable"]:
             # El motor manda: si deja el margen debajo del piso, no se propone.
             skipped["sin_margen_reducible"] += 1
@@ -651,7 +655,9 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
         else:
             desc = (f"REVISAR PRECIO — {titulo} ({vis} vis, conv {conv:.1f}% "
                     f"vs avg {avg_conv:.1f}%) ${precio:,.0f} → ${precio_sug:,.0f} "
-                    f"(-{descuento_real_pct}%)")
+                    f"(-{descuento_real_pct}%) · margen "
+                    f"{evaluacion.get('margen_actual_pct')}% → "
+                    f"{evaluacion.get('margen_nuevo_pct')}%")
 
         fp = _fingerprint("repricing_precio", iid)
         op = Oportunidad(
@@ -682,6 +688,9 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
                 "impacto_detalle":   impacto_detalle,
                 "avisos":            evaluacion.get("avisos") or [],
                 "compensacion":      evaluacion.get("resumen_compensacion"),
+                "margen_actual_pct": evaluacion.get("margen_actual_pct"),
+                "alternativa_cuotas": evaluacion.get("alternativa_cuotas"),
+                "alternativa_cuotas_cubre": evaluacion.get("alternativa_cuotas_cubre"),
             },
         )
         candidatos.append((perdida_margen, op))

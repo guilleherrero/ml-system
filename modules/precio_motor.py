@@ -34,12 +34,28 @@ from __future__ import annotations
 UMBRAL_ENVIO_GRATIS_ARS = 33_000
 
 # Piso duro: por debajo de este margen el sistema NO sugiere un precio.
-# top_acciones_diarias tenia -0.10, o sea permitia proponer vender perdiendo
-# 10% en cada venta. Un sistema que sugiere perder plata no esta optimizando.
-MARGEN_MINIMO_ACEPTABLE = 0.10
+# Definido por el usuario: no bajar de 15% de margen. (top_acciones_diarias
+# tenia -0.10, o sea permitia proponer vender perdiendo 10% en cada venta.)
+MARGEN_MINIMO_ACEPTABLE = 0.15
 
 # Margen por debajo del cual se avisa aunque se acepte (zona de riesgo).
-MARGEN_ALERTA = 0.18
+MARGEN_ALERTA = 0.20
+
+# Costo de financiamiento por cuota sin interes, como fraccion del precio.
+# Cada cuota adicional se paga con margen: es plata que sale del bolsillo del
+# vendedor aunque no se vea en el precio de lista.
+COSTO_POR_CUOTA = 0.009
+
+# Buckets con que ML agrupa las cuotas usadas realmente por los compradores,
+# calculados desde las ordenes (payments[0].installments), no estimados.
+BUCKET_MAX = {'1': 1, '2-3': 3, '4-6': 6, '7-12': 12, '13+': 18}
+BUCKET_AVG = {'1': 1.0, '2-3': 2.5, '4-6': 5.0, '7-12': 9.5, '13+': 15.0}
+BUCKET_ORDEN = ['1', '2-3', '4-6', '7-12', '13+']
+
+# Hasta que porcentaje de compradores afectados se considera de bajo riesgo
+# reducir cuotas.
+RIESGO_CUOTAS_BAJO  = 0.08
+RIESGO_CUOTAS_MEDIO = 0.20
 
 # Cuanto de la mejora teorica de conversion se toma como real al estimar el
 # impacto de una baja. Mismo criterio conservador que en duplicados: preferimos
@@ -141,7 +157,8 @@ def unidades_para_compensar(precio_antes, precio_despues, costo, fee_rate,
 # ── Evaluacion completa de un cambio de precio ───────────────────────────────
 
 def evaluar_cambio(precio_actual, precio_nuevo, costo, fee_rate,
-                   unidades_30d=0, conv_actual=None, conv_referencia=None) -> dict:
+                   unidades_30d=0, conv_actual=None, conv_referencia=None,
+                   cuotas_breakdown=None, cuotas_actuales_max: int = 12) -> dict:
     """Todo lo que hay que saber antes de mover un precio, en un solo lugar.
 
     Devuelve siempre `viable` (bool) y `motivos` (lista): si no es viable, el
@@ -218,6 +235,177 @@ def evaluar_cambio(precio_actual, precio_nuevo, costo, fee_rate,
             round((_f(conv_referencia) / _f(conv_actual) - 1) * 100, 1)
             if _f(conv_actual) > 0 else None)
 
+    # ¿Hay una forma mas barata de conseguir lo mismo? Antes de bajar el precio
+    # —que es publico, lo ven los repricers ajenos y cuesta revertir— se mira si
+    # reducir cuotas alcanza. El descuento que "compra" el ahorro de cuotas se
+    # expresa en la misma unidad para poder compararlos de frente.
+    if cuotas_breakdown and p_new < p_act:
+        descuento_buscado = abs(res['delta_pct'] or 0)
+        pasos = analizar_reduccion_cuotas(p_act, unidades_30d, cuotas_breakdown,
+                                          cuotas_actuales_max)
+        recomendables = [x for x in pasos if x['recomendado']]
+        if recomendables:
+            mejor = recomendables[0]
+            res['alternativa_cuotas'] = mejor
+            cubre = mejor['equivale_a_descuento_pct'] >= descuento_buscado * 0.6
+            res['alternativa_cuotas_cubre'] = cubre
+            res['avisos'].append(
+                ('en vez de bajar el precio: ' if cubre else 'ademas del precio: ')
+                + mejor['resumen']
+                + f'. Equivale a un descuento de {mejor["equivale_a_descuento_pct"]:.1f}% '
+                  f'sin tocar el precio de lista')
+
+    return res
+
+
+# ── Cuotas: la palanca que no toca el precio de lista ────────────────────────
+# Bajar el precio es publico, universal e irreversible en la practica: lo ven
+# todos los compradores y los repricers de la competencia. Reducir las cuotas
+# sin interes recupera margen sin mover el precio de lista, y solo afecta al
+# segmento que realmente las usaba.
+#
+# La cuenta que importa: bajar de 12 a 6 cuotas NO molesta a quien ya compraba
+# en 6. Solo afecta a los que necesitaban 7 a 12. Si ese segmento es chico, es
+# margen casi gratis. Esta logica existia dentro de pricing_strategy, encerrada
+# en una pantalla que nada mas usaba; ahora vive en el motor y puede compararse
+# con una baja de precio.
+
+def _pct_que_usaba_mas_de(breakdown: dict, max_cuotas: int) -> float:
+    """Fraccion de compradores que usaba MAS cuotas que el nuevo tope."""
+    if not breakdown:
+        return 0.0
+    total = sum(_f(v) for v in breakdown.values()) or 100.0
+    afectados = sum(_f(breakdown.get(b, 0)) for b in BUCKET_ORDEN
+                    if BUCKET_MAX[b] > max_cuotas)
+    return afectados / total
+
+
+def _cuotas_promedio_con_tope(breakdown: dict, max_cuotas: int) -> float:
+    if not breakdown:
+        return 1.0
+    total = sum(_f(v) for v in breakdown.values()) or 100.0
+    prom = 0.0
+    for b in BUCKET_ORDEN:
+        prom += (_f(breakdown.get(b, 0)) / total) * min(BUCKET_AVG[b], float(max_cuotas))
+    return prom
+
+
+def analizar_reduccion_cuotas(precio, ventas_30d, cuotas_breakdown,
+                              cuotas_actuales_max: int = 12) -> list[dict]:
+    """Pasos posibles de reduccion de cuotas, con su ahorro y su riesgo real.
+
+    Devuelve una lista ordenada de mejor a peor. Cada paso trae la traduccion
+    que sirve para decidir: cuanto descuento de precio equivale ese ahorro.
+    """
+    if not cuotas_breakdown:
+        return []
+    p = _f(precio)
+    v = _f(ventas_30d)
+    pasos = []
+    escalones = [(12, 6), (12, 3), (6, 3), (6, 1), (3, 1)]
+
+    for de_max, a_max in escalones:
+        if de_max > cuotas_actuales_max or a_max >= cuotas_actuales_max:
+            continue
+        pct_afectados = _pct_que_usaba_mas_de(cuotas_breakdown, a_max)
+
+        prom_de = _cuotas_promedio_con_tope(cuotas_breakdown, min(de_max, cuotas_actuales_max))
+        prom_a  = _cuotas_promedio_con_tope(cuotas_breakdown, a_max)
+        ahorro_pct = max(0.0, (prom_de - prom_a) * COSTO_POR_CUOTA)
+        if ahorro_pct <= 0:
+            continue
+
+        if pct_afectados <= 0.03:
+            riesgo = 'muy_bajo'
+        elif pct_afectados <= RIESGO_CUOTAS_BAJO:
+            riesgo = 'bajo'
+        elif pct_afectados <= RIESGO_CUOTAS_MEDIO:
+            riesgo = 'medio'
+        else:
+            riesgo = 'alto'
+
+        pasos.append({
+            'de_max':            de_max,
+            'a_max':             a_max,
+            'pct_afectados':     round(pct_afectados * 100, 1),
+            'pct_no_afectados':  round((1 - pct_afectados) * 100, 1),
+            'ahorro_pct_precio': round(ahorro_pct * 100, 2),
+            'ahorro_mensual_ars': round(v * p * ahorro_pct, 0),
+            'riesgo':            riesgo,
+            'recomendado':       riesgo in ('muy_bajo', 'bajo'),
+            # La traduccion util: este ahorro "paga" un descuento de este tamano
+            'equivale_a_descuento_pct': round(ahorro_pct * 100, 2),
+            'resumen': (
+                f'bajar de {de_max} a {a_max} cuotas recupera '
+                f'{ahorro_pct * 100:.1f}% de margen y solo afecta al '
+                f'{pct_afectados * 100:.0f}% de los compradores '
+                f'(el {(1 - pct_afectados) * 100:.0f}% ya compraba en {a_max} o menos)'),
+        })
+
+    pasos.sort(key=lambda x: (not x['recomendado'], -x['ahorro_mensual_ars']))
+    return pasos
+
+
+def menu_de_palancas(precio, costo, fee_rate, *, precio_sugerido=None,
+                     ventas_30d=0, cuotas_breakdown=None,
+                     cuotas_actuales_max: int = 12) -> dict:
+    """Compara bajar el precio contra reducir cuotas, en la misma unidad.
+
+    Responde la pregunta del vendedor: "necesito ser mas competitivo, cual es la
+    forma mas barata en margen de lograrlo".
+    """
+    p = _f(precio)
+    res: dict = {'precio_actual': p, 'opciones': []}
+
+    if precio_sugerido:
+        ev = evaluar_cambio(p, precio_sugerido, costo, fee_rate, unidades_30d=ventas_30d)
+        res['opciones'].append({
+            'palanca':          'bajar_precio',
+            'detalle':          f'bajar a ${_f(precio_sugerido):,.0f}'.replace(',', '.'),
+            'descuento_pct':    abs(ev.get('delta_pct') or 0),
+            'costo_margen_pp':  round((ev.get('margen_actual_pct') or 0)
+                                      - (ev.get('margen_nuevo_pct') or 0), 1),
+            'margen_actual_pct': ev.get('margen_actual_pct'),
+            'margen_nuevo_pct':  ev.get('margen_nuevo_pct'),
+            'viable':           ev.get('viable'),
+            'motivos':          ev.get('motivos'),
+            'avisos':           ev.get('avisos'),
+            'compensacion':     ev.get('resumen_compensacion'),
+            'publico':          True,
+        })
+
+    for paso in analizar_reduccion_cuotas(p, ventas_30d, cuotas_breakdown,
+                                          cuotas_actuales_max):
+        # Reducir cuotas no baja el precio: SUBE el margen. El descuento que
+        # "compra" es cuanto se podria bajar el precio quedando igual que hoy.
+        m_actual = margen_pct(p, costo, fee_rate)
+        res['opciones'].append({
+            'palanca':          'reducir_cuotas',
+            'detalle':          f'de {paso["de_max"]} a {paso["a_max"]} cuotas',
+            'descuento_pct':    0.0,
+            'costo_margen_pp':  0.0,
+            'gana_margen_pp':   paso['ahorro_pct_precio'],
+            'margen_actual_pct': round(m_actual * 100, 1) if m_actual is not None else None,
+            'margen_nuevo_pct':  round((m_actual + paso['ahorro_pct_precio'] / 100) * 100, 1)
+                                 if m_actual is not None else None,
+            'pct_afectados':    paso['pct_afectados'],
+            'riesgo':           paso['riesgo'],
+            'viable':           paso['recomendado'],
+            'ahorro_mensual_ars': paso['ahorro_mensual_ars'],
+            'equivale_a_descuento_pct': paso['equivale_a_descuento_pct'],
+            'resumen':          paso['resumen'],
+            'publico':          False,
+        })
+
+    # La mejor es la que consigue el objetivo costando menos margen
+    viables = [o for o in res['opciones'] if o.get('viable')]
+    if viables:
+        mejor = min(viables, key=lambda o: o.get('costo_margen_pp', 0)
+                    - o.get('gana_margen_pp', 0))
+        res['recomendada'] = mejor['palanca']
+        res['motivo_recomendacion'] = (
+            mejor.get('resumen')
+            or f'es la que menos margen cuesta ({mejor.get("costo_margen_pp")} puntos)')
     return res
 
 
