@@ -100,6 +100,29 @@ responder; y por cada competidor directo confirmado: precio, `available_quantity
 
 ## 2. Competidores (Sprint A/B)
 
+### 2.0 Cambio de contexto (2026-09-08): la deteccion automatica ya no existe
+
+Verificado: `/sites/MLA/search` devuelve 403 tambien desde IP residencial y
+navegador real. ML lo desactivo para trafico programatico; no es una caida
+temporal. Con eso se cae la deteccion automatica de competidores y la posicion
+por keyword de las publicaciones que no son de catalogo.
+
+Lo que queda en pie:
+- **Catalogo**: `/products/{catalog_product_id}/items` da la lista exacta de
+  vendedores del mismo producto, y `price_to_win` el estado y los boosts. Es la
+  fuente mas confiable que hay, y no depende de la busqueda.
+- **Captura manual** (bookmarklet): el usuario marca al competidor desde la
+  pagina de ML. Ahora persiste y queda asociado a una publicacion propia.
+- **Seguimiento** de un competidor ya conocido: `/items/{id}` da precio,
+  `available_quantity` y `status` sin restricciones.
+- **Autosuggest** y `/trends`: siguen sirviendo para keywords y demanda, no para
+  identificar competidores.
+
+Consecuencia para el diseno: la semilla del bloque 2.2 deja de ser "opcional
+pero recomendada" y pasa a ser **la unica via** para publicaciones que no son de
+catalogo. La huella y el puntaje siguen valiendo, pero para clasificar lo que el
+usuario captura y lo que aparece en catalogo, no para descubrir de cero.
+
 ### 2.1 Problema actual
 La detección trae "competidores de categoría" (best sellers vía highlights +
 búsqueda con las primeras 4 palabras del título), sin verificar que sea el
@@ -652,6 +675,8 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 23 | El impacto de una baja de precio asumia que la conversion saltaba sola al promedio del catalogo y no descontaba lo que el item ya gana | idem | En la Faja Reductora prometia $30.578/mes cuando exigia triplicar la conversion. **Resuelto**: $6.692 con freno de realismo | A |
 | 24 | El umbral de envio gratis de ML solo lo conocia `pricing_strategy` | `repricing`, `top_acciones_diarias` | Se podian proponer bajas que cruzaban el umbral sin avisar que el margen se mueve de golpe, no de a poco. **Resuelto** | A |
 | 25 | El costo de las cuotas sin interes se modela como (cuotas promedio - 1) x 0.9%, un valor heredado y sin validar | `modules/precio_motor.py` `COSTO_POR_CUOTA` | Determina si reducir cuotas vale $300 o $3.000 por mes, o sea si la palanca sirve o no. Si ML cobra por OFRECER cuotas y no por las que se usan, el ahorro real es mucho mayor. Calibrable contra el `fee_rate` real de las ordenes | B |
+| 26 | `/sites/MLA/search` devuelve 403 tambien desde IP residencial y navegador real (verificado 2026-09-08). No es un bug temporal de ML ni un bloqueo a IPs de datacenter: ML lo desactivo para trafico programatico | `analisis_competencia`, `repricing`, `monitor_posicionamiento`, `find_item_position` | Se cae la fuente principal de competidores y de posiciones por keyword. Los banners del sistema dicen que es un problema de ML que se va a resolver solo, y eso ya no es cierto: hay que rediseñar la estrategia de competencia sobre las fuentes que quedan | A |
+| 27 | Sin `/sites/MLA/search`, `search_competitors` cae a buscar en el catalogo de PRODUCTOS y devuelve resultados sin relacion con el rubro, todos con `price: 0`, `sold: 0` y `no_active_listings: true` | `web/app.py` busqueda de competidores | Para "cortador de puntas cabello" devuelve cortadores de micas, cortadores de unas acrilicas, brocas de taladro y un cortador de chapas metalicas. Si el optimizador de titulos usa esto como referencia de competencia, esta aprendiendo del rubro equivocado | A |
 
 ### Estado al cierre del Sprint A
 
