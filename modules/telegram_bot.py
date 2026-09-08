@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -407,33 +407,182 @@ def guardar_para_resumen(tipo: str, texto: str, alias: str = '') -> bool:
     return True
 
 
+def _fecha_larga() -> str:
+    dias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+    ahora = datetime.now()
+    return f'{dias[ahora.weekday()]} {ahora.day}/{ahora.month}'
+
+
+def _plata_corta(v) -> str:
+    """$1.2M, $362k, $6.700 — para que se lea de un vistazo en el celular."""
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return '—'
+    if n >= 1_000_000:
+        return f'${n / 1_000_000:.1f}M'.replace('.0M', 'M')
+    if n >= 10_000:
+        return f'${n / 1000:.0f}k'
+    return f'${n:,.0f}'.replace(',', '.')
+
+
+def _bloque_oportunidades(alias: str) -> list[str]:
+    """El Top 3 con lo que hay que saber para decidir: plata, motivo y que hacer."""
+    try:
+        from modules import top_acciones_diarias as ta
+        data = ta.top3(alias)
+    except Exception as e:
+        _logger.warning('[telegram] no pude leer el top 3: %s', e)
+        return []
+
+    top = (data or {}).get('top_3') or []
+    if not top:
+        return []
+
+    lineas = ['', '💰 <b>Lo que mas plata deja</b>']
+    for i, op in enumerate(top[:3], 1):
+        snap = op.get('snapshot') or {}
+        desc = (op.get('descripcion') or '')
+
+        # Titulo corto: la accion y el producto, sin la parrafada
+        titulo = desc.split('—')[-1].strip() if '—' in desc else desc
+        accion = 'Pausar duplicado' if op.get('tipo') == 'pausar_duplicados' else (
+                 'Revisar precio' if op.get('tipo') == 'repricing_precio' else
+                 (op.get('tipo') or '').replace('_', ' ').capitalize())
+
+        lineas.append(f'\n<b>{i}. {_escape(accion)}</b> · '
+                      f'{_plata_corta(op.get("impacto_mensual_ars"))}/mes')
+        lineas.append(f'{_escape(titulo[:70])}')
+
+        # El POR QUE, en una linea
+        porque = []
+        if snap.get('visitas_perdidas_30d'):
+            porque.append(f'{snap["visitas_perdidas_30d"]} visitas repartidas entre '
+                          f'{snap.get("items_count", 2)} publicaciones tuyas')
+        if snap.get('conversion_pct') is not None and snap.get('avg_conv_pct'):
+            porque.append(f'conversion {snap["conversion_pct"]:.1f}% contra '
+                          f'{snap["avg_conv_pct"]:.1f}% de tu catalogo')
+        if porque:
+            lineas.append(f'<i>{_escape(" · ".join(porque))}</i>')
+
+        # Margen antes y despues, que es lo que el usuario necesita ver
+        if snap.get('margen_actual_pct') and snap.get('margen_nuevo_pct'):
+            lineas.append(f'margen {snap["margen_actual_pct"]}% → {snap["margen_nuevo_pct"]}%')
+
+        # La advertencia que cambia la decision
+        if snap.get('compensacion'):
+            lineas.append(f'⚠️ {_escape(snap["compensacion"])}')
+        alt = snap.get('alternativa_cuotas')
+        if alt and alt.get('resumen'):
+            lineas.append(f'💡 {_escape(alt["resumen"][:150])}')
+
+        if op.get('cta_url'):
+            lineas.append(f'https://ml-system-rr81.onrender.com{op["cta_url"]}')
+    return lineas
+
+
+def _bloque_cerebro(alias: str) -> list[str]:
+    """Estado de Cerebro en castellano, no en contadores."""
+    try:
+        from modules import cerebro
+        r = cerebro.resumen(alias)
+    except Exception as e:
+        _logger.warning('[telegram] no pude leer cerebro: %s', e)
+        return []
+
+    dias = r.get('dias_serie_max', 0)
+    lineas = ['', '🧠 <b>Cerebro</b>']
+
+    if dias < 14:
+        faltan = 14 - dias
+        primer = (datetime.now() + timedelta(days=faltan)).strftime('%d/%m')
+        lineas.append(f'Juntando datos: dia {dias} de 14. '
+                      f'El primer veredicto sale alrededor del {primer}.')
+    if r.get('items_con_serie'):
+        lineas.append(f'{r["items_con_serie"]} publicaciones con seguimiento diario.')
+
+    acciones = r.get('acciones_total', 0)
+    if acciones:
+        evaluadas = (r.get('acciones_por_estado', {}).get('evaluada_7d', 0)
+                     + r.get('acciones_por_estado', {}).get('evaluada_14d', 0))
+        lineas.append(f'{acciones} cambios registrados, {evaluadas} ya evaluados.')
+    else:
+        lineas.append('Todavia no registro ningun cambio tuyo: '
+                      'aplica una optimizacion o un precio y empieza a medir.')
+
+    aprendizajes = r.get('aprendizajes', 0)
+    if aprendizajes:
+        lineas.append(f'{aprendizajes} aprendizajes '
+                      f'({r.get("aprendizajes_confiables", 0)} con confianza suficiente).')
+    return lineas
+
+
+def _bloque_novedades(pendientes: list[dict]) -> list[str]:
+    """Lo que se junto durante el dia y no interrumpio."""
+    if not pendientes:
+        return []
+    # El Top 3 ya se muestra completo arriba: no repetirlo
+    utiles = [p for p in pendientes if p.get('tipo') != 'top_acciones']
+    if not utiles:
+        return []
+
+    nombres = {'competidor': '👀 Competidores', 'veredicto': '🧠 Lo que aprendio',
+               'buybox_perdida': '📉 Buy box', 'stock_critico': '📦 Stock',
+               'reclamo': '⚠️ Reclamos', 'preguntas': '💬 Preguntas',
+               'propuesta_precio': '💰 Precios propuestos'}
+    por_tipo: dict[str, list] = {}
+    for p in utiles:
+        por_tipo.setdefault(p['tipo'], []).append(p)
+
+    lineas = ['', '<b>Novedades del dia</b>']
+    for tipo, items in por_tipo.items():
+        lineas.append(f'\n{nombres.get(tipo, tipo)}')
+        for it in items[:5]:
+            lineas.append(f'· {_escape(it["texto"])[:160]}')
+        if len(items) > 5:
+            lineas.append(f'· y {len(items) - 5} mas')
+    return lineas
+
+
 def enviar_resumen(chat_id: str | None = None, vaciar: bool = True) -> bool:
-    """Resumen diario: lo que se junto + la bandeja pendiente."""
+    """Resumen diario, escrito para decidir en el celular.
+
+    El resumen anterior juntaba lineas sueltas sin decir cuanta plata, por que
+    ni que hacer, asi que se leia como una lista ambigua. Este arranca por lo
+    que hay que decidir hoy, sigue por lo que mas plata deja —con el motivo, el
+    margen antes y despues y la advertencia que cambia la decision— y cierra con
+    el estado de Cerebro en castellano en vez de contadores.
+    """
     cfg = _config()
     pend = cfg.get('pendientes_resumen', [])
+    aliases = _aliases()
+    alias = aliases[0] if aliases else ''
 
-    lineas = [f'📋 <b>Resumen — {datetime.now().strftime("%d/%m")}</b>']
+    lineas = [f'📋 <b>{_escape(alias) or "Sistema ML"} — {_fecha_larga()}</b>']
 
-    if pend:
-        por_tipo: dict[str, list] = {}
-        for p in pend:
-            por_tipo.setdefault(p['tipo'], []).append(p)
-        nombres = {'competidor': 'Competidores', 'veredicto': 'Cerebro aprendio',
-                   'top_acciones': 'Oportunidades', 'buybox_perdida': 'Buy box',
-                   'stock_critico': 'Stock', 'reclamo': 'Reclamos',
-                   'preguntas': 'Preguntas', 'propuesta_precio': 'Precios propuestos'}
-        for tipo, items in por_tipo.items():
-            lineas += ['', f'<b>{nombres.get(tipo, tipo)}</b>']
-            for it in items[:8]:
-                lineas.append(f'· {_escape(it["texto"])[:180]}')
-            if len(items) > 8:
-                lineas.append(f'· y {len(items) - 8} mas')
-    else:
-        lineas += ['', 'Sin novedades para juntar.']
-
+    # 1. Lo primero: ¿hay algo que decidir hoy?
     total_bandeja = _total_bandeja()
     if total_bandeja:
-        lineas += ['', f'<b>{total_bandeja} esperando tu decision</b> — /bandeja']
+        lineas.append(f'\n⚠️ <b>{total_bandeja} '
+                      f'{"cosa" if total_bandeja == 1 else "cosas"} esperando tu decision</b> — /bandeja')
+    else:
+        lineas.append('\nNada esperando tu decision.')
+
+    # 2. Donde esta la plata, con el porque
+    for a in aliases[:2]:
+        bloque = _bloque_oportunidades(a)
+        if bloque and len(aliases) > 1:
+            bloque.insert(1, f'<i>{_escape(a)}</i>')
+        lineas += bloque
+
+    # 3. Lo que se junto durante el dia
+    lineas += _bloque_novedades(pend)
+
+    # 4. Como viene aprendiendo
+    for a in aliases[:2]:
+        lineas += _bloque_cerebro(a)
+
+    lineas += ['', '<i>/bandeja para decidir · /estado para el detalle</i>']
 
     ok = enviar('\n'.join(lineas), chat_id=chat_id)
     if ok and vaciar:
@@ -441,7 +590,6 @@ def enviar_resumen(chat_id: str | None = None, vaciar: bool = True) -> bool:
         cfg['pendientes_resumen'] = []
         _guardar(cfg)
     return ok
-
 
 def _aliases() -> list[str]:
     try:
