@@ -1,5 +1,81 @@
 # CEREBRO — Capa de aprendizaje del Sistema ML
 
+## Proposito
+
+Escrito con Guille el 2026-09-08. Va primero a proposito: el resto del documento
+explica la mecanica, y la mecanica sin el para que se termina desviando.
+
+**Lo que se busca no es un tablero, es un sistema que se corrija solo.** Que
+aprenda de sus propios resultados y mejore lo que propone, con impacto real y no
+como ensayo. El ciclo completo, sin cortes:
+
+    detectar -> proponer -> aplicar -> MEDIR -> APRENDER -> proponer mejor
+
+La parte que faltaba, y por la que existe Cerebro, son las dos ultimas. El
+sistema ya observaba y ya actuaba; nadie le decia nunca si lo que hizo sirvio.
+
+### Los criterios que no se negocian
+
+**1. No mentir.** Un numero que no se puede explicar no sale a pantalla. Si la
+evidencia no alcanza, se dice "no se" en vez de inventar una causa. Un sistema
+que mide mal y recomienda con seguridad es peor que no tener sistema, porque
+hace ejecutar el error mas rapido. Todo lo que se muestra tiene que ser
+auditable: de donde sale cada cifra y contra que se comparo.
+
+**2. El margen primero.** Piso duro de 15%: no se propone nada que lo perfore.
+Toda sugerencia de baja muestra el margen actual y el resultante, y dice cuanto
+mas hay que vender para no perder plata. Crecer en unidades perdiendo margen no
+es crecer.
+
+**3. Las palancas baratas antes que el precio.** Bajar el precio es publico,
+universal y dificil de revertir: lo ven todos los compradores y los repricers de
+la competencia. Antes van las keywords y la ficha (no cuestan nada), y despues
+las cuotas y las condiciones. El precio es el ultimo recurso, no el primero.
+
+**4. Autosuggest es la fuente de verdad de la demanda.** Es lo unico que dice
+que busca la gente de verdad. Todo analisis y toda correccion se hacen contra el
+universo de busquedas reales del producto, nunca contra lo que uno supone que se
+busca.
+
+**5. La causa, no el sintoma.** Saber que un competidor gana no sirve: hay que
+saber por que. Si es por keywords, el precio no lo arregla. Si es por
+condiciones, tampoco. Y el diagnostico tambien se evalua despues, para saber si
+acierta.
+
+**6. Saber donde NO meterse.** Con unas 70 publicaciones, el resultado esta en
+unos 10 SKU. Un sistema que las trata a todas por igual reparte la atencion
+donde no rinde. Decir "aca no hay nada que ganar" vale tanto como encontrar una
+oportunidad.
+
+**7. Los cimientos antes que las funcionalidades.** Un dato mal medido envenena
+todo lo que se construya arriba. Primero que el dato sea cierto y el criterio
+honesto; despues, mas capacidades.
+
+**8. El usuario decide lo que importa.** El precio arranca en propone-y-apruebo.
+La autonomia se gana con evidencia: un tipo de accion pasa a automatico recien
+con 10 evaluaciones y 70% de acierto, y el usuario puede ver esos numeros.
+
+**9. Una sola bandeja.** Telegram y el panel son dos puertas al mismo estado.
+Aprobar en uno es aprobar en el otro. Nunca dos colas que puedan contradecirse.
+
+### Como desempatar cuando hay dudas
+
+- Entre prometer de mas y prometer de menos: **de menos**.
+- Entre una funcionalidad nueva y un dato mal medido: **el dato**.
+- Entre bajar el precio y cualquier otra palanca: **la otra palanca**.
+- Entre avisar y no molestar: al telefono solo lo que se pudre si no se mira
+  hoy; el resto al resumen.
+- Entre una regla linda y la evidencia propia: **la evidencia propia**.
+- Entre actuar sin datos y esperar: **esperar**, y decir que falta para decidir.
+
+### El objetivo de negocio
+
+Crecer. Por eso se excluyo explicitamente frenar el volumen por capacidad
+operativa: queda la alerta de reputacion, que avisa y no decide.
+
+---
+
+
 > Documento de diseño. Define qué observa el sistema, cómo decide, cómo registra
 > resultados y cómo cambia su comportamiento a partir de ellos. Es la base de los
 > Sprints A–D. Se actualiza a medida que se van definiendo los bloques.
