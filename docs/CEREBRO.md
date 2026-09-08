@@ -187,6 +187,46 @@ Estados derivados por competidor: `normal`, `poco_stock`, `sin_stock`, `liquidan
 
 ---
 
+## 2.6 Diagnostico diferencial: POR QUE te esta ganando (implementado)
+
+Saber que un competidor te pasa no sirve por si solo: lo que cambia la decision
+es la causa, porque bajar el precio cuando el problema son las keywords es tirar
+margen sin arreglar nada.
+
+El embudo tiene dos etapas y cada una falla distinto:
+
+    ¿ME ENCUENTRAN?  -> posicion en la busqueda -> keywords, relevancia, ranking
+    ¿ME ELIGEN?      -> conversion              -> precio, fotos, envio, cuotas,
+                                                   reputacion, reviews
+
+De ahi salen las cuatro causas, con las senales que las distinguen:
+
+| Senal | Causa | Respuesta |
+|---|---|---|
+| Visitas organicas caen **y** posicion cae | `keywords` — no te encuentran | Terminos que su titulo usa y el tuyo no; completar ficha. **No tocar precio** |
+| Visitas estables **y** conversion cae, con el 5%+ mas barato | `precio` — te encuentran pero eligen al mas barato | Primero cuotas, despues precio |
+| Visitas estables **y** conversion cae, con precios parecidos | `condiciones` — Full, cuotas, fotos, reputacion | Igualar la condicion que falta |
+| Cae todo pero la demanda del rubro cae parecido | `mercado` | Esperar: no es tuyo |
+| Nada de lo anterior | `sin_causa_clara` | No tocar nada. **No inventar una causa** |
+
+Las acciones se ordenan por lo que cuestan en margen: primero lo que no cuesta
+(keywords, fotos, ficha), despues lo barato (cuotas, condiciones), y el precio
+al final — es publico, lo ven los repricers ajenos y cuesta revertirlo. Las
+acciones de precio pasan por `precio_motor`, asi que respetan el piso de 15% y
+dicen cuanto mas hay que vender para no perder plata.
+
+**Que aprende de esto.** Cada correccion se registra en Cerebro con el
+diagnostico como hipotesis (`registrar_para_aprender`). A los 7 y 14 dias no se
+evalua solo "funciono el cambio" sino **si acerto el diagnostico**. Con los casos
+acumulados el sistema aprende que causa suele ser la correcta en cada rubro, y
+deja de proponer respuestas que en ese producto nunca sirvieron.
+
+Modulo: `modules/competencia_diagnostico.py`. Tests: `tests/test_competencia_diagnostico.py`.
+
+Pendiente para cerrarlo: la captura de resultados de busqueda desde el
+bookmarklet (que alimenta la comparacion con datos frescos) y el disparador
+automatico del bloque 4.2, que avisa cuando conviene mirar una keyword.
+
 ## 3. Precio (Sprint C)
 
 ### 3.1 Regla de fondo
