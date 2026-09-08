@@ -4603,80 +4603,36 @@ def preguntas(alias):
 
 @app.route('/api/generar-respuestas', methods=['POST'])
 def api_generar_respuestas():
-    import re as _re
-    body        = request.get_json() or {}
-    alias       = body.get('alias', '')
-    question    = body.get('question', '').strip()
-    item_title  = body.get('item_title', '')
-    item_desc   = body.get('item_description', '')
+    """Tres respuestas para una pregunta de comprador.
+
+    Cimientos 12.2: la generacion vive en modules/respuestas_ia.py, que es el
+    mismo codigo que usa el bot de Telegram. Antes estaba embebida aca y solo
+    podia usarla esta pantalla, asi que responder desde el celular hubiera
+    significado una segunda version de la misma logica.
+    """
+    from modules import respuestas_ia
+    body       = request.get_json() or {}
+    alias      = body.get('alias', '')
+    question   = (body.get('question') or '').strip()
+    item_title = body.get('item_title', '')
+    item_desc  = body.get('item_description', '')
 
     if not question:
         return jsonify({'ok': False, 'error': 'Falta la pregunta'}), 400
 
-    # Obtener descripción si no viene en el body
     if not item_desc and body.get('item_id'):
-        all_accs = get_accounts()
-        account  = next((a for a in all_accs if a.get('alias') == alias), None)
-        if account:
-            heads = {'Authorization': f'Bearer {account.get("access_token", "")}'}
-            dr = req_lib.get(f'https://api.mercadolibre.com/items/{body["item_id"]}/description',
-                             headers=heads, timeout=6)
-            if dr.ok:
-                item_desc = dr.json().get('plain_text', '')[:400]
+        try:
+            token, _, _ = _ml_auth(alias)
+            item_desc = respuestas_ia.descripcion_item(body['item_id'], token)
+        except Exception:
+            pass
 
-    desc_ctx = f"\nDescripción del producto: {item_desc}" if item_desc else ""
-
-    prompt = f"""Sos vendedor experto de MercadoLibre Argentina. Generás 3 respuestas distintas para la misma pregunta de comprador.
-
-Producto: {item_title}{desc_ctx}
-
-Pregunta: {question}
-
-GENERÁ EXACTAMENTE en este formato (sin cambiar los encabezados):
-
-OPCIÓN A — DIRECTA:
-[1-2 oraciones, respuesta corta y al punto, sin adornos]
-
-OPCIÓN B — COMPLETA:
-[3 oraciones, responde + agrega detalle técnico/especificación relevante]
-
-OPCIÓN C — ORIENTADA A LA VENTA:
-[2-3 oraciones, responde + destaca un beneficio del producto + invita a comprar con naturalidad]
-
-REGLAS obligatorias para las 3:
-- Español rioplatense (vos, tus, te)
-- Sin emojis
-- Sin signos de exclamación múltiples
-- Tono profesional y cálido
-- No repetir el título del producto completo"""
-
-    try:
-        ai   = anthropic.Anthropic()
-        resp = ai.messages.create(
-            model='claude-sonnet-4-6', max_tokens=600,
-            messages=[{'role': 'user', 'content': prompt}]
-        )
-        _log_token_usage('Repricing — Respuesta IA', 'claude-sonnet-4-6', resp.usage.input_tokens, resp.usage.output_tokens)
-        text = resp.content[0].text
-
-        opciones = []
-        defs = [
-            ('A', 'Directa y concisa',       r'OPCIÓN A[^\n]*:\n([\s\S]+?)(?=OPCIÓN B|\Z)'),
-            ('B', 'Completa con detalles',    r'OPCIÓN B[^\n]*:\n([\s\S]+?)(?=OPCIÓN C|\Z)'),
-            ('C', 'Orientada a la venta',     r'OPCIÓN C[^\n]*:\n([\s\S]+?)(?=\Z)'),
-        ]
-        for key, label, pat in defs:
-            m = _re.search(pat, text, _re.DOTALL)
-            opciones.append({
-                'key':   key,
-                'label': label,
-                'text':  m.group(1).strip() if m else '',
-            })
-
-        return jsonify({'ok': True, 'opciones': opciones})
-
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+    opciones = respuestas_ia.generar_opciones(
+        question, item_title, item_desc,
+        on_tokens=lambda m, i, o: _log_token_usage('Preguntas — 3 opciones', m, i, o))
+    if not opciones:
+        return jsonify({'ok': False, 'error': 'No se pudieron generar las respuestas'}), 500
+    return jsonify({'ok': True, 'opciones': opciones})
 
 
 @app.route('/api/responder-pregunta', methods=['POST'])
@@ -16302,6 +16258,43 @@ def _job_repricing_hourly():
             raise   # propagar para que el retry del JobManager lo capture
 
 
+def _enviar_preguntas_a_telegram(alias, preguntas, client):
+    """Manda cada pregunta nueva al celular con tres respuestas sugeridas.
+
+    Tope por corrida: cada pregunta cuesta una llamada a la IA, y una avalancha
+    de preguntas sin tope se traduce en una factura.
+    """
+    try:
+        from modules import telegram_bot, respuestas_ia
+    except Exception as e:
+        app.logger.warning('[preguntas] modulos no disponibles: %s', e)
+        return
+    if not telegram_bot.conectado():
+        return
+
+    token = client.account.access_token
+    enviadas = 0
+    for q in preguntas:
+        if enviadas >= respuestas_ia.MAX_POR_CORRIDA:
+            _tg('preguntas', f'{len(preguntas) - enviadas} preguntas mas sin responder',
+                'No las mando todas juntas para no gastar de mas en IA. '
+                'Estan en /bandeja.', alias)
+            break
+        item_id = str(q.get('item_id') or '')
+        texto   = (q.get('text') or '').strip()
+        if not texto:
+            continue
+        titulo = respuestas_ia.titulo_item(item_id, token) if item_id else ''
+        desc   = respuestas_ia.descripcion_item(item_id, token) if item_id else ''
+        opciones = respuestas_ia.generar_opciones(
+            texto, titulo, desc,
+            on_tokens=lambda m, i, o: _log_token_usage('Preguntas — 3 opciones', m, i, o))
+        if telegram_bot.notificar_pregunta(alias, q.get('id'), texto,
+                                           item_id=item_id, item_titulo=titulo,
+                                           opciones=opciones):
+            enviadas += 1
+
+
 def _job_questions_15min():
     """Job 3 — Refrescar preguntas pendientes en horario comercial.
 
@@ -16329,15 +16322,17 @@ def _job_questions_15min():
                 qs = r.json().get('questions', [])
                 # Persistir count para que la UI lo muestre — NO responder automáticamente
                 preg_path = os.path.join(DATA_DIR, f'preguntas_pendientes_{safe(acc.alias)}.json')
-                _prev_count = (load_json(preg_path) or {}).get('count', 0)
-                # Avisar solo cuando aparecen preguntas nuevas: repetir el mismo
-                # numero cada 15 minutos es la forma mas rapida de que deje de leerse.
-                if len(qs) > _prev_count:
-                    _tg('preguntas',
-                        f'{len(qs)} preguntas sin responder',
-                        f'{len(qs) - _prev_count} nuevas desde el ultimo chequeo. '
-                        f'Responder rapido mueve la conversion.',
-                        acc.alias)
+                _prev = load_json(preg_path) or {}
+                _prev_count = _prev.get('count', 0)
+                _vistas = set(str(q.get('id')) for q in (_prev.get('preguntas') or []))
+
+                # Cada pregunta nueva va al celular con tres respuestas ya
+                # escritas y los botones para enviarlas. Las preguntas entran a
+                # cualquier hora y responder rapido mueve la conversion, pero
+                # casi nunca uno esta frente a la computadora cuando llegan.
+                _nuevas = [q for q in qs if str(q.get('id')) not in _vistas]
+                if _nuevas:
+                    _enviar_preguntas_a_telegram(acc.alias, _nuevas, client)
                 save_json(preg_path, {
                     'fecha':         datetime.now().strftime('%Y-%m-%d %H:%M'),
                     'count':         len(qs),

@@ -261,6 +261,11 @@ def _procesar_mensaje(msg: dict) -> dict:
         _enviar_bandeja(str(chat_id))
         return {'ok': True, 'accion': 'bandeja'}
 
+    # Texto suelto: puede ser la respuesta que el usuario eligio escribir
+    res_libre = _texto_libre_para_pregunta(msg)
+    if res_libre:
+        return res_libre
+
     if comando == '/estado':
         _enviar_estado(str(chat_id))
         return {'ok': True, 'accion': 'estado'}
@@ -281,6 +286,11 @@ def _procesar_callback(cb: dict) -> dict:
     message_id = msg.get('message_id')
 
     partes = data.split(':')
+
+    # Preguntas de compradores: qp:<question_id>:<A|B|C|E|X>
+    if len(partes) == 3 and partes[0] == 'qp':
+        return _procesar_callback_pregunta(cb, partes[1], partes[2])
+
     if len(partes) < 4 or partes[0] != 'cb':
         _responder_callback(cb_id, 'No entendi ese boton')
         return {'ok': True, 'ignorado': True}
@@ -405,6 +415,230 @@ def guardar_para_resumen(tipo: str, texto: str, alias: str = '') -> bool:
     cfg['pendientes_resumen'] = cfg['pendientes_resumen'][-200:]
     _guardar(cfg)
     return True
+
+
+# ── Preguntas de compradores, respondibles desde el celular ──────────────────
+# Las preguntas entran a cualquier hora y responder rapido mueve la conversion,
+# pero casi nunca uno esta frente a la computadora cuando llegan. Aca llega la
+# pregunta con tres respuestas ya escritas y se contesta con un toque, o se
+# escribe una propia respondiendo al mensaje.
+#
+# El estado vive en data/telegram_preguntas.json, no en el chat: si el bot se
+# reinicia entre que manda la pregunta y el usuario toca el boton, la respuesta
+# igual se envia.
+
+PREGUNTAS_PATH = os.path.join(DATA_DIR, 'telegram_preguntas.json')
+
+# Cuanto se guarda una pregunta pendiente antes de considerarla vencida
+VENCIMIENTO_HORAS = 48
+
+
+def _preguntas() -> dict:
+    d = db_load(PREGUNTAS_PATH) or {}
+    return d if isinstance(d, dict) else {}
+
+
+def _guardar_preguntas(d: dict) -> None:
+    try:
+        db_save(PREGUNTAS_PATH, d)
+    except Exception as e:
+        _logger.error('[telegram] no pude guardar preguntas: %s', e)
+
+
+def _purgar_vencidas(d: dict) -> dict:
+    corte = datetime.now() - timedelta(hours=VENCIMIENTO_HORAS)
+    return {k: v for k, v in d.items()
+            if (v.get('ts') or '') >= corte.strftime('%Y-%m-%d %H:%M:%S')
+            or v.get('estado') == 'pendiente'}
+
+
+def notificar_pregunta(alias: str, question_id, texto_pregunta: str,
+                       item_id: str = '', item_titulo: str = '',
+                       opciones: list[dict] | None = None) -> bool:
+    """Manda una pregunta al celular con sus tres respuestas y los botones."""
+    if not conectado():
+        return False
+    qid = str(question_id)
+
+    data = _purgar_vencidas(_preguntas())
+    if qid in data and data[qid].get('estado') != 'pendiente':
+        return False   # ya se respondio
+    if qid in data and data[qid].get('avisada'):
+        return False   # ya se aviso, no repetir
+
+    opciones = opciones or []
+    lineas = ['💬 <b>Pregunta nueva</b>' + (f' · {_escape(alias)}' if alias else '')]
+    if item_titulo:
+        lineas.append(f'<i>{_escape(item_titulo[:70])}</i>')
+    lineas += ['', f'<b>"{_escape(texto_pregunta[:400])}"</b>']
+
+    if opciones:
+        lineas.append('')
+        for o in opciones:
+            lineas.append(f'<b>{o["key"]}) {_escape(o["label"])}</b>')
+            lineas.append(_escape(o['text'][:400]))
+            lineas.append('')
+        lineas.append('<i>Tocá una para enviarla, o respondé a este mensaje '
+                      'con tu propio texto.</i>')
+    else:
+        lineas.append('')
+        lineas.append('<i>No pude generar sugerencias. Respondé a este mensaje '
+                      'con tu texto y la envio.</i>')
+
+    botones = []
+    if opciones:
+        botones.append([{'text': o['key'], 'callback_data': f'qp:{qid}:{o["key"]}'}
+                        for o in opciones])
+    botones.append([{'text': 'Escribir otra', 'callback_data': f'qp:{qid}:E'},
+                    {'text': 'Después', 'callback_data': f'qp:{qid}:X'}])
+
+    ok = enviar('\n'.join(lineas), botones=botones)
+    if ok:
+        data[qid] = {
+            'alias': alias, 'item_id': item_id, 'item_titulo': item_titulo,
+            'pregunta': texto_pregunta, 'opciones': opciones,
+            'estado': 'pendiente', 'avisada': True,
+            'ts': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        _guardar_preguntas(data)
+    return ok
+
+
+def _token_de(alias: str) -> str | None:
+    try:
+        from core.account_manager import AccountManager
+        client = AccountManager().get_client(alias)
+        client._ensure_token()
+        return client.account.access_token
+    except Exception as e:
+        _logger.error('[telegram] no pude obtener el token de %s: %s', alias, e)
+        return None
+
+
+def _enviar_respuesta_a_ml(qid: str, texto: str) -> dict:
+    """Publica la respuesta en ML y la registra en Cerebro."""
+    from modules import respuestas_ia
+
+    data = _preguntas()
+    entry = data.get(qid)
+    if not entry:
+        return {'ok': False, 'error': 'esa pregunta ya no esta en la cola'}
+    if entry.get('estado') == 'respondida':
+        return {'ok': False, 'error': 'ya respondida', 'ya': True}
+
+    alias = entry.get('alias', '')
+    token = _token_de(alias)
+    if not token:
+        return {'ok': False, 'error': 'no pude autenticar la cuenta'}
+
+    res = respuestas_ia.responder_en_ml(qid, texto, token)
+    if not res.get('ok'):
+        return res
+
+    entry['estado'] = 'respondida'
+    entry['respuesta'] = texto
+    entry['respondida_ts'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    data[qid] = entry
+    _guardar_preguntas(data)
+
+    # Cerebro 1.1 — responder rapido deberia mover la conversion; queda medido
+    try:
+        from modules import cerebro
+        if entry.get('item_id'):
+            cerebro.registrar_accion(
+                alias, tipo='respuesta', item_id=entry['item_id'],
+                origen=cerebro.ORIGEN_USUARIO,
+                hipotesis='responder la pregunta destraba la compra y mejora la '
+                          'conversion de la publicacion',
+                estado_previo=cerebro.capturar_estado_previo(alias, entry['item_id']),
+                detalle={'question_id': qid, 'largo': len(texto), 'via': 'telegram'},
+                ejecutado_por='telegram')
+    except Exception as e:
+        _logger.warning('[telegram] no pude registrar la respuesta en cerebro: %s', e)
+
+    return {'ok': True}
+
+
+def _procesar_callback_pregunta(cb: dict, qid: str, opcion: str) -> dict:
+    cb_id      = cb.get('id')
+    msg        = cb.get('message') or {}
+    chat_id    = (msg.get('chat') or {}).get('id')
+    message_id = msg.get('message_id')
+
+    data = _preguntas()
+    entry = data.get(qid)
+    if not entry:
+        _responder_callback(cb_id, 'Esa pregunta ya no esta')
+        return {'ok': False}
+
+    if opcion == 'X':
+        _responder_callback(cb_id, 'Queda pendiente')
+        _editar(chat_id, message_id,
+                f'💬 <b>Pregunta postergada</b>\n<i>{_escape(entry.get("pregunta", "")[:200])}</i>\n\n'
+                f'Sigue sin responder. La vas a ver de nuevo en /bandeja.')
+        return {'ok': True, 'accion': 'postergada'}
+
+    if opcion == 'E':
+        _responder_callback(cb_id, 'Escribi tu respuesta')
+        enviar(f'✏️ Respondé a <b>este</b> mensaje con el texto que querés enviar '
+               f'para:\n<i>"{_escape(entry.get("pregunta", "")[:200])}"</i>',
+               chat_id=str(chat_id) if chat_id else None)
+        # El proximo mensaje que responda a este se toma como la respuesta
+        entry['esperando_texto'] = True
+        data[qid] = entry
+        _guardar_preguntas(data)
+        return {'ok': True, 'accion': 'esperando_texto'}
+
+    texto = next((o['text'] for o in (entry.get('opciones') or [])
+                  if o.get('key') == opcion), '')
+    if not texto:
+        _responder_callback(cb_id, 'No encontre esa opcion')
+        return {'ok': False}
+
+    res = _enviar_respuesta_a_ml(qid, texto)
+    if res.get('ok'):
+        _responder_callback(cb_id, 'Respuesta enviada')
+        _editar(chat_id, message_id,
+                f'✅ <b>Respondida</b>\n<i>"{_escape(entry.get("pregunta", "")[:150])}"</i>\n\n'
+                f'{_escape(texto[:400])}')
+        return {'ok': True, 'accion': 'respondida', 'qid': qid}
+
+    _responder_callback(cb_id, res.get('error', 'No se pudo enviar')[:180])
+    return res
+
+
+def _texto_libre_para_pregunta(msg: dict) -> dict | None:
+    """Si el usuario respondio a un pedido de texto, se envia eso a ML."""
+    texto = (msg.get('text') or '').strip()
+    if not texto or texto.startswith('/'):
+        return None
+    data = _preguntas()
+    esperando = [q for q, v in data.items()
+                 if v.get('esperando_texto') and v.get('estado') == 'pendiente']
+    if not esperando:
+        return None
+    # La mas reciente de las que esperan texto
+    qid = sorted(esperando, key=lambda q: data[q].get('ts', ''))[-1]
+    res = _enviar_respuesta_a_ml(qid, texto)
+    chat_id = str((msg.get('chat') or {}).get('id'))
+    if res.get('ok'):
+        entry = _preguntas().get(qid, {})
+        enviar(f'✅ <b>Respuesta enviada</b>\n'
+               f'<i>"{_escape(entry.get("pregunta", "")[:150])}"</i>\n\n{_escape(texto[:400])}',
+               chat_id=chat_id)
+    else:
+        enviar(f'No se pudo enviar: {_escape(res.get("error", ""))[:200]}', chat_id=chat_id)
+    return {'ok': res.get('ok'), 'accion': 'respondida_texto_libre', 'qid': qid}
+
+
+def preguntas_pendientes() -> list[dict]:
+    """Las que siguen sin responder, para /bandeja."""
+    out = []
+    for qid, v in _preguntas().items():
+        if v.get('estado') == 'pendiente':
+            out.append({**v, 'question_id': qid})
+    out.sort(key=lambda x: x.get('ts', ''))
+    return out
 
 
 def _fecha_larga() -> str:
@@ -607,6 +841,7 @@ def _total_bandeja() -> int:
         try:
             total += len(cerebro.acciones_pendientes(alias))
             total += len(cerebro.candidatos_pendientes(alias))
+            total += sum(1 for q in preguntas_pendientes() if q.get('alias') == alias)
         except Exception:
             continue
     return total
@@ -625,6 +860,18 @@ def _enviar_bandeja(chat_id: str) -> None:
             enviar(f'{_resumen_accion(acc)}\n<i>{_escape(acc.get("hipotesis", ""))}</i>',
                    botones=botones, chat_id=chat_id)
             enviado += 1
+        for q in preguntas_pendientes():
+            if q.get('alias') != alias:
+                continue
+            botones = [[{'text': o['key'], 'callback_data': f'qp:{q["question_id"]}:{o["key"]}'}
+                        for o in (q.get('opciones') or [])]]
+            botones.append([{'text': 'Escribir otra',
+                             'callback_data': f'qp:{q["question_id"]}:E'}])
+            enviar(f'💬 <b>Sin responder</b> · {_escape(q.get("item_titulo", "")[:60])}\n'
+                   f'<i>"{_escape(q.get("pregunta", "")[:200])}"</i>',
+                   botones=botones, chat_id=chat_id)
+            enviado += 1
+
         candidatos = cerebro.candidatos_pendientes(alias)
         if candidatos:
             enviar(f'👀 <b>{len(candidatos)} competidores por confirmar</b> · {_escape(alias)}\n'
