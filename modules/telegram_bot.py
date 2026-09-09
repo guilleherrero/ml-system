@@ -452,9 +452,21 @@ def _purgar_vencidas(d: dict) -> dict:
             or v.get('estado') == 'pendiente'}
 
 
+def ya_avisada(question_id) -> bool:
+    """True si esta pregunta ya se mando al celular o ya se respondio.
+
+    El job la consulta ANTES de generar las tres opciones con IA: cada opcion
+    cuesta una llamada al modelo y no tiene sentido pagarla para una pregunta
+    que despues no se va a mandar.
+    """
+    entry = _preguntas().get(str(question_id)) or {}
+    return bool(entry.get('avisada')) or entry.get('estado') == 'respondida'
+
+
 def notificar_pregunta(alias: str, question_id, texto_pregunta: str,
                        item_id: str = '', item_titulo: str = '',
-                       opciones: list[dict] | None = None) -> bool:
+                       opciones: list[dict] | None = None,
+                       horas_sin_responder: int = 0) -> bool:
     """Manda una pregunta al celular con sus tres respuestas y los botones."""
     if not conectado():
         return False
@@ -467,7 +479,16 @@ def notificar_pregunta(alias: str, question_id, texto_pregunta: str,
         return False   # ya se aviso, no repetir
 
     opciones = opciones or []
-    lineas = ['💬 <b>Pregunta nueva</b>' + (f' · {_escape(alias)}' if alias else '')]
+    # Una pregunta de hace dias no es "nueva" y hay que decirlo: el tiempo sin
+    # responder es lo que pesa en la reputacion.
+    if horas_sin_responder >= 48:
+        dias = horas_sin_responder // 24
+        cabecera = f'🔴 <b>Pregunta sin responder hace {dias} dias</b>'
+    elif horas_sin_responder >= 6:
+        cabecera = f'🟠 <b>Pregunta sin responder hace {horas_sin_responder} h</b>'
+    else:
+        cabecera = '💬 <b>Pregunta nueva</b>'
+    lineas = [cabecera + (f' · {_escape(alias)}' if alias else '')]
     if item_titulo:
         lineas.append(f'<i>{_escape(item_titulo[:70])}</i>')
     lineas += ['', f'<b>"{_escape(texto_pregunta[:400])}"</b>']

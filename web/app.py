@@ -16258,6 +16258,19 @@ def _job_repricing_hourly():
             raise   # propagar para que el retry del JobManager lo capture
 
 
+def _horas_desde(iso_ts) -> int:
+    """Horas transcurridas desde un timestamp ISO de ML. 0 si no se puede leer."""
+    if not iso_ts:
+        return 0
+    try:
+        ts = datetime.fromisoformat(str(iso_ts).replace('Z', '+00:00'))
+        if ts.tzinfo:
+            ts = ts.replace(tzinfo=None)
+        return max(0, int((datetime.utcnow() - ts).total_seconds() // 3600))
+    except Exception:
+        return 0
+
+
 def _enviar_preguntas_a_telegram(alias, preguntas, client):
     """Manda cada pregunta nueva al celular con tres respuestas sugeridas.
 
@@ -16274,7 +16287,17 @@ def _enviar_preguntas_a_telegram(alias, preguntas, client):
 
     token = client.account.access_token
     enviadas = 0
+    # Las mas viejas primero: una pregunta sin responder hace dias pesa en la
+    # reputacion mucho mas que una de hace un rato.
+    preguntas = sorted(preguntas, key=lambda q: (q.get('date_created') or ''))
     for q in preguntas:
+        # El unico filtro valido de "ya avisada" es el estado del bot. Antes se
+        # usaba el archivo de preguntas vistas, que se guardaba en cada corrida
+        # aunque el envio hubiera fallado o el feature todavia no existiera: una
+        # pregunta que entro antes del 07/09 quedaba marcada como vista para
+        # siempre y no se mandaba nunca.
+        if telegram_bot.ya_avisada(q.get('id')):
+            continue
         if enviadas >= respuestas_ia.MAX_POR_CORRIDA:
             _tg('preguntas', f'{len(preguntas) - enviadas} preguntas mas sin responder',
                 'No las mando todas juntas para no gastar de mas en IA. '
@@ -16291,7 +16314,8 @@ def _enviar_preguntas_a_telegram(alias, preguntas, client):
             on_tokens=lambda m, i, o: _log_token_usage('Preguntas — 3 opciones', m, i, o))
         if telegram_bot.notificar_pregunta(alias, q.get('id'), texto,
                                            item_id=item_id, item_titulo=titulo,
-                                           opciones=opciones):
+                                           opciones=opciones,
+                                           horas_sin_responder=_horas_desde(q.get('date_created'))):
             enviadas += 1
 
 
@@ -16322,17 +16346,17 @@ def _job_questions_15min():
                 qs = r.json().get('questions', [])
                 # Persistir count para que la UI lo muestre — NO responder automáticamente
                 preg_path = os.path.join(DATA_DIR, f'preguntas_pendientes_{safe(acc.alias)}.json')
-                _prev = load_json(preg_path) or {}
-                _prev_count = _prev.get('count', 0)
-                _vistas = set(str(q.get('id')) for q in (_prev.get('preguntas') or []))
 
-                # Cada pregunta nueva va al celular con tres respuestas ya
-                # escritas y los botones para enviarlas. Las preguntas entran a
-                # cualquier hora y responder rapido mueve la conversion, pero
+                # Cada pregunta sin responder va al celular con tres respuestas
+                # ya escritas y los botones para enviarlas. Las preguntas entran
+                # a cualquier hora y responder rapido mueve la conversion, pero
                 # casi nunca uno esta frente a la computadora cuando llegan.
-                _nuevas = [q for q in qs if str(q.get('id')) not in _vistas]
-                if _nuevas:
-                    _enviar_preguntas_a_telegram(acc.alias, _nuevas, client)
+                # Se mandan TODAS las sin responder: el bot lleva su propio
+                # registro de cuales ya aviso, asi que no repite. El filtro
+                # anterior contra el archivo de vistas dejaba afuera para
+                # siempre cualquier pregunta anterior al feature.
+                if qs:
+                    _enviar_preguntas_a_telegram(acc.alias, qs, client)
                 save_json(preg_path, {
                     'fecha':         datetime.now().strftime('%Y-%m-%d %H:%M'),
                     'count':         len(qs),

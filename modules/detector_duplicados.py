@@ -515,6 +515,9 @@ def _attrs_cache_vigente(entry: dict) -> bool:
     # legacy y hay que re-fetchear con el multiget enriquecido.
     if 'installments' not in entry or 'shipping' not in entry:
         return False
+    # Hotfix #4: catalogo es el 8vo eje; sin el, la entry es legacy.
+    if 'catalogo' not in entry:
+        return False
     try:
         ts = datetime.fromisoformat(entry['fetched_at'].replace('Z', '+00:00'))
         if ts.tzinfo:
@@ -536,6 +539,7 @@ def fetch_items_attributes(item_ids: list, alias: str, data_dir: str,
             'attributes':   list[{id, value_name, value_id}],
             'installments': dict | None,   # {quantity, rate, amount} o None
             'shipping':     dict | None,   # {free_shipping, mode, logistic_type} o None
+            'catalogo':     dict | None,   # {catalog_listing, catalog_product_id}
         }}
 
     Hotfix #3 (09/05/2026): el multiget ahora también trae installments y
@@ -553,6 +557,7 @@ def fetch_items_attributes(item_ids: list, alias: str, data_dir: str,
                 'attributes':   cache[iid].get('attributes', []),
                 'installments': cache[iid].get('installments'),
                 'shipping':     cache[iid].get('shipping'),
+                'catalogo':     cache[iid].get('catalogo'),
             }
         else:
             a_fetchear.append(iid)
@@ -576,7 +581,8 @@ def fetch_items_attributes(item_ids: list, alias: str, data_dir: str,
                 'https://api.mercadolibre.com/items',
                 params={
                     'ids': ','.join(chunk),
-                    'attributes': 'id,attributes,installments,shipping',
+                    'attributes': ('id,attributes,installments,shipping,'
+                                   'catalog_listing,catalog_product_id'),
                 },
                 headers=headers, timeout=10,
             )
@@ -610,16 +616,25 @@ def fetch_items_attributes(item_ids: list, alias: str, data_dir: str,
                     'logistic_type':  ship.get('logistic_type'),
                 } if ship else None
 
+                # Compactar catalogo — el eje que separa una publicacion de
+                # catalogo de una tradicional del mismo producto
+                cat_compact = {
+                    'catalog_listing':    bool(body.get('catalog_listing')),
+                    'catalog_product_id': body.get('catalog_product_id') or '',
+                }
+
                 resultado[iid] = {
                     'attributes':   attrs_compact,
                     'installments': inst_compact,
                     'shipping':     ship_compact,
+                    'catalogo':     cat_compact,
                 }
                 cache[iid] = {
                     'fetched_at':   now_iso,
                     'attributes':   attrs_compact,
                     'installments': inst_compact,
                     'shipping':     ship_compact,
+                    'catalogo':     cat_compact,
                 }
         except Exception:
             continue
@@ -672,7 +687,7 @@ def _son_variantes_por_attributes(items_attrs: list) -> tuple:
 #
 # Regla estricta: dos publicaciones son duplicado SI Y SOLO SI son idénticas en
 # TODOS estos ejes: precio (±$50 por redondeo), listing_type, free_shipping,
-# color, talle. Si difieren en cualquiera → NO son duplicado, no aparecen en la
+# color, talle, cuotas, logística y canal (catálogo vs tradicional). Si difieren en cualquiera → NO son duplicado, no aparecen en la
 # sección /duplicados.
 #
 # Esto reemplaza la lógica anterior basada en clusters de similitud de título +
@@ -707,7 +722,7 @@ def _clave_duplicacion(item: dict, metadata) -> tuple:
     Items con la misma clave son duplicados entre sí (violan política ML).
     Items con clave distinta NO son duplicados (variación legítima).
 
-    La clave se compone de 7 ejes:
+    La clave se compone de 8 ejes:
       - precio_bucket: precio redondeado a múltiplo de 100 (tolerancia ±$50)
       - listing: 'classic' / 'premium' / '' (vía _normalizar_listing)
       - free_shipping: True / False
@@ -718,6 +733,8 @@ def _clave_duplicacion(item: dict, metadata) -> tuple:
       - cuotas: tupla (cantidad, sin_interes) extraída de installments del
                 multiget. Si no hay datos, queda (0, False) — todos los items
                 sin API caen en el mismo bucket (compat).
+      - catalogo: True si es publicación de catálogo. Catálogo y tradicional
+                  del mismo producto son canales distintos, no duplicados.
       - logistic_type: 'fulfillment' (Full) / 'cross_docking' / 'self_service'
                        / etc., extraído de shipping del multiget. Si no hay
                        datos, queda '' (todos los items sin API caen en el
@@ -735,14 +752,17 @@ def _clave_duplicacion(item: dict, metadata) -> tuple:
         attrs_oficiales = metadata.get('attributes', [])
         installments    = metadata.get('installments') or {}
         shipping_extra  = metadata.get('shipping') or {}
+        catalogo_extra  = metadata.get('catalogo') or {}
     elif isinstance(metadata, list):
         attrs_oficiales = metadata
         installments    = {}
         shipping_extra  = {}
+        catalogo_extra  = {}
     else:
         attrs_oficiales = []
         installments    = {}
         shipping_extra  = {}
+        catalogo_extra  = {}
 
     precio = float(item.get('precio') or 0)
     precio_bucket = int(round(precio / 100.0)) * 100
@@ -780,7 +800,16 @@ def _clave_duplicacion(item: dict, metadata) -> tuple:
     # sin metadata API quedan en '' (mismo bucket entre sí).
     logistic = (shipping_extra.get('logistic_type') or '').strip().lower()
 
-    return (precio_bucket, listing, free_shipping, color, talle, cuotas_clave, logistic)
+    # Eje 8: catalogo. Una publicacion de catalogo y una tradicional del mismo
+    # producto NO son duplicados: son dos canales distintos con reglas
+    # distintas (la de catalogo compite por el buy box y no tiene contenido
+    # propio; la tradicional tiene titulo, fotos y descripcion propios). ML no
+    # las sanciona y pausar una de las dos apaga medio catalogo. Ver
+    # CEREBRO.md 3.6. Items sin metadata API quedan en False (compat).
+    es_catalogo = bool(catalogo_extra.get('catalog_listing'))
+
+    return (precio_bucket, listing, free_shipping, color, talle, cuotas_clave,
+            logistic, es_catalogo)
 
 
 def _subdividir_cluster(cluster_items: list[dict],
@@ -822,7 +851,7 @@ def _subdividir_cluster(cluster_items: list[dict],
     return list(grupos.values())
 
 
-# Hotfix #3 (09/05/2026): nombres legibles de los 7 ejes de la clave de
+# Hotfix #4 (09/08/2026): nombres legibles de los 8 ejes de la clave de
 # duplicación, en el mismo orden que el tuple devuelto por _clave_duplicacion.
 _NOMBRES_EJES_CLAVE = (
     'precio',
@@ -832,6 +861,7 @@ _NOMBRES_EJES_CLAVE = (
     'talle',
     'cuotas',
     'tipo de envío (Full vs no Full)',
+    'canal (catálogo vs tradicional)',
 )
 
 
@@ -884,7 +914,10 @@ def _clasificar_cluster(cluster_items: list[dict],
         items_attrs = []
         for it in cluster_items:
             iid = it.get('id', '')
-            items_attrs.append(attrs_por_item.get(iid, []))
+            meta = attrs_por_item.get(iid)
+            if isinstance(meta, dict):
+                meta = meta.get('attributes') or []
+            items_attrs.append(meta if isinstance(meta, list) else [])
 
         # ¿Son variantes según los attributes oficiales?
         es_var_attr, attr_diff = _son_variantes_por_attributes(items_attrs)
@@ -1237,8 +1270,12 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
 
     clusters: list[Cluster] = []
     for grupo_original in grupos:
-        # Subdivisión por clave de duplicación (7 ejes, hotfix #3 del 09/05/2026):
-        # precio + listing + free_shipping + color + talle + cuotas + logistic.
+        # Subdivisión por clave de duplicación (8 ejes, hotfix #4 del 09/08/2026):
+        # precio + listing + free_shipping + color + talle + cuotas + logistic
+        # + catálogo. El último eje evita el falso positivo mas caro que tenia
+        # el detector: la publicacion de catalogo y la tradicional del mismo
+        # producto se marcaban como duplicado mixto y el sistema recomendaba
+        # pausar una de las dos.
         # Sub-clusters de tamaño 1 = variantes legítimas (no duplicados).
         sub_grupos = _subdividir_cluster(grupo_original, attrs_por_item)
         dup_groups = [s for s in sub_grupos if len(s) >= 2]
@@ -1317,7 +1354,9 @@ def detectar_duplicados(stock_items: list[dict], alias: str,
                         'Verificá manualmente las condiciones de cada publicación antes de pausar.'
                     )
                 else:
-                    nota_leg = 'Coinciden en los 7 ejes (precio, listing, envío, color, talle, cuotas, logistic). Duplicado prohibido por ML.'
+                    nota_leg = ('Coinciden en los 8 ejes (precio, listing, envío, '
+                                'color, talle, cuotas, logística, canal). '
+                                'Duplicado prohibido por ML.')
             else:
                 nota_leg = 'Duplicado dentro de un cluster con variantes legítimas'
                 if ejes_diff:
