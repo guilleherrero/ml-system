@@ -166,12 +166,30 @@
   {% endfor %}
 {% endif %}
 
-{% if data.sin_datos %}
-  <div class="kw-seccion">Autosuggest no devolvió búsquedas ({{ data.sin_datos|length }})</div>
+{% if data.fallos_de_consulta %}
+  <div class="kw-seccion">No se pudo consultar autosuggest</div>
+  <div class="app-card" style="border-left:4px solid var(--color-critical-500)">
+    <p style="font-size:.85rem;margin:0 0 .4rem">
+      <i class="bi bi-exclamation-triangle"></i>
+      <b>{{ data.fallos_de_consulta }} de {{ data.items_sin_datos }}</b> publicaciones
+      fallaron por un problema de acceso, no por falta de demanda:
+      <code>{{ data.motivo_del_fallo }}</code>
+    </p>
+    <p style="font-size:.8rem;margin:0;color:var(--color-neutral-600)">
+      Sin autosuggest no hay diagnóstico posible — es la única fuente que dice qué
+      busca la gente de verdad. Si esto persiste, también afecta a Optimizar IA,
+      que usa la misma fuente para generar títulos.
+    </p>
+  </div>
+{% endif %}
+
+{% set sin_demanda = data.items_sin_datos - data.fallos_de_consulta %}
+{% if sin_demanda > 0 %}
+  <div class="kw-seccion">Autosuggest no devolvió búsquedas ({{ sin_demanda }})</div>
   <div class="app-card">
     <p style="font-size:.82rem;margin:0">
-      Suele pasar con productos muy de nicho o con títulos que no arrancan por el
-      nombre del producto. No se puede diagnosticar sin saber qué busca la gente.
+      La consulta funcionó pero volvió vacía. Suele pasar con productos muy de nicho
+      o con títulos que no arrancan por el nombre del producto.
     </p>
   </div>
 {% endif %}

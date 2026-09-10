@@ -44,11 +44,16 @@ from modules import defensa_publicacion as dp
 _logger = logging.getLogger(__name__)
 
 _AS_URL = 'https://http2.mlstatic.com/resources/sites/MLA/autosuggest'
+# Mismos headers que usa seo_optimizer, que es el que viene funcionando en
+# produccion. ML mira Origin y Referer: sin esos dos devuelve vacio en vez de
+# error, que es la peor forma de fallar porque parece un producto sin demanda.
 _AS_HEADERS = {
     'User-Agent': ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                   'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'),
-    'Accept': 'application/json',
-    'Referer': 'https://www.mercadolibre.com.ar/',
+                   'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
+    'Referer':         'https://www.mercadolibre.com.ar/',
+    'Accept':          'application/json, text/javascript, */*; q=0.01',
+    'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
+    'Origin':          'https://www.mercadolibre.com.ar',
 }
 
 # El cache de autosuggest dura un dia: las busquedas de un producto no cambian
@@ -98,20 +103,36 @@ def _cache_vigente(entry: dict) -> bool:
         return False
 
 
-def consultar_autosuggest(query: str, limit: int = 10) -> list[str]:
-    """Las frases que la gente escribe de verdad, en orden de popularidad."""
+def consultar_autosuggest(query: str, limit: int = 10) -> tuple[list[str], str]:
+    """Las frases que la gente escribe de verdad, en orden de popularidad.
+
+    Devuelve (frases, error). El error importa tanto como las frases: una lista
+    vacia porque ML corto el acceso y una lista vacia porque el producto no tiene
+    demanda son cosas distintas, y decir "producto de nicho" cuando en realidad
+    fallo la consulta es inventar una causa (criterio 1: no mentir).
+    """
     if not (query or '').strip():
-        return []
-    try:
-        r = requests.get(_AS_URL,
-                         params={'q': query, 'limit': limit, 'lang': 'es_AR'},
-                         headers=_AS_HEADERS, timeout=6)
-        if r.ok:
-            return [s['q'] for s in r.json().get('suggested_queries', []) if s.get('q')]
-        _logger.warning('[keywords] autosuggest HTTP %s para %r', r.status_code, query[:40])
-    except requests.RequestException as e:
-        _logger.warning('[keywords] autosuggest fallo para %r: %s', query[:40], e)
-    return []
+        return [], 'consulta vacia'
+    for intento in range(3):
+        try:
+            r = requests.get(_AS_URL,
+                             params={'q': query, 'limit': limit, 'lang': 'es_AR'},
+                             headers=_AS_HEADERS, timeout=8)
+            if r.ok:
+                frases = [s['q'] for s in r.json().get('suggested_queries', []) if s.get('q')]
+                return frases, ''
+            if r.status_code == 429:
+                time.sleep(intento + 1)
+                continue
+            _logger.warning('[keywords] autosuggest HTTP %s para %r — cuerpo: %s',
+                            r.status_code, query[:40], (r.text or '')[:160])
+            return [], f'ML respondio HTTP {r.status_code}'
+        except requests.RequestException as e:
+            _logger.warning('[keywords] autosuggest fallo para %r: %s', query[:40], e)
+            if intento == 2:
+                return [], f'no se pudo conectar con autosuggest: {type(e).__name__}'
+            time.sleep(0.5)
+    return [], 'autosuggest sigue rechazando las consultas (429)' 
 
 
 def semillas_de(titulo: str) -> list[str]:
@@ -138,7 +159,8 @@ def semillas_de(titulo: str) -> list[str]:
     return [s for i, s in enumerate(sem) if s and s not in sem[:i]]
 
 
-def universo_de_item(titulo: str, alias: str, presupuesto: list[int]) -> list[dict]:
+def universo_de_item(titulo: str, alias: str,
+                     presupuesto: list[int]) -> tuple[list[dict], str]:
     """El universo de busquedas reales del producto, cacheado por semilla.
 
     `presupuesto` es una lista de un elemento que se descuenta en cada consulta
@@ -150,6 +172,7 @@ def universo_de_item(titulo: str, alias: str, presupuesto: list[int]) -> list[di
 
     sugerencias: dict[str, list[str]] = {}
     toco_red = False
+    errores: list[str] = []
     for semilla in semillas_de(titulo):
         entry = cache.get(semilla)
         if entry and _cache_vigente(entry):
@@ -159,8 +182,13 @@ def universo_de_item(titulo: str, alias: str, presupuesto: list[int]) -> list[di
             continue
         presupuesto[0] -= 1
         toco_red = True
-        frases = consultar_autosuggest(semilla)
-        cache[semilla] = {'ts': time.time(), 'frases': frases}
+        frases, error = consultar_autosuggest(semilla)
+        if error:
+            errores.append(error)
+        else:
+            # Solo se cachea lo que se pudo consultar: cachear un fallo lo
+            # congela 24 horas y esconde el problema.
+            cache[semilla] = {'ts': time.time(), 'frases': frases}
         sugerencias[semilla] = frases
         time.sleep(_PAUSA_ENTRE_CONSULTAS)
 
@@ -170,7 +198,7 @@ def universo_de_item(titulo: str, alias: str, presupuesto: list[int]) -> list[di
         except Exception as e:
             _logger.warning('[keywords] no pude guardar el cache: %s', e)
 
-    return dp.universo_keywords(sugerencias)
+    return dp.universo_keywords(sugerencias), (errores[0] if errores else '')
 
 
 # ── Diagnostico por publicacion ──────────────────────────────────────────────
@@ -192,7 +220,8 @@ def _visitas_recuperables(cobertura: dict, visitas_30d: int) -> float:
 
 def diagnosticar_item(item: dict, universo: list[dict], *,
                       ficha_texto: str = '', descripcion: str = '',
-                      atributos_vacios: list[str] | None = None) -> dict:
+                      atributos_vacios: list[str] | None = None,
+                      error_consulta: str = '') -> dict:
     """Que le falta a esta publicacion para que la encuentren, y cuanto vale.
 
     `item` necesita: id, titulo, y opcionalmente visitas_30d, ventas_30d,
@@ -200,9 +229,13 @@ def diagnosticar_item(item: dict, universo: list[dict], *,
     """
     titulo = item.get('titulo') or item.get('title') or ''
     if not universo:
+        motivo = error_consulta or ('autosuggest no devolvio busquedas para este '
+                                    'producto — puede ser muy de nicho, o el titulo '
+                                    'no arranca por el nombre del producto')
         return {'item_id': item.get('id', ''), 'titulo': titulo,
                 'sin_datos': True,
-                'motivo': 'autosuggest no devolvio busquedas para este producto'}
+                'fallo_la_consulta': bool(error_consulta),
+                'motivo': motivo}
 
     cobertura = dp.analizar_cobertura(titulo, universo,
                                       ficha_texto=ficha_texto,
@@ -336,13 +369,14 @@ def barrer(alias: str, items: list[dict], *,
         titulo = it.get('titulo') or it.get('title') or ''
         if not titulo:
             continue
-        universo = universo_de_item(titulo, alias, presupuesto)
+        universo, error = universo_de_item(titulo, alias, presupuesto)
         f = ficha_por_item.get(it.get('id', '')) or {}
         d = diagnosticar_item(
             it, universo,
             ficha_texto=f.get('ficha_texto', ''),
             descripcion=f.get('descripcion', ''),
-            atributos_vacios=f.get('atributos_vacios') or [])
+            atributos_vacios=f.get('atributos_vacios') or [],
+            error_consulta=error)
         if d.get('sin_datos'):
             sin_datos.append(d)
         else:
@@ -360,6 +394,9 @@ def barrer(alias: str, items: list[dict], *,
         'alias':               alias,
         'items_analizados':    len(hallazgos),
         'items_sin_datos':     len(sin_datos),
+        'fallos_de_consulta':  sum(1 for d in sin_datos if d.get('fallo_la_consulta')),
+        'motivo_del_fallo':    next((d['motivo'] for d in sin_datos
+                                     if d.get('fallo_la_consulta')), ''),
         'items_con_hallazgos': len(con_accion),
         'consultas_usadas':    MAX_CONSULTAS_POR_CORRIDA - presupuesto[0],
         'presupuesto_agotado': presupuesto[0] <= 0,
