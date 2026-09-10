@@ -3188,6 +3188,27 @@ def api_salud_catalog_scan(alias):
     return jsonify({'ok': True, 'resultados': resultados})
 
 
+@app.route('/api/catalogo-competidores/<alias>/<item_id>')
+def api_catalogo_competidores(alias, item_id):
+    """Quien mas vende sobre la misma ficha de catalogo, y por que no la gano.
+
+    price_to_win dice si ganamos y cuanto falta, pero no quien esta del otro
+    lado. Sin eso no se puede decidir: perder contra un vendedor grande con
+    mejor logistica no se arregla igual que perder contra alguien que aparecio
+    ayer con tres unidades.
+    """
+    from modules import catalogo_competencia
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    datos = catalogo_competencia.competidores_de(item_id, heads, mi_user_id=user_id)
+    marca_propia = request.args.get('marca', '').strip()
+    datos['diagnostico'] = catalogo_competencia.diagnosticar(datos, marca_propia)
+    return jsonify(datos)
+
+
 @app.route('/api/debug-catalog-search/<alias>')
 def api_debug_catalog_search(alias):
     """Debug: busca en /products/search y /sites/MLA/search para un item o query."""
@@ -16317,8 +16338,19 @@ def _horas_desde(iso_ts) -> int:
         return 0
 
 
+# Despues de esto, una pregunta sin responder dejo de ser una venta que se puede
+# destrabar. El comprador ya compro en otro lado, y responderle a alguien que
+# pregunto hace tres semanas no vende nada: lo que queda es el rastro de por que
+# no se respondio —casi siempre, que estabamos sin stock—. Se sigue mostrando,
+# pero como higiene del historial y no como algo que interrumpe el dia.
+DIAS_PREGUNTA_VIGENTE = 7
+
+
 def _enviar_preguntas_a_telegram(alias, preguntas, client):
     """Manda cada pregunta nueva al celular con tres respuestas sugeridas.
+
+    Solo las vigentes. Una pregunta de hace semanas no se manda al telefono ni
+    se le gastan tokens de IA en generar respuestas: el comprador ya no esta.
 
     Tope por corrida: cada pregunta cuesta una llamada a la IA, y una avalancha
     de preguntas sin tope se traduce en una factura.
@@ -16336,7 +16368,24 @@ def _enviar_preguntas_a_telegram(alias, preguntas, client):
     # Las mas viejas primero: una pregunta sin responder hace dias pesa en la
     # reputacion mucho mas que una de hace un rato.
     preguntas = sorted(preguntas, key=lambda q: (q.get('date_created') or ''))
-    for q in preguntas:
+
+    vencidas = [q for q in preguntas
+                if _horas_desde(q.get('date_created')) >= DIAS_PREGUNTA_VIGENTE * 24]
+    vigentes = [q for q in preguntas if q not in vencidas]
+
+    # Las vencidas se marcan como avisadas para que no vuelvan cada 15 minutos,
+    # y se reportan una sola vez juntas.
+    if vencidas:
+        nuevas_vencidas = [q for q in vencidas if not telegram_bot.ya_avisada(q.get('id'))]
+        if nuevas_vencidas:
+            telegram_bot.archivar_preguntas_vencidas(alias, nuevas_vencidas)
+            _tg('preguntas',
+                f'{len(nuevas_vencidas)} preguntas viejas sin responder',
+                'Tienen mas de una semana: el comprador ya no esta y responderlas no '
+                'vende. Lo que dicen es por que no se respondieron en su momento '
+                '(casi siempre, falta de stock). Estan en /preguntas.', alias)
+
+    for q in vigentes:
         # El unico filtro valido de "ya avisada" es el estado del bot. Antes se
         # usaba el archivo de preguntas vistas, que se guardaba en cada corrida
         # aunque el envio hubiera fallado o el feature todavia no existiera: una

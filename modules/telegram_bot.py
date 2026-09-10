@@ -525,6 +525,37 @@ def notificar_pregunta(alias: str, question_id, texto_pregunta: str,
     return ok
 
 
+def archivar_preguntas_vencidas(alias: str, preguntas: list[dict]) -> int:
+    """Deja constancia de las preguntas viejas sin mandarlas al telefono.
+
+    Se guardan como avisadas y en estado `vencida` para que no vuelvan cada 15
+    minutos. No son una venta que se pueda destrabar —el comprador ya no esta—
+    sino el rastro de por que no se respondieron en su momento.
+    """
+    data = _preguntas()
+    guardadas = 0
+    ahora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for q in preguntas:
+        qid = str(q.get('id') or '')
+        if not qid or qid in data:
+            continue
+        data[qid] = {
+            'alias': alias,
+            'item_id': str(q.get('item_id') or ''),
+            'item_titulo': '',
+            'pregunta': (q.get('text') or '')[:400],
+            'opciones': [],
+            'estado': 'vencida',
+            'avisada': True,
+            'ts': ahora,
+            'date_created': q.get('date_created') or '',
+        }
+        guardadas += 1
+    if guardadas:
+        _guardar_preguntas(data)
+    return guardadas
+
+
 def _token_de(alias: str) -> str | None:
     try:
         from core.account_manager import AccountManager
@@ -653,13 +684,24 @@ def _texto_libre_para_pregunta(msg: dict) -> dict | None:
 
 
 def preguntas_pendientes() -> list[dict]:
-    """Las que siguen sin responder, para /bandeja."""
+    """Las que siguen sin responder Y todavia tienen sentido responder.
+
+    Las vencidas quedan afuera a proposito: la bandeja es lo que hay que
+    decidir hoy, y una pregunta de hace tres semanas no es una decision, es
+    historial.
+    """
     out = []
     for qid, v in _preguntas().items():
         if v.get('estado') == 'pendiente':
             out.append({**v, 'question_id': qid})
     out.sort(key=lambda x: x.get('ts', ''))
     return out
+
+
+def preguntas_vencidas() -> list[dict]:
+    """Las viejas sin responder — historial, no bandeja."""
+    return [{**v, 'question_id': q} for q, v in _preguntas().items()
+            if v.get('estado') == 'vencida']
 
 
 def _fecha_larga() -> str:
