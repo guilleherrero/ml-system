@@ -10605,6 +10605,32 @@ def alertas():
     return render_template('alertas.html', accounts=get_accounts())
 
 
+@app.route('/keywords/<alias>')
+def keywords_diagnostico(alias):
+    """Que le falta a cada publicacion para que la encuentren.
+
+    Lee el archivo que deja el job de las 05:00. La pagina no consulta
+    autosuggest: el barrido son ~200 consultas y colgaria la pantalla.
+    """
+    data = load_json(os.path.join(DATA_DIR,
+                                  f'diagnostico_keywords_{safe(alias)}.json')) or None
+
+    typos_total = 0
+    plata_total = 0.0
+    if data:
+        for h in (data.get('valuados') or []) + (data.get('no_valuados') or []):
+            typos_total += len(h.get('errores_escritura') or [])
+        plata_total = sum(float(h.get('impacto_mensual_ars') or 0)
+                          for h in (data.get('valuados') or []))
+
+    return render_template('keywords.html',
+                           alias=alias,
+                           data=data,
+                           typos_total=typos_total,
+                           plata_total=plata_total,
+                           accounts=get_accounts())
+
+
 @app.route('/duplicados/<alias>')
 def duplicados(alias):
     """Detector de publicaciones duplicadas / canibalización por cuenta."""
@@ -16738,6 +16764,61 @@ def _job_daily_snapshots():
           f'sobre {sum(len(v) for v in por_alias.values())} items elegibles.')
 
 
+def _job_keywords_diario():
+    """Barrido diario de keywords y ficha contra la demanda real de autosuggest.
+
+    Es la mitad de Cerebro que sirve desde el primer dia: medir si un cambio
+    funciono necesita 14 dias de historia, pero diagnosticar que esta mal hoy no
+    necesita ninguno. Corre de madrugada y deja el resultado en un archivo; el
+    Top 3 y la pantalla lo leen de ahi, porque el barrido son ~200 consultas a
+    autosuggest y colgaria una pagina.
+
+    El presupuesto de consultas por corrida esta topeado dentro del modulo: lo
+    que no entra hoy queda cacheado y la corrida siguiente avanza sobre las
+    publicaciones que faltaron.
+    """
+    from core.account_manager import AccountManager
+    from modules import diagnostico_keywords
+
+    mgr = AccountManager()
+    accounts = [a for a in mgr.list_accounts() if a.active]
+    if not accounts:
+        print('[keywords] sin cuentas activas — skip')
+        return
+
+    for acc in accounts:
+        try:
+            stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(acc.alias)}.json')) or {}
+            items = stock.get('items') or []
+            if not items:
+                print(f'[keywords] {acc.alias}: sin stock cargado — skip')
+                continue
+
+            res = diagnostico_keywords.barrer(acc.alias, items)
+            save_json(os.path.join(DATA_DIR,
+                                   f'diagnostico_keywords_{safe(acc.alias)}.json'), res)
+            print(f'[keywords] {acc.alias}: {res["items_analizados"]} analizados, '
+                  f'{res["items_con_hallazgos"]} con hallazgos, '
+                  f'{res["consultas_usadas"]} consultas'
+                  + (' (presupuesto agotado, sigue mañana)'
+                     if res['presupuesto_agotado'] else ''))
+
+            # Un error de escritura no espera al resumen: apaga busquedas enteras
+            # y se arregla con una letra.
+            typos = [h for h in (res['valuados'] + res['no_valuados'])
+                     if h.get('errores_escritura')]
+            for h in typos[:3]:
+                e = h['errores_escritura'][0]
+                _tg('veredicto',
+                    f'Error de escritura en {h["titulo"][:45]}',
+                    f'Dice "{e["escrito"]}" donde la gente busca "{e["deberia_ser"]}". '
+                    f'Apaga {e["cuantas"]} busquedas reales.',
+                    acc.alias)
+        except Exception as e:
+            app.logger.error('[keywords] %s — error: %s', acc.alias, e)
+            raise
+
+
 def _job_cerebro_snapshots():
     """Cerebro 1.4 + 4.1 — serie diaria por publicacion, con Ads separado.
 
@@ -17160,6 +17241,20 @@ def _start_scheduler():
             description=('Evalua a 7 y 14 dias cada accion aplicada contra un '
                          'control de publicaciones hermanas, y consolida los '
                          'aprendizajes que ordenan las recomendaciones.'),
+        )
+
+        # Job 13 — Barrido de keywords y ficha contra autosuggest — 05:00 ART
+        # Corre despues de cerebro_evaluar (04:30) y antes de que el usuario se
+        # levante, asi el Top 3 y el resumen de Telegram ya lo encuentran hecho.
+        jm.register_job(
+            'keywords_diario', _job_keywords_diario,
+            CronTrigger(hour=5, minute=0,
+                        timezone='America/Argentina/Buenos_Aires'),
+            name='Keywords y ficha — barrido diario',
+            description=('Cruza titulo, ficha y descripcion de cada publicacion '
+                         'contra las busquedas reales de autosuggest: errores de '
+                         'escritura, atributos vacios y keywords que dejan demanda '
+                         'afuera. No necesita historial, sirve desde el dia 1.'),
         )
 
         # Job 9 — Purga de cuentas pausadas (Sprint Admin) — Domingo 03:00 ART

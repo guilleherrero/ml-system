@@ -245,6 +245,9 @@
     <a href="/salud/{{ acc.alias }}" class="{{ 'active' if request.path == '/salud/'~acc.alias else '' }}">
       <i class="bi bi-heart-pulse"></i> Salud del Catálogo
     </a>
+    <a href="/keywords/{{ acc.alias }}" class="{{ 'active' if request.path == '/keywords/'~acc.alias else '' }}">
+      <i class="bi bi-search"></i> Keywords y ficha
+    </a>
     <a href="/duplicados/{{ acc.alias }}" class="{{ 'active' if request.path == '/duplicados/'~acc.alias else '' }}">
       <i class="bi bi-files"></i> Duplicados
     </a>

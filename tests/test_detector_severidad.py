@@ -162,8 +162,9 @@ class TestSeveridadEndToEnd(unittest.TestCase):
         self.assertEqual(resumen['puros'], 1, f'Esperaba 1 puro, obtuve {resumen}')
         self.assertEqual(resumen['legitimos'], 1, f'Esperaba 1 legitimo, obtuve {resumen}')
         self.assertEqual(resumen['mixtos'], 0)
-        # Impacto > 0 (del puro)
-        self.assertGreater(resumen['impacto_monetario_estimado'], 0)
+        # Estos items no tienen costo cargado, asi que no se puede estimar
+        # margen: el resumen dice 0 en vez de inventar una cifra.
+        self.assertEqual(resumen['impacto_monetario_estimado'], 0.0)
 
 
 class TestDetectarEjesDiferentes(unittest.TestCase):

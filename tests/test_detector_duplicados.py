@@ -243,9 +243,11 @@ class TestDetectarDuplicadosEndToEnd(unittest.TestCase):
         self.assertEqual(clusters[0].severidad, 'puro')
         self.assertEqual(len(clusters[0].items), 2)
 
-    def test_impacto_monetario_se_calcula_por_subcluster(self):
-        """B1 (ganadora con 5% conv y precio $89K) + B2 + B3 con 478 visitas
-        perdidas. Impacto = 478 × 0.05 × 89000 ≈ $2.13M."""
+    def test_sin_costo_cargado_no_se_inventa_un_impacto(self):
+        """La formula vieja multiplicaba por el PRECIO entero, como si vender
+        fuera todo ganancia, y asumia que el 100% del trafico se transfiere. De
+        ahi salian cifras de millones. Sin costo cargado no hay margen que
+        estimar, y un numero inventado es peor que ningun numero."""
         items = [
             _item('B1', 'Producto X', precio=89000, ventas_30d=10, visitas_30d=1024, conversion_pct=5.0),
             _item('B2', 'Producto X', precio=89000, ventas_30d=0, visitas_30d=349, conversion_pct=0),
@@ -254,11 +256,34 @@ class TestDetectarDuplicadosEndToEnd(unittest.TestCase):
         clusters = detectar_duplicados(items, 'TestAccount', self.tmpdir)
         self.assertEqual(len(clusters), 1)
         c = clusters[0]
-        # Visitas perdidas = 349 + 129 = 478
-        self.assertEqual(c.visitas_perdidas_30d, 478)
-        # Impacto = 478 × 0.05 × 89000 = 2,127,100
-        expected = 478 * 0.05 * 89000
-        self.assertAlmostEqual(c.impacto_monetario_estimado, expected, delta=1)
+        self.assertEqual(c.visitas_perdidas_30d, 349 + 129)
+        self.assertEqual(c.impacto_monetario_estimado, 0.0,
+                         'sin costo no se puede hablar de plata')
+
+    def test_impacto_monetario_se_calcula_sobre_margen_y_transferencia(self):
+        """Con el costo cargado si se puede valuar: sobre el MARGEN por unidad,
+        no sobre el precio, y solo por la fraccion del trafico que realmente se
+        transfiere a la ganadora cuando se pausa un duplicado."""
+        from modules.detector_duplicados import FACTOR_TRANSFERENCIA
+        items = [
+            _item('B1', 'Producto X', precio=89000, ventas_30d=10, visitas_30d=1024, conversion_pct=5.0),
+            _item('B2', 'Producto X', precio=89000, ventas_30d=0, visitas_30d=349, conversion_pct=0),
+            _item('B3', 'Producto X', precio=89000, ventas_30d=0, visitas_30d=129, conversion_pct=0),
+        ]
+        for it in items:
+            it['costo'] = 40000
+            it['fee_rate'] = 0.13
+
+        clusters = detectar_duplicados(items, 'TestAccount', self.tmpdir)
+        c = clusters[0]
+        margen_unit = 89000 * (1 - 0.13) - 40000          # 37.430
+        unidades = 478 * 0.05 * FACTOR_TRANSFERENCIA       # transferencia parcial
+        esperado = unidades * margen_unit
+        # Tope de sensatez: no puede superar lo que el producto ya genera al mes
+        esperado = min(esperado, margen_unit * 10)
+        self.assertAlmostEqual(c.impacto_monetario_estimado, esperado, delta=1)
+        self.assertLess(c.impacto_monetario_estimado, 478 * 0.05 * 89000,
+                        'tiene que ser muy menor que la cifra vieja sobre precio')
 
     def test_color_en_titulo_separa_publicaciones(self):
         """2 publicaciones con color distinto en título no son duplicados —

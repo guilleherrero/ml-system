@@ -724,6 +724,78 @@ def _candidates_full(alias: str) -> list[Oportunidad]:
 
 # ── Motor ─────────────────────────────────────────────────────────────────────
 
+def _diagnostico_keywords_path(alias: str) -> str:
+    return os.path.join(DATA_DIR, f"diagnostico_keywords_{_safe(alias)}.json")
+
+
+def _candidates_keywords(alias: str) -> list[Oportunidad]:
+    """H — huecos de keywords y ficha contra la demanda real de autosuggest.
+
+    NO consulta autosuggest aca: lee el archivo que deja el job diario. El Top 3
+    se abre desde la pantalla y un barrido de ~200 consultas colgaria la pagina
+    treinta segundos. Si el archivo no esta todavia, no hay candidatos y listo.
+
+    Solo entran los hallazgos valuados. Los que no se pudieron valuar —poco
+    trafico, sin costo cargado, sin ventas propias— son igual de reales pero no
+    tienen cifra en pesos, y el Top 3 rankea por pesos: meterlos con un numero
+    inventado seria justo lo que este sistema no hace. Se ven en su propia
+    pantalla y en el resumen de Telegram.
+    """
+    out: list[Oportunidad] = []
+    data = _load_json(_diagnostico_keywords_path(alias))
+    if not data:
+        _logger.info("[top_acciones.keywords] skip — todavia no corrio el barrido diario")
+        return out
+
+    for h in (data.get("valuados") or []):
+        impacto = h.get("impacto_mensual_ars")
+        if not impacto or impacto <= 0:
+            continue
+        acciones = h.get("acciones") or []
+        if not acciones:
+            continue
+
+        principal = acciones[0]
+        # Un error de escritura es de otra categoria: cuesta una letra arreglarlo
+        # y apaga busquedas enteras. No espera al ranking por plata.
+        es_typo = principal.get("tipo") == "corregir_error_escritura"
+        verbo = {
+            "corregir_error_escritura": "CORREGIR error de escritura",
+            "completar_ficha":          "COMPLETAR ficha",
+            "sumar_keywords":           "SUMAR keywords",
+        }.get(principal.get("tipo"), "REVISAR")
+
+        fp = _fingerprint("keywords", h["item_id"], principal.get("tipo", ""))
+        out.append(Oportunidad(
+            fingerprint=fp,
+            tipo="corregir_keywords",
+            descripcion=f"{verbo} — {h.get('titulo', '')[:55]}",
+            impacto_mensual_ars=float(impacto),
+            urgencia="alta" if es_typo else "media",
+            cta_label="Ver diagnóstico →",
+            cta_url=f"/keywords/{alias}",
+            fuente="keywords",
+            snapshot={
+                "item_id":              h["item_id"],
+                "titulo":               h.get("titulo", ""),
+                "cobertura_pct":        h.get("cobertura_pct"),
+                "busquedas_totales":    h.get("busquedas_totales"),
+                "busquedas_perdidas":   h.get("busquedas_perdidas"),
+                "visitas_30d":          h.get("visitas_30d"),
+                "visitas_recuperables": h.get("visitas_recuperables"),
+                "topeado_por_sensatez": h.get("topeado_por_sensatez"),
+                "titulo_editable":      h.get("titulo_editable"),
+                "formula":              h.get("formula"),
+                "accion_principal":     principal,
+                "acciones":             acciones,
+            },
+        ))
+
+    _logger.info("[top_acciones] keywords: %d candidates (de %d analizados)",
+                 len(out), data.get("items_analizados", 0))
+    return out
+
+
 _DETECTORS = [
     ("duplicados",    _candidates_duplicados),
     ("repricing",     _candidates_repricing),
@@ -732,6 +804,7 @@ _DETECTORS = [
     ("funnel",        _candidates_funnel),
     ("buybox",        _candidates_buybox),
     ("stock_critico", _candidates_stock_critico),
+    ("keywords",      _candidates_keywords),
 ]
 
 

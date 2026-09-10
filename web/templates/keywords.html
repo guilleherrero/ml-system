@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %} — Keywords {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+.kw-card{background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);
+  border-radius:12px;margin-bottom:1rem;overflow:hidden}
+.kw-card.tiene-typo{border-left:4px solid var(--color-critical-500)}
+.kw-card.sin-valuar{border-left:4px solid var(--color-neutral-300)}
+.kw-card.normal{border-left:4px solid var(--color-warning-400)}
+.kw-head{padding:.75rem 1rem;background:var(--color-neutral-50);
+  border-bottom:1px solid var(--color-neutral-200);display:flex;align-items:center;
+  gap:.6rem;flex-wrap:wrap}
+.kw-head .titulo{font-weight:700;color:#0f172a;font-size:.93rem;flex:1;min-width:12rem}
+.kw-head .plata{font-weight:800;font-size:.95rem;color:#166534;white-space:nowrap}
+.kw-head .sin-plata{font-size:.72rem;color:var(--color-neutral-600);font-style:italic}
+.kw-body{padding:.85rem 1rem}
+.kw-barra{height:8px;border-radius:6px;background:var(--color-neutral-200);
+  overflow:hidden;margin:.35rem 0 .2rem}
+.kw-barra > span{display:block;height:100%;background:var(--color-success-500)}
+.kw-barra.baja > span{background:var(--color-critical-500)}
+.kw-barra.media > span{background:var(--color-warning-400)}
+.kw-meta{font-size:.74rem;color:var(--color-neutral-600)}
+.kw-accion{border:1px solid var(--color-neutral-200);border-radius:9px;
+  padding:.6rem .75rem;margin-top:.6rem;background:var(--color-neutral-0)}
+.kw-accion .cab{display:flex;align-items:center;gap:.45rem;margin-bottom:.25rem}
+.kw-tag{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:10px;
+  text-transform:uppercase;letter-spacing:.04em}
+.kw-tag.typo{background:var(--color-critical-100);color:#b91c1c}
+.kw-tag.ficha{background:#e0e7ff;color:#3730a3}
+.kw-tag.keywords{background:var(--color-warning-100);color:#b45309}
+.kw-tag.gratis{background:var(--color-success-100);color:#166534}
+.kw-accion .texto{font-size:.82rem;color:#1e293b;line-height:1.45}
+.kw-frases{margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem}
+.kw-frase{font-size:.7rem;background:var(--color-neutral-100);
+  color:var(--color-neutral-700);padding:2px 8px;border-radius:9px}
+.kw-formula{font-size:.68rem;color:var(--color-neutral-500);margin-top:.5rem;
+  font-style:italic}
+.kw-seccion{font-size:.78rem;font-weight:800;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--color-neutral-600);margin:1.5rem 0 .6rem}
+</style>
+
+<div class="app-page-header">
+  <h1><i class="bi bi-search"></i> Keywords y ficha — {{ alias }}</h1>
+  <p class="app-page-sub">
+    Cada publicación cruzada contra las búsquedas reales de autosuggest.
+    No necesita historial: esto se puede corregir hoy.
+  </p>
+</div>
+
+{% if not data %}
+  <div class="app-card">
+    <p><i class="bi bi-hourglass-split"></i>
+    El barrido todavía no corrió. Se ejecuta todos los días a las 05:00,
+    o podés dispararlo a mano desde <a href="/settings">Configuración → Jobs</a>
+    (<code>keywords_diario</code>).</p>
+  </div>
+{% else %}
+
+<div class="app-stat-row">
+  <div class="app-stat-box">
+    <span class="app-stat-label">Publicaciones analizadas</span>
+    <span class="app-stat-value">{{ data.items_analizados }}</span>
+  </div>
+  <div class="app-stat-box">
+    <span class="app-stat-label">Con algo para corregir</span>
+    <span class="app-stat-value">{{ data.items_con_hallazgos }}</span>
+  </div>
+  <div class="app-stat-box">
+    <span class="app-stat-label">Errores de escritura</span>
+    <span class="app-stat-value">{{ typos_total }}</span>
+  </div>
+  <div class="app-stat-box">
+    <span class="app-stat-label">Plata identificada</span>
+    <span class="app-stat-value">${{ '{:,.0f}'.format(plata_total).replace(',','.') }}</span>
+  </div>
+</div>
+
+{% if data.presupuesto_agotado %}
+<div class="app-card" style="border-left:4px solid var(--color-warning-400)">
+  <p style="margin:0;font-size:.85rem">
+    <i class="bi bi-info-circle"></i>
+    El barrido usó las {{ data.consultas_usadas }} consultas de la corrida y quedaron
+    publicaciones sin mirar. Siguen mañana — lo ya consultado queda cacheado, así que
+    cada día avanza sobre las que faltaron.
+  </p>
+</div>
+{% endif %}
+
+{% macro tarjeta(h, valuado) %}
+<div class="kw-card {{ 'tiene-typo' if h.errores_escritura else ('normal' if valuado else 'sin-valuar') }}">
+  <div class="kw-head">
+    <span class="titulo">{{ h.titulo[:70] }}</span>
+    {% if valuado %}
+      <span class="plata">${{ '{:,.0f}'.format(h.impacto_mensual_ars).replace(',','.') }}/mes</span>
+    {% else %}
+      <span class="sin-plata">sin valuar — {{ h.no_valuado_porque }}</span>
+    {% endif %}
+  </div>
+  <div class="kw-body">
+    <div class="kw-meta">
+      Cubrís <b>{{ h.cobertura_pct }}%</b> de la demanda real
+      ({{ h.busquedas_cubiertas }} de {{ h.busquedas_totales }} búsquedas en el título,
+      {{ h.busquedas_perdidas }} afuera)
+    </div>
+    <div class="kw-barra {{ 'baja' if h.cobertura_pct < 40 else ('media' if h.cobertura_pct < 75 else '') }}">
+      <span style="width:{{ h.cobertura_pct }}%"></span>
+    </div>
+    <div class="kw-meta">
+      {{ h.visitas_30d }} visitas / {{ h.ventas_30d }} ventas en 30 días
+      {%- if valuado %} · +{{ h.visitas_recuperables }} visitas estimadas si se corrige
+        {%- if h.topeado_por_sensatez %} (tope de sensatez aplicado){% endif %}
+      {%- endif %}
+      {%- if not h.titulo_editable %} · título congelado por tener ventas{% endif %}
+    </div>
+
+    {% for a in h.acciones %}
+    <div class="kw-accion">
+      <div class="cab">
+        <span class="kw-tag {{ 'typo' if a.tipo == 'corregir_error_escritura'
+                               else ('ficha' if a.tipo == 'completar_ficha' else 'keywords') }}">
+          {{ {'corregir_error_escritura':'error de escritura',
+              'completar_ficha':'ficha',
+              'sumar_keywords':'keywords'}.get(a.tipo, a.tipo) }}
+        </span>
+        <span class="kw-tag gratis">{{ a.costo }}</span>
+        <span class="kw-meta">aplicar en {{ a.aplicar_en }}</span>
+      </div>
+      <div class="texto">{{ a.texto }}</div>
+      {% if a.detalle and a.detalle.busquedas_que_se_pierden %}
+        <div class="kw-frases">
+          {% for f in a.detalle.busquedas_que_se_pierden %}<span class="kw-frase">{{ f }}</span>{% endfor %}
+        </div>
+      {% elif a.detalle and a.detalle.busquedas_perdidas %}
+        <div class="kw-frases">
+          {% for f in a.detalle.busquedas_perdidas %}<span class="kw-frase">{{ f.frase }}</span>{% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if valuado %}<div class="kw-formula">{{ h.formula }}</div>{% endif %}
+    <div style="margin-top:.6rem">
+      <a class="app-btn app-btn-sm" href="/optimizaciones?item={{ h.item_id }}">
+        <i class="bi bi-magic"></i> Optimizar
+      </a>
+      <a class="app-btn app-btn-sm app-btn-ghost"
+         href="https://articulo.mercadolibre.com.ar/{{ h.item_id[:3] }}-{{ h.item_id[3:] }}"
+         target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Ver en ML</a>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% if data.valuados %}
+  <div class="kw-seccion">Con plata calculada</div>
+  {% for h in data.valuados %}{{ tarjeta(h, true) }}{% endfor %}
+{% endif %}
+
+{% if data.no_valuados %}
+  <div class="kw-seccion">
+    Reales, pero sin cifra — falta el dato para valuarlas sin inventar
+  </div>
+  {% for h in data.no_valuados %}
+    {% if h.acciones %}{{ tarjeta(h, false) }}{% endif %}
+  {% endfor %}
+{% endif %}
+
+{% if data.sin_datos %}
+  <div class="kw-seccion">Autosuggest no devolvió búsquedas ({{ data.sin_datos|length }})</div>
+  <div class="app-card">
+    <p style="font-size:.82rem;margin:0">
+      Suele pasar con productos muy de nicho o con títulos que no arrancan por el
+      nombre del producto. No se puede diagnosticar sin saber qué busca la gente.
+    </p>
+  </div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
