@@ -11850,6 +11850,18 @@ def _tg(tipo: str, titulo: str, detalle: str = '', alias: str = '', url: str = '
         return False
 
 
+@app.route('/cerebro/<alias>')
+def cerebro_panel(alias):
+    """La bandeja y la memoria de Cerebro, visibles.
+
+    Todo esto ya existia por API y por Telegram, pero en el panel no habia
+    nada: el sistema registraba, medía y aprendía sin que el usuario pudiera
+    ver que. Un sistema que pide confianza sin mostrar su razonamiento no la
+    merece — la pantalla es parte de la auditabilidad, no un adorno.
+    """
+    return render_template('cerebro.html', alias=alias, accounts=get_accounts())
+
+
 @app.route('/cerebro/backtest')
 @app.route('/cerebro/backtest/<alias>')
 def cerebro_backtest_page(alias=None):

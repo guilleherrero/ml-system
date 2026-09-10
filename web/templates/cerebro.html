@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %} — Cerebro {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+.cb-hero{background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);
+  border-radius:12px;padding:1rem 1.15rem;margin-bottom:1rem}
+.cb-hero h2{margin:0 0 .3rem;font-size:1rem;font-weight:800;color:#0f172a}
+.cb-hero p{margin:0;font-size:.85rem;color:var(--color-neutral-600);line-height:1.5}
+.cb-progreso{height:8px;border-radius:6px;background:var(--color-neutral-200);
+  overflow:hidden;margin:.6rem 0 .35rem}
+.cb-progreso > span{display:block;height:100%;background:var(--color-success-500)}
+
+.cb-tabs{display:flex;gap:.35rem;flex-wrap:wrap;margin:1.2rem 0 .8rem;
+  border-bottom:1px solid var(--color-neutral-200)}
+.cb-tab{background:none;border:none;padding:.5rem .85rem;font-size:.84rem;
+  font-weight:600;color:var(--color-neutral-600);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px}
+.cb-tab.on{color:#0f172a;border-bottom-color:var(--color-primary-500, #2563eb)}
+.cb-tab .n{font-size:.68rem;background:var(--color-neutral-200);border-radius:9px;
+  padding:1px 6px;margin-left:.3rem;font-weight:800}
+
+.cb-card{background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);
+  border-radius:11px;padding:.8rem 1rem;margin-bottom:.7rem}
+.cb-card.pendiente{border-left:4px solid var(--color-warning-400)}
+.cb-card.funciono {border-left:4px solid var(--color-success-500)}
+.cb-card.empeoro  {border-left:4px solid var(--color-critical-500)}
+.cb-card.neutra   {border-left:4px solid var(--color-neutral-300)}
+.cb-card.contaminada{border-left:4px solid #a855f7}
+.cb-card.sin_datos{border-left:4px solid var(--color-neutral-200)}
+
+.cb-fila{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.cb-fila .t{font-weight:700;font-size:.88rem;color:#0f172a}
+.cb-meta{font-size:.74rem;color:var(--color-neutral-600)}
+.cb-hip{font-size:.82rem;color:#1e293b;margin:.35rem 0;line-height:1.45;font-style:italic}
+.cb-pill{font-size:.63rem;font-weight:800;padding:2px 8px;border-radius:10px;
+  text-transform:uppercase;letter-spacing:.04em}
+.cb-pill.funciono {background:var(--color-success-100);color:#166534}
+.cb-pill.empeoro  {background:var(--color-critical-100);color:#b91c1c}
+.cb-pill.neutra   {background:var(--color-neutral-100);color:var(--color-neutral-700)}
+.cb-pill.contaminada{background:#f3e8ff;color:#6b21a8}
+.cb-pill.sin_datos{background:var(--color-neutral-100);color:var(--color-neutral-500)}
+.cb-pill.tipo{background:#e0e7ff;color:#3730a3}
+.cb-pill.alta{background:var(--color-success-100);color:#166534}
+.cb-pill.media{background:var(--color-warning-100);color:#b45309}
+.cb-pill.baja{background:var(--color-neutral-100);color:var(--color-neutral-600)}
+
+.cb-num{font-variant-numeric:tabular-nums;font-weight:800}
+.cb-num.pos{color:#166534}.cb-num.neg{color:#b91c1c}
+.cb-detalle{font-size:.74rem;color:var(--color-neutral-600);margin-top:.4rem;
+  border-top:1px dashed var(--color-neutral-200);padding-top:.4rem;line-height:1.6}
+.cb-vacio{font-size:.85rem;color:var(--color-neutral-600);padding:1.2rem;text-align:center}
+.cb-acciones{display:flex;gap:.4rem;margin-top:.6rem}
+</style>
+
+<div class="app-page-header">
+  <h1><i class="bi bi-lightbulb"></i> Cerebro — {{ alias }}</h1>
+  <p class="app-page-sub">
+    Qué registró, qué está midiendo y qué aprendió solo.
+  </p>
+</div>
+
+<div id="cb-hero" class="cb-hero">
+  <p class="cb-meta">Cargando…</p>
+</div>
+
+<div class="cb-tabs" id="cb-tabs">
+  <button class="cb-tab on" data-t="bandeja">Esperando tu decisión<span class="n" id="n-bandeja">0</span></button>
+  <button class="cb-tab" data-t="midiendo">Midiendo ahora<span class="n" id="n-midiendo">0</span></button>
+  <button class="cb-tab" data-t="veredictos">Ya evaluadas<span class="n" id="n-veredictos">0</span></button>
+  <button class="cb-tab" data-t="aprendizajes">Lo que aprendió<span class="n" id="n-aprendizajes">0</span></button>
+</div>
+
+<div id="cb-panel"></div>
+
+<script>
+const ALIAS = {{ alias | tojson }};
+const S = {bandeja: [], acciones: [], aprendizajes: [], resumen: null, cands: []};
+
+const esc = t => String(t ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fecha = t => (t || '').slice(0, 16).replace('T', ' ');
+const pct = v => (v > 0 ? '+' : '') + Number(v).toFixed(1) + '%';
+
+const TIPOS = {precio:'Precio', ficha:'Ficha', descripcion:'Descripción',
+  titulo:'Título', respuesta:'Respuesta a pregunta', pausar_duplicado:'Pausa de duplicado',
+  publicacion_nueva:'Publicación nueva', keywords:'Keywords'};
+
+const VEREDICTOS = {
+  funciono:   ['funcionó',    'El cambio movió la métrica por encima del ruido histórico.'],
+  empeoro:    ['empeoró',     'La métrica cayó más de lo que explica el ruido. Conviene revertir.'],
+  neutra:     ['neutra',      'No movió nada por encima del ruido: el cambio no fue el problema.'],
+  contaminada:['contaminada', 'Hubo otro cambio en la misma ventana, así que no se puede atribuir.'],
+  sin_datos:  ['sin datos',   'Todavía no hay serie suficiente para decidir.'],
+};
+
+async function cargar() {
+  const [r, b, a, ap] = await Promise.all([
+    fetch(`/api/cerebro/resumen/${ALIAS}`).then(r => r.json()),
+    fetch(`/api/cerebro/bandeja/${ALIAS}`).then(r => r.json()),
+    fetch(`/api/cerebro/acciones/${ALIAS}?limit=200`).then(r => r.json()),
+    fetch(`/api/cerebro/aprendizajes/${ALIAS}`).then(r => r.json()),
+  ]);
+  S.resumen = r.resumen || {};
+  S.bandeja = b.propuestas || [];
+  S.cands   = b.candidatos_competidor || [];
+  S.acciones = a.acciones || [];
+  S.aprendizajes = ap.aprendizajes || [];
+  pintarHero();
+  pintarTabs();
+  pintar(document.querySelector('.cb-tab.on').dataset.t);
+}
+
+function pintarHero() {
+  const r = S.resumen, dias = r.dias_serie_max || 0;
+  const listo = dias >= 14;
+  const evaluadas = (r.acciones_por_estado?.evaluada_7d || 0) + (r.acciones_por_estado?.evaluada_14d || 0);
+  let txt;
+  if (!r.acciones_total) {
+    txt = `Todavía no registró ningún cambio. Cerebro empieza a medir cuando aplicás
+           una optimización, un precio o una respuesta: cada acción queda con su
+           hipótesis y se contrasta a 7 y 14 días contra tus publicaciones hermanas.`;
+  } else if (!listo) {
+    txt = `Juntando serie: día ${dias} de 14. Los veredictos necesitan dos semanas
+           porque se comparan contra el ruido histórico de cada publicación —
+           sin eso, cualquier variación normal se leería como un resultado.`;
+  } else {
+    txt = `${r.acciones_total} cambios registrados, ${evaluadas} ya evaluados,
+           ${r.aprendizajes || 0} aprendizajes
+           (${r.aprendizajes_confiables || 0} con confianza suficiente para ordenar recomendaciones).`;
+  }
+  document.getElementById('cb-hero').innerHTML = `
+    <h2>${listo ? 'Midiendo y aprendiendo' : 'Juntando datos'}</h2>
+    <p>${txt}</p>
+    <div class="cb-progreso"><span style="width:${Math.min(100, dias / 14 * 100)}%"></span></div>
+    <p class="cb-meta">${r.items_con_serie || 0} publicaciones con seguimiento diario ·
+      ${S.cands.length} competidores por confirmar</p>`;
+}
+
+function pintarTabs() {
+  const midiendo = S.acciones.filter(x => x.estado === 'aplicada').length;
+  const evals = S.acciones.filter(x => x.evaluacion && x.evaluacion.veredicto).length;
+  document.getElementById('n-bandeja').textContent = S.bandeja.length + S.cands.length;
+  document.getElementById('n-midiendo').textContent = midiendo;
+  document.getElementById('n-veredictos').textContent = evals;
+  document.getElementById('n-aprendizajes').textContent = S.aprendizajes.length;
+}
+
+function tarjetaAccion(a, extra = '') {
+  const v = a.evaluacion || {};
+  const ver = v.veredicto || (a.estado === 'pendiente' ? 'pendiente' : '');
+  const tipo = TIPOS[a.tipo] || a.tipo;
+  return `<div class="cb-card ${ver || 'neutra'}">
+    <div class="cb-fila">
+      <span class="cb-pill tipo">${esc(tipo)}</span>
+      <span class="t">${esc(a.item_id)}</span>
+      ${ver && VEREDICTOS[ver] ? `<span class="cb-pill ${ver}">${VEREDICTOS[ver][0]}</span>` : ''}
+      ${v.efecto_pct !== undefined ? `<span class="cb-num ${v.efecto_pct >= 0 ? 'pos' : 'neg'}">${pct(v.efecto_pct)}</span>` : ''}
+      <span class="cb-meta" style="margin-left:auto">${fecha(a.ts)}</span>
+    </div>
+    ${a.hipotesis ? `<div class="cb-hip">“${esc(a.hipotesis)}”</div>` : ''}
+    ${ver && VEREDICTOS[ver] ? `<div class="cb-meta">${VEREDICTOS[ver][1]}</div>` : ''}
+    ${v.veredicto ? `<div class="cb-detalle">
+        Métrica: <b>${esc(v.metrica_principal || '—')}</b> ·
+        ventana ${v.ventana_dias}d (${v.dias_pre} días antes, ${v.dias_post} después) ·
+        umbral de ruido ${v.umbral_pct}% ·
+        control: ${v.control?.n || 0} hermanas${v.control?.delta_pct !== null && v.control?.delta_pct !== undefined ? ` (${pct(v.control.delta_pct)})` : ''}
+        ${v.contaminada_por?.length ? `<br>⚠️ Contaminada por: ${v.contaminada_por.map(esc).join(', ')}` : ''}
+      </div>` : ''}
+    ${extra}
+  </div>`;
+}
+
+function pintar(tab) {
+  const el = document.getElementById('cb-panel');
+  if (tab === 'bandeja') {
+    if (!S.bandeja.length && !S.cands.length) {
+      el.innerHTML = `<div class="cb-card"><div class="cb-vacio">
+        Nada esperando tu decisión. Las propuestas de precio y de contenido
+        aparecen acá y en Telegram — es la misma cola, aprobar en un lado es
+        aprobar en el otro.</div></div>`;
+      return;
+    }
+    el.innerHTML = S.bandeja.map(a => tarjetaAccion(a, `
+      <div class="cb-acciones">
+        <button class="app-btn app-btn-sm" onclick="decidir('aprobar','${a.id}')">
+          <i class="bi bi-check2"></i> Aprobar</button>
+        <button class="app-btn app-btn-sm app-btn-ghost" onclick="decidir('rechazar','${a.id}')">
+          <i class="bi bi-x"></i> Rechazar</button>
+      </div>`)).join('')
+      + (S.cands.length ? `<div class="cb-card"><div class="cb-fila">
+          <span class="t">${S.cands.length} competidores por confirmar</span></div>
+          <div class="cb-meta">Cerebro solo usa para precio los que vos confirmaste como
+          directos. <a href="/competencia/${ALIAS}">Revisarlos →</a></div></div>` : '');
+  }
+  else if (tab === 'midiendo') {
+    const xs = S.acciones.filter(x => x.estado === 'aplicada');
+    el.innerHTML = xs.length ? xs.map(a => tarjetaAccion(a)).join('')
+      : `<div class="cb-card"><div class="cb-vacio">
+         Ningún cambio en medición. Cuando apliques una optimización o un precio,
+         queda acá con su hipótesis hasta que se cumplan los 7 días.</div></div>`;
+  }
+  else if (tab === 'veredictos') {
+    const xs = S.acciones.filter(x => x.evaluacion && x.evaluacion.veredicto);
+    el.innerHTML = xs.length ? xs.map(a => tarjetaAccion(a)).join('')
+      : `<div class="cb-card"><div class="cb-vacio">
+         Todavía no hay veredictos. El primero sale cuando una acción aplicada
+         cumpla 7 días y haya serie suficiente para comparar.</div></div>`;
+  }
+  else {
+    el.innerHTML = S.aprendizajes.length ? S.aprendizajes.map(a => `
+      <div class="cb-card ${a.acierto >= 0.7 ? 'funciono' : (a.acierto <= 0.3 ? 'empeoro' : 'neutra')}">
+        <div class="cb-fila">
+          <span class="t">${esc(a.texto || a.clave)}</span>
+          <span class="cb-pill ${esc(a.confianza)}" style="margin-left:auto">confianza ${esc(a.confianza)}</span>
+        </div>
+        <div class="cb-detalle">
+          ${a.casos} casos · funcionó ${a.funciono}, neutra ${a.neutra}, empeoró ${a.empeoro} ·
+          acierto ${(a.acierto * 100).toFixed(0)}% · efecto medio ${pct(a.efecto_medio_pct)}
+          · último caso ${esc(a.ultimo_caso || '—')}
+        </div>
+      </div>`).join('')
+      : `<div class="cb-card"><div class="cb-vacio">
+         Todavía no aprendió nada. Un aprendizaje nace cuando varias acciones del
+         mismo tipo ya fueron evaluadas: recién ahí se puede decir si mover ese
+         resorte sirve en tu catálogo, en vez de repetir una regla general.</div></div>`;
+  }
+}
+
+async function decidir(que, id) {
+  const r = await fetch(`/api/cerebro/accion/${que}`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS, accion_id: id}),
+  }).then(r => r.json());
+  if (!r.ok) { alert(r.error || 'No se pudo'); return; }
+  cargar();
+}
+
+document.getElementById('cb-tabs').addEventListener('click', e => {
+  const b = e.target.closest('.cb-tab'); if (!b) return;
+  document.querySelectorAll('.cb-tab').forEach(x => x.classList.toggle('on', x === b));
+  pintar(b.dataset.t);
+});
+cargar();
+</script>
+{% endblock %}

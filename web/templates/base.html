@@ -254,8 +254,11 @@
     <a href="/posiciones/{{ acc.alias }}" class="{{ 'active' if request.path == '/posiciones/'~acc.alias else '' }}">
       <i class="bi bi-graph-up-arrow"></i> Posiciones
     </a>
+    <a href="/cerebro/{{ acc.alias }}" class="{{ 'active' if request.path == '/cerebro/'~acc.alias else '' }}">
+      <i class="bi bi-lightbulb"></i> Cerebro
+    </a>
     <a href="/cerebro/backtest/{{ acc.alias }}" class="{{ 'active' if request.path == '/cerebro/backtest/'~acc.alias else '' }}">
-      <i class="bi bi-lightbulb"></i> Cerebro — backtest
+      <i class="bi bi-clock-history"></i> Cerebro — backtest
     </a>
     <a href="/monitor/{{ acc.alias }}" class="{{ 'active' if request.path == '/monitor/'~acc.alias else '' }}"
        id="nav-monitor-{{ acc.alias | replace(' ','_') }}">
