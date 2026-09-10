@@ -60,6 +60,13 @@ _AS_HEADERS = {
 # de un rato a otro, y sin cache un barrido son ~200 llamadas cada vez.
 CACHE_TTL_HORAS = 24
 
+# Version del cache. La v1 guardaba tambien las consultas que fallaban, asi que
+# un rato de autosuggest caido dejaba 24 horas de resultados vacios que se leian
+# como productos sin demanda — y encima hacia que el barrido terminara en un
+# decimo de segundo sin tocar la red, escondiendo el problema. Subir este numero
+# invalida todo lo guardado antes.
+CACHE_VERSION = 2
+
 # Visitas minimas en 30 dias para animarse a poner un numero en pesos. Por
 # debajo de esto la conversion propia es ruido y cualquier extrapolacion miente.
 VISITAS_MINIMAS_PARA_VALUAR = 80
@@ -97,6 +104,12 @@ def _cache_path(alias: str) -> str:
 
 
 def _cache_vigente(entry: dict) -> bool:
+    if not isinstance(entry, dict) or entry.get('v') != CACHE_VERSION:
+        return False
+    # Un resultado vacio no se da por bueno: volver a preguntar cuesta una
+    # consulta, y darlo por cierto cuesta un diagnostico entero.
+    if not entry.get('frases'):
+        return False
     try:
         return (time.time() - float(entry.get('ts', 0))) < CACHE_TTL_HORAS * 3600
     except Exception:
@@ -188,7 +201,7 @@ def universo_de_item(titulo: str, alias: str,
         else:
             # Solo se cachea lo que se pudo consultar: cachear un fallo lo
             # congela 24 horas y esconde el problema.
-            cache[semilla] = {'ts': time.time(), 'frases': frases}
+            cache[semilla] = {'v': CACHE_VERSION, 'ts': time.time(), 'frases': frases}
         sugerencias[semilla] = frases
         time.sleep(_PAUSA_ENTRE_CONSULTAS)
 
