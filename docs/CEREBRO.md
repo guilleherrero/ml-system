@@ -578,6 +578,87 @@ confianza de cada veredicto y no generaliza con un solo caso.
 
 ---
 
+## 8.5 Reconstructor de publicación — *definido 2026-09-10*
+
+El motor que arma titulo, ficha y "descripcion superadora" a partir de
+competidores, autosuggest y Q&A ya existe: es `seo_optimizer`, la pantalla
+Optimizar IA. Lo que no existe es el criterio para dispararlo solo, ni la
+conexion con lo que Cerebro ya sabe. Hoy hay que entrar a mano y elegir una
+publicacion; el diagnostico y la solucion viven en dos pantallas que no se
+hablan.
+
+Este bloque define **cuando** se propone reconstruir y **con que entradas**.
+No modifica `seo_optimizer` (Regla #1): es un modulo que prepara la entrada y
+post-procesa la salida.
+
+### 8.5.1 Cuando se dispara — señales, de mas fuerte a mas debil
+
+Cada reconstruccion cuesta una llamada a la IA, asi que no se dispara por
+calendario sino por evidencia de que **el contenido** es el problema. No de que
+hay un problema: si no la encuentran, eso es keywords y se arregla mas barato.
+
+1. **Hermana que convierte mucho mejor.** Mismo producto, mismo precio, misma
+   cuenta, conversiones muy distintas y el precio no lo explica. Es la señal mas
+   fuerte porque el control existe: la mejor descripcion ya esta en la cuenta.
+   Caso de referencia: MLA1481911017 (438 visitas, 7,76%, desc 2449 car.) contra
+   MLA1932975847 (1336 visitas, 1,65%, desc 192 car.).
+2. **Preguntas repetidas.** La mas limpia de todas: si la misma pregunta aparece
+   N veces, la descripcion no contesta algo que hace falta para comprar, y cada
+   repeticion es una compra frenada. Requiere agrupar preguntas por tema, que
+   hoy no existe.
+3. **Reseñas negativas que coinciden en una objecion.** Si se repite, la
+   descripcion tiene que resolverla antes de la compra y no despues.
+4. **Trafico normal con conversion baja** contra el propio catalogo: la
+   encuentran y no compran.
+5. **Cobertura de demanda baja con trafico suficiente** (barrido diario). La mas
+   debil: suele arreglarse sumando keywords, sin reescribir todo.
+6. **Un cambio anterior salio neutro o perdedor** en la evaluacion a 7/14 dias.
+   Reintentar con otro enfoque — esta es la señal que hace que el sistema
+   aprenda en vez de repetir.
+
+### 8.5.2 Cuando NO se dispara
+
+Pesa tanto como lo anterior.
+
+- **Sin trafico suficiente.** Con pocas visitas no hay evidencia y no se gasta IA.
+- **Mientras se mide otro cambio de esa publicacion.** Reescribir durante la
+  ventana de evaluacion destruye la medicion: no se puede saber cual de los dos
+  cambios hizo que. `cerebro` ya detecta contaminacion; el reconstructor tiene
+  que respetar la ventana y esperar.
+- **Publicaciones que no mueven la aguja.** El resultado esta en unos 10 SKU
+  (criterio 6: saber donde NO meterse).
+- **Titulo congelado por ventas** → solo ficha y descripcion; el titulo corregido
+  queda para clones y publicaciones nuevas.
+- **Tope de costo mensual**, como el Veredicto IA.
+
+### 8.5.3 Entradas que hoy faltan
+
+- **Las reseñas y preguntas propias.** `fetch_competitor_qa` recibe solo
+  `comp_ids`; el `item_id` propio se excluye explicitamente. Las reseñas propias
+  —incluidas las negativas— y las preguntas propias nunca entran a armar la
+  descripcion.
+- **El diagnostico de Cerebro**: keywords faltantes, cobertura, largo de
+  descripcion, cantidad de fotos contra la hermana.
+- **El filtro de marcas ajenas.** La salida generada tiene que pasar por el
+  mismo filtro que las recomendaciones de keywords, o puede meter una marca de
+  terceros en la descripcion.
+
+### 8.5.4 Cadencia, canal y trazabilidad
+
+El barrido diario marca candidatos. El reconstructor propone unas pocas por
+semana, ordenadas por plata, siempre en **propone-y-apruebo**: es contenido
+publico y no se toca solo. Entra al Top 3 y a la bandeja; al telefono solo lo
+que mueve plata de verdad.
+
+Cada cambio propuesto dice **de donde salio**: que pregunta repetida lo motiva,
+que reseña, que busqueda real cubre. Un cambio que no se puede explicar no va
+(criterio 1).
+
+Al aplicarse, `aplicar_o_registrar` adopta la propuesta pendiente y conserva la
+hipotesis original, que es lo que se contrasta a 7 y 14 dias.
+
+---
+
 ## 10. Variables de contexto que entran al motor
 
 Variables que cambian decisiones y que ningún bloque anterior tenía.
@@ -902,7 +983,7 @@ el bot de Telegram sobre la misma bandeja, y que `top_acciones` lea
 | A | Memoria (1.1–1.4) + competidores persistentes y huella (2.2–2.4) | codigo listo, falta deploy y validacion |
 | B | Bandeja única, sección Cerebro en UI (2.5 + 7), bot Telegram | pendiente |
 | C | Motor de precio con postura (3) + cierre del loop (5) + tráfico vs conversión (4) + promociones ex ante (9.2) | pendiente |
-| D | Disparadores de competencia, laboratorio de títulos (8), precisión del sistema (6), evaluación de promos y cupones (9.3–9.5), semáforo de portafolio (11) | pendiente |
+| D | Disparadores de competencia, laboratorio de títulos (8), reconstructor de publicación (8.5), precisión del sistema (6), evaluación de promos y cupones (9.3–9.5), semáforo de portafolio (11) | pendiente |
 
 Flujo de trabajo: Claude edita y pushea a `main` desde la sesión (repo agregado
 como fuente); Render auto-deploya; el usuario valida con el checklist de
