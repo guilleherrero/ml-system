@@ -125,7 +125,35 @@ def diagnosticar(datos: dict, marca_propia: str = '') -> dict:
             'vendedores': [v['seller_id'] for v in ajenos],
         })
 
-    # 2. Perdimos la buy box: decir contra quien y por que
+    # 2. Sin stock no se puede ganar nada. Va antes que todo lo demas porque no
+    # depende de la competencia: el stock sale de la publicacion, NO del listado
+    # de la ficha —ML devuelve stock y vendidos en null ahi, y leerlo de ese lado
+    # reportaba como sin stock una publicacion con 117 unidades.
+    if datos.get('mi_stock') is not None and not datos['mi_stock']:
+        hallazgos.append({
+            'tipo': 'sin_stock',
+            'gravedad': 'critica',
+            'texto': 'Tu publicacion esta sin stock: la buy box no se pierde por '
+                     'precio, se pierde porque no hay que vender.',
+        })
+
+    # 3. Nadie mas en la ficha. Con un solo vendedor no hay buy box que perder,
+    # asi que si el trafico cayo la causa esta en otro lado y decir "perdiste la
+    # buy box" seria mandar a bajar el precio contra un rival que no existe.
+    if not ajenos and len(datos['vendedores']) <= 1:
+        return {
+            'hallazgos': hallazgos + [{
+                'tipo': 'unico_vendedor',
+                'gravedad': 'informativa',
+                'texto': ('Sos el unico vendedor de esta ficha: no hay buy box que '
+                          'perder ni competidor que te este sacando visitas. Si el '
+                          'trafico cayo, la causa esta en la ficha misma o en la '
+                          'demanda, no en un rival.'),
+            }],
+            'gravedad': hallazgos[0]['gravedad'] if hallazgos else 'informativa',
+        }
+
+    # 4. Perdimos la buy box: decir contra quien y por que
     if yo and not datos.get('gano_yo'):
         ganador = next((v for v in datos['vendedores'] if v['gana_buy_box']), None)
         if ganador:
@@ -155,15 +183,6 @@ def diagnosticar(datos: dict, marca_propia: str = '') -> dict:
                 'gravedad': 'media',
                 'texto': 'No ganas la ficha y ML no expone quien la gana.',
             })
-
-    # 3. Sin stock no se puede ganar nada
-    if yo and not (yo.get('stock') or 0):
-        hallazgos.append({
-            'tipo': 'sin_stock',
-            'gravedad': 'critica',
-            'texto': 'Tu publicacion esta sin stock: la buy box no se pierde por '
-                     'precio, se pierde porque no hay que vender.',
-        })
 
     orden = {'critica': 0, 'alta': 1, 'media': 2}
     hallazgos.sort(key=lambda h: orden.get(h['gravedad'], 9))
