@@ -71,6 +71,10 @@
     <span class="app-stat-value">{{ typos_total }}</span>
   </div>
   <div class="app-stat-box">
+    <span class="app-stat-label">Búsquedas de marca ajena</span>
+    <span class="app-stat-value">{{ data.busquedas_de_marca_ajena or 0 }}</span>
+  </div>
+  <div class="app-stat-box">
     <span class="app-stat-label">Plata identificada</span>
     <span class="app-stat-value">${{ '{:,.0f}'.format(plata_total).replace(',','.') }}</span>
   </div>
@@ -138,6 +142,24 @@
       {% endif %}
     </div>
     {% endfor %}
+
+    {% if h.demanda_de_marca_ajena %}
+      <div class="kw-accion" style="border-style:dashed">
+        <div class="cab">
+          <span class="kw-tag" style="background:var(--color-neutral-200);color:var(--color-neutral-700)">
+            no se puede usar
+          </span>
+          <span class="kw-meta">marca de terceros</span>
+        </div>
+        <div class="texto">
+          Hay demanda real que no podés capturar sin poner la marca de otro en tu
+          publicación, que es infracción de ML. No se recomienda ni se cuenta en el impacto.
+        </div>
+        <div class="kw-frases">
+          {% for f in h.demanda_de_marca_ajena %}<span class="kw-frase">{{ f.frase }}</span>{% endfor %}
+        </div>
+      </div>
+    {% endif %}
 
     {% if valuado %}<div class="kw-formula">{{ h.formula }}</div>{% endif %}
     <div style="margin-top:.6rem">

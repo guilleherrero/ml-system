@@ -146,10 +146,15 @@ def _cerebro_registrar(alias: str, **kwargs) -> dict:
 
     Cerebro es memoria, no es load-bearing: si falla el registro, la accion del
     usuario igual se aplico y no tiene por que enterarse de un error de log.
+
+    Si el cambio que se acaba de aplicar corresponde a una propuesta pendiente
+    del sistema para esa misma publicacion, se adopta esa propuesta en vez de
+    crear un registro nuevo: asi la hipotesis que la origino se contrasta contra
+    el resultado real, que es de lo que aprende Cerebro.
     """
     try:
         from modules import cerebro
-        return cerebro.registrar_accion(alias, **kwargs)
+        return cerebro.aplicar_o_registrar(alias, **kwargs)
     except Exception as e:
         app.logger.warning('[cerebro] no pude registrar la accion: %s', e)
         return {}
@@ -8021,6 +8026,21 @@ def api_crear_publicacion_optimizada():
         save_json(_mon_path, _mon_cp)
     except Exception as _me:
         app.logger.warning('[crear-pub] monitor: %s', _me)
+
+    # Cerebro — lanzar una publicacion nueva es la accion mas cara que hay:
+    # decide titulo, ficha y descripcion de cero. Queda registrada con el item
+    # del que salio, para poder comparar la nueva contra la original a 7 y 14
+    # dias en vez de suponer que la nueva es mejor porque es nueva.
+    _cerebro_registrar(
+        alias, tipo='publicacion_nueva', item_id=new_item_id, origen='usuario',
+        hipotesis=('la publicacion reconstruida con titulo, ficha y descripcion '
+                   'optimizados rinde mas que la original'),
+        estado_previo=_cerebro_estado_previo(alias, item_id_orig,
+                                             {'titulo': orig.get('title', '')}),
+        detalle={'item_original': item_id_orig,
+                 'titulo_nuevo': titulo_nuevo,
+                 'titulo_original': orig.get('title', '')},
+        ejecutado_por='api:crear-publicacion-optimizada')
 
     return jsonify({'ok': True, 'new_item_id': new_item_id, 'titulo': titulo_nuevo})
 
@@ -16417,6 +16437,7 @@ def _job_buybox_check():
     snap_path = os.path.join(DATA_DIR, 'buybox_snapshots.json')
     snapshots = load_json(snap_path) or {}
     nuevas_perdidas: list = []
+    bloqueados: list = []
     revisados = 0
 
     for acc in accounts:
@@ -16445,15 +16466,10 @@ def _job_buybox_check():
                 if not cpid:
                     continue   # solo publicaciones de catalogo compiten por buy box
                 revisados += 1
-                try:
-                    rw = req_lib.get(
-                        f'https://api.mercadolibre.com/items/{item_id}/price_to_win',
-                        headers=heads, params={'siteId': 'MLA'}, timeout=8,
-                    )
-                    if not rw.ok:
-                        continue
-                    ptw = rw.json() or {}
-                except Exception:
+                ptw, motivo = _price_to_win(item_id, heads)
+                if motivo:
+                    bloqueados.append(f'{item_id}: {motivo}')
+                if ptw is None:
                     continue
 
                 estado  = (ptw.get('status') or '').lower()
@@ -16499,6 +16515,25 @@ def _job_buybox_check():
             raise
 
     save_json(snap_path, snapshots)
+
+    # Si ML nos freno, decirlo. Un cero silencioso en la fuente buybox se lee
+    # como "todo bien" y puede ser "no pudimos mirar ninguna".
+    if bloqueados:
+        app.logger.warning('[job_buybox] %d publicaciones sin datos por rate limit '
+                           'o error: %s', len(bloqueados), '; '.join(bloqueados[:5]))
+        save_json(os.path.join(DATA_DIR, 'buybox_bloqueados.json'), {
+            'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'revisados': revisados,
+            'bloqueados': bloqueados,
+        })
+        if len(bloqueados) >= max(3, revisados // 2):
+            _tg('buybox_perdida',
+                'No pude revisar la buy box',
+                f'{len(bloqueados)} de {revisados} publicaciones de catalogo se '
+                f'quedaron sin datos ({bloqueados[0].split(": ")[-1]}). '
+                f'Lo que no aparezca hoy puede ser porque no se pudo mirar, no '
+                f'porque este todo bien.', '')
+
     if nuevas_perdidas:
         save_json(os.path.join(DATA_DIR, 'buybox_perdidos_recientes.json'), {
             'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
@@ -16762,6 +16797,40 @@ def _job_daily_snapshots():
     save_json(mon_path, mon)
     print(f'[job_daily_snapshots] DONE — {procesados} snapshots ok, {errores} errores '
           f'sobre {sum(len(v) for v in por_alias.values())} items elegibles.')
+
+
+def _price_to_win(item_id: str, heads: dict) -> tuple[dict | None, str]:
+    """price_to_win de una publicacion, con backoff. Devuelve (datos, motivo).
+
+    Antes un 429 se descartaba con `if not rw.ok: continue`, exactamente igual
+    que una publicacion que no compite por buy box. Los dos casos se veian como
+    "no hay nada que reportar", asi que si ML nos estaba frenando el sistema no
+    tenia forma de saberlo — y la fuente buybox del Top 3 devolvia cero sin que
+    nadie pudiera distinguir "no hay problema" de "no pudimos mirar".
+    """
+    for intento in range(3):
+        try:
+            rw = req_lib.get(
+                f'https://api.mercadolibre.com/items/{item_id}/price_to_win',
+                headers=heads, params={'siteId': 'MLA'}, timeout=8,
+            )
+            if rw.ok:
+                return (rw.json() or {}), ''
+            if rw.status_code == 429:
+                espera = 2 ** intento          # 1s, 2s, 4s
+                app.logger.warning('[job_buybox] 429 en %s, reintento %d en %ds',
+                                   item_id, intento + 1, espera)
+                _time_module.sleep(espera)
+                continue
+            if rw.status_code in (403, 404):
+                # No compite por buy box, o no tenemos permiso: no es rate limit
+                return None, ''
+            return None, f'HTTP {rw.status_code}'
+        except Exception as e:
+            if intento == 2:
+                return None, type(e).__name__
+            _time_module.sleep(1)
+    return None, 'rate limit (429) despues de 3 intentos'
 
 
 def _job_keywords_diario():

@@ -131,3 +131,63 @@ def test_la_ficha_vacia_sale_como_accion_gratis():
     ficha = [a for a in d['acciones'] if a['tipo'] == 'completar_ficha']
     assert ficha and ficha[0]['costo'] == 'gratis'
     assert 'MARCA' in ficha[0]['texto']
+
+
+# ── Marcas ajenas ────────────────────────────────────────────────────────────
+#
+# La gente busca por marca, asi que autosuggest devuelve marcas. Pero poner la
+# marca de otro en la publicacion propia es infraccion de ML: recomendarlo seria
+# ofrecer plata a cambio de una sancion.
+
+SUGERENCIAS_MARCA = {
+    'delineador cejas': [
+        'Delineador cejas', 'Delineador cejas maybelline',
+        'Delineador cejas microblading', 'Delineador cejas revlon',
+        'Delineador cejas efecto natural',
+    ],
+}
+UNIVERSO_MARCA = dp.universo_keywords(SUGERENCIAS_MARCA)
+
+
+def test_saca_del_universo_las_busquedas_de_marca_ajena():
+    limpio, descartadas = dk.filtrar_marcas_ajenas(UNIVERSO_MARCA, marca_propia='Novara',
+                                                   marcas_conocidas=set())
+    frases = [u['frase'] for u in limpio]
+    assert not any('maybelline' in f.lower() for f in frases), frases
+    assert not any('revlon' in f.lower() for f in frases), frases
+    assert any('microblading' in f.lower() for f in frases), 'lo generico se queda'
+    assert len(descartadas) == 2
+    assert 'maybelline' in descartadas[0]['marcas_ajenas'] + descartadas[1]['marcas_ajenas']
+
+
+def test_la_marca_propia_no_se_bloquea():
+    universo = dp.universo_keywords({'x': ['Cepillo gama', 'Cepillo alisador']})
+    limpio, descartadas = dk.filtrar_marcas_ajenas(universo, marca_propia='GAMA',
+                                                   marcas_conocidas=set())
+    assert len(limpio) == 2 and not descartadas, 'gama es la marca propia'
+
+
+def test_usa_el_listado_de_marcas_que_da_ml():
+    universo = dp.universo_keywords({'x': ['Faja colombiana leonisa', 'Faja colombiana']})
+    limpio, descartadas = dk.filtrar_marcas_ajenas(universo, marca_propia='Novara',
+                                                   marcas_conocidas={'leonisa'})
+    assert [u['frase'] for u in limpio] == ['Faja colombiana']
+    assert descartadas[0]['marcas_ajenas'] == ['leonisa']
+
+
+def test_no_recomienda_una_marca_ajena_como_palabra_a_sumar():
+    limpio, descartadas = dk.filtrar_marcas_ajenas(UNIVERSO_MARCA, 'Novara', set())
+    d = dk.diagnosticar_item(_item(titulo='Delineador Cejas'), limpio,
+                             demanda_de_marca_ajena=descartadas)
+    palabras = [p['palabra'] for p in d['palabras_que_faltan']]
+    assert 'maybelline' not in palabras and 'revlon' not in palabras, palabras
+
+
+def test_la_demanda_que_no_se_puede_tocar_se_muestra_pero_no_se_cuenta():
+    limpio, descartadas = dk.filtrar_marcas_ajenas(UNIVERSO_MARCA, 'Novara', set())
+    con = dk.diagnosticar_item(_item(titulo='Delineador Cejas'), limpio,
+                               demanda_de_marca_ajena=descartadas)
+    sin_filtrar = dk.diagnosticar_item(_item(titulo='Delineador Cejas'), UNIVERSO_MARCA)
+    assert con['demanda_de_marca_ajena'], 'se muestra aparte'
+    assert con['impacto_mensual_ars'] < sin_filtrar['impacto_mensual_ars'], \
+        'la demanda que no se puede capturar no infla el impacto'

@@ -88,6 +88,25 @@ TOPE_VISITAS_RECUPERABLES = 0.5
 # Por debajo de esto no vale molestar (criterio 6: saber donde NO meterse).
 COBERTURA_SANA_PCT = 75.0
 
+# El cache de marcas por categoria dura una semana: el catalogo de marcas de una
+# categoria de ML no cambia de un dia para el otro.
+CACHE_MARCAS_DIAS = 7
+
+# Red de seguridad para cuando ML no devuelve el listado de marcas de la
+# categoria. No pretende ser completa —ninguna lista lo es— pero el costo de los
+# dos errores no es simetrico: excluir de mas solo pierde una sugerencia,
+# incluir de mas es recomendarle a alguien que ponga una marca ajena en su
+# publicacion, que es infraccion de ML.
+_MARCAS_FALLBACK = {
+    'maybelline', 'revlon', 'natura', 'avon', 'loreal', "l'oreal", 'garnier',
+    'nivea', 'dove', 'rimmel', 'essence', 'catrice', 'mac', 'nyx', 'vichy',
+    'eudora', 'jafra', 'mary', 'kay', 'oriflame', 'yanbal', 'esika', 'cyzone',
+    'dermaglos', 'cetaphil', 'neutrogena', 'ponds', 'lancome', 'clinique',
+    'sephora', 'huda', 'benefit', 'dior', 'chanel', 'ysl', 'shein',
+    'philips', 'braun', 'remington', 'wahl', 'babyliss', 'ga.ma', 'gama',
+    'conair', 'dyson', 'rowenta', 'atma', 'liliana', 'suiza',
+}
+
 # Tope de llamadas a autosuggest por corrida, para que el barrido no se coma el
 # job. Lo que no entra queda para la corrida siguiente: el cache hace que cada
 # corrida avance sobre publicaciones distintas.
@@ -214,6 +233,99 @@ def universo_de_item(titulo: str, alias: str,
     return dp.universo_keywords(sugerencias), (errores[0] if errores else '')
 
 
+# ── Marcas ajenas ────────────────────────────────────────────────────────────
+#
+# Autosuggest devuelve lo que la gente busca, y la gente busca por marca. Pero
+# poner la marca de otro en la publicacion propia es infraccion de ML. Un
+# sistema que recomienda "sumá maybelline al titulo" esta ofreciendo plata a
+# cambio de una sancion, asi que esa demanda no se recomienda y tampoco se
+# cuenta: si no se puede capturar legalmente, sumarla al impacto es inflar el
+# numero con algo que nunca va a pasar.
+
+def _marcas_cache_path(alias: str) -> str:
+    safe = (alias or '').replace(' ', '_').replace('/', '-')
+    return os.path.join('data', f'marcas_categoria_{safe}.json')
+
+
+def marcas_de_categoria(category_id: str, cache: dict) -> set[str]:
+    """Las marcas que ML reconoce en esta categoria, segun la propia ML."""
+    if not category_id:
+        return set()
+    entry = cache.get(category_id)
+    if entry and (time.time() - float(entry.get('ts', 0))) < CACHE_MARCAS_DIAS * 86400:
+        return set(entry.get('marcas') or [])
+    marcas: set[str] = set()
+    try:
+        r = requests.get(f'https://api.mercadolibre.com/categories/{category_id}/attributes',
+                         headers=_AS_HEADERS, timeout=8)
+        if r.ok:
+            for attr in (r.json() or []):
+                if attr.get('id') not in ('BRAND', 'MANUFACTURER'):
+                    continue
+                for v in (attr.get('values') or []):
+                    nombre = dp._norm(v.get('name') or '').strip()
+                    for palabra in nombre.split():
+                        if len(palabra) > 2:
+                            marcas.add(palabra)
+    except requests.RequestException as e:
+        _logger.warning('[keywords] no pude traer marcas de %s: %s', category_id, e)
+        return set()
+    cache[category_id] = {'ts': time.time(), 'marcas': sorted(marcas)}
+    return marcas
+
+
+def filtrar_marcas_ajenas(universo: list[dict], marca_propia: str,
+                          marcas_conocidas: set[str]) -> tuple[list[dict], list[dict]]:
+    """Saca del universo las busquedas que solo se ganan usando marca de otro.
+
+    Devuelve (universo_utilizable, descartadas). Las descartadas se muestran
+    aparte: saber que existe demanda que no podes tocar es informacion util,
+    distinta de una oportunidad.
+    """
+    propias = dp._tokens(marca_propia or '', con_stop=True)
+    bloqueadas = (marcas_conocidas | _MARCAS_FALLBACK) - propias
+    if not bloqueadas:
+        return universo, []
+    limpio, descartadas = [], []
+    for u in universo:
+        ajenas = sorted(u['tokens'] & bloqueadas)
+        if ajenas:
+            descartadas.append({**u, 'marcas_ajenas': ajenas})
+        else:
+            limpio.append(u)
+    return limpio, descartadas
+
+
+def metadata_items(item_ids: list[str]) -> dict:
+    """Categoria y marca propia de cada publicacion, via multiget publico."""
+    out: dict[str, dict] = {}
+    for i in range(0, len(item_ids), 20):
+        chunk = [x for x in item_ids[i:i + 20] if x]
+        if not chunk:
+            continue
+        try:
+            r = requests.get('https://api.mercadolibre.com/items',
+                             params={'ids': ','.join(chunk),
+                                     'attributes': 'id,category_id,attributes'},
+                             headers=_AS_HEADERS, timeout=10)
+            if not r.ok:
+                continue
+            for entry in (r.json() or []):
+                body = entry.get('body') or {}
+                iid = body.get('id')
+                if not iid:
+                    continue
+                marca = ''
+                for a in (body.get('attributes') or []):
+                    if a.get('id') in ('BRAND', 'MANUFACTURER'):
+                        marca = a.get('value_name') or ''
+                        break
+                out[iid] = {'category_id': body.get('category_id') or '', 'marca': marca}
+        except requests.RequestException as e:
+            _logger.warning('[keywords] multiget de metadata fallo: %s', e)
+    return out
+
+
 # ── Diagnostico por publicacion ──────────────────────────────────────────────
 
 def _visitas_recuperables(cobertura: dict, visitas_30d: int) -> float:
@@ -234,7 +346,8 @@ def _visitas_recuperables(cobertura: dict, visitas_30d: int) -> float:
 def diagnosticar_item(item: dict, universo: list[dict], *,
                       ficha_texto: str = '', descripcion: str = '',
                       atributos_vacios: list[str] | None = None,
-                      error_consulta: str = '') -> dict:
+                      error_consulta: str = '',
+                      demanda_de_marca_ajena: list[dict] | None = None) -> dict:
     """Que le falta a esta publicacion para que la encuentren, y cuanto vale.
 
     `item` necesita: id, titulo, y opcionalmente visitas_30d, ventas_30d,
@@ -295,6 +408,10 @@ def diagnosticar_item(item: dict, universo: list[dict], *,
         'palabras_que_faltan':  cobertura['palabras_que_faltan'],
         'detalle_perdidas':     cobertura['detalle_perdidas'],
         'errores_escritura':    errores,
+        'demanda_de_marca_ajena': [
+            {'frase': d['frase'], 'marcas': d.get('marcas_ajenas', [])}
+            for d in (demanda_de_marca_ajena or [])[:8]
+        ],
         'atributos_vacios':     atributos_vacios or [],
         'visitas_30d':          visitas,
         'ventas_30d':           ventas,
@@ -378,18 +495,35 @@ def barrer(alias: str, items: list[dict], *,
     presupuesto = [MAX_CONSULTAS_POR_CORRIDA]
     hallazgos, sin_datos = [], []
 
+    # Categoria y marca propia de cada publicacion: sin eso no se puede saber
+    # que palabra de autosuggest es una marca ajena y cual es el producto.
+    meta_items = metadata_items([it.get('id', '') for it in orden])
+    cache_marcas = db_load(_marcas_cache_path(alias)) or {}
+    if not isinstance(cache_marcas, dict):
+        cache_marcas = {}
+    marcas_antes = len(cache_marcas)
+    descartadas_total = 0
+
     for it in orden:
         titulo = it.get('titulo') or it.get('title') or ''
         if not titulo:
             continue
         universo, error = universo_de_item(titulo, alias, presupuesto)
+
+        m = meta_items.get(it.get('id', '')) or {}
+        universo, descartadas = filtrar_marcas_ajenas(
+            universo, m.get('marca', ''),
+            marcas_de_categoria(m.get('category_id', ''), cache_marcas))
+        descartadas_total += len(descartadas)
+
         f = ficha_por_item.get(it.get('id', '')) or {}
         d = diagnosticar_item(
             it, universo,
             ficha_texto=f.get('ficha_texto', ''),
             descripcion=f.get('descripcion', ''),
             atributos_vacios=f.get('atributos_vacios') or [],
-            error_consulta=error)
+            error_consulta=error,
+            demanda_de_marca_ajena=descartadas)
         if d.get('sin_datos'):
             sin_datos.append(d)
         else:
@@ -402,6 +536,12 @@ def barrer(alias: str, items: list[dict], *,
     valuados.sort(key=lambda h: -h['impacto_mensual_ars'])
     no_valuados.sort(key=lambda h: h.get('cobertura_pct', 100))
 
+    if len(cache_marcas) != marcas_antes:
+        try:
+            db_save(_marcas_cache_path(alias), cache_marcas)
+        except Exception as e:
+            _logger.warning('[keywords] no pude guardar el cache de marcas: %s', e)
+
     con_accion = [h for h in hallazgos if h.get('acciones')]
     return {
         'alias':               alias,
@@ -412,6 +552,7 @@ def barrer(alias: str, items: list[dict], *,
                                      if d.get('fallo_la_consulta')), ''),
         'items_con_hallazgos': len(con_accion),
         'consultas_usadas':    MAX_CONSULTAS_POR_CORRIDA - presupuesto[0],
+        'busquedas_de_marca_ajena': descartadas_total,
         'presupuesto_agotado': presupuesto[0] <= 0,
         'valuados':            valuados,
         'no_valuados':         no_valuados,

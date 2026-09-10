@@ -59,6 +59,10 @@ ORIGEN_AUTO      = 'sistema_auto'
 ORIGEN_PROPUESTO = 'sistema_propuesto'
 ORIGEN_USUARIO   = 'usuario'
 
+# Cuantos dias vale una propuesta como explicacion de un cambio aplicado. Mas
+# alla de eso, el cambio de hoy no lo explica una sugerencia de hace un mes.
+DIAS_PARA_ADOPTAR_PROPUESTA = 14
+
 # Veredictos de la evaluacion (1.2)
 VEREDICTO_FUNCIONO   = 'funciono'
 VEREDICTO_NEUTRA     = 'neutra'
@@ -297,6 +301,37 @@ def marcar_aplicada(alias: str, accion_id: str, detalle_final: dict | None = Non
         det.update(detalle_final)
         campos['detalle'] = det
     return actualizar_accion(alias, accion_id, **campos)
+
+
+def aplicar_o_registrar(alias: str, *, tipo: str, item_id: str, **kwargs) -> dict:
+    """Cierra el ciclo propone -> aplica en vez de dejar la propuesta huerfana.
+
+    Los modulos que proponen (defensa_publicacion, competencia_diagnostico)
+    dejan la accion en `pendiente`. Cuando el usuario despues aplica ese cambio,
+    el flujo que lo ejecuta registraba una accion NUEVA: la propuesta quedaba
+    pendiente para siempre y nunca se evaluaba, que es justo la parte por la que
+    existe Cerebro. Ahora, si hay una propuesta pendiente del mismo tipo para la
+    misma publicacion, se la marca aplicada y se le pega el detalle real de lo
+    que se hizo — asi la hipotesis que la origino se puede contrastar contra el
+    resultado.
+
+    Solo se levanta una propuesta reciente: una de hace un mes no explica un
+    cambio de hoy.
+    """
+    desde = (datetime.now() - timedelta(days=DIAS_PARA_ADOPTAR_PROPUESTA)).strftime('%Y-%m-%d')
+    pendientes = [a for a in listar_acciones(alias, estado=ESTADO_PENDIENTE,
+                                             tipo=tipo, item_id=item_id, desde=desde)
+                  if a.get('origen') == ORIGEN_PROPUESTO]
+    if pendientes:
+        prop = pendientes[0]
+        detalle = dict(kwargs.get('detalle') or {})
+        detalle['adoptada_de_propuesta'] = True
+        if kwargs.get('ejecutado_por'):
+            detalle['ejecutado_por'] = kwargs['ejecutado_por']
+        actualizada = marcar_aplicada(alias, prop['id'], detalle)
+        if actualizada:
+            return actualizada
+    return registrar_accion(alias, tipo=tipo, item_id=item_id, **kwargs)
 
 
 def acciones_pendientes(alias: str) -> list[dict]:
