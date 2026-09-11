@@ -11711,6 +11711,96 @@ def api_cerebro_competidores(alias):
     })
 
 
+@app.route('/api/cerebro/competidor/agregar', methods=['POST'])
+def api_cerebro_agregar_competidor():
+    """Carga un competidor a mano, pegando su MLA.
+
+    Faltaba la puerta de entrada: habia endpoints para clasificar, asociar y
+    eliminar competidores, y ninguno para agregar uno. El bookmarklet del bloque
+    2.3 todavia no existe y la deteccion automatica se cayo cuando ML corto
+    /sites/MLA/search, asi que no habia forma de cargar el primero — y sin
+    competidores confirmados el diagnostico diferencial y el motor de precio son
+    codigo que nunca corre.
+
+    Se trae el item de ML en vivo para no guardar lo que el usuario tipeo sino
+    lo que ML dice, y se le calcula el puntaje contra la publicacion propia.
+    """
+    from modules import cerebro
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    comp_id = (body.get('competidor_id') or '').strip().upper().replace('-', '')
+    item_propio = (body.get('item_propio') or '').strip().upper()
+    clase = (body.get('clase') or cerebro.CLASE_DIRECTO).strip()
+
+    if not alias or not comp_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias o competidor_id'}), 400
+    if not comp_id.startswith('MLA'):
+        return jsonify({'ok': False, 'error': 'El ID tiene que ser un MLA'}), 400
+
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    r = req_lib.get(f'https://api.mercadolibre.com/items/{comp_id}', headers=heads, timeout=10)
+    if not r.ok:
+        return jsonify({'ok': False,
+                        'error': f'ML no reconoce {comp_id} (HTTP {r.status_code})'}), 400
+    it = r.json() or {}
+
+    if str(it.get('seller_id')) == str(user_id):
+        return jsonify({'ok': False,
+                        'error': 'Esa publicacion es tuya, no es un competidor'}), 400
+
+    vendedor = '-'
+    try:
+        ru = req_lib.get(f'https://api.mercadolibre.com/users/{it.get("seller_id")}',
+                         headers=heads, timeout=8)
+        if ru.ok:
+            u = ru.json() or {}
+            vendedor = u.get('nickname') or '-'
+    except Exception:
+        pass
+
+    comp = {
+        'id':        comp_id,
+        'title':     it.get('title', ''),
+        'price':     it.get('price'),
+        'thumbnail': it.get('thumbnail', ''),
+        'permalink': it.get('permalink', ''),
+        'seller':    vendedor,
+        'seller_id': it.get('seller_id'),
+        'catalog_product_id': it.get('catalog_product_id'),
+        'available_quantity': it.get('available_quantity'),
+        'status':    it.get('status'),
+        'attributes': it.get('attributes') or [],
+        'free_ship': bool((it.get('shipping') or {}).get('free_shipping')),
+        'sold_quantity': it.get('sold_quantity'),
+    }
+
+    # Puntaje contra la publicacion propia, si se indico cual
+    puntaje = None
+    if item_propio:
+        stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+        propio = next((x for x in stock.get('items', []) if x.get('id') == item_propio), None)
+        if propio:
+            try:
+                puntaje = cerebro.puntuar_candidato(
+                    {'id': propio.get('id'), 'title': propio.get('titulo'),
+                     'price': propio.get('precio')}, comp)
+            except Exception as e:
+                app.logger.warning('[cerebro] no pude puntuar %s: %s', comp_id, e)
+
+    reg = cerebro.guardar_competidor(alias, comp, item_propio=item_propio or None,
+                                     clase=clase, puntaje=puntaje, origen='manual')
+    if clase == cerebro.CLASE_DIRECTO:
+        cerebro.clasificar_competidor(alias, reg['clave'], cerebro.CLASE_DIRECTO,
+                                      por=session.get('username', 'usuario'))
+    _audit('CEREBRO_AGREGAR_COMPETIDOR', alias=alias, competidor=comp_id,
+           item_propio=item_propio, clase=clase)
+    return jsonify({'ok': True, 'competidor': reg})
+
+
 @app.route('/api/cerebro/competidor/clasificar', methods=['POST'])
 def api_cerebro_clasificar_competidor():
     """Confirma con un toque: es competidor directo / sustituto / no lo es."""
@@ -11859,7 +11949,15 @@ def cerebro_panel(alias):
     ver que. Un sistema que pide confianza sin mostrar su razonamiento no la
     merece — la pantalla es parte de la auditabilidad, no un adorno.
     """
-    return render_template('cerebro.html', alias=alias, accounts=get_accounts())
+    # Las publicaciones propias, para poder decir contra cual compite cada
+    # competidor que se carga: un competidor sin publicacion asociada no sirve
+    # para precio ni para diagnostico (correcciones 1 y 2).
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    items = sorted(({'id': i.get('id', ''), 'titulo': i.get('titulo', '')}
+                    for i in stock.get('items', []) if i.get('id')),
+                   key=lambda i: i['titulo'])
+    return render_template('cerebro.html', alias=alias, items=items,
+                           accounts=get_accounts())
 
 
 @app.route('/cerebro/backtest')

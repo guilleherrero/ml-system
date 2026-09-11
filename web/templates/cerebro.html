@@ -53,11 +53,11 @@
 .cb-acciones{display:flex;gap:.4rem;margin-top:.6rem}
 </style>
 
-<div class="app-page-header">
-  <h1><i class="bi bi-lightbulb"></i> Cerebro — {{ alias }}</h1>
-  <p class="app-page-sub">
-    Qué registró, qué está midiendo y qué aprendió solo.
-  </p>
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-lightbulb me-2 text-primary"></i>Cerebro</h1>
+    <div class="sub">{{ alias }} — qué registró, qué está midiendo y qué aprendió solo</div>
+  </div>
 </div>
 
 <div id="cb-hero" class="cb-hero">
@@ -69,13 +69,16 @@
   <button class="cb-tab" data-t="midiendo">Midiendo ahora<span class="n" id="n-midiendo">0</span></button>
   <button class="cb-tab" data-t="veredictos">Ya evaluadas<span class="n" id="n-veredictos">0</span></button>
   <button class="cb-tab" data-t="aprendizajes">Lo que aprendió<span class="n" id="n-aprendizajes">0</span></button>
+  <button class="cb-tab" data-t="competidores">Competidores<span class="n" id="n-competidores">0</span></button>
 </div>
 
 <div id="cb-panel"></div>
 
 <script>
 const ALIAS = {{ alias | tojson }};
-const S = {bandeja: [], acciones: [], aprendizajes: [], resumen: null, cands: []};
+const ITEMS = {{ items | tojson }};
+const S = {bandeja: [], acciones: [], aprendizajes: [], resumen: null, cands: [],
+           competidores: [], items: ITEMS};
 
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -95,12 +98,14 @@ const VEREDICTOS = {
 };
 
 async function cargar() {
-  const [r, b, a, ap] = await Promise.all([
+  const [r, b, a, ap, co] = await Promise.all([
     fetch(`/api/cerebro/resumen/${ALIAS}`).then(r => r.json()),
     fetch(`/api/cerebro/bandeja/${ALIAS}`).then(r => r.json()),
     fetch(`/api/cerebro/acciones/${ALIAS}?limit=200`).then(r => r.json()),
     fetch(`/api/cerebro/aprendizajes/${ALIAS}`).then(r => r.json()),
+    fetch(`/api/cerebro/competidores/${ALIAS}`).then(r => r.json()).catch(() => ({})),
   ]);
+  S.competidores = co.competidores || [];
   S.resumen = r.resumen || {};
   S.bandeja = b.propuestas || [];
   S.cands   = b.candidatos_competidor || [];
@@ -144,6 +149,7 @@ function pintarTabs() {
   document.getElementById('n-midiendo').textContent = midiendo;
   document.getElementById('n-veredictos').textContent = evals;
   document.getElementById('n-aprendizajes').textContent = S.aprendizajes.length;
+  document.getElementById('n-competidores').textContent = S.competidores.length;
 }
 
 function tarjetaAccion(a, extra = '') {
@@ -183,9 +189,9 @@ function pintar(tab) {
     }
     el.innerHTML = S.bandeja.map(a => tarjetaAccion(a, `
       <div class="cb-acciones">
-        <button class="app-btn app-btn-sm" onclick="decidir('aprobar','${a.id}')">
+        <button class="app-btn app-btn-xs" onclick="decidir('aprobar','${a.id}')">
           <i class="bi bi-check2"></i> Aprobar</button>
-        <button class="app-btn app-btn-sm app-btn-ghost" onclick="decidir('rechazar','${a.id}')">
+        <button class="app-btn app-btn-xs app-btn-ghost" onclick="decidir('rechazar','${a.id}')">
           <i class="bi bi-x"></i> Rechazar</button>
       </div>`)).join('')
       + (S.cands.length ? `<div class="cb-card"><div class="cb-fila">
@@ -207,6 +213,7 @@ function pintar(tab) {
          Todavía no hay veredictos. El primero sale cuando una acción aplicada
          cumpla 7 días y haya serie suficiente para comparar.</div></div>`;
   }
+  else if (tab === 'competidores') { pintarCompetidores(el); }
   else {
     el.innerHTML = S.aprendizajes.length ? S.aprendizajes.map(a => `
       <div class="cb-card ${a.acierto >= 0.7 ? 'funciono' : (a.acierto <= 0.3 ? 'empeoro' : 'neutra')}">
@@ -225,6 +232,96 @@ function pintar(tab) {
          mismo tipo ya fueron evaluadas: recién ahí se puede decir si mover ese
          resorte sirve en tu catálogo, en vez de repetir una regla general.</div></div>`;
   }
+}
+
+const CLASES = {
+  directo:   ['directo',   'Compite por la misma venta. Es el único que Cerebro usa para precio.'],
+  sustituto: ['sustituto', 'Resuelve lo mismo de otra forma. Se mira, no se persigue por precio.'],
+  ruido:     ['ruido',     'No compite. Queda descartado.'],
+  candidato: ['sin clasificar', 'Todavía no dijiste qué es, así que no se usa para nada.'],
+};
+
+function pintarCompetidores(el) {
+  const filas = S.competidores.map(c => `
+    <div class="cb-card ${c.clase === 'directo' ? 'funciono' : (c.clase === 'ruido' ? 'neutra' : 'pendiente')}">
+      <div class="cb-fila">
+        <span class="cb-pill tipo">${esc(CLASES[c.clase]?.[0] || c.clase)}</span>
+        <span class="t">${esc((c.title || c.id).slice(0, 60))}</span>
+        ${c.price ? `<span class="cb-num">$${Number(c.price).toLocaleString('es-AR')}</span>` : ''}
+        <span class="cb-meta" style="margin-left:auto">${esc(c.seller || '-')}</span>
+      </div>
+      <div class="cb-detalle">
+        ${esc(c.id)} · compite contra ${esc(c.item_propio || 'ninguna publicación tuya todavía')}
+        ${c.puntaje != null ? ` · parecido ${(c.puntaje * 100).toFixed(0)}%` : ''}
+        ${c.estado_stock ? ` · ${esc(c.estado_stock)}` : ''}
+        ${c.permalink ? ` · <a href="${esc(c.permalink)}" target="_blank" rel="noopener">ver en ML</a>` : ''}
+      </div>
+      <div class="cb-acciones">
+        ${['directo', 'sustituto', 'ruido'].filter(x => x !== c.clase).map(x =>
+          `<button class="app-btn app-btn-xs app-btn-ghost"
+             onclick="clasificar('${esc(c.clave)}','${x}')">Marcar ${x}</button>`).join('')}
+        <button class="app-btn app-btn-xs app-btn-ghost"
+          onclick="borrarComp('${esc(c.clave)}')"><i class="bi bi-trash"></i></button>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="cb-card">
+      <div class="cb-fila"><span class="t">Agregar un competidor</span></div>
+      <div class="cb-meta" style="margin:.3rem 0 .6rem">
+        Cerebro no detecta competidores solo: ML cortó el acceso a las búsquedas
+        programáticas. Los cargás vos pegando el MLA, y solo los que marques como
+        <b>directos</b> se usan para precio y para el diagnóstico de por qué te ganan.
+      </div>
+      <div class="cb-fila" style="gap:.4rem">
+        <input id="cmp-id" class="form-control form-control-sm" placeholder="MLA123456789" style="max-width:12rem">
+        <select id="cmp-item" class="form-control form-control-sm" style="max-width:22rem">
+          <option value="">¿Contra cuál de tus publicaciones compite?</option>
+          ${S.items.map(i => `<option value="${esc(i.id)}">${esc((i.titulo || i.id).slice(0, 55))}</option>`).join('')}
+        </select>
+        <button class="app-btn app-btn-xs" onclick="agregarComp()">
+          <i class="bi bi-plus-lg"></i> Agregar como directo</button>
+      </div>
+      <div id="cmp-msg" class="cb-meta" style="margin-top:.5rem"></div>
+    </div>
+    ${filas || `<div class="cb-card"><div class="cb-vacio">
+       Todavía no cargaste ninguno. Sin competidores confirmados hay dos módulos
+       que no pueden correr: el diagnóstico diferencial —por qué te está ganando:
+       precio, keywords o condiciones— y el motor de precio, que solo compara
+       contra los que vos confirmaste.</div></div>`}`;
+}
+
+async function agregarComp() {
+  const id = document.getElementById('cmp-id').value.trim();
+  const item = document.getElementById('cmp-item').value;
+  const msg = document.getElementById('cmp-msg');
+  if (!id) { msg.textContent = 'Pegá el MLA del competidor.'; return; }
+  msg.textContent = 'Buscándolo en ML…';
+  const r = await fetch('/api/cerebro/competidor/agregar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS, competidor_id: id, item_propio: item, clase: 'directo'}),
+  }).then(r => r.json());
+  if (!r.ok) { msg.textContent = r.error || 'No se pudo agregar.'; return; }
+  msg.textContent = '';
+  document.getElementById('cmp-id').value = '';
+  cargar();
+}
+
+async function clasificar(clave, clase) {
+  const r = await fetch('/api/cerebro/competidor/clasificar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS, clave, clase}),
+  }).then(r => r.json());
+  if (!r.ok) { alert(r.error || 'No se pudo'); return; }
+  cargar();
+}
+
+async function borrarComp(clave) {
+  await fetch('/api/cerebro/competidor/eliminar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS, clave}),
+  });
+  cargar();
 }
 
 async function decidir(que, id) {

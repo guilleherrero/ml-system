@@ -40,12 +40,12 @@
   letter-spacing:.05em;color:var(--color-neutral-600);margin:1.5rem 0 .6rem}
 </style>
 
-<div class="app-page-header">
-  <h1><i class="bi bi-search"></i> Keywords y ficha — {{ alias }}</h1>
-  <p class="app-page-sub">
-    Cada publicación cruzada contra las búsquedas reales de autosuggest.
-    No necesita historial: esto se puede corregir hoy.
-  </p>
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-search me-2 text-primary"></i>Keywords y ficha</h1>
+    <div class="sub">{{ alias }} — cada publicación cruzada contra las búsquedas
+      reales de autosuggest. No necesita historial: esto se puede corregir hoy.</div>
+  </div>
 </div>
 
 {% if not data %}
@@ -57,26 +57,26 @@
   </div>
 {% else %}
 
-<div class="app-stat-row">
+<div class="d-flex gap-3 flex-wrap mb-3" style="--x:0">
   <div class="app-stat-box">
-    <span class="app-stat-label">Publicaciones analizadas</span>
-    <span class="app-stat-value">{{ data.items_analizados }}</span>
+    <div class="num">{{ data.items_analizados }}</div>
+    <div class="lbl">Publicaciones analizadas</div>
   </div>
   <div class="app-stat-box">
-    <span class="app-stat-label">Con algo para corregir</span>
-    <span class="app-stat-value">{{ data.items_con_hallazgos }}</span>
+    <div class="num">{{ data.items_con_hallazgos }}</div>
+    <div class="lbl">Con algo para corregir</div>
   </div>
   <div class="app-stat-box">
-    <span class="app-stat-label">Errores de escritura</span>
-    <span class="app-stat-value">{{ typos_total }}</span>
+    <div class="num">{{ typos_total }}</div>
+    <div class="lbl">Errores de escritura</div>
   </div>
   <div class="app-stat-box">
-    <span class="app-stat-label">Búsquedas de marca ajena</span>
-    <span class="app-stat-value">{{ data.busquedas_de_marca_ajena or 0 }}</span>
+    <div class="num">{{ data.busquedas_de_marca_ajena or 0 }}</div>
+    <div class="lbl">Búsquedas de marca ajena</div>
   </div>
   <div class="app-stat-box">
-    <span class="app-stat-label">Plata identificada</span>
-    <span class="app-stat-value">${{ '{:,.0f}'.format(plata_total).replace(',','.') }}</span>
+    <div class="num">${{ '{:,.0f}'.format(plata_total).replace(',','.') }}</div>
+    <div class="lbl">Plata identificada</div>
   </div>
 </div>
 
@@ -163,10 +163,10 @@
 
     {% if valuado %}<div class="kw-formula">{{ h.formula }}</div>{% endif %}
     <div style="margin-top:.6rem">
-      <a class="app-btn app-btn-sm" href="/optimizaciones?item={{ h.item_id }}">
+      <a class="app-btn app-btn-xs" href="/optimizaciones?item={{ h.item_id }}">
         <i class="bi bi-magic"></i> Optimizar
       </a>
-      <a class="app-btn app-btn-sm app-btn-ghost"
+      <a class="app-btn app-btn-xs app-btn-ghost"
          href="https://articulo.mercadolibre.com.ar/{{ h.item_id[:3] }}-{{ h.item_id[3:] }}"
          target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Ver en ML</a>
     </div>
