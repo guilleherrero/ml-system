@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %} — Capturar competidores{% endblock %}
+
+{% block content %}
+<style>
+.bk-drag{display:inline-block;padding:.7rem 1.4rem;border-radius:10px;
+  background:var(--color-info-500);color:#fff;font-weight:800;text-decoration:none;
+  box-shadow:var(--shadow-sm);cursor:grab;font-size:.95rem}
+.bk-drag:hover{color:#fff;opacity:.92}
+.bk-paso{display:flex;gap:.85rem;margin-bottom:1.1rem}
+.bk-n{flex:0 0 1.7rem;height:1.7rem;border-radius:50%;background:var(--color-neutral-200);
+  color:#0f172a;font-weight:800;display:flex;align-items:center;justify-content:center;
+  font-size:.82rem}
+.bk-paso .txt{font-size:.88rem;line-height:1.55;color:#1e293b}
+.bk-code{font-family:ui-monospace,monospace;font-size:.78rem;background:var(--color-neutral-100);
+  padding:1px 6px;border-radius:5px}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-bookmark-star me-2 text-primary"></i>Capturar competidores</h1>
+    <div class="sub">{{ alias }} — un clic sobre una búsqueda de ML y entran todos</div>
+  </div>
+</div>
+
+<div class="app-card" style="border-left:4px solid var(--color-warning-400)">
+  <p style="margin:0;font-size:.87rem;line-height:1.6">
+    <b>Por qué hace falta esto.</b> MercadoLibre cortó el acceso programático a los
+    resultados de búsqueda: el sistema recibe <span class="bk-code">403</span> y no
+    puede ver quién aparece arriba tuyo. Este botón corre en tu navegador, con tu
+    sesión, sobre la página que estás mirando — es la única vía que queda para las
+    publicaciones que no son de catálogo, que son justo donde se compite por
+    contenido y no solo por precio.
+  </p>
+</div>
+
+<div class="app-card">
+  <h2 style="font-size:1rem;font-weight:800;margin:0 0 1rem">Instalarlo una vez</h2>
+
+  <div class="bk-paso">
+    <div class="bk-n">1</div>
+    <div class="txt">
+      Mostrá la barra de favoritos del navegador si no la tenés:
+      <span class="bk-code">Cmd+Shift+B</span> en Mac, <span class="bk-code">Ctrl+Shift+B</span> en Windows.
+    </div>
+  </div>
+
+  <div class="bk-paso">
+    <div class="bk-n">2</div>
+    <div class="txt">
+      <b>Arrastrá este botón a la barra de favoritos.</b> No le hagas clic acá — no
+      hace nada en esta página.
+      <div style="margin:.8rem 0">
+        <a class="bk-drag" href="{{ bookmarklet }}"
+           onclick="event.preventDefault();alert('No lo toques acá: arrastralo a la barra de favoritos.');return false;">
+          ⚡ Enviar a Cerebro
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="bk-paso">
+    <div class="bk-n">3</div>
+    <div class="txt">
+      Listo. Queda instalado para siempre, con tu cuenta <b>{{ alias }}</b> ya configurada.
+    </div>
+  </div>
+</div>
+
+<div class="app-card">
+  <h2 style="font-size:1rem;font-weight:800;margin:0 0 1rem">Cómo se usa todos los días</h2>
+
+  <div class="bk-paso">
+    <div class="bk-n">1</div>
+    <div class="txt">
+      Entrá a MercadoLibre y buscá tu producto <b>como lo buscaría un comprador</b>.
+      No busques tu título: buscá la frase real, la que te da autosuggest. Por ejemplo
+      <span class="bk-code">cortador de puntas abiertas</span>.
+    </div>
+  </div>
+
+  <div class="bk-paso">
+    <div class="bk-n">2</div>
+    <div class="txt">
+      Con los resultados en pantalla, hacé clic en <b>⚡ Enviar a Cerebro</b>.
+      Captura toda la página de una: título, precio, vendedor, envío gratis,
+      unidades vendidas y la señal de stock (<i>"Última disponible"</i>).
+    </div>
+  </div>
+
+  <div class="bk-paso">
+    <div class="bk-n">3</div>
+    <div class="txt">
+      Te dice cuántos capturó <b>y en qué puesto apareciste vos</b> en esa búsqueda —
+      eso es lo que se había perdido cuando ML cerró el endpoint.
+    </div>
+  </div>
+
+  <div class="bk-paso">
+    <div class="bk-n">4</div>
+    <div class="txt">
+      Entrás a <a href="/cerebro/{{ alias }}">Cerebro → Competidores</a> y confirmás
+      con un toque cuáles son <b>directos</b>. El sistema ya adivinó contra cuál de tus
+      publicaciones compite cada uno; vos solo corregís lo que erró.
+    </div>
+  </div>
+</div>
+
+<div class="app-card">
+  <h2 style="font-size:1rem;font-weight:800;margin:0 0 .6rem">Para qué se usan después</h2>
+  <p style="font-size:.87rem;line-height:1.6;margin:0">
+    Solo los que marques como <b>directos</b> se usan, y en tres lugares: el
+    <b>motor de precio</b> (contra quién compararse), el <b>diagnóstico diferencial</b>
+    (si te está ganando por precio, por keywords o por condiciones) y
+    <b>Optimizar IA</b>, que hasta ahora los buscaba en el endpoint que ML bloqueó —
+    o sea que venía generando títulos y descripciones sin ningún dato de competencia.
+  </p>
+</div>
+{% endblock %}

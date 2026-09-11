@@ -11681,6 +11681,11 @@ def api_capturar_competidor():
         app.logger.info('[cerebro] captura de competidor sin token '
                         '(definir CEREBRO_BOOKMARKLET_TOKEN para cerrarlo)')
 
+    # Modo lote: una pagina de resultados trae 20-50 publicaciones y mandarlas de
+    # a una es un POST por fila. La captura tiene que costar un clic, no cincuenta.
+    if isinstance(body.get('competidores'), list):
+        return _capturar_lote(alias, body)
+
     comp = {
         'id':            (body.get('id') or '').strip().upper(),
         'title':         body.get('title', ''),
@@ -11726,6 +11731,79 @@ def api_capturar_competidor():
     except Exception as e:
         app.logger.error('[cerebro] capturar competidor fallo: %s', e)
         return _cors(jsonify({'ok': False, 'error': str(e)})), 500
+
+
+def _capturar_lote(alias: str, body: dict):
+    """Guarda todos los competidores de una pagina de resultados de una vez.
+
+    Guarda ademas la busqueda y la posicion de cada uno: ML corto el acceso
+    programatico a los resultados, asi que esta captura es la unica forma que
+    queda de saber en que puesto aparece cada publicacion —propia y ajena— en
+    una busqueda real.
+    """
+    from modules import cerebro
+    filas = body.get('competidores') or []
+    query = (body.get('query') or '').strip()
+    if not filas:
+        return _cors(jsonify({'ok': False, 'error': 'La pagina no tenia resultados'})), 400
+
+    propios_ids = {p['id'] for p in _items_propios(alias)}
+    propios = _items_propios(alias)
+
+    guardados, mios, errores = 0, [], 0
+    for f in filas:
+        cid = (f.get('id') or '').strip().upper()
+        if not cid or not f.get('title'):
+            errores += 1
+            continue
+        if cid in propios_ids:
+            # Una publicacion propia en los resultados no es competencia: es la
+            # posicion en la que estas vos, que es justamente lo que se perdio.
+            mios.append({'id': cid, 'posicion': f.get('posicion')})
+            continue
+        comp = {
+            'id': cid, 'title': f.get('title', ''), 'price': f.get('price', 0),
+            'thumbnail': f.get('thumbnail', ''), 'permalink': f.get('permalink', ''),
+            'seller': f.get('seller', '-'), 'free_ship': bool(f.get('free_ship')),
+            'senal_stock': f.get('senal_stock') or '',
+            'sold_quantity': f.get('sold_quantity'),
+        }
+        try:
+            item_propio, _score, _corta = cerebro.sugerir_item_propio(comp['title'], propios)
+            puntaje = None
+            if item_propio:
+                p = next((x for x in propios if x['id'] == item_propio), None)
+                if p:
+                    puntaje = cerebro.puntuar_candidato(p, comp)
+            cerebro.guardar_competidor(alias, comp, item_propio=item_propio,
+                                       clase=cerebro.CLASE_CANDIDATO,
+                                       puntaje=puntaje, origen='bookmarklet')
+            guardados += 1
+        except Exception as e:
+            app.logger.warning('[cerebro] no pude guardar %s: %s', cid, e)
+            errores += 1
+
+    # Snapshot de la busqueda: donde aparecio cada publicacion propia
+    if query:
+        try:
+            path = os.path.join(DATA_DIR, f'busquedas_capturadas_{safe(alias)}.json')
+            data = load_json(path) or {'busquedas': {}}
+            data['busquedas'][query] = {
+                'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                'resultados': len(filas),
+                'mis_posiciones': mios,
+            }
+            save_json(path, data)
+        except Exception as e:
+            app.logger.warning('[cerebro] no pude guardar la busqueda: %s', e)
+
+    _audit('CEREBRO_CAPTURA_LOTE', alias=alias, query=query,
+           guardados=guardados, propias=len(mios))
+    return _cors(jsonify({
+        'ok': True, 'guardados': guardados, 'errores': errores,
+        'query': query, 'mis_posiciones': mios,
+        'total_en_pagina': len(filas),
+    }))
 
 
 @app.route('/api/pending-competidores', methods=['GET'])
@@ -11992,6 +12070,75 @@ def _tg(tipo: str, titulo: str, detalle: str = '', alias: str = '', url: str = '
     except Exception as e:
         app.logger.warning('[telegram] aviso %s fallo: %s', tipo, e)
         return False
+
+
+def _competidores_para_optimizar(alias: str, item_id: str) -> list:
+    """Los competidores confirmados de esa publicacion, con el shape que espera
+    seo_optimizer.
+
+    seo_optimizer busca competidores en /sites/MLA/search, que ML devuelve 403.
+    Como falla en silencio y sigue con lista vacia, Optimizar IA venia generando
+    titulos y descripciones sin ningun dato de competencia, y en cascada sin
+    preguntas ni reseñas de competidores, que es de donde salen las objeciones
+    reales de los compradores.
+
+    No se toca seo_optimizer (Regla #1): la funcion ya acepta
+    `competitor_products` y los usa en lugar de la busqueda. Lo unico que
+    faltaba era pasarle los que el usuario confirmo.
+    """
+    try:
+        from modules import cerebro
+        confirmados = cerebro.competidores_para_precio(alias, item_id)
+    except Exception as e:
+        app.logger.warning('[optimizar] no pude leer competidores de %s: %s', item_id, e)
+        return []
+
+    out = []
+    for c in confirmados:
+        out.append({
+            'id':            c.get('id', ''),
+            'title':         c.get('title', ''),
+            'seller':        c.get('seller', '-'),
+            'sold_quantity': c.get('sold_quantity') or 0,
+            'price':         float(c.get('price') or 0),
+            'listing_type':  '',
+            'premium':       False,
+            'free_ship':     bool(c.get('free_ship')),
+            'full_ship':     False,
+            'photos_count':  0,
+            'attributes':    c.get('attributes') or [],
+            'description':   '',
+        })
+    return out
+
+
+@app.route('/bookmarklet/<alias>')
+def bookmarklet(alias):
+    """Instalador del capturador de competidores.
+
+    El bookmarklet se arma en el servidor y no en el cliente para que lleve ya
+    dentro el alias, la URL del sistema y el token: si el usuario tiene que
+    configurar algo a mano, la herramienta se usa una vez y no se usa mas.
+    """
+    from urllib.parse import quote
+    ruta = os.path.join(app.root_path, 'static', 'js', 'bookmarklet_cerebro.js')
+    try:
+        with open(ruta, encoding='utf-8') as f:
+            codigo = f.read()
+    except OSError as e:
+        app.logger.error('[bookmarklet] no pude leer el script: %s', e)
+        codigo = ''
+
+    cfg = json.dumps({
+        'base':  request.url_root.rstrip('/'),
+        'alias': alias,
+        'token': os.environ.get('CEREBRO_BOOKMARKLET_TOKEN', '').strip(),
+    })
+    # Se inyecta la config y se manda todo como una sola URL javascript:
+    bm = 'javascript:' + quote(f'(function(){{window.__CEREBRO_CFG__={cfg};{codigo}}})();',
+                               safe='')
+    return render_template('bookmarklet.html', alias=alias, bookmarklet=bm,
+                           accounts=get_accounts())
 
 
 @app.route('/cerebro/<alias>')
@@ -14400,6 +14547,10 @@ def api_optimizar_pub_v2():
     gap_keywords = body.get('gap_keywords', [])          # keywords gap del reverse analysis
     comp_prods   = body.get('competitor_products', [])   # competidores seleccionados
     kw_research  = body.get('kw_research') or {}
+    # Sin seleccion manual, los confirmados en Cerebro. Antes caia en la busqueda
+    # de ML, que devuelve 403, y optimizaba a ciegas.
+    if not comp_prods:
+        comp_prods = _competidores_para_optimizar(alias, item_id)
 
     if not alias or not item_id:
         return jsonify({'ok': False, 'error': 'Falta alias o item_id'}), 400
@@ -14597,6 +14748,9 @@ def api_lanzar_nuevo_v2():
     body         = request.get_json() or {}
     alias        = body.get('alias', '')
     product_idea = body.get('product_idea', '').strip()
+    # Aca NO se cae a los competidores confirmados: es un producto que todavia
+    # no existe, asi que no hay publicacion propia a la cual esten asociados.
+    # Para un lanzamiento los elige el usuario a mano.
     comp_prods   = body.get('competitor_products', [])
     gap_keywords = body.get('gap_keywords', [])
 

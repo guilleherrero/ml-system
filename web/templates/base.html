@@ -257,6 +257,9 @@
     <a href="/cerebro/{{ acc.alias }}" class="{{ 'active' if request.path == '/cerebro/'~acc.alias else '' }}">
       <i class="bi bi-lightbulb"></i> Cerebro
     </a>
+    <a href="/bookmarklet/{{ acc.alias }}" class="{{ 'active' if request.path == '/bookmarklet/'~acc.alias else '' }}">
+      <i class="bi bi-bookmark-star"></i> Capturar competidores
+    </a>
     <a href="/cerebro/backtest/{{ acc.alias }}" class="{{ 'active' if request.path == '/cerebro/backtest/'~acc.alias else '' }}">
       <i class="bi bi-clock-history"></i> Cerebro — backtest
     </a>
