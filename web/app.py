@@ -11788,9 +11788,9 @@ def _capturar_lote(alias: str, body: dict):
     propios_ids = {p['id'] for p in propios}
 
     try:
-        _tok, _uid, heads = _ml_auth(alias)
+        _tok, mi_user_id, heads = _ml_auth(alias)
     except Exception:
-        heads = None
+        heads, mi_user_id = None, None
 
     guardados, mios, errores, fichas = 0, [], 0, 0
     for f in filas:
@@ -11815,7 +11815,13 @@ def _capturar_lote(alias: str, body: dict):
             errores += 1
             continue
 
-        if cid in propios_ids:
+        # Reconocer lo propio por VENDEDOR y no solo por el archivo de stock: el
+        # stock puede no tener una publicacion todavia, y guardarse a uno mismo
+        # como competidor envenena el motor de precio —te compara contra vos—.
+        es_mia = cid in propios_ids
+        if not es_mia and mi_user_id and f.get('seller_id') is not None:
+            es_mia = str(f['seller_id']) == str(mi_user_id)
+        if es_mia:
             # Una publicacion propia en los resultados no es competencia: es la
             # posicion en la que estas vos, que es justamente lo que se perdio.
             mios.append({'id': cid, 'posicion': f.get('posicion')})
@@ -11861,6 +11867,9 @@ def _capturar_lote(alias: str, body: dict):
     return _cors(jsonify({
         'ok': True, 'guardados': guardados, 'errores': errores,
         'fichas_resueltas': fichas,
+        'publicaciones_comparadas': len(propios),
+        'asociados': sum(1 for c in cerebro.listar_competidores(alias)
+                         if c.get('origen') == 'bookmarklet' and c.get('item_propio')),
         'query': query, 'mis_posiciones': mios,
         'total_en_pagina': len(filas),
     }))
@@ -11935,6 +11944,14 @@ def api_cerebro_agregar_competidor():
         return jsonify({'ok': False, 'error': str(e)}), 401
 
     r = req_lib.get(f'https://api.mercadolibre.com/items/{comp_id}', headers=heads, timeout=10)
+    if r.status_code == 403:
+        # ML tambien cerro la lectura de publicaciones de otros vendedores, asi
+        # que cargar un competidor a mano por su MLA ya no alcanza. Decirlo, en
+        # vez de devolver un 403 pelado que no explica nada.
+        return jsonify({'ok': False, 'error': (
+            'ML no deja leer publicaciones de otros vendedores por API (403). '
+            'Usá "Capturar competidores": el bookmarklet lee la página desde tu '
+            'navegador, que es la única vía que quedó.')}), 400
     if not r.ok:
         return jsonify({'ok': False,
                         'error': f'ML no reconoce {comp_id} (HTTP {r.status_code})'}), 400
