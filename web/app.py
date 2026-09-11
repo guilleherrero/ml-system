@@ -3209,6 +3209,60 @@ def api_catalogo_competidores(alias, item_id):
     return jsonify(datos)
 
 
+@app.route('/api/debug-fuentes-competencia/<alias>')
+def api_debug_fuentes_competencia(alias):
+    """Que endpoints de descubrimiento de competencia siguen vivos.
+
+    /sites/MLA/search esta bloqueado por ML, y de ahi salen los competidores que
+    usa seo_optimizer para generar titulos y descripciones. Antes de proponer
+    una alternativa hay que saber cuales de las otras fuentes responden de
+    verdad, en vez de suponerlo.
+    """
+    item_id = (request.args.get('item_id') or '').strip().upper()
+    try:
+        token, user_id, heads = _ml_auth(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 401
+
+    cat = (request.args.get('cat') or '').strip()
+    if not cat and item_id:
+        ri = req_lib.get(f'https://api.mercadolibre.com/items/{item_id}',
+                         headers=heads, timeout=8)
+        if ri.ok:
+            cat = (ri.json() or {}).get('category_id') or ''
+
+    out = {'ok': True, 'category_id': cat, 'fuentes': {}}
+
+    def probar(nombre, url, params=None):
+        try:
+            r = req_lib.get(url, headers=heads, params=params or {}, timeout=10)
+            body = r.json() if r.ok else None
+            n = None
+            if isinstance(body, dict):
+                n = len(body.get('content') or body.get('results') or [])
+            elif isinstance(body, list):
+                n = len(body)
+            out['fuentes'][nombre] = {'status': r.status_code, 'n': n,
+                                      'muestra': (body if isinstance(body, list) else
+                                                  (body or {}).get('content')
+                                                  or (body or {}).get('results'))[:3]
+                                      if r.ok else (r.text or '')[:160]}
+        except Exception as e:
+            out['fuentes'][nombre] = {'status': 'error', 'detalle': str(e)[:160]}
+
+    probar('sites_search', 'https://api.mercadolibre.com/sites/MLA/search',
+           {'q': 'cortador de puntas', 'limit': 5})
+    if cat:
+        probar('highlights', f'https://api.mercadolibre.com/highlights/MLA/category/{cat}',
+               {'limit': 10})
+        probar('trends', f'https://api.mercadolibre.com/trends/MLA/{cat}')
+        probar('sites_search_cat', 'https://api.mercadolibre.com/sites/MLA/search',
+               {'category': cat, 'limit': 5})
+    probar('products_search', 'https://api.mercadolibre.com/products/search',
+           {'site_id': 'MLA', 'q': 'cortador de puntas', 'limit': 5})
+    return jsonify(out)
+
+
 @app.route('/api/debug-catalog-search/<alias>')
 def api_debug_catalog_search(alias):
     """Debug: busca en /products/search y /sites/MLA/search para un item o query."""
