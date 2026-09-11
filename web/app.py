@@ -11733,6 +11733,43 @@ def api_capturar_competidor():
         return _cors(jsonify({'ok': False, 'error': str(e)})), 500
 
 
+def _resolver_ficha(cpid: str, heads: dict) -> dict | None:
+    """De una ficha de catalogo a la publicacion que la esta ganando.
+
+    En una ficha compiten varios vendedores por la misma publicacion: el que
+    gana la buy box se lleva el trafico. Ese es el competidor real; el id de la
+    ficha no es una publicacion y guardarlo como competidor deja un registro que
+    despues devuelve 404.
+    """
+    if not cpid:
+        return None
+    try:
+        rp = req_lib.get(f'https://api.mercadolibre.com/products/{cpid}',
+                         headers=heads, timeout=8)
+        ganador = ''
+        if rp.ok:
+            ganador = ((rp.json() or {}).get('buy_box_winner') or {}).get('item_id') or ''
+        ri = req_lib.get(f'https://api.mercadolibre.com/products/{cpid}/items',
+                         headers=heads, timeout=8)
+        if not ri.ok:
+            return None
+        res = (ri.json() or {}).get('results') or []
+        if not res:
+            return None
+        fila = next((r for r in res if r.get('item_id') == ganador), res[0])
+        return {
+            'id':            fila.get('item_id', ''),
+            'catalog_product_id': cpid,
+            'price':         fila.get('price'),
+            'seller_id':     fila.get('seller_id'),
+            'free_ship':     bool((fila.get('shipping') or {}).get('free_shipping')),
+            'es_ficha':      False,
+        }
+    except Exception as e:
+        app.logger.warning('[cerebro] no pude resolver la ficha %s: %s', cpid, e)
+        return None
+
+
 def _capturar_lote(alias: str, body: dict):
     """Guarda todos los competidores de una pagina de resultados de una vez.
 
@@ -11747,15 +11784,37 @@ def _capturar_lote(alias: str, body: dict):
     if not filas:
         return _cors(jsonify({'ok': False, 'error': 'La pagina no tenia resultados'})), 400
 
-    propios_ids = {p['id'] for p in _items_propios(alias)}
     propios = _items_propios(alias)
+    propios_ids = {p['id'] for p in propios}
 
-    guardados, mios, errores = 0, [], 0
+    try:
+        _tok, _uid, heads = _ml_auth(alias)
+    except Exception:
+        heads = None
+
+    guardados, mios, errores, fichas = 0, [], 0, 0
     for f in filas:
         cid = (f.get('id') or '').strip().upper()
         if not cid or not f.get('title'):
             errores += 1
             continue
+
+        # Una tarjeta de catalogo linkea a la ficha, no a una publicacion. El id
+        # de ficha no es un competidor: el competidor es quien gana esa ficha.
+        # Se resuelve aca porque /products/{id}/items sigue respondiendo, que es
+        # de los pocos endpoints que ML no cerro.
+        if f.get('es_ficha') and heads:
+            resuelto = _resolver_ficha(f.get('catalog_product_id') or cid, heads)
+            if not resuelto:
+                errores += 1
+                continue
+            cid = resuelto['id']
+            f = {**f, **resuelto}
+            fichas += 1
+        elif f.get('es_ficha'):
+            errores += 1
+            continue
+
         if cid in propios_ids:
             # Una publicacion propia en los resultados no es competencia: es la
             # posicion en la que estas vos, que es justamente lo que se perdio.
@@ -11798,9 +11857,10 @@ def _capturar_lote(alias: str, body: dict):
             app.logger.warning('[cerebro] no pude guardar la busqueda: %s', e)
 
     _audit('CEREBRO_CAPTURA_LOTE', alias=alias, query=query,
-           guardados=guardados, propias=len(mios))
+           guardados=guardados, propias=len(mios), fichas=fichas)
     return _cors(jsonify({
         'ok': True, 'guardados': guardados, 'errores': errores,
+        'fichas_resueltas': fichas,
         'query': query, 'mis_posiciones': mios,
         'total_en_pagina': len(filas),
     }))
