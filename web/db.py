@@ -67,5 +67,6 @@ def init_db():
     """Crea las tablas si no existen. Idempotente."""
     # Import diferido para evitar ciclos — los modelos se registran en Base.metadata
     # al importarse
-    from web import models_tienda  # noqa: F401
+    from web import models_tienda        # noqa: F401
+    from web import models_contabilidad  # noqa: F401
     Base.metadata.create_all(engine)

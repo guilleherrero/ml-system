@@ -19475,6 +19475,18 @@ try:
 except Exception as _e:
     print(f'[biobella] ERROR inicializando tablas relacionales: {_e}')
 
+# Siembra el plan de rubros y las reglas de clasificación del sistema contable.
+# Es idempotente: en cada arranque solo inserta lo que falte.
+try:
+    from modules.contabilidad import sembrar_plan as _sembrar_plan_contable
+    _res_plan = _sembrar_plan_contable()
+    if _res_plan.get('rubros_creados') or _res_plan.get('reglas_creadas'):
+        print(f'[contabilidad] plan sembrado: {_res_plan}')
+    else:
+        print('[contabilidad] plan de rubros OK')
+except Exception as _e:
+    print(f'[contabilidad] ERROR sembrando el plan de rubros: {_e}')
+
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
 

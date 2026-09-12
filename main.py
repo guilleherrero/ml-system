@@ -345,6 +345,193 @@ def cmd_todo():
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
+def cmd_contabilidad():
+    """
+    Sistema contable.
+
+      python main.py contabilidad importar <alias> <desde> <hasta> [alias_mp]
+      python main.py contabilidad resumen  [desde] [hasta] [alias]
+      python main.py contabilidad anual    [anio] [alias]
+      python main.py contabilidad cierre   <alias> <periodo YYYY-MM>
+      python main.py contabilidad pendientes [alias]
+      python main.py contabilidad sin-costo  [alias]
+      python main.py contabilidad cmv      <desde> <hasta> [alias]
+    """
+    from datetime import date, datetime
+
+    from web.db import init_db
+    from modules import contabilidad as cont
+    from modules import contabilidad_cierre as cierre
+
+    init_db()
+    cont.sembrar_plan()
+
+    sub = (sys.argv[2] if len(sys.argv) > 2 else 'resumen').lower()
+
+    def _fecha(valor, default):
+        if not valor:
+            return default
+        return datetime.strptime(valor, '%Y-%m-%d').date()
+
+    hoy = date.today()
+    enero = date(hoy.year, 1, 1)
+
+    if sub == 'importar':
+        from modules import contabilidad_import as imp
+        alias = sys.argv[3] if len(sys.argv) > 3 else None
+        if not alias:
+            console.print('[red]Falta el alias de la cuenta ML[/red]')
+            return
+        desde = _fecha(sys.argv[4] if len(sys.argv) > 4 else None, enero)
+        hasta = _fecha(sys.argv[5] if len(sys.argv) > 5 else None, hoy)
+        alias_mp = sys.argv[6] if len(sys.argv) > 6 else None
+        console.print(f'[cyan]Importando {alias} desde {desde} hasta {hasta}…[/cyan]')
+        res = imp.importar_todo(alias, desde, hasta, alias_mp=alias_mp)
+        for fuente, datos in res.items():
+            console.print(f'  [bold]{fuente}[/bold]: {datos}')
+        return
+
+    if sub == 'resumen':
+        desde = _fecha(sys.argv[3] if len(sys.argv) > 3 else None, enero)
+        hasta = _fecha(sys.argv[4] if len(sys.argv) > 4 else None, hoy)
+        alias = sys.argv[5] if len(sys.argv) > 5 else None
+        _print_resumen(cont.resumen(desde, hasta, alias))
+        return
+
+    if sub == 'anual':
+        anio = int(sys.argv[3]) if len(sys.argv) > 3 else hoy.year
+        alias = sys.argv[4] if len(sys.argv) > 4 else None
+        _print_resumen(cont.resumen_anual(anio, alias))
+        return
+
+    if sub == 'cierre':
+        alias = sys.argv[3] if len(sys.argv) > 3 else None
+        periodo = sys.argv[4] if len(sys.argv) > 4 else f'{hoy:%Y-%m}'
+        if not alias:
+            console.print('[red]Falta el alias de la cuenta ML[/red]')
+            return
+        res = cierre.cerrar_periodo(alias, periodo)
+        console.print(f'\n[bold]Cierre {periodo} — {alias}[/bold]')
+        for alerta in res['alertas']:
+            console.print(f'  [yellow]![/yellow] {alerta}')
+        if res['cerrado_ok']:
+            console.print('  [green]Cierra sin observaciones.[/green]')
+        bil = res.get('billing') or {}
+        if bil.get('lineas'):
+            t = Table(box=box.SIMPLE)
+            for col in ('Subtipo', 'Resumen ML', 'Importado', 'Dif.', 'Estado'):
+                t.add_column(col)
+            for l in bil['lineas']:
+                t.add_row(l['subtipo'], f'{l["resumen_ml"]:,.2f}',
+                          f'{l["importado"]:,.2f}', f'{l["diferencia"]:,.2f}',
+                          l['estado'])
+            console.print(t)
+        return
+
+    if sub == 'pendientes':
+        alias = sys.argv[3] if len(sys.argv) > 3 else None
+        filas = cont.pendientes(alias)
+        if not filas:
+            console.print('[green]No hay movimientos pendientes de clasificar.[/green]')
+            return
+        t = Table(box=box.SIMPLE, title=f'{len(filas)} pendientes')
+        for col in ('ID', 'Fecha', 'Origen', 'Concepto', 'Monto', 'Motivo'):
+            t.add_column(col)
+        for f in filas[:60]:
+            t.add_row(str(f['id']), f['fecha'][:10], f['origen'],
+                      (f['concepto'] or '')[:40], f'{f["monto"]:,.2f}',
+                      (f['nota'] or '')[:40])
+        console.print(t)
+        return
+
+    if sub == 'sin-costo':
+        alias = sys.argv[3] if len(sys.argv) > 3 else None
+        filas = cierre.items_sin_costo(alias)
+        if not filas:
+            console.print('[green]Todas las publicaciones con ventas tienen costo.[/green]')
+            return
+        t = Table(box=box.SIMPLE,
+                  title=f'{len(filas)} publicaciones con ventas y sin costo')
+        for col in ('Item', 'Título', 'Ventas', 'Facturado'):
+            t.add_column(col)
+        for f in filas[:40]:
+            t.add_row(f['item_id'], (f['titulo'] or '')[:45],
+                      str(f['ventas']), f'{f["facturado"]:,.2f}')
+        console.print(t)
+        console.print('\n[yellow]Sin estos costos el resultado está sobreestimado.[/yellow]')
+        return
+
+    if sub == 'cmv':
+        desde = _fecha(sys.argv[3] if len(sys.argv) > 3 else None, enero)
+        hasta = _fecha(sys.argv[4] if len(sys.argv) > 4 else None, hoy)
+        alias = sys.argv[5] if len(sys.argv) > 5 else None
+        res = cierre.aplicar_cmv(desde, hasta, alias)
+        console.print(f'CMV generados: {res["generados"]}, '
+                      f'actualizados: {res["actualizados"]}, '
+                      f'total: {res["cmv_total"]:,.2f}')
+        if res['ventas_sin_costo']:
+            console.print(f'[yellow]{res["ventas_sin_costo"]} ventas sin costo '
+                          f'cargado.[/yellow]')
+        return
+
+    console.print(f'[red]Subcomando desconocido: {sub}[/red]')
+    console.print(cmd_contabilidad.__doc__)
+
+
+def _print_resumen(r: dict):
+    """Imprime un resumen contable en consola."""
+    t = r['totales']
+    console.print(f'\n[bold cyan]Contabilidad {r["desde"]} → {r["hasta"]}[/bold cyan]'
+                  f'  ·  cuenta: {r["cuenta"]}  ·  criterio: {r["criterio"]}')
+
+    tabla = Table(box=box.SIMPLE)
+    tabla.add_column('Concepto')
+    tabla.add_column('Monto', justify='right')
+    for etiqueta, clave in (
+        ('Ingresos', 'ingresos'),
+        ('Costo de mercadería', 'costos'),
+        ('Gastos de plataforma y operativos', 'gastos'),
+        ('Impuestos', 'impuestos'),
+        ('Financiero', 'financiero'),
+    ):
+        tabla.add_row(etiqueta, f'{t[clave]:,.2f}')
+    color = 'green' if t['resultado'] >= 0 else 'red'
+    tabla.add_row('[bold]RESULTADO[/bold]',
+                  f'[bold {color}]{t["resultado"]:,.2f}[/bold {color}]')
+    if r.get('margen_pct') is not None:
+        tabla.add_row('Margen sobre ingresos', f'{r["margen_pct"]:.1f}%')
+    console.print(tabla)
+
+    if t['personal'] or t['traspasos']:
+        console.print(f'[dim]Fuera del resultado — personal: {t["personal"]:,.2f}  ·  '
+                      f'traspasos: {t["traspasos"]:,.2f}[/dim]')
+
+    if r['por_mes']:
+        tm = Table(box=box.SIMPLE, title='Por mes')
+        for col in ('Período', 'Ingresos', 'Egresos', 'Resultado'):
+            tm.add_column(col, justify='right' if col != 'Período' else 'left')
+        for m in r['por_mes']:
+            tm.add_row(m['periodo'], f'{m["ingresos"]:,.2f}',
+                       f'{m["egresos"]:,.2f}', f'{m["resultado"]:,.2f}')
+        console.print(tm)
+
+    grupos = {}
+    for fila in r['por_rubro']:
+        grupos.setdefault(fila['grupo'], []).append(fila)
+    tr = Table(box=box.SIMPLE, title='Por rubro')
+    for col in ('Grupo', 'Rubro', 'Movs', 'Total'):
+        tr.add_column(col, justify='right' if col in ('Movs', 'Total') else 'left')
+    for grupo, filas in grupos.items():
+        for fila in filas:
+            tr.add_row(grupo, fila['nombre'], str(fila['cantidad']),
+                       f'{fila["total"]:,.2f}')
+    console.print(tr)
+
+    for aviso in r.get('advertencias', []):
+        estilo = 'red' if aviso['nivel'] == 'critico' else 'yellow'
+        console.print(f'[{estilo}]! {aviso["texto"]}[/{estilo}]')
+
+
 COMMANDS = {
     "dashboard":        cmd_dashboard,
     "historial":        cmd_historial,
@@ -369,6 +556,7 @@ COMMANDS = {
     "stock-rentabilidad": cmd_stock_rentabilidad,
     "costos":           cmd_costos,
     "comisiones":       cmd_comisiones,
+    "contabilidad":     cmd_contabilidad,
     "todo":             cmd_todo,
 }
 

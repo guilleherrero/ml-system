@@ -1027,6 +1027,11 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 26 | `/sites/MLA/search` devuelve 403 tambien desde IP residencial y navegador real (verificado 2026-09-08). No es un bug temporal de ML ni un bloqueo a IPs de datacenter: ML lo desactivo para trafico programatico | `analisis_competencia`, `repricing`, `monitor_posicionamiento`, `find_item_position` | Se cae la fuente principal de competidores y de posiciones por keyword. Los banners del sistema dicen que es un problema de ML que se va a resolver solo, y eso ya no es cierto: hay que rediseñar la estrategia de competencia sobre las fuentes que quedan | A |
 | 27 | Sin `/sites/MLA/search`, `search_competitors` cae a buscar en el catalogo de PRODUCTOS y devuelve resultados sin relacion con el rubro, todos con `price: 0`, `sold: 0` y `no_active_listings: true` | `web/app.py` busqueda de competidores | Para "cortador de puntas cabello" devuelve cortadores de micas, cortadores de unas acrilicas, brocas de taladro y un cortador de chapas metalicas. Si el optimizador de titulos usa esto como referencia de competencia, esta aprendiendo del rubro equivocado | A |
 | 28 | El titulo del Cortador Ender Pro dice "Abriertas" en vez de "Abiertas" en las dos publicaciones del cluster (MLA1481911017 y MLA1932975847) | Publicaciones de la cuenta Novara | Pierde "cortador de puntas abiertas" y "cepillo cortador de puntas abiertas", ambas entre las mas buscadas del rubro. El titulo ya esta congelado por ventas: se corrige por descripcion y ficha, y bien escrito en las publicaciones nuevas | A |
+| 29 | `get_mp_resumen` leia como maximo 500 pagos y no paginaba. Pedir 30 dias y pedir 90 dias devolvia EXACTAMENTE los mismos totales (9.998.566 de cobros ML, 8.878.892 de otros, 500 movimientos), mientras `get_mp_movimientos` reportaba 646 movimientos solo en 30 dias | MCP local `ml_system_mcp/server.py` | Cualquier rango con mas de 500 movimientos devolvia un total parcial en silencio, sin avisar que el dato estaba incompleto. El filtro de fecha en si funcionaba bien (verificado con `dias=1`, cuadra al peso): el problema era el tope. **Resuelto** en `modules/contabilidad_import.py` con paginacion por ventanas de fecha + offset | A |
+| 30 | `get_mp_resumen` no filtraba por `collector_id`, asi que contaba como ingreso los pagos que el usuario HACIA con MP | idem | Entraban como facturacion: `Compra en DIA` $12.450, `Producto de BARI PIZZAS Y EMPANADAS` $22.000, `JOSFRA SRL` $126.997, `Edenor` $83.622, `SUBE` $20.000, mas un `Bank Transfer` de $600.000 y otro sin descripcion de $2.000.000. Los 8,8M de "cobros_otro" eran casi todo ruido. **Resuelto**: la direccion se resuelve comparando collector.id / payer.id contra el user id de la cuenta | A |
+| 31 | `get_mp_resumen` sumaba pagos `rejected` y `refunded` con el mismo peso que los aprobados | idem | Infla los cobros con ventas que nunca se cobraron (ej. un Ender Pro de $60.578 rechazado y otro devuelto en la misma semana). **Resuelto**: se guardan con `computable=False`, quedan auditables y fuera de los totales | A |
+| 32 | `get_mp_resumen` topea el parametro `dias` en 90, asi que no habia forma de pedir la facturacion del anio | idem | Imposible responder "cuanto facturé del 1 de enero a hoy". **Resuelto**: los importadores toman `desde`/`hasta` arbitrarios | A |
+| 33 | `list_accounts` del MCP devuelve `{"aliases": []}` | MCP local | Deja inutilizables `get_my_items`, `get_item_health` y todo lo que pide alias. **Pendiente de diagnostico** | A |
 
 ### Estado al cierre del Sprint A
 
@@ -1069,6 +1074,120 @@ Lo construido en el Sprint A:
 Lo que falta para cerrar el loop (Sprint B en adelante): la pantalla de Cerebro,
 el bot de Telegram sobre la misma bandeja, y que `top_acciones` lea
 `aprendizajes.json` para ordenar por historial propio (bloque 5).
+
+
+## Sistema contable (Fase 1 — 2026-09-12)
+
+El usuario planteo el problema asi: "vendo pero nunca se si estoy ganando
+realmente". Lo que pidio no es un reporte de facturacion sino contabilidad
+completa: todos los cobros de ML (ventas, cancelaciones, lo pagado a la
+plataforma, impuestos, publicidad) y todos los cobros y gastos de MP,
+separados por rubros, para saber cuanto gana por mes y por anio, con carga
+manual de lo que no pasa por las plataformas y vista global mas vista por
+cuenta.
+
+### Decisiones tomadas con el usuario
+
+- Los movimientos personales de la cuenta MP van a un rubro aparte
+  (`PERSONAL`), visibles y auditables pero **fuera** del calculo de
+  rentabilidad. La cuenta mezcla personal y negocio y contarlos deformaba el
+  margen.
+- Criterio **caja pura** (todo bruto, tal como se movio la plata) como vista
+  principal, no gerencial neto de IVA. Aun asi el IVA y las percepciones se
+  guardan en columnas aparte, para poder agregar la vista neta despues sin
+  reimportar un anio entero.
+- Orden de trabajo: motor de importacion y conciliacion primero, UI despues.
+- Se suma carga masiva de costos de mercaderia con pegado desde Excel, porque
+  sin COGS el numero no es ganancia.
+
+### Principios de diseno
+
+1. **Un solo libro.** Todo movimiento — venta, comision, envio, Ads, Full,
+   percepcion, cobro o gasto de MP, gasto cargado a mano — va a
+   `cont_movimientos`. No hay tablas paralelas por fuente.
+2. **Nada se descarta en silencio.** Lo que el clasificador no reconoce queda
+   con rubro `SIN_CLASIF` y aparece en la bandeja de pendientes. Un subtipo
+   nuevo de ML no hace que el total quede mal sin aviso: hace que aparezca un
+   pendiente. Es el mecanismo que sostiene el "ni un dato sin contabilizar".
+3. **Las ventas se cuentan una sola vez.** El ingreso sale de `/orders`. El
+   cobro espejo en MP se importa igual (hace falta para conciliar y para caja)
+   pero cae en el rubro neutro `CONCIL_MP`, que no afecta resultado.
+4. **Signo en el dato.** `monto` viene firmado: + entra, - sale. El resultado
+   es una suma, no un armado de restas por rubro.
+5. **Idempotencia.** La clave `(cuenta_alias, origen, external_id)` permite
+   reimportar el mismo periodo N veces sin duplicar. Verificado por test.
+
+### Endpoints confirmados contra la documentacion oficial
+
+No se adivinaron rutas. Se leyo la doc de Reportes de Facturacion y Provisiones:
+
+- `GET /billing/integration/monthly/periods?document_type=Bill` — periodos.
+  La key es SIEMPRE el primer dia del mes (`YYYY-MM-01`), asi que se construye
+  y no se consulta este endpoint repetidamente.
+- `GET /billing/integration/periods/key/{key}/summary/details?group=ML|MP` —
+  resumen con `charges[]` (`type`: CV, CXD, PADS...). No usar en batch.
+- `GET /billing/integration/periods/key/{key}/group/{ML|MP}/details` —
+  detalle. `document_type` es obligatorio (BILL / CREDIT_NOTE).
+- `GET /billing/integration/periods/key/{key}/perceptions/summary` —
+  percepciones, exclusivo MLA.
+- `GET /billing/integration/group/ML/order/details?order_ids=` — por orden,
+  maximo 60 ids. Trae `tax_details` con retencion de ganancias, de IVA,
+  debitos/creditos y SIRTAC.
+
+**Paginacion obligatoria por `from_id`, no por `offset`.** `offset` topea en
+10.000 y no garantiza integridad en listados largos. El patron es: primera
+pagina `from_id=0&limit=1000&sort_by=ID&order_by=ASC`, y despues el `last_id`
+de la respuesta anterior como `from_id`.
+
+**Consumo secuencial, nunca batch.** La doc advierte que el paralelismo es la
+causa tipica de los 429 en billing. Los importadores corren en serie con pausa
+de 0,35 s y cachean todo en la base.
+
+### La conciliacion es la prueba, no un extra
+
+ML publica su propia regla de conciliacion: la suma de `detail_amount` por
+`detail_sub_type` del detalle tiene que dar igual al `amount` del mismo `type`
+en el resumen. `conciliar_billing()` la aplica y, si no cuadra, no dice "todo
+bien": informa la diferencia y en que subtipo esta. Mas
+`conciliar_ml_mp()`, que cruza ventas contra cobros y reporta ventas sin cobro,
+cobros sin venta y diferencias.
+
+### Archivos
+
+| Archivo | Responsabilidad |
+|---|---|
+| `web/models_contabilidad.py` | Modelos: rubros, libro unico, reglas, corridas de importacion, cuentas MP, costos |
+| `modules/contabilidad.py` | Plan de rubros, clasificador, upsert, agregacion, bandeja de pendientes |
+| `modules/contabilidad_import.py` | Importadores de MP, billing ML, percepciones y ordenes |
+| `modules/contabilidad_cierre.py` | CMV, carga masiva de costos, conciliacion, cierre de periodo |
+| `tests/test_contabilidad.py` | 71 aserciones sobre la forma real de los datos de la cuenta |
+
+### Comandos
+
+```bash
+python main.py contabilidad importar <alias> 2026-01-01 2026-09-12 [alias_mp]
+python main.py contabilidad resumen  [desde] [hasta] [alias]
+python main.py contabilidad anual    [anio] [alias]
+python main.py contabilidad cierre   <alias> 2026-09
+python main.py contabilidad pendientes [alias]
+python main.py contabilidad sin-costo  [alias]
+python main.py contabilidad cmv      <desde> <hasta> [alias]
+```
+
+### Lo que falta para que el numero sea confiable
+
+1. **Cargar el token de MP en Render** como variable de entorno
+   (`MP_ACCESS_TOKEN_PROD`) y dar de alta la cuenta en `cont_cuentas_mp`. Hoy
+   el token vive solo en el MCP local, que no persiste nada.
+2. **Cargar los costos de mercaderia.** Buena parte del catalogo tiene `costo`
+   y `margen_pct` en `null`. Mientras falten, `resumen()` devuelve una
+   advertencia de nivel critico que dice explicitamente que lo que se ve es
+   margen sobre plataforma y NO ganancia. El listado de que falta sale con
+   `contabilidad sin-costo`.
+3. **Fase 2: la UI.** Dashboard, libro con filtros, bandeja de pendientes,
+   alta de gastos manuales y pantalla de carga masiva de costos, sobre el
+   design system existente (`tokens.css` + `components.css`, clases `.app-*`).
+
 
 ## Estado al 2026-09-12 — donde retomar
 
