@@ -1,0 +1,28 @@
+{# Cabecera y pestañas de contabilidad.
+   Espera: activa (str), subtitulo (str, opcional), pendientes (int, opcional). #}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <div>
+    <h1 style="font-size:var(--text-h2);font-weight:var(--font-weight-bold);margin:0">
+      <i class="bi bi-calculator"></i> Contabilidad
+    </h1>
+    {% if subtitulo %}<div class="cont-sub">{{ subtitulo }}</div>{% endif %}
+  </div>
+  <div class="cont-tabs">
+    <a href="{{ url_for('contabilidad.dashboard') }}"
+       class="{{ 'on' if activa == 'resumen' else '' }}">Resumen</a>
+    <a href="{{ url_for('contabilidad.movimientos') }}"
+       class="{{ 'on' if activa == 'libro' else '' }}">Libro</a>
+    <a href="{{ url_for('contabilidad.pendientes') }}"
+       class="{{ 'on' if activa == 'pendientes' else '' }}">
+      Pendientes{% if pendientes %} <span class="badge app-badge-warn">{{ pendientes }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('contabilidad.gastos') }}"
+       class="{{ 'on' if activa == 'gastos' else '' }}">Cargar gasto</a>
+    <a href="{{ url_for('contabilidad.costos') }}"
+       class="{{ 'on' if activa == 'costos' else '' }}">Costos</a>
+    <a href="{{ url_for('contabilidad.cierre_periodo') }}"
+       class="{{ 'on' if activa == 'cierre' else '' }}">Cierre</a>
+    <a href="{{ url_for('contabilidad.importar') }}"
+       class="{{ 'on' if activa == 'importar' else '' }}">Importar</a>
+  </div>
+</div>

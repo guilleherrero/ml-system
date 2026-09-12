@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %} — Pendientes de clasificar{% endblock %}
+
+{% block content %}
+{% include "_contabilidad_estilos.html" %}
+
+{% set activa = "pendientes" %}
+{% set pendientes = filas | length %}
+{% set subtitulo = "Lo que el sistema no pudo clasificar solo. Nada se descarta: aparece acá." %}
+{% include "_contabilidad_tabs.html" %}
+
+<div class="app-alert-banner app-alert-banner-info mb-3">
+  <i class="bi bi-info-circle-fill"></i>
+  <div>
+    Estos movimientos <strong>no entran al resultado</strong> hasta que les asignes rubro.
+    Si marcás "crear regla", los parecidos se clasifican solos de ahí en adelante y la
+    bandeja se vacía en vez de crecer.
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <form method="get" class="cont-filtros mb-0">
+    <div>
+      <label for="cuenta">Cuenta</label>
+      <select id="cuenta" name="cuenta" onchange="this.form.submit()">
+        <option value="">Todas</option>
+        {% for c in cuentas_libro %}
+        <option value="{{ c }}" {{ 'selected' if cuenta_sel == c else '' }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+  <form method="post" action="{{ url_for('contabilidad.api_reclasificar') }}">
+    <input type="hidden" name="cuenta" value="{{ cuenta_sel }}">
+    <button type="submit" class="app-btn app-btn-secondary">
+      <i class="bi bi-arrow-repeat"></i> Volver a pasar las reglas
+    </button>
+  </form>
+</div>
+
+<div class="app-card">
+  <div class="app-card-header">
+    <i class="bi bi-inbox"></i> {{ filas | length }} pendiente{{ 's' if filas | length != 1 else '' }}
+  </div>
+  <div class="table-responsive">
+    <table class="table app-data-table mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Concepto</th>
+          <th class="cont-num">Monto</th>
+          <th>Por qué quedó pendiente</th>
+          <th style="min-width:300px">Asignar rubro</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in filas %}
+        <tr id="fila-{{ f.id }}" class="row-warn">
+          <td class="cont-sub" style="white-space:nowrap">{{ f.fecha | fecha_corta }}</td>
+          <td>
+            <div>{{ (f.concepto or '(sin concepto)')[:60] }}</div>
+            <div class="cont-sub">
+              {{ f.cuenta }} · {{ f.origen }}
+              {% if f.subtipo %} · {{ f.subtipo }}{% endif %}
+              {% if f.order_id %} · orden {{ f.order_id }}{% endif %}
+            </div>
+          </td>
+          <td class="cont-num {{ 'cont-neg' if f.monto < 0 else 'cont-pos' }}">
+            {{ f.monto | pesos }}
+          </td>
+          <td class="cont-sub">{{ f.nota or '—' }}</td>
+          <td>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <select class="rubro-sel" data-id="{{ f.id }}"
+                      style="font-size:var(--text-md);padding:5px 8px;border:1px solid var(--color-neutral-200);border-radius:var(--radius-md)">
+                <option value="">Elegir rubro…</option>
+                {% set gp = namespace(v='') %}
+                {% for r in rubros %}
+                  {% if r.codigo != 'SIN_CLASIF' %}
+                    {% if r.grupo != gp.v %}
+                      {% if gp.v %}</optgroup>{% endif %}
+                      {% set gp.v = r.grupo %}
+                      <optgroup label="{{ r.grupo }}">
+                    {% endif %}
+                    <option value="{{ r.codigo }}">{{ r.nombre }}</option>
+                  {% endif %}
+                {% endfor %}
+                {% if gp.v %}</optgroup>{% endif %}
+              </select>
+              <label class="cont-sub" style="display:flex;align-items:center;gap:4px;cursor:pointer">
+                <input type="checkbox" class="regla-chk" data-id="{{ f.id }}" checked>
+                crear regla
+              </label>
+              <button class="app-btn app-btn-xs app-btn-primary btn-asignar" data-id="{{ f.id }}">
+                Guardar
+              </button>
+              <span class="estado-asig cont-sub" data-id="{{ f.id }}"></span>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center py-5">
+            <i class="bi bi-check-circle-fill" style="color:var(--color-success-400);font-size:var(--icon-xl)"></i>
+            <div class="mt-2" style="font-weight:var(--font-weight-semibold)">
+              No hay nada pendiente de clasificar.
+            </div>
+            <div class="cont-sub">Todos los movimientos importados tienen rubro asignado.</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.btn-asignar').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    const id = btn.dataset.id;
+    const sel = document.querySelector('.rubro-sel[data-id="' + id + '"]');
+    const chk = document.querySelector('.regla-chk[data-id="' + id + '"]');
+    const est = document.querySelector('.estado-asig[data-id="' + id + '"]');
+
+    if (!sel.value) {
+      est.textContent = 'Elegí un rubro';
+      est.style.color = 'var(--color-warning-500)';
+      return;
+    }
+
+    btn.disabled = true;
+    est.textContent = 'Guardando…';
+    est.style.color = 'var(--color-neutral-500)';
+
+    fetch('{{ url_for("contabilidad.api_asignar_rubro") }}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        movimiento_id: parseInt(id, 10),
+        rubro: sel.value,
+        crear_regla: chk.checked ? 1 : 0,
+      }),
+    })
+      .then(r => r.json())
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.error || 'error');
+        const fila = document.getElementById('fila-' + id);
+        fila.style.transition = 'opacity .4s';
+        fila.style.opacity = '0.25';
+        fila.classList.remove('row-warn');
+        est.textContent = res.regla_creada ? 'Listo + regla creada' : 'Listo';
+        est.style.color = 'var(--color-success-500)';
+      })
+      .catch(function (e) {
+        btn.disabled = false;
+        est.textContent = 'Error: ' + e.message;
+        est.style.color = 'var(--color-critical-500)';
+      });
+  });
+});
+</script>
+{% endblock %}

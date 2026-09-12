@@ -1,0 +1,63 @@
+{# Estilos compartidos por las pantallas de contabilidad.
+   Van en un parcial y no en components.css para no tocar un archivo global:
+   el patron se repite solo dentro de esta seccion. Regla #2: nada de hex
+   hardcodeado, todo por var(--*) del design system. #}
+<style>
+  /* Barra de filtros — patrón compartido por las pantallas de contabilidad */
+  .cont-filtros {
+    display: flex; flex-wrap: wrap; gap: var(--spacing-sm);
+    align-items: flex-end; margin-bottom: var(--spacing-md);
+  }
+  .cont-filtros label {
+    display: block; font-size: var(--text-xs);
+    color: var(--color-neutral-500); margin-bottom: var(--spacing-xxs);
+  }
+  .cont-filtros input, .cont-filtros select {
+    font-size: var(--text-md); padding: 6px 10px;
+    border: 1px solid var(--color-neutral-200);
+    border-radius: var(--radius-md); background: var(--color-neutral-0);
+  }
+  .cont-rangos { display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+  .cont-rangos a {
+    font-size: var(--text-xs); padding: 4px 10px;
+    border-radius: var(--radius-pill); text-decoration: none;
+    background: var(--color-neutral-100); color: var(--color-neutral-600);
+  }
+  .cont-rangos a:hover { background: var(--color-info-100); color: var(--color-info-700); }
+
+  /* El resultado es el número que importa: se le da su propia jerarquía */
+  .cont-resultado {
+    border-radius: var(--radius-xl); padding: var(--spacing-lg) var(--spacing-xl);
+    box-shadow: var(--shadow-sm); background: var(--color-neutral-0);
+    border-left: 4px solid var(--color-neutral-200);
+  }
+  .cont-resultado.pos { border-left-color: var(--color-success-400); }
+  .cont-resultado.neg { border-left-color: var(--color-critical-400); }
+  .cont-resultado .num {
+    font-size: var(--text-display); font-weight: var(--font-weight-bold);
+    line-height: 1.1;
+  }
+  .cont-resultado.pos .num { color: var(--color-success-500); }
+  .cont-resultado.neg .num { color: var(--color-critical-500); }
+  .cont-resultado .lbl {
+    font-size: var(--text-xs); text-transform: uppercase;
+    letter-spacing: .06em; color: var(--color-neutral-500);
+  }
+
+  .cont-grupo-head {
+    font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .06em;
+    color: var(--color-neutral-400); font-weight: var(--font-weight-semibold);
+    background: var(--color-neutral-50);
+  }
+  .cont-neg { color: var(--color-critical-500); }
+  .cont-pos { color: var(--color-success-500); }
+  .cont-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cont-sub { font-size: var(--text-xs); color: var(--color-neutral-400); }
+  .cont-tabs { display: flex; gap: var(--spacing-xs); margin-bottom: var(--spacing-md); flex-wrap: wrap; }
+  .cont-tabs a {
+    font-size: var(--text-md); padding: 7px 14px; text-decoration: none;
+    border-radius: var(--radius-md); color: var(--color-neutral-600);
+    background: var(--color-neutral-0); box-shadow: var(--shadow-sm);
+  }
+  .cont-tabs a.on { background: var(--color-info-600); color: #fff; }
+</style>

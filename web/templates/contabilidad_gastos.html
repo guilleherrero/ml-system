@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %} — Cargar gasto{% endblock %}
+
+{% block content %}
+{% include "_contabilidad_estilos.html" %}
+
+{% set activa = "gastos" %}
+{% set subtitulo = "Todo lo que no pasa por ML ni por MP: proveedores, impuestos, sueldos, servicios." %}
+{% include "_contabilidad_tabs.html" %}
+
+<div class="row g-3">
+  <!-- ── Formulario ──────────────────────────────────────────── -->
+  <div class="col-12 col-lg-5">
+    <div class="app-card">
+      <div class="app-card-header"><i class="bi bi-plus-circle"></i> Nuevo movimiento</div>
+      <form method="post" class="p-3">
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label cont-sub" for="fecha">Fecha</label>
+            <input type="date" class="form-control form-control-sm" id="fecha" name="fecha"
+                   value="{{ hoy }}" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label cont-sub" for="cuenta">Cuenta</label>
+            <select class="form-select form-select-sm" id="cuenta" name="cuenta">
+              {% for a in accounts %}
+              <option value="{{ a.alias }}">{{ a.alias }}</option>
+              {% endfor %}
+              <option value="manual" {{ 'selected' if not accounts else '' }}>Sin cuenta / general</option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label cont-sub" for="rubro">Rubro</label>
+            <select class="form-select form-select-sm" id="rubro" name="rubro" required>
+              <option value="">Elegir…</option>
+              {% set gp = namespace(v='') %}
+              {% for r in rubros %}
+                {% if r.codigo not in ('SIN_CLASIF', 'CONCIL_MP', 'CMV') %}
+                  {% if r.grupo != gp.v %}
+                    {% if gp.v %}</optgroup>{% endif %}
+                    {% set gp.v = r.grupo %}
+                    <optgroup label="{{ r.grupo }}">
+                  {% endif %}
+                  <option value="{{ r.codigo }}">{{ r.nombre }}</option>
+                {% endif %}
+              {% endfor %}
+              {% if gp.v %}</optgroup>{% endif %}
+            </select>
+            <div class="cont-sub mt-1">
+              El signo lo pone el sistema según el rubro: un gasto queda negativo aunque
+              lo escribas en positivo.
+            </div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label cont-sub" for="concepto">Concepto</label>
+            <input type="text" class="form-control form-control-sm" id="concepto" name="concepto"
+                   placeholder="Pago a proveedor China — lote agosto" required maxlength="300">
+          </div>
+
+          <div class="col-7">
+            <label class="form-label cont-sub" for="monto">Monto</label>
+            <input type="text" class="form-control form-control-sm" id="monto" name="monto"
+                   placeholder="1.500.000,00" required inputmode="decimal">
+          </div>
+          <div class="col-5">
+            <label class="form-label cont-sub" for="iva">IVA (opcional)</label>
+            <input type="text" class="form-control form-control-sm" id="iva" name="iva"
+                   placeholder="0,00" inputmode="decimal">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label cont-sub" for="proveedor">Proveedor</label>
+            <input type="text" class="form-control form-control-sm" id="proveedor" name="proveedor"
+                   placeholder="Shenzhen Beauty Co" maxlength="160">
+          </div>
+
+          <div class="col-6">
+            <label class="form-label cont-sub" for="tipo_comprobante">Comprobante</label>
+            <select class="form-select form-select-sm" id="tipo_comprobante" name="tipo_comprobante">
+              <option value="">—</option>
+              {% for t in ['Factura A', 'Factura B', 'Factura C', 'Factura E',
+                           'Nota de crédito', 'Ticket', 'Recibo', 'Sin comprobante'] %}
+              <option value="{{ t }}">{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label cont-sub" for="nro_comprobante">Número</label>
+            <input type="text" class="form-control form-control-sm" id="nro_comprobante"
+                   name="nro_comprobante" placeholder="0001-00001234" maxlength="60">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label cont-sub" for="medio_pago">Medio de pago</label>
+            <select class="form-select form-select-sm" id="medio_pago" name="medio_pago">
+              <option value="">—</option>
+              {% for m in ['Transferencia', 'Mercado Pago', 'Efectivo', 'Tarjeta de crédito',
+                           'Tarjeta de débito', 'Débito automático', 'Cheque', 'Dólares'] %}
+              <option value="{{ m }}">{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label cont-sub" for="notas">Notas</label>
+            <textarea class="form-control form-control-sm" id="notas" name="notas" rows="2"
+                      placeholder="Lo que te sirva recordar dentro de seis meses"></textarea>
+          </div>
+
+          <div class="col-12 mt-3">
+            <button type="submit" class="app-btn app-btn-primary w-100">
+              <i class="bi bi-check-lg"></i> Cargar movimiento
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Listado ─────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-7">
+    <div class="app-card">
+      <div class="app-card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-ul"></i> Cargados a mano este año</span>
+        <span>
+          Total:
+          <strong class="{{ 'cont-neg' if datos.suma < 0 else 'cont-pos' }}">{{ datos.suma | pesos }}</strong>
+        </span>
+      </div>
+      <div class="table-responsive">
+        <table class="table app-data-table mb-0">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Concepto</th>
+              <th>Rubro</th>
+              <th class="cont-num">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in datos.movimientos %}
+            <tr>
+              <td class="cont-sub" style="white-space:nowrap">{{ m.fecha | fecha_corta }}</td>
+              <td>
+                <div>{{ (m.concepto or '')[:60] }}</div>
+                <div class="cont-sub">
+                  {% if m.proveedor %}{{ m.proveedor }}{% endif %}
+                  {% if m.nro_comprobante %} · {{ m.nro_comprobante }}{% endif %}
+                  {% if m.cuenta and m.cuenta != 'manual' %} · {{ m.cuenta }}{% endif %}
+                </div>
+              </td>
+              <td><span class="badge app-badge-info">{{ m.rubro_nombre }}</span></td>
+              <td class="cont-num {{ 'cont-neg' if m.monto < 0 else 'cont-pos' }}">
+                {{ m.monto | pesos }}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="text-center py-5 cont-sub">
+                <i class="bi bi-receipt" style="font-size:var(--icon-xl);color:var(--color-neutral-200)"></i>
+                <div class="mt-2">Todavía no cargaste ningún movimiento a mano.</div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

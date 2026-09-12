@@ -495,6 +495,21 @@ def test_idempotencia_y_resumen():
           'el resumen avisa que sin costo de mercadería el número no es ganancia',
           str(avisos))
 
+    # El desglose tiene que leerse como un estado de resultados: Ingresos
+    # primero y los neutros al final, no alfabéticamente por grupo.
+    grupos_en_orden = []
+    for fila in r['por_rubro']:
+        if fila['grupo'] not in grupos_en_orden:
+            grupos_en_orden.append(fila['grupo'])
+    check(grupos_en_orden and grupos_en_orden[0] == 'Ingresos',
+          'el desglose por rubro arranca por Ingresos', str(grupos_en_orden))
+    check(grupos_en_orden[-1] in ('Personal', 'Pendientes', 'Neutros'),
+          'los rubros que no afectan resultado quedan al final',
+          str(grupos_en_orden))
+    if 'Impuestos' in grupos_en_orden and 'Plataforma' in grupos_en_orden:
+        check(grupos_en_orden.index('Plataforma') < grupos_en_orden.index('Impuestos'),
+              'Plataforma se lee antes que Impuestos', str(grupos_en_orden))
+
     # El rechazado no está en ningún total, pero sí en la base
     with webdb.session_scope() as s:
         rech = (s.query(Movimiento)

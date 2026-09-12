@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %} — Libro de movimientos{% endblock %}
+
+{% block content %}
+{% include "_contabilidad_estilos.html" %}
+
+{% set activa = "libro" %}
+{% set subtitulo = "El libro completo. Todo movimiento está acá, venga de donde venga." %}
+{% include "_contabilidad_tabs.html" %}
+
+<form method="get" class="cont-filtros">
+  <div>
+    <label for="desde">Desde</label>
+    <input type="date" id="desde" name="desde" value="{{ desde }}">
+  </div>
+  <div>
+    <label for="hasta">Hasta</label>
+    <input type="date" id="hasta" name="hasta" value="{{ hasta }}">
+  </div>
+  <div>
+    <label for="cuenta">Cuenta</label>
+    <select id="cuenta" name="cuenta">
+      <option value="">Todas</option>
+      {% for c in cuentas_libro %}
+      <option value="{{ c }}" {{ 'selected' if filtros.cuenta == c else '' }}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="rubro">Rubro</label>
+    <select id="rubro" name="rubro">
+      <option value="">Todos</option>
+      {% set grupo_prev = namespace(v='') %}
+      {% for r in rubros %}
+        {% if r.grupo != grupo_prev.v %}
+          {% if grupo_prev.v %}</optgroup>{% endif %}
+          {% set grupo_prev.v = r.grupo %}
+          <optgroup label="{{ r.grupo }}">
+        {% endif %}
+        <option value="{{ r.codigo }}" {{ 'selected' if filtros.rubro == r.codigo else '' }}>
+          {{ r.nombre }}
+        </option>
+      {% endfor %}
+      {% if grupo_prev.v %}</optgroup>{% endif %}
+    </select>
+  </div>
+  <div>
+    <label for="origen">Origen</label>
+    <select id="origen" name="origen">
+      <option value="">Todos</option>
+      {% for cod, nom in [
+        ('ml_order', 'Órdenes de ML'),
+        ('ml_billing', 'Facturación de ML'),
+        ('ml_percepcion', 'Percepciones'),
+        ('mp_payment', 'Mercado Pago'),
+        ('cmv', 'Costo de mercadería'),
+        ('manual', 'Carga manual'),
+      ] %}
+      <option value="{{ cod }}" {{ 'selected' if filtros.origen == cod else '' }}>{{ nom }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="ambito">Ámbito</label>
+    <select id="ambito" name="ambito">
+      <option value="">Todos</option>
+      <option value="negocio" {{ 'selected' if filtros.ambito == 'negocio' else '' }}>Negocio</option>
+      <option value="personal" {{ 'selected' if filtros.ambito == 'personal' else '' }}>Personal</option>
+    </select>
+  </div>
+  <div>
+    <label for="q">Buscar</label>
+    <input type="text" id="q" name="q" value="{{ filtros.q }}"
+           placeholder="concepto, orden, MLA, proveedor" style="min-width:200px">
+  </div>
+  <div>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:14px;cursor:pointer">
+      <input type="checkbox" name="computables" value="1"
+             {{ 'checked' if filtros.computables == '1' else '' }}>
+      Solo computables
+    </label>
+  </div>
+  <button type="submit" class="app-btn app-btn-primary">
+    <i class="bi bi-funnel"></i> Filtrar
+  </button>
+  <a href="{{ url_for('contabilidad.movimientos') }}" class="app-btn app-btn-ghost">Limpiar</a>
+</form>
+
+<div class="app-card">
+  <div class="app-card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>
+      <i class="bi bi-journal-text"></i>
+      {{ datos.total }} movimiento{{ 's' if datos.total != 1 else '' }}
+    </span>
+    <span>
+      Suma del filtro:
+      <strong class="{{ 'cont-neg' if datos.suma < 0 else 'cont-pos' }}">{{ datos.suma | pesos }}</strong>
+    </span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table app-data-table mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Concepto</th>
+          <th>Rubro</th>
+          <th>Origen</th>
+          <th class="cont-num">Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in datos.movimientos %}
+        <tr class="{{ 'row-warn' if m.revisar else '' }}">
+          <td class="cont-sub" style="white-space:nowrap">{{ m.fecha | fecha_corta }}</td>
+          <td>
+            <div>{{ (m.concepto or '(sin concepto)')[:70] }}</div>
+            <div class="cont-sub">
+              {{ m.cuenta }}
+              {% if m.order_id %} · orden {{ m.order_id }}{% endif %}
+              {% if m.item_id %} · {{ m.item_id }}{% endif %}
+              {% if m.proveedor %} · {{ m.proveedor }}{% endif %}
+              {% if m.nro_comprobante %} · {{ m.nro_comprobante }}{% endif %}
+            </div>
+          </td>
+          <td>
+            <span class="badge {{ 'app-badge-neutral' if m.rubro_codigo == 'SIN_CLASIF' else 'app-badge-info' }}">
+              {{ m.rubro_nombre }}
+            </span>
+            {% if m.ambito == 'personal' %}
+            <span class="badge app-badge-neutral" style="font-size:var(--text-xxs)">personal</span>
+            {% endif %}
+            {% if m.rubro_manual %}
+            <i class="bi bi-hand-index-thumb cont-sub" title="Clasificado a mano"></i>
+            {% endif %}
+            {% if m.nota_revision %}
+            <div class="cont-sub">{{ m.nota_revision[:60] }}</div>
+            {% endif %}
+          </td>
+          <td class="cont-sub" style="white-space:nowrap">
+            {{ m.origen }}
+            {% if m.subtipo %}<div>{{ m.subtipo }}</div>{% endif %}
+          </td>
+          <td class="cont-num {{ 'cont-neg' if m.monto < 0 else 'cont-pos' }}">
+            {{ m.monto | pesos }}
+            {% if not m.computable %}
+            <div class="cont-sub">
+              <span class="badge app-badge-neutral" style="font-size:var(--text-xxs)">
+                {{ m.estado or 'no computa' }}
+              </span>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center py-5 cont-sub">
+            <i class="bi bi-inbox" style="font-size:var(--icon-xl);color:var(--color-neutral-200)"></i>
+            <div class="mt-2">No hay movimientos con estos filtros.</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if datos.paginas > 1 %}
+  <div class="p-3 border-top d-flex justify-content-between align-items-center">
+    <span class="cont-sub">Página {{ datos.pagina }} de {{ datos.paginas }}</span>
+    <div class="d-flex gap-2">
+      {% set qs = 'desde=' ~ desde ~ '&hasta=' ~ hasta ~ '&cuenta=' ~ filtros.cuenta ~
+                  '&rubro=' ~ filtros.rubro ~ '&origen=' ~ filtros.origen ~
+                  '&ambito=' ~ filtros.ambito ~ '&q=' ~ filtros.q ~
+                  '&computables=' ~ filtros.computables %}
+      {% if datos.pagina > 1 %}
+      <a href="?{{ qs }}&pagina={{ datos.pagina - 1 }}" class="app-btn app-btn-secondary">
+        <i class="bi bi-chevron-left"></i> Anterior
+      </a>
+      {% endif %}
+      {% if datos.pagina < datos.paginas %}
+      <a href="?{{ qs }}&pagina={{ datos.pagina + 1 }}" class="app-btn app-btn-secondary">
+        Siguiente <i class="bi bi-chevron-right"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

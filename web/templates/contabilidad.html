@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %} — Contabilidad{% endblock %}
+
+{% block content %}
+{% include "_contabilidad_estilos.html" %}
+
+{% set activa = "resumen" %}
+{% set subtitulo = "Criterio caja pura — lo que entró y salió, bruto. " ~ ("Cuenta: " ~ resumen.cuenta if resumen.cuenta != "TODAS" else "Todas las cuentas") %}
+{% include "_contabilidad_tabs.html" %}
+
+{% for aviso in resumen.advertencias %}
+<div class="app-alert-banner {{ 'app-alert-banner-crit' if aviso.nivel == 'critico' else 'app-alert-banner-warn' }} mb-3">
+  <i class="bi {{ 'bi-exclamation-octagon-fill' if aviso.nivel == 'critico' else 'bi-exclamation-triangle-fill' }}"></i>
+  <div>
+    {{ aviso.texto }}
+    {% if aviso.nivel == 'critico' %}
+    <a href="{{ url_for('contabilidad.costos') }}" class="app-btn app-btn-xs app-btn-primary ms-2">
+      Cargar costos
+    </a>
+    {% elif 'sin clasificar' in aviso.texto %}
+    <a href="{{ url_for('contabilidad.pendientes') }}" class="app-btn app-btn-xs app-btn-secondary ms-2">
+      Ver pendientes
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+<!-- ── Filtros ─────────────────────────────────────────────── -->
+<form method="get" class="cont-filtros">
+  <div>
+    <label for="desde">Desde</label>
+    <input type="date" id="desde" name="desde" value="{{ desde }}">
+  </div>
+  <div>
+    <label for="hasta">Hasta</label>
+    <input type="date" id="hasta" name="hasta" value="{{ hasta }}">
+  </div>
+  <div>
+    <label for="cuenta">Cuenta</label>
+    <select id="cuenta" name="cuenta">
+      <option value="">Todas</option>
+      {% for c in cuentas_libro %}
+      <option value="{{ c }}" {{ 'selected' if cuenta_sel == c else '' }}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="app-btn app-btn-primary">
+    <i class="bi bi-funnel"></i> Aplicar
+  </button>
+  <div class="cont-rangos ms-auto">
+    {% set anio = desde[:4]|int %}
+    <a href="?desde={{ anio }}-01-01&hasta={{ hasta }}&cuenta={{ cuenta_sel }}">Año en curso</a>
+    <a href="?desde={{ hasta[:7] }}-01&hasta={{ hasta }}&cuenta={{ cuenta_sel }}">Este mes</a>
+    <a href="?desde={{ anio - 1 }}-01-01&hasta={{ anio - 1 }}-12-31&cuenta={{ cuenta_sel }}">{{ anio - 1 }}</a>
+  </div>
+</form>
+
+<!-- ── El número ────────────────────────────────────────────── -->
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-4">
+    <div class="cont-resultado {{ 'pos' if resumen.totales.resultado >= 0 else 'neg' }} h-100">
+      <div class="lbl">Resultado del período</div>
+      <div class="num">{{ resumen.totales.resultado | pesos }}</div>
+      <div class="cont-sub mt-2">
+        {{ desde | fecha_corta }} al {{ hasta | fecha_corta }}
+        {% if resumen.margen_pct is not none %}
+        · margen {{ '%.1f'|format(resumen.margen_pct) }}% sobre ingresos
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-8">
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <div class="app-stat-box ok h-100">
+          <div class="num" style="font-size:var(--text-h3)">{{ resumen.totales.ingresos | pesos }}</div>
+          <div class="lbl">Ingresos</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="app-stat-box h-100">
+          <div class="num" style="font-size:var(--text-h3);color:var(--color-neutral-700)">
+            {{ resumen.totales.costos | pesos }}
+          </div>
+          <div class="lbl">Costo mercadería</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="app-stat-box crit h-100">
+          <div class="num" style="font-size:var(--text-h3)">{{ resumen.totales.gastos | pesos }}</div>
+          <div class="lbl">Plataforma y gastos</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="app-stat-box warn h-100">
+          <div class="num" style="font-size:var(--text-h3)">{{ resumen.totales.impuestos | pesos }}</div>
+          <div class="lbl">Impuestos</div>
+        </div>
+      </div>
+    </div>
+    {% if resumen.totales.personal or resumen.totales.traspasos or resumen.totales.sin_clasificar %}
+    <div class="cont-sub mt-2">
+      <i class="bi bi-info-circle"></i> Fuera del resultado —
+      personal: <strong>{{ resumen.totales.personal | pesos }}</strong> ·
+      traspasos: <strong>{{ resumen.totales.traspasos | pesos }}</strong> ·
+      sin clasificar: <strong>{{ resumen.totales.sin_clasificar | pesos }}</strong>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Evolución mensual ────────────────────────────────────── -->
+<div class="app-card mb-3">
+  <div class="app-card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-bar-chart-line"></i> Resultado por mes</span>
+    <span class="cont-sub">Barras: resultado del mes</span>
+  </div>
+  <div class="p-3">
+    {% if resumen.por_mes and resumen.totales.ingresos %}
+    <div style="height:260px"><canvas id="graficoMeses"></canvas></div>
+    {% else %}
+    <div class="text-center py-4 cont-sub">
+      <i class="bi bi-inbox" style="font-size:var(--icon-xl);color:var(--color-neutral-200)"></i>
+      <div class="mt-2">Todavía no hay movimientos importados en este rango.</div>
+      <a href="{{ url_for('contabilidad.importar') }}" class="app-btn app-btn-primary mt-3">
+        <i class="bi bi-cloud-download"></i> Importar movimientos
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- ── Desglose por rubro ─────────────────────────────────── -->
+  <div class="col-12 col-lg-7">
+    <div class="app-card h-100">
+      <div class="app-card-header">
+        <i class="bi bi-diagram-2"></i> Desglose por rubro
+      </div>
+      <div class="table-responsive">
+        <table class="table app-data-table mb-0">
+          <thead>
+            <tr>
+              <th>Rubro</th>
+              <th class="cont-num">Movs</th>
+              <th class="cont-num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set grupo_actual = namespace(valor='') %}
+            {% for fila in resumen.por_rubro %}
+              {% if fila.grupo != grupo_actual.valor %}
+                {% set grupo_actual.valor = fila.grupo %}
+                <tr><td colspan="3" class="cont-grupo-head">{{ fila.grupo }}</td></tr>
+              {% endif %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('contabilidad.movimientos', desde=desde, hasta=hasta, cuenta=cuenta_sel, rubro=fila.codigo) }}"
+                     style="text-decoration:none;color:var(--color-neutral-700)">{{ fila.nombre }}</a>
+                  {% if not fila.afecta_resultado %}
+                  <span class="badge app-badge-neutral" style="font-size:var(--text-xxs)">no afecta resultado</span>
+                  {% endif %}
+                </td>
+                <td class="cont-num cont-sub">{{ fila.cantidad }}</td>
+                <td class="cont-num {{ 'cont-neg' if fila.total < 0 else 'cont-pos' }}">
+                  {{ fila.total | pesos }}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3" class="text-center py-4 cont-sub">Sin datos en el rango.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <!-- ── Por cuenta ──────────────────────────────────────── -->
+    {% if por_cuenta %}
+    <div class="app-card mb-3">
+      <div class="app-card-header"><i class="bi bi-diagram-3"></i> Por cuenta</div>
+      <div class="table-responsive">
+        <table class="table app-data-table mb-0">
+          <thead>
+            <tr><th>Cuenta</th><th class="cont-num">Ingresos</th><th class="cont-num">Resultado</th></tr>
+          </thead>
+          <tbody>
+            {% for c in por_cuenta %}
+            <tr>
+              <td><a href="?desde={{ desde }}&hasta={{ hasta }}&cuenta={{ c.cuenta }}"
+                     style="text-decoration:none;color:var(--color-info-600)">{{ c.cuenta }}</a></td>
+              <td class="cont-num">{{ c.ingresos | pesos }}</td>
+              <td class="cont-num {{ 'cont-neg' if c.resultado < 0 else 'cont-pos' }}">
+                {{ c.resultado | pesos }}
+                {% if c.margen_pct is not none %}
+                <div class="cont-sub">{{ '%.1f'|format(c.margen_pct) }}%</div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ── Publicaciones sin costo ─────────────────────────── -->
+    <div class="app-card">
+      <div class="app-card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-exclamation-triangle"></i> Sin costo cargado</span>
+        {% if cant_faltan_costos %}
+        <span class="badge app-badge-crit">{{ cant_faltan_costos }}</span>
+        {% endif %}
+      </div>
+      <div class="{{ 'table-responsive' if faltan_costos else 'p-3' }}">
+        {% if faltan_costos %}
+        <table class="table app-data-table mb-0">
+          <thead><tr><th>Publicación</th><th class="cont-num">Facturado</th></tr></thead>
+          <tbody>
+            {% for f in faltan_costos %}
+            <tr class="row-warn">
+              <td>
+                <div style="font-size:var(--text-sm)">{{ (f.titulo or f.item_id)[:44] }}</div>
+                <div class="cont-sub">{{ f.item_id }} · {{ f.ventas }} ventas</div>
+              </td>
+              <td class="cont-num">{{ f.facturado | pesos }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="p-3 border-top">
+          <div class="cont-sub mb-2">
+            Mientras falten estos costos, el resultado de arriba está sobreestimado.
+          </div>
+          <a href="{{ url_for('contabilidad.costos') }}" class="app-btn app-btn-primary">
+            <i class="bi bi-upload"></i> Cargar costos
+          </a>
+        </div>
+        {% else %}
+        <div class="text-center py-3">
+          <i class="bi bi-check-circle-fill" style="color:var(--color-success-400);font-size:var(--icon-lg)"></i>
+          <div class="cont-sub mt-2">Todas las publicaciones con ventas tienen costo cargado.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if resumen.por_mes and resumen.totales.ingresos %}
+<script>
+(function () {
+  const canvas = document.getElementById('graficoMeses');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  const datos = {{ resumen.por_mes | tojson }};
+  const css = getComputedStyle(document.documentElement);
+  const verde = css.getPropertyValue('--color-success-400').trim() || '#10b981';
+  const rojo  = css.getPropertyValue('--color-critical-400').trim() || '#ef4444';
+  const gris  = css.getPropertyValue('--color-neutral-400').trim() || '#94a3b8';
+
+  // Etiqueta mes/año corta: 2026-01 → ene 26
+  const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const etiquetas = datos.map(d => {
+    const [a, m] = d.periodo.split('-');
+    return MESES[parseInt(m, 10) - 1] + ' ' + a.slice(2);
+  });
+
+  const fmt = v => {
+    const abs = Math.abs(v);
+    if (abs >= 1e6) return (v / 1e6).toFixed(1).replace('.', ',') + 'M';
+    if (abs >= 1e3) return Math.round(v / 1e3) + 'k';
+    return Math.round(v).toString();
+  };
+
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: etiquetas,
+      datasets: [{
+        label: 'Resultado',
+        data: datos.map(d => d.resultado),
+        backgroundColor: datos.map(d => d.resultado >= 0 ? verde : rojo),
+        borderRadius: 4,
+        maxBarThickness: 46,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const d = datos[ctx.dataIndex];
+              return [
+                'Resultado: $' + d.resultado.toLocaleString('es-AR', {maximumFractionDigits: 0}),
+                'Ingresos: $' + d.ingresos.toLocaleString('es-AR', {maximumFractionDigits: 0}),
+                'Egresos: $' + d.egresos.toLocaleString('es-AR', {maximumFractionDigits: 0}),
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: gris, font: { size: 11 } } },
+        y: {
+          grid: { color: '#f1f5f9' },
+          border: { display: false },
+          ticks: { color: gris, font: { size: 11 }, callback: fmt },
+        },
+      },
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

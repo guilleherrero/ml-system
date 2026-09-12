@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %} — Cierre y conciliación{% endblock %}
+
+{% block content %}
+{% include "_contabilidad_estilos.html" %}
+
+{% set activa = "cierre" %}
+{% set subtitulo = "La prueba de que no falta ningún dato, no un extra." %}
+{% include "_contabilidad_tabs.html" %}
+
+<div class="app-alert-banner app-alert-banner-info mb-3">
+  <i class="bi bi-shield-check"></i>
+  <div>
+    MercadoLibre publica su propia regla de conciliación: la suma de los detalles de
+    facturación por subtipo tiene que dar igual al total del resumen del período.
+    Acá se aplica esa regla. Si algo no cuadra, el sistema <strong>no dice que está todo
+    bien</strong>: te dice cuánto falta y en qué subtipo.
+  </div>
+</div>
+
+<form method="get" class="cont-filtros">
+  <div>
+    <label for="cuenta">Cuenta de MercadoLibre</label>
+    <select id="cuenta" name="cuenta" required>
+      <option value="">Elegir…</option>
+      {% for a in accounts %}
+      <option value="{{ a.alias }}" {{ 'selected' if alias_sel == a.alias else '' }}>{{ a.alias }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="periodo">Período</label>
+    <select id="periodo" name="periodo">
+      {% for p in periodos %}
+      <option value="{{ p }}" {{ 'selected' if periodo_sel == p else '' }}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="app-btn app-btn-primary">
+    <i class="bi bi-play-fill"></i> Correr el cierre
+  </button>
+</form>
+
+{% if not resultado %}
+<div class="app-card">
+  <div class="text-center py-5">
+    <i class="bi bi-clipboard-data" style="font-size:var(--icon-xl);color:var(--color-neutral-200)"></i>
+    <div class="mt-2 cont-sub">
+      Elegí una cuenta y un período. El cierre aplica el costo de mercadería,
+      concilia contra la facturación de ML y cruza las ventas contra los cobros de MP.
+    </div>
+  </div>
+</div>
+{% else %}
+
+<!-- ── Veredicto ───────────────────────────────────────────── -->
+<div class="app-card mb-3">
+  <div class="app-card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-flag"></i> Veredicto de {{ resultado.periodo }} — {{ resultado.cuenta }}</span>
+    {% if resultado.cerrado_ok %}
+    <span class="badge app-badge-ok">cierra sin observaciones</span>
+    {% else %}
+    <span class="badge app-badge-warn">{{ resultado.alertas | length }} observación(es)</span>
+    {% endif %}
+  </div>
+  <div class="p-3">
+    {% if resultado.cerrado_ok %}
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-check-circle-fill" style="color:var(--color-success-400);font-size:var(--icon-lg)"></i>
+      <span>Los totales cuadran y no hay ventas sin costo ni cobros sin venta.</span>
+    </div>
+    {% else %}
+    <ul style="margin:0;padding-left:20px">
+      {% for a in resultado.alertas %}
+      <li class="mb-1">{{ a }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- ── CMV ───────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-5">
+    <div class="app-card mb-3">
+      <div class="app-card-header"><i class="bi bi-box-seam"></i> Costo de mercadería</div>
+      <div class="p-3">
+        {% if resultado.cmv.error %}
+        <div class="cont-neg">{{ resultado.cmv.error }}</div>
+        {% else %}
+        <div class="row g-2">
+          <div class="col-6">
+            <div class="app-stat-box">
+              <div class="num" style="font-size:var(--text-h3);color:var(--color-neutral-700)">
+                {{ resultado.cmv.cmv_total | pesos }}
+              </div>
+              <div class="lbl">CMV del período</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="app-stat-box {{ 'crit' if resultado.cmv.ventas_sin_costo else 'ok' }}">
+              <div class="num">{{ resultado.cmv.ventas_sin_costo }}</div>
+              <div class="lbl">Ventas sin costo</div>
+            </div>
+          </div>
+        </div>
+
+        {% if resultado.cmv.items_sin_costo %}
+        <div class="cont-sub mt-3 mb-1">Las que más pesan:</div>
+        <table class="table app-data-table mb-0">
+          <tbody>
+            {% for f in resultado.cmv.items_sin_costo[:6] %}
+            <tr class="row-warn">
+              <td>
+                <div style="font-size:var(--text-sm)">{{ (f.titulo or f.item_id)[:38] }}</div>
+                <div class="cont-sub">{{ f.unidades }} unidades</div>
+              </td>
+              <td class="cont-num">{{ f.facturado | pesos }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <a href="{{ url_for('contabilidad.costos') }}" class="app-btn app-btn-primary mt-2">
+          <i class="bi bi-upload"></i> Cargar costos
+        </a>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── ML vs MP ────────────────────────────────────────── -->
+    <div class="app-card">
+      <div class="app-card-header"><i class="bi bi-arrow-left-right"></i> Ventas de ML vs cobros de MP</div>
+      <div class="p-3">
+        {% if resultado.ml_mp.error %}
+        <div class="cont-neg">{{ resultado.ml_mp.error }}</div>
+        {% else %}
+        {% set mm = resultado.ml_mp %}
+        <div class="d-flex justify-content-between mb-1">
+          <span class="cont-sub">Vendido en ML ({{ mm.ventas_importadas }} órdenes)</span>
+          <strong>{{ mm.total_vendido | pesos }}</strong>
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+          <span class="cont-sub">Cobrado en MP ({{ mm.cobros_importados }} pagos)</span>
+          <strong>{{ mm.total_cobrado_mp | pesos }}</strong>
+        </div>
+        <div class="cont-sub mb-3">
+          Que lo cobrado sea menor es normal: en MP la plata entra neta de comisión.
+        </div>
+
+        {% if mm.cobros_sin_venta %}
+        <div class="app-alert-banner app-alert-banner-warn mb-2">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <div>
+            <strong>{{ mm.cobros_sin_venta | length }} cobros sin venta importada.</strong>
+            Habría que ampliar el rango de órdenes: entró plata de ventas que el libro no tiene.
+          </div>
+        </div>
+        {% endif %}
+
+        {% if mm.ventas_sin_cobro %}
+        <div class="cont-sub mb-1">
+          {{ mm.ventas_sin_cobro | length }} ventas sin cobro espejo
+          (pueden ser recientes, sin liberar):
+        </div>
+        <table class="table app-data-table mb-0">
+          <tbody>
+            {% for v in mm.ventas_sin_cobro[:5] %}
+            <tr>
+              <td>
+                <div style="font-size:var(--text-sm)">{{ (v.concepto or '')[:34] }}</div>
+                <div class="cont-sub">{{ v.fecha | fecha_corta }} · {{ v.order_id }}</div>
+              </td>
+              <td class="cont-num">{{ v.vendido | pesos }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+        {% if mm.cuadra %}
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <i class="bi bi-check-circle-fill" style="color:var(--color-success-400)"></i>
+          <span class="cont-sub">Sin cobros huérfanos ni diferencias a favor.</span>
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Conciliación de facturación ─────────────────────────── -->
+  <div class="col-12 col-lg-7">
+    <div class="app-card h-100">
+      <div class="app-card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-receipt-cutoff"></i> Facturación de ML: resumen vs detalle</span>
+        {% if resultado.billing.cuadra is defined %}
+          {% if resultado.billing.cuadra %}
+          <span class="badge app-badge-ok">cuadra</span>
+          {% else %}
+          <span class="badge app-badge-crit">
+            dif. {{ resultado.billing.diferencia_absoluta | pesos }}
+          </span>
+          {% endif %}
+        {% endif %}
+      </div>
+
+      {% if resultado.billing.error %}
+      <div class="p-3 cont-neg">{{ resultado.billing.error }}</div>
+      {% elif resultado.billing.lineas %}
+      <div class="table-responsive">
+        <table class="table app-data-table mb-0">
+          <thead>
+            <tr>
+              <th>Subtipo</th>
+              <th class="cont-num">Resumen de ML</th>
+              <th class="cont-num">Importado</th>
+              <th class="cont-num">Diferencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in resultado.billing.lineas %}
+            <tr class="{{ 'row-crit' if l.estado == 'falta_importar' else ('row-warn' if l.estado != 'ok' else '') }}">
+              <td>
+                <div>{{ l.subtipo }}</div>
+                <div class="cont-sub">{{ l.label[:40] }}</div>
+              </td>
+              <td class="cont-num">{{ l.resumen_ml | pesos }}</td>
+              <td class="cont-num">
+                {{ l.importado | pesos }}
+                {% if l.cantidad %}<div class="cont-sub">{{ l.cantidad }} movs</div>{% endif %}
+              </td>
+              <td class="cont-num">
+                {% if l.estado == 'ok' %}
+                <span class="badge app-badge-ok">ok</span>
+                {% else %}
+                <span class="{{ 'cont-neg' if l.diferencia < 0 else 'cont-pos' }}">
+                  {{ l.diferencia | pesos }}
+                </span>
+                <div class="cont-sub">
+                  {{ 'falta importar' if l.estado == 'falta_importar' else 'sobra' }}
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if resultado.billing.errores %}
+      <div class="p-3 border-top cont-sub">
+        {% for e in resultado.billing.errores %}
+        <div>{{ e.grupo }}: {{ e.error[:120] }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="p-3 cont-sub">
+        No hay datos de facturación para este período. Corré la importación con la fuente
+        "Facturación de ML" activada.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

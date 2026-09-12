@@ -617,7 +617,7 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
         q = (s.query(
                 Movimiento.periodo,
                 Rubro.codigo, Rubro.nombre, Rubro.tipo, Rubro.grupo,
-                Rubro.afecta_resultado, Rubro.ambito,
+                Rubro.afecta_resultado, Rubro.ambito, Rubro.orden,
                 func.sum(Movimiento.monto).label('total'),
                 func.count(Movimiento.id).label('cantidad'),
              )
@@ -627,7 +627,7 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
              .filter(Movimiento.computable == True)  # noqa: E712
              .group_by(Movimiento.periodo, Rubro.codigo, Rubro.nombre,
                        Rubro.tipo, Rubro.grupo, Rubro.afecta_resultado,
-                       Rubro.ambito))
+                       Rubro.ambito, Rubro.orden))
         if cuenta_alias:
             q = q.filter(Movimiento.cuenta_alias == cuenta_alias)
 
@@ -647,7 +647,7 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
         }
         cant_sin_clasif = 0
 
-        for (periodo, codigo, nombre, tipo, grupo, afecta, ambito,
+        for (periodo, codigo, nombre, tipo, grupo, afecta, ambito, orden,
              total, cantidad) in filas:
             total = Decimal(str(total or 0))
             codigo = codigo or RUBRO_SIN_CLASIFICAR
@@ -659,6 +659,7 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
                 'codigo': codigo, 'nombre': nombre, 'tipo': tipo,
                 'grupo': grupo or 'Pendientes', 'ambito': ambito or AMBITO_NEGOCIO,
                 'afecta_resultado': afecta,
+                'orden': orden if orden is not None else 999,
                 'total': Decimal('0'), 'cantidad': 0,
             })
             r['total'] += total
@@ -703,9 +704,12 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
             'criterio': 'caja_pura',
             'totales': {k: float(v) for k, v in totales.items()},
             'margen_pct': margen_pct,
+            # Orden de lectura de un estado de resultados (Ingresos, Costos,
+            # Plataforma, Impuestos, Operativos, y los neutros al final), no
+            # alfabetico: lo da el campo `orden` del plan de rubros.
             'por_rubro': sorted(
                 ({**v, 'total': float(v['total'])} for v in por_rubro.values()),
-                key=lambda r: (r['grupo'], -abs(r['total'])),
+                key=lambda r: (r['orden'], -abs(r['total'])),
             ),
             'por_mes': [
                 {'periodo': p, **{k: float(v) for k, v in vals.items()}}
@@ -831,3 +835,193 @@ def asignar_rubro(movimiento_id: int, rubro_codigo: str,
 
         return {'ok': True, 'movimiento_id': mov.id,
                 'rubro': rubro_codigo, 'regla_creada': regla_creada}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONSULTAS PARA LA UI
+# ══════════════════════════════════════════════════════════════════════════════
+
+def listar_rubros(solo_activos: bool = True) -> list:
+    """Rubros para poblar los selects, agrupados y en orden de presentación."""
+    with session_scope() as s:
+        q = s.query(Rubro).order_by(Rubro.orden.asc())
+        if solo_activos:
+            q = q.filter(Rubro.activo == True)  # noqa: E712
+        return [{
+            'codigo': r.codigo, 'nombre': r.nombre, 'tipo': r.tipo,
+            'grupo': r.grupo or 'Otros', 'ambito': r.ambito,
+            'afecta_resultado': r.afecta_resultado,
+            'es_sistema': r.es_sistema,
+        } for r in q.all()]
+
+
+def listar_movimientos(desde: date = None, hasta: date = None,
+                       cuenta_alias: str = None, rubro_codigo: str = None,
+                       origen: str = None, texto: str = None,
+                       ambito: str = None, solo_computables: bool = False,
+                       pagina: int = 1, por_pagina: int = 100) -> dict:
+    """
+    Libro de movimientos con filtros y paginación, para la pantalla del libro.
+
+    Devuelve también el total del filtro aplicado, que es lo que permite
+    verificar a ojo que un subconjunto suma lo que tiene que sumar.
+    """
+    with session_scope() as s:
+        q = s.query(Movimiento).outerjoin(Rubro, Movimiento.rubro_id == Rubro.id)
+
+        if desde:
+            q = q.filter(Movimiento.fecha >= datetime.combine(desde, datetime.min.time()))
+        if hasta:
+            q = q.filter(Movimiento.fecha <= datetime.combine(hasta, datetime.max.time()))
+        if cuenta_alias:
+            q = q.filter(Movimiento.cuenta_alias == cuenta_alias)
+        if rubro_codigo:
+            if rubro_codigo == RUBRO_SIN_CLASIFICAR:
+                sc = rubro_id_por_codigo(s, RUBRO_SIN_CLASIFICAR)
+                q = q.filter(or_(Movimiento.rubro_id == None,  # noqa: E711
+                                 Movimiento.rubro_id == sc))
+            else:
+                q = q.filter(Rubro.codigo == rubro_codigo)
+        if origen:
+            q = q.filter(Movimiento.origen == origen)
+        if ambito:
+            q = q.filter(Movimiento.ambito == ambito)
+        if solo_computables:
+            q = q.filter(Movimiento.computable == True)  # noqa: E712
+        if texto:
+            patron = f'%{texto.strip()}%'
+            q = q.filter(or_(Movimiento.concepto.ilike(patron),
+                             Movimiento.proveedor.ilike(patron),
+                             Movimiento.order_id.ilike(patron),
+                             Movimiento.item_id.ilike(patron),
+                             Movimiento.external_id.ilike(patron)))
+
+        total_filas = q.count()
+        suma = q.with_entities(func.sum(Movimiento.monto)).scalar() or 0
+
+        pagina = max(1, int(pagina or 1))
+        filas = (q.order_by(Movimiento.fecha.desc(), Movimiento.id.desc())
+                 .offset((pagina - 1) * por_pagina)
+                 .limit(por_pagina)
+                 .all())
+
+        rubros = {r.id: (r.codigo, r.nombre) for r in s.query(Rubro).all()}
+
+        movimientos = []
+        for m in filas:
+            codigo, nombre = rubros.get(m.rubro_id, (RUBRO_SIN_CLASIFICAR,
+                                                     'Sin clasificar'))
+            movimientos.append({
+                'id': m.id,
+                'fecha': m.fecha.isoformat(),
+                'cuenta': m.cuenta_alias,
+                'origen': m.origen,
+                'concepto': m.concepto,
+                'subtipo': m.subtipo,
+                'monto': float(m.monto or 0),
+                'moneda': m.moneda,
+                'rubro_codigo': codigo,
+                'rubro_nombre': nombre,
+                'ambito': m.ambito,
+                'computable': m.computable,
+                'revisar': m.revisar,
+                'nota_revision': m.nota_revision,
+                'rubro_manual': m.rubro_manual,
+                'order_id': m.order_id,
+                'item_id': m.item_id,
+                'proveedor': m.proveedor,
+                'nro_comprobante': m.nro_comprobante,
+                'external_id': m.external_id,
+            })
+
+        return {
+            'movimientos': movimientos,
+            'total': total_filas,
+            'suma': float(suma),
+            'pagina': pagina,
+            'por_pagina': por_pagina,
+            'paginas': max(1, (total_filas + por_pagina - 1) // por_pagina),
+        }
+
+
+def listar_cuentas() -> list:
+    """Aliases con movimientos cargados, para los filtros por cuenta."""
+    with session_scope() as s:
+        return [a for (a,) in s.query(Movimiento.cuenta_alias)
+                .distinct().order_by(Movimiento.cuenta_alias).all()]
+
+
+def ultimas_importaciones(limite: int = 20) -> list:
+    """Historial de corridas de importación, para la pantalla de importar."""
+    with session_scope() as s:
+        filas = (s.query(ImportRun)
+                 .order_by(ImportRun.iniciado_at.desc())
+                 .limit(limite).all())
+        return [{
+            'id': r.id, 'cuenta': r.cuenta_alias, 'fuente': r.fuente,
+            'desde': r.desde.isoformat() if r.desde else None,
+            'hasta': r.hasta.isoformat() if r.hasta else None,
+            'iniciado': r.iniciado_at.isoformat() if r.iniciado_at else None,
+            'terminado': r.terminado_at.isoformat() if r.terminado_at else None,
+            'estado': r.estado, 'leidos': r.leidos, 'nuevos': r.nuevos,
+            'actualizados': r.actualizados, 'paginas': r.paginas,
+            'sin_clasificar': r.sin_clasificar,
+            'mensaje': r.mensaje,
+            'errores': (r.errores or [])[:5] if isinstance(r.errores, list) else None,
+            'cant_errores': len(r.errores) if isinstance(r.errores, list) else 0,
+        } for r in filas]
+
+
+def listar_cuentas_mp() -> list:
+    """Cuentas de Mercado Pago dadas de alta."""
+    import os as _os
+    with session_scope() as s:
+        filas = s.query(CuentaMP).order_by(CuentaMP.alias).all()
+        out = []
+        for c in filas:
+            tiene_token = bool(
+                (c.token_env and _os.environ.get(c.token_env))
+                or c.access_token
+                or _os.environ.get(
+                    f'MP_ACCESS_TOKEN_{c.alias.upper().replace(" ", "_")}')
+                or _os.environ.get('MP_ACCESS_TOKEN_PROD')
+            )
+            out.append({
+                'id': c.id, 'alias': c.alias, 'ml_alias': c.ml_alias,
+                'collector_id': c.collector_id, 'nickname': c.nickname,
+                'token_env': c.token_env, 'tiene_token': tiene_token,
+                'activo': c.activo,
+                'last_import': (c.last_import_at.isoformat()
+                                if c.last_import_at else None),
+            })
+        return out
+
+
+def guardar_cuenta_mp(alias: str, ml_alias: str = None, token_env: str = None,
+                      access_token: str = None, collector_id: str = None) -> dict:
+    """
+    Da de alta o actualiza una cuenta de MP. Cubre el requisito de asociar
+    varias cuentas para tener la vista global y la separada.
+
+    Preferencia por `token_env`: el secreto vive en la variable de entorno de
+    Render y no en la base.
+    """
+    alias = (alias or '').strip()
+    if not alias:
+        raise ValueError('El alias de la cuenta es obligatorio')
+
+    with session_scope() as s:
+        cuenta = s.query(CuentaMP).filter_by(alias=alias).one_or_none()
+        if cuenta is None:
+            cuenta = CuentaMP(alias=alias)
+            s.add(cuenta)
+        cuenta.ml_alias = (ml_alias or '').strip() or None
+        if token_env is not None:
+            cuenta.token_env = (token_env or '').strip() or None
+        if access_token:
+            cuenta.access_token = access_token.strip()
+        if collector_id is not None:
+            cuenta.collector_id = (collector_id or '').strip() or None
+        cuenta.activo = True
+        s.flush()
+        return {'ok': True, 'alias': cuenta.alias, 'id': cuenta.id}

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %} — Costos de mercadería{% endblock %}
+
+{% block content %}
+{% include "_contabilidad_estilos.html" %}
+
+{% set activa = "costos" %}
+{% set subtitulo = "Sin costo de mercadería no hay ganancia, hay facturación." %}
+{% include "_contabilidad_tabs.html" %}
+
+{% if faltantes %}
+<div class="app-alert-banner app-alert-banner-crit mb-3">
+  <i class="bi bi-exclamation-octagon-fill"></i>
+  <div>
+    <strong>{{ faltantes | length }} publicaciones con ventas y sin costo cargado.</strong>
+    Mientras falten, el resultado del sistema está sobreestimado: muestra margen sobre
+    plataforma, no ganancia.
+  </div>
+</div>
+{% endif %}
+
+{% if resultado %}
+<div class="app-card mb-3">
+  <div class="app-card-header"><i class="bi bi-clipboard-check"></i> Resultado de la carga</div>
+  <div class="p-3">
+    <div class="row g-3 mb-2">
+      <div class="col-4 col-md-3">
+        <div class="app-stat-box ok">
+          <div class="num">{{ resultado.cargados }}</div>
+          <div class="lbl">Nuevos</div>
+        </div>
+      </div>
+      <div class="col-4 col-md-3">
+        <div class="app-stat-box blue">
+          <div class="num">{{ resultado.actualizados }}</div>
+          <div class="lbl">Actualizados</div>
+        </div>
+      </div>
+      <div class="col-4 col-md-3">
+        <div class="app-stat-box {{ 'crit' if resultado.rechazados else '' }}">
+          <div class="num">{{ resultado.rechazados | length }}</div>
+          <div class="lbl">Rechazados</div>
+        </div>
+      </div>
+      {% if resultado.cmv %}
+      <div class="col-12 col-md-3">
+        <div class="app-stat-box">
+          <div class="num" style="font-size:var(--text-h3);color:var(--color-neutral-700)">
+            {{ resultado.cmv.cmv_total | pesos }}
+          </div>
+          <div class="lbl">CMV recalculado del año</div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if resultado.rechazados %}
+    <div class="mt-2">
+      <div style="font-weight:var(--font-weight-semibold);font-size:var(--text-md)" class="mb-1">
+        Filas rechazadas y por qué
+      </div>
+      <div class="table-responsive" style="max-height:240px;overflow-y:auto">
+        <table class="table app-data-table mb-0">
+          <thead><tr><th>Fila</th><th>Publicación</th><th>Motivo</th></tr></thead>
+          <tbody>
+            {% for r in resultado.rechazados %}
+            <tr class="row-crit">
+              <td class="cont-sub">{{ r.fila }}</td>
+              <td>{{ r.item_id or '—' }}</td>
+              <td class="cont-sub">{{ r.motivo }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if resultado.cmv and resultado.cmv.ventas_sin_costo %}
+    <div class="cont-sub mt-2">
+      Quedan {{ resultado.cmv.ventas_sin_costo }} ventas del año sin costo aplicado.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <!-- ── Carga ───────────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="app-card">
+      <div class="app-card-header"><i class="bi bi-upload"></i> Cargar costos</div>
+      <form method="post" enctype="multipart/form-data" class="p-3">
+        <div class="mb-3">
+          <label class="form-label cont-sub" for="pegado">
+            Pegá desde Excel (copiá las columnas y pegá acá)
+          </label>
+          <textarea class="form-control" id="pegado" name="pegado" rows="10"
+                    style="font-family:ui-monospace,monospace;font-size:var(--text-sm)"
+                    placeholder="item_id&#9;titulo&#9;costo
+MLA3024679994&#9;Cortador De Puntas&#9;$ 18.500,50
+MLA2240715828&#9;Delineador De Cejas&#9;4200"></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label cont-sub" for="archivo">…o subí un CSV</label>
+          <input type="file" class="form-control form-control-sm" id="archivo" name="archivo"
+                 accept=".csv,.tsv,.txt">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label cont-sub" for="vigente_desde">Vigente desde</label>
+          <input type="date" class="form-control form-control-sm" id="vigente_desde"
+                 name="vigente_desde" value="{{ mes_actual }}">
+          <div class="cont-sub mt-1">
+            Las ventas anteriores a esta fecha siguen valuadas al costo viejo. Así un lote
+            nuevo más caro no revalúa lo que ya vendiste.
+          </div>
+        </div>
+
+        <button type="submit" class="app-btn app-btn-primary w-100">
+          <i class="bi bi-check-lg"></i> Procesar
+        </button>
+      </form>
+
+      <div class="p-3 border-top cont-sub">
+        <strong>Formato.</strong> Acepta coma, punto y coma o tabulación (lo que sale al copiar
+        de Excel). Reconoce las columnas por nombre: <code>item_id</code>, <code>costo</code>,
+        <code>titulo</code>, <code>sku</code>, <code>variacion</code>, <code>fob</code>,
+        <code>flete</code>, <code>impuestos</code>, <code>vigente_desde</code>. Si no hay
+        cabecera, toma la primera columna como publicación y la segunda como costo.
+        Los montos toleran <code>$</code>, puntos de miles y coma decimal.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Faltantes ───────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="app-card">
+      <div class="app-card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-check"></i> Publicaciones sin costo</span>
+        {% if faltantes %}<span class="badge app-badge-crit">{{ faltantes | length }}</span>{% endif %}
+      </div>
+      {% if faltantes %}
+      <div class="p-3 pb-0 cont-sub">
+        Ordenadas por lo facturado: arrancá por arriba, es donde más mueve el resultado.
+        Copiá el ID y pegalo en el cuadro de la izquierda con su costo.
+      </div>
+      <div class="table-responsive" style="max-height:520px;overflow-y:auto">
+        <table class="table app-data-table mb-0">
+          <thead>
+            <tr><th>Publicación</th><th class="cont-num">Ventas</th><th class="cont-num">Facturado</th></tr>
+          </thead>
+          <tbody>
+            {% for f in faltantes %}
+            <tr class="row-warn">
+              <td>
+                <div style="font-size:var(--text-sm)">{{ (f.titulo or '')[:46] }}</div>
+                <code class="cont-sub" style="cursor:pointer" title="Clic para copiar"
+                      onclick="navigator.clipboard && navigator.clipboard.writeText('{{ f.item_id }}')">
+                  {{ f.item_id }}
+                </code>
+              </td>
+              <td class="cont-num cont-sub">{{ f.ventas }}</td>
+              <td class="cont-num">{{ f.facturado | pesos }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5">
+        <i class="bi bi-check-circle-fill" style="color:var(--color-success-400);font-size:var(--icon-xl)"></i>
+        <div class="mt-2" style="font-weight:var(--font-weight-semibold)">
+          Todas las publicaciones con ventas tienen costo.
+        </div>
+        <div class="cont-sub">El resultado del sistema ya es ganancia, no facturación.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

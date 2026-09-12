@@ -369,6 +369,9 @@
 
   <!-- ── ⚙️ Admin (siempre visible, no scrollea) ─────────────── -->
   <div class="nav-admin">
+    <a href="/contabilidad" class="{{ 'active' if request.path.startswith('/contabilidad') else '' }}">
+      <i class="bi bi-calculator"></i> Contabilidad
+    </a>
     {% if accounts and accounts | length >= 2 %}
     <a href="/multicuenta" class="{{ 'active' if request.path == '/multicuenta' else '' }}">
       <i class="bi bi-diagram-3"></i> Multicuenta

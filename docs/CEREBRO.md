@@ -1184,9 +1184,67 @@ python main.py contabilidad cmv      <desde> <hasta> [alias]
    advertencia de nivel critico que dice explicitamente que lo que se ve es
    margen sobre plataforma y NO ganancia. El listado de que falta sale con
    `contabilidad sin-costo`.
-3. **Fase 2: la UI.** Dashboard, libro con filtros, bandeja de pendientes,
-   alta de gastos manuales y pantalla de carga masiva de costos, sobre el
-   design system existente (`tokens.css` + `components.css`, clases `.app-*`).
+3. **Cerrar el circuito con el MCP.** Exponer `resumen`, `pendientes` y
+   `cerrar_periodo` como tools del MCP, para poder preguntar "cuanto gane en
+   agosto" desde el chat sin abrir el panel.
+
+### Fase 2 — la UI (2026-09-12, misma sesion)
+
+Siete pantallas bajo `/contabilidad`, como Blueprint en
+`web/contabilidad_routes.py`. Va en su propio archivo y no dentro de
+`web/app.py`: el registro alla son dos lineas y app.py ya tiene 20.000. El
+`before_request` global las protege igual que al resto.
+
+| Ruta | Que hace |
+|---|---|
+| `/contabilidad` | Resultado del periodo, KPIs, grafico mensual, desglose por rubro, vista por cuenta, publicaciones sin costo |
+| `/contabilidad/movimientos` | El libro completo con filtros por fecha, cuenta, rubro, origen, ambito y texto libre, mas la suma del filtro aplicado |
+| `/contabilidad/pendientes` | Bandeja de lo no clasificado, con asignacion inline y creacion de regla |
+| `/contabilidad/gastos` | Alta manual: proveedores, impuestos, sueldos, servicios |
+| `/contabilidad/costos` | Carga masiva de costos pegando desde Excel o subiendo CSV |
+| `/contabilidad/cierre` | Conciliacion del periodo contra el resumen de facturacion de ML y contra MP |
+| `/contabilidad/importar` | Disparar importaciones (en thread), historial de corridas y alta de cuentas MP |
+
+Decisiones de UI:
+
+- **El resultado tiene su propia jerarquia visual.** Es el numero que el
+  usuario vino a buscar, asi que no es un KPI mas en la fila: es una card
+  aparte, con borde de color segun signo y tipografia `--text-display`.
+- **El signo se muestra explicito.** El filtro `pesos` escribe `-$1.500.000`
+  en vez de rojo solo: en una pantalla contable confundir un ingreso con un
+  egreso es el peor error posible, y el color por si solo no alcanza.
+- **El desglose se lee como un estado de resultados**, no alfabeticamente:
+  Ingresos, Costos, Plataforma, Impuestos, Operativos, y los neutros
+  (traspasos, personal, sin clasificar) al final. El orden lo da el campo
+  `orden` del plan de rubros. Hay un test que lo fija.
+- **Las advertencias viajan con el numero.** Si faltan costos, el dashboard
+  dice en un banner critico que lo que se ve es margen sobre plataforma y NO
+  ganancia, con un boton directo a cargarlos. Un numero lindo y falso es peor
+  que no tener numero.
+- **Los estilos compartidos van en `_contabilidad_estilos.html`**, un parcial
+  Jinja, no en `components.css`: el patron se repite solo dentro de esta
+  seccion y no hacia falta tocar un archivo global (Regla #2).
+- Todo por tokens `var(--*)`, Bootstrap Icons, clases `.app-*`. Sin hex
+  hardcodeado.
+
+Entrada en la sidebar: `Contabilidad` en el bloque `nav-admin`, arriba de
+Multicuenta, siempre visible porque es una vista global y no por cuenta.
+
+### Pruebas
+
+- `tests/test_contabilidad.py` — 74 aserciones de logica de negocio sobre la
+  forma real de los datos de la cuenta.
+- `tests/test_contabilidad_ui.py` — 57 aserciones de renderizado: las siete
+  pantallas vacias y con datos, filtros, formularios, la API de asignar rubro,
+  y robustez de parametros (rango invertido, fecha basura, pagina fuera de
+  rango). Un template Jinja roto no lo detecta un chequeo de sintaxis Python:
+  solo se ve renderizando.
+- `tests/demo_contabilidad_screens.py` — no es un test: siembra nueve meses de
+  operacion con la forma real de la cuenta y saca capturas con Playwright,
+  para revisar la UI sin deployar. Ojo: el CDN de Bootstrap/Chart.js no se
+  alcanza desde el contenedor de desarrollo, asi que el script intercepta esas
+  requests y sirve copias locales; sin eso la grilla se apila y el grafico sale
+  vacio, y parece un bug del codigo cuando no lo es.
 
 
 ## Estado al 2026-09-12 — donde retomar

@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %} — Importar movimientos{% endblock %}
+
+{% block content %}
+{% include "_contabilidad_estilos.html" %}
+
+{% set activa = "importar" %}
+{% set subtitulo = "Trae ventas, facturación de ML, percepciones y movimientos de Mercado Pago." %}
+{% include "_contabilidad_tabs.html" %}
+
+<div class="app-alert-banner app-alert-banner-info mb-3">
+  <i class="bi bi-info-circle-fill"></i>
+  <div>
+    Reimportar el mismo rango <strong>no duplica nada</strong>: cada movimiento se
+    identifica por su ID de origen. Podés correrlo las veces que quieras.
+    La facturación de ML es sensible al abuso, así que las fuentes corren una
+    después de otra con pausa — un año entero tarda unos minutos.
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- ── Disparar importación ────────────────────────────────── -->
+  <div class="col-12 col-lg-5">
+    <div class="app-card mb-3">
+      <div class="app-card-header"><i class="bi bi-cloud-download"></i> Nueva importación</div>
+      <form method="post" class="p-3">
+        <div class="mb-2">
+          <label class="form-label cont-sub" for="alias_ml">Cuenta de MercadoLibre</label>
+          <select class="form-select form-select-sm" id="alias_ml" name="alias_ml" required>
+            <option value="">Elegir…</option>
+            {% for a in accounts %}
+            <option value="{{ a.alias }}">{{ a.alias }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label cont-sub" for="alias_mp">Cuenta de Mercado Pago</label>
+          <select class="form-select form-select-sm" id="alias_mp" name="alias_mp">
+            <option value="">La misma que la de ML</option>
+            {% for c in cuentas_mp %}
+            <option value="{{ c.alias }}">{{ c.alias }}{% if not c.tiene_token %} (sin token){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="form-label cont-sub" for="desde">Desde</label>
+            <input type="date" class="form-control form-control-sm" id="desde" name="desde"
+                   value="{{ desde_default }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label cont-sub" for="hasta">Hasta</label>
+            <input type="date" class="form-control form-control-sm" id="hasta" name="hasta"
+                   value="{{ hasta_default }}">
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="cont-sub mb-1">Fuentes</div>
+          {% for cod, nom, desc in [
+            ('ordenes', 'Órdenes', 'Las ventas y sus retenciones impositivas'),
+            ('billing', 'Facturación de ML', 'Comisiones, envíos, Ads, Full'),
+            ('percepciones', 'Percepciones', 'IIBB y percepciones del período'),
+            ('mp', 'Mercado Pago', 'Cobros y gastos de la cuenta'),
+          ] %}
+          <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;padding:4px 0">
+            <input type="checkbox" name="fuentes" value="{{ cod }}" checked style="margin-top:3px">
+            <span>
+              <span style="font-size:var(--text-md)">{{ nom }}</span>
+              <div class="cont-sub">{{ desc }}</div>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+
+        <button type="submit" class="app-btn app-btn-primary w-100">
+          <i class="bi bi-play-fill"></i> Importar
+        </button>
+      </form>
+    </div>
+
+    <!-- ── Cuentas de Mercado Pago ───────────────────────────── -->
+    <div class="app-card">
+      <div class="app-card-header"><i class="bi bi-wallet2"></i> Cuentas de Mercado Pago</div>
+
+      {% if cuentas_mp %}
+      <div class="table-responsive">
+        <table class="table app-data-table mb-0">
+          <thead><tr><th>Alias</th><th>Cuenta ML</th><th>Token</th></tr></thead>
+          <tbody>
+            {% for c in cuentas_mp %}
+            <tr>
+              <td>
+                {{ c.alias }}
+                {% if c.last_import %}
+                <div class="cont-sub">último: {{ c.last_import | fecha_hora }}</div>
+                {% endif %}
+              </td>
+              <td class="cont-sub">{{ c.ml_alias or '—' }}</td>
+              <td>
+                {% if c.tiene_token %}
+                <span class="badge app-badge-ok">ok</span>
+                {% else %}
+                <span class="badge app-badge-crit">falta</span>
+                {% endif %}
+                {% if c.token_env %}<div class="cont-sub">{{ c.token_env }}</div>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-3 cont-sub">
+        Todavía no hay ninguna cuenta de Mercado Pago asociada. Sin esto no se pueden
+        importar los cobros ni los gastos de MP.
+      </div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('contabilidad.cuentas_mp') }}" class="p-3 border-top">
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label cont-sub" for="mp_alias">Alias</label>
+            <input type="text" class="form-control form-control-sm" id="mp_alias" name="alias"
+                   placeholder="Novara" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label cont-sub" for="mp_ml_alias">Cuenta ML asociada</label>
+            <select class="form-select form-select-sm" id="mp_ml_alias" name="ml_alias">
+              <option value="">—</option>
+              {% for a in accounts %}
+              <option value="{{ a.alias }}">{{ a.alias }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label cont-sub" for="mp_token_env">
+              Variable de entorno del token
+            </label>
+            <input type="text" class="form-control form-control-sm" id="mp_token_env"
+                   name="token_env" placeholder="MP_ACCESS_TOKEN_PROD">
+            <div class="cont-sub mt-1">
+              Recomendado: el token vive en la variable de entorno de Render y no en la
+              base de datos. Si la dejás vacía, el sistema prueba
+              <code>MP_ACCESS_TOKEN_PROD</code>.
+            </div>
+          </div>
+          <div class="col-12 mt-2">
+            <button type="submit" class="app-btn app-btn-secondary w-100">
+              <i class="bi bi-plus-lg"></i> Guardar cuenta
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Historial ───────────────────────────────────────────── -->
+  <div class="col-12 col-lg-7">
+    <div class="app-card">
+      <div class="app-card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-clock-history"></i> Historial de importaciones</span>
+        <span id="estado-corriendo" class="cont-sub"></span>
+      </div>
+      <div class="table-responsive">
+        <table class="table app-data-table mb-0" id="tabla-corridas">
+          <thead>
+            <tr>
+              <th>Cuándo</th>
+              <th>Cuenta / fuente</th>
+              <th class="cont-num">Leídos</th>
+              <th class="cont-num">Nuevos</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="cuerpo-corridas">
+            {% for c in corridas %}
+            <tr class="{{ 'row-crit' if c.estado == 'error' else ('row-warn' if c.estado == 'parcial' else '') }}">
+              <td class="cont-sub" style="white-space:nowrap">
+                {{ c.iniciado | fecha_hora }}
+                {% if c.desde and c.hasta %}
+                <div>{{ c.desde | fecha_corta }} → {{ c.hasta | fecha_corta }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <div>{{ c.cuenta }}</div>
+                <div class="cont-sub">{{ c.fuente }}</div>
+              </td>
+              <td class="cont-num">{{ c.leidos }}</td>
+              <td class="cont-num">
+                {{ c.nuevos }}
+                {% if c.actualizados %}<div class="cont-sub">{{ c.actualizados }} act.</div>{% endif %}
+              </td>
+              <td>
+                {% if c.estado == 'ok' %}
+                <span class="badge app-badge-ok">ok</span>
+                {% elif c.estado == 'parcial' %}
+                <span class="badge app-badge-warn">parcial</span>
+                {% elif c.estado == 'error' %}
+                <span class="badge app-badge-crit">error</span>
+                {% else %}
+                <span class="badge app-badge-info">corriendo</span>
+                {% endif %}
+                {% if c.sin_clasificar %}
+                <div class="cont-sub">{{ c.sin_clasificar }} sin clasificar</div>
+                {% endif %}
+                {% if c.mensaje %}
+                <div class="cont-sub">{{ c.mensaje[:80] }}</div>
+                {% endif %}
+                {% if c.errores %}
+                <details class="cont-sub">
+                  <summary style="cursor:pointer">{{ c.cant_errores }} error(es)</summary>
+                  <ul style="padding-left:16px;margin:4px 0">
+                    {% for e in c.errores %}
+                    <li>{{ e | string | truncate(110) }}</li>
+                    {% endfor %}
+                  </ul>
+                </details>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center py-5 cont-sub">
+                <i class="bi bi-clock" style="font-size:var(--icon-xl);color:var(--color-neutral-200)"></i>
+                <div class="mt-2">Todavía no corriste ninguna importación.</div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Refresca el historial sin recargar mientras haya algo corriendo.
+(function () {
+  const corriendoInicial = {{ corriendo | tojson }};
+  const estado = document.getElementById('estado-corriendo');
+  let timer = null;
+
+  function pintarCorriendo(corriendo) {
+    const claves = Object.keys(corriendo || {});
+    if (!claves.length) {
+      estado.textContent = '';
+      return false;
+    }
+    estado.innerHTML = '<span class="badge app-badge-info">' +
+      'corriendo: ' + claves.join(', ') + '</span>';
+    return true;
+  }
+
+  function refrescar() {
+    fetch('{{ url_for("contabilidad.api_importaciones") }}')
+      .then(r => r.json())
+      .then(function (data) {
+        const sigue = pintarCorriendo(data.corriendo);
+        if (!sigue && timer) {
+          clearInterval(timer);
+          timer = null;
+          // Una última recarga para ver los totales finales
+          setTimeout(() => window.location.reload(), 800);
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (pintarCorriendo(corriendoInicial)) {
+    timer = setInterval(refrescar, 5000);
+  }
+})();
+</script>
+{% endblock %}

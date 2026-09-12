@@ -19487,6 +19487,15 @@ try:
 except Exception as _e:
     print(f'[contabilidad] ERROR sembrando el plan de rubros: {_e}')
 
+# Rutas del sistema contable. Viven en su propio módulo para no seguir
+# engordando este archivo; el before_request global las protege igual.
+try:
+    from web.contabilidad_routes import bp as _bp_contabilidad
+    app.register_blueprint(_bp_contabilidad)
+    print('[contabilidad] rutas registradas en /contabilidad')
+except Exception as _e:
+    print(f'[contabilidad] ERROR registrando las rutas: {_e}')
+
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
 
