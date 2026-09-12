@@ -1,6 +1,9 @@
 # Credenciales y tokens — NUNCA subir
 config/accounts.json
 .env
+# Config local de Claude Code — puede contener tokens en los comandos permitidos
+.claude/settings.local.json
+**/.claude/settings.local.json
 
 # Datos de negocio personales
 config/costos.json
