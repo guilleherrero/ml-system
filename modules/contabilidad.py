@@ -1130,6 +1130,35 @@ def guardar_cuenta_mp(alias: str, ml_alias: str = None, token_env: str = None,
                 'guardado_como': guardado_como}
 
 
+def limpiar_percepciones_con_id_posicional() -> dict:
+    """
+    Borra las percepciones importadas con la primera version del importador,
+    que usaba la POSICION en la respuesta como identificador (`2026-01-01-0`,
+    `-1`, ...) en vez de algo estable.
+
+    Con esa clave, reimportar mezclaba las percepciones entre si y las
+    acumulaba: en produccion quedaron 19 movimientos por 12,7 millones, contra
+    ventas de 146 millones — un 8,7% de percepciones, imposible.
+
+    Las filas nuevas siempre arrancan con el grupo (`ML-` o `MP-`), asi que
+    esas se reconocen y no se tocan. Es la unica excepcion a "nada se descarta":
+    estos registros no estan incompletos, estan mal, y dejarlos sumaria doble
+    contra los correctos. Idempotente: despues de la primera pasada no hay nada
+    que borrar.
+    """
+    with session_scope() as s:
+        viejos = (s.query(Movimiento)
+                  .filter(Movimiento.origen == ORIGEN_ML_PERCEPCION)
+                  .filter(~Movimiento.external_id.startswith('ML-'))
+                  .filter(~Movimiento.external_id.startswith('MP-'))
+                  .all())
+        borrados = len(viejos)
+        total = sum((Decimal(str(m.monto or 0)) for m in viejos), Decimal('0'))
+        for m in viejos:
+            s.delete(m)
+        return {'borrados': borrados, 'monto_liberado': float(total)}
+
+
 def migrar_tokens_mp_mal_guardados() -> dict:
     """
     Corrige cuentas donde un token quedó guardado en `token_env` (el campo del

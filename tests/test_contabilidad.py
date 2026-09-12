@@ -987,6 +987,180 @@ def test_importar_costos_del_sistema():
         almacen.db_load = original
 
 
+def test_percepciones_contra_esquema_real():
+    """
+    La primera version del importador de percepciones adivinaba los campos
+    (`type`, `label`, `name`) que NO existen en la respuesta, usaba la posicion
+    en la lista como identificador y no miraba `status`. Resultado en
+    produccion: 19 movimientos por 12,7 millones contra 146 millones de ventas,
+    un 8,7% de percepciones. Estos tests usan la forma documentada real.
+    """
+    seccion('Percepciones contra el esquema documentado')
+
+    # ── Clasificación por los campos reales ──
+    iva = {'tax_type': 'CRGI', 'regimen_tax_type': 'MLA_RE_IVA_N',
+           'regimen_tax_type_description': 'Percepción de IVA nuevos del régimen especial'}
+    rubro, etiqueta = imp._clasificar_percepcion(iva)
+    check(rubro == 'PERCEP', 'una percepción de IVA va a Percepciones', rubro)
+    check('IVA' in etiqueta,
+          'la etiqueta sale de la descripción real, no del genérico "Percepción"',
+          etiqueta)
+
+    iibb = {'tax_type': 'CRIB', 'regimen_tax_type': 'MLA_IIBB_SIRTAC',
+            'regimen_tax_type_description': 'Percepción de Ingresos Brutos SIRTAC'}
+    check(imp._clasificar_percepcion(iibb)[0] == 'IIBB',
+          'una percepción de Ingresos Brutos va a IIBB (antes caía en PERCEP)',
+          imp._clasificar_percepcion(iibb)[0])
+
+    gan = {'tax_type': 'CRGAN',
+           'tax_type_description': 'Retención de Ganancias'}
+    check(imp._clasificar_percepcion(gan)[0] == 'RET_GAN',
+          'una retención de Ganancias va a su rubro')
+
+    # ── Importador completo con la respuesta documentada ──
+    import core.account_manager as gestor
+
+    RESPUESTA = {
+        '2026-01-01': {
+            'summary': [
+                {'document_id': 123456789, 'society': 'ML',
+                 'legal_document_number': '0011A012345678',
+                 'amount': 229314.11, 'taxable_amount': 22931410.96,
+                 'aliquot': 1.00, 'tax_type': 'CRGI',
+                 'regimen_tax_type': 'MLA_RE_IVA_N',
+                 'regimen_tax_type_description': 'Percepción de IVA nuevos',
+                 'bill_date': '2026-01-29', 'status': 'APPLIED',
+                 'currency': 'ARS'},
+                {'document_id': 987654321, 'amount': 50000.0,
+                 'taxable_amount': 2500000.0, 'aliquot': 2.0,
+                 'tax_type': 'CRIB',
+                 'regimen_tax_type_description': 'Percepción de Ingresos Brutos',
+                 'bill_date': '2026-01-29', 'status': 'APPLIED',
+                 'currency': 'ARS'},
+                # No aplicada: se guarda pero NO debe sumar
+                {'document_id': 111222333, 'amount': 999999.0,
+                 'tax_type': 'CRGI', 'status': 'CANCELLED',
+                 'regimen_tax_type_description': 'Percepción anulada',
+                 'currency': 'ARS'},
+            ],
+            'errors': [],
+        },
+    }
+
+    class ClientePercep:
+        def _get(self, path, params):
+            for key, resp in RESPUESTA.items():
+                if f'/key/{key}/' in path:
+                    # Solo el grupo ML devuelve filas en este fixture
+                    return resp if params.get('group') == 'ML' else {'summary': []}
+            return {'summary': []}
+
+    class GestorFalso:
+        def get_client(self, alias):
+            return ClientePercep()
+
+    original_gestor = gestor.AccountManager
+    pausa_original = imp.PAUSA_BILLING
+    gestor.AccountManager = GestorFalso
+    imp.PAUSA_BILLING = 0.01
+    imp._ultima_llamada_billing[0] = 0.0
+    try:
+        res = imp.importar_ml_percepciones(ALIAS, date(2026, 1, 1), date(2026, 1, 31))
+        check(res['nuevos'] == 3,
+              'importa las 3 filas del resumen (incluida la no aplicada)', str(res))
+
+        with webdb.session_scope() as s:
+            filas = (s.query(Movimiento)
+                     .filter(Movimiento.origen == 'ml_percepcion')
+                     .all())
+            por_ext = {m.external_id: m for m in filas}
+
+            check('ML-123456789-CRGI' in por_ext,
+                  'el external_id es estable: grupo + documento + impuesto',
+                  str(sorted(por_ext))[:160])
+            check(not any(e[0].isdigit() for e in por_ext),
+                  'ningún id quedó con el formato posicional viejo')
+
+            iva_mov = por_ext.get('ML-123456789-CRGI')
+            check(iva_mov is not None and iva_mov.fecha.date() == date(2026, 1, 29),
+                  'usa bill_date en vez del día 1 del período',
+                  str(iva_mov.fecha) if iva_mov else 'no está')
+            check(iva_mov is not None
+                  and iva_mov.monto == Decimal('-229314.11'),
+                  'toma `amount` (la percepción), no `taxable_amount` (la base)',
+                  str(iva_mov.monto) if iva_mov else '')
+            check(iva_mov is not None and iva_mov.notas
+                  and 'alícuota' in iva_mov.notas,
+                  'deja anotada la base y la alícuota para poder auditar',
+                  iva_mov.notas if iva_mov else '')
+            check(iva_mov is not None
+                  and s.get(Rubro, iva_mov.rubro_id).codigo == 'PERCEP',
+                  'la de IVA quedó en Percepciones')
+
+            iibb_mov = por_ext.get('ML-987654321-CRIB')
+            check(iibb_mov is not None
+                  and s.get(Rubro, iibb_mov.rubro_id).codigo == 'IIBB',
+                  'la de Ingresos Brutos quedó en IIBB')
+
+            anulada = por_ext.get('ML-111222333-CRGI')
+            check(anulada is not None and anulada.computable is False,
+                  'la percepción no aplicada se guarda pero no computa',
+                  str(anulada.computable) if anulada else 'no está')
+
+        # Reimportar no duplica ni cambia montos
+        res2 = imp.importar_ml_percepciones(ALIAS, date(2026, 1, 1), date(2026, 1, 31))
+        check(res2['nuevos'] == 0,
+              'reimportar no crea percepciones nuevas', str(res2))
+        with webdb.session_scope() as s:
+            cant = (s.query(Movimiento)
+                    .filter(Movimiento.origen == 'ml_percepcion').count())
+            check(cant == 3, 'siguen siendo 3 percepciones', f'hay {cant}')
+
+        # Solo suman las aplicadas: 229314.11 + 50000
+        r = cont.resumen(date(2026, 1, 1), date(2026, 1, 31))
+        percep = {f['codigo']: f['total'] for f in r['por_rubro']}
+        check(abs(percep.get('PERCEP', 0) + 229314.11) < 0.01,
+              'el total de Percepciones es solo la aplicada',
+              f'dio {percep.get("PERCEP")}')
+        check(abs(percep.get('IIBB', 0) + 50000.0) < 0.01,
+              'el total de IIBB es el correcto', f'dio {percep.get("IIBB")}')
+    finally:
+        gestor.AccountManager = original_gestor
+        imp.PAUSA_BILLING = pausa_original
+        imp._ultima_llamada_billing[0] = 0.0
+
+
+def test_limpieza_percepciones_viejas():
+    seccion('Limpieza de las percepciones con id posicional')
+
+    # Simula lo que quedó en producción con la primera versión
+    with webdb.session_scope() as s:
+        for i, monto in enumerate((-670000, -580000)):
+            s.add(Movimiento(
+                cuenta_alias=ALIAS, origen='ml_percepcion',
+                external_id=f'2026-03-01-{i}',   # formato posicional viejo
+                periodo='2026-03', fecha=datetime(2026, 3, 1),
+                concepto='Percepción', monto=Decimal(monto),
+                computable=True,
+            ))
+
+    res = cont.limpiar_percepciones_con_id_posicional()
+    check(res['borrados'] == 2,
+          'borra las percepciones con id posicional', str(res))
+    check(abs(res['monto_liberado'] + 1250000) < 0.01,
+          'informa cuánto monto mal cargado libera', str(res))
+
+    with webdb.session_scope() as s:
+        quedan = {m.external_id for m in s.query(Movimiento)
+                  .filter(Movimiento.origen == 'ml_percepcion').all()}
+        check(all(e.startswith(('ML-', 'MP-')) for e in quedan),
+              'solo sobreviven las que tienen id estable', str(sorted(quedan))[:140])
+        check(len(quedan) == 3, 'las 3 correctas siguen ahí', f'quedan {len(quedan)}')
+
+    res2 = cont.limpiar_percepciones_con_id_posicional()
+    check(res2['borrados'] == 0, 'la limpieza es idempotente', str(res2))
+
+
 def main():
     print('═' * 70)
     print('TESTS DEL SISTEMA CONTABLE')
@@ -1008,6 +1182,8 @@ def main():
     test_subtipos_reales_mla()
     test_reclasificar_aplica_mapa_de_subtipos()
     test_importar_costos_del_sistema()
+    test_percepciones_contra_esquema_real()
+    test_limpieza_percepciones_viejas()
 
     print('\n' + '═' * 70)
     print(f'PASARON: {len(PASADOS)}    FALLARON: {len(FALLOS)}')

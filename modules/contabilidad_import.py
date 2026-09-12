@@ -721,10 +721,64 @@ def importar_ml_billing(alias: str, desde: date, hasta: date,
         return run.resultado()
 
 
-def importar_ml_percepciones(alias: str, desde: date, hasta: date) -> dict:
+def _clasificar_percepcion(fila: dict) -> tuple:
+    """
+    Decide el rubro de una percepción a partir de los campos REALES del
+    resumen: `tax_type`, `regimen_tax_type` y sus descripciones.
+
+    La primera versión buscaba `type`, `label` y `name`, que no existen en la
+    respuesta, así que todas las filas quedaban etiquetadas "Percepción" y
+    ninguna se reconocía como Ingresos Brutos.
+
+    Devuelve (codigo_rubro, etiqueta_legible).
+    """
+    tipo = str(fila.get('tax_type') or '').strip().upper()
+    regimen = str(fila.get('regimen_tax_type') or '').strip().upper()
+    desc = (fila.get('regimen_tax_type_description')
+            or fila.get('tax_type_description')
+            or '').strip()
+    texto = f'{tipo} {regimen} {desc}'.lower()
+
+    if 'iibb' in texto or 'brutos' in texto or 'sirtac' in texto:
+        rubro = 'IIBB'
+    elif 'iva' in texto:
+        rubro = 'PERCEP'
+    elif 'ganancia' in texto:
+        rubro = 'RET_GAN'
+    else:
+        rubro = 'PERCEP'
+
+    etiqueta = desc or f'Percepción {tipo or regimen or ""}'.strip()
+    return rubro, etiqueta
+
+
+def importar_ml_percepciones(alias: str, desde: date, hasta: date,
+                             grupos=('ML', 'MP')) -> dict:
     """
     Percepciones impositivas del período (exclusivo MLA). Son plata que se te
-    retiene: entran como egreso en el rubro PERCEP.
+    retiene: entran como egreso en IIBB o PERCEP según el impuesto.
+
+    La respuesta documentada es {"summary": [ {...} ], "errors": []}, y cada
+    fila trae `amount` (la percepción), `taxable_amount` (la base imponible),
+    `aliquot`, `tax_type`, `document_id`, `bill_date` y `status`.
+
+    Tres cosas que la primera versión hacía mal y acá están corregidas:
+
+      1. El external_id era la POSICIÓN en la lista (`{key}-0`, `-1`, ...). Al
+         reimportar, si ML devolvía las filas en otro orden o en otra cantidad,
+         las percepciones se mezclaban entre sí y se acumulaban. Ahora la clave
+         es `document_id` + `tax_type`, que identifica la percepción de verdad.
+
+      2. No miraba `status`, así que sumaba percepciones que ML no aplicó.
+         Ahora solo las APPLIED son computables; el resto queda registrado
+         pero fuera de los totales.
+
+      3. Fechaba todo el día 1 del período, ignorando `bill_date`. Eso cargaba
+         un período entero contra los pocos días del mes en curso y daba meses
+         en negativo. Ahora usa `bill_date` cuando viene.
+
+    Se consulta cada grupo (ML y MP) por separado: sin el parámetro `group` la
+    API devuelve los dos juntos y no se puede saber de cuál es cada fila.
     """
     from core.account_manager import AccountManager
 
@@ -735,71 +789,107 @@ def importar_ml_percepciones(alias: str, desde: date, hasta: date) -> dict:
 
     with _Run(alias, ORIGEN_ML_PERCEPCION, desde=desde, hasta=hasta) as run:
         for key in _claves_periodo(desde, hasta):
-            path = f'/billing/integration/periods/key/{key}/perceptions/summary'
-            # Mismo límite de 5 por minuto que el resto de /billing: en la
-            # primera corrida real los nueve meses fallaron con 429 porque la
-            # importación de facturación ya había agotado la cuota.
-            try:
-                data = _billing_get(client, path, {})
-            except Exception as e:
-                run.errores.append({'periodo': key, 'error': str(e)[:250]})
-                continue
+            for grupo in grupos:
+                path = f'/billing/integration/periods/key/{key}/perceptions/summary'
+                # Mismo límite de 5 por minuto que el resto de /billing.
+                try:
+                    data = _billing_get(client, path,
+                                        {'group': grupo, 'currency': 'ARS'})
+                except Exception as e:
+                    run.errores.append({'periodo': key, 'grupo': grupo,
+                                        'error': str(e)[:250]})
+                    continue
 
-            run.paginas += 1
+                run.paginas += 1
 
-            with session_scope() as s:
-                reglas = cargar_reglas(s)
-                # La respuesta trae una lista de percepciones por tipo/jurisdicción
                 filas = []
                 if isinstance(data, dict):
-                    filas = (data.get('perceptions') or data.get('results')
-                             or data.get('summary') or [])
+                    filas = data.get('summary') or []
                 elif isinstance(data, list):
                     filas = data
 
-                for i, fila in enumerate(filas or []):
-                    if not isinstance(fila, dict):
-                        continue
-                    run.leidos += 1
-                    monto = abs(_dec(fila.get('amount')
-                                     or fila.get('total_amount')
-                                     or fila.get('perception_amount')) or Decimal('0'))
-                    if monto == 0:
-                        continue
-                    etiqueta = (fila.get('label') or fila.get('name')
-                                or fila.get('tax_name')
-                                or fila.get('type') or 'Percepción')
-                    codigo = (fila.get('type') or fila.get('tax_id') or i)
+                if not filas:
+                    continue
 
-                    # IIBB tiene su propio rubro; el resto va a PERCEP
-                    texto = str(etiqueta).lower()
-                    rubro = 'IIBB' if ('brutos' in texto or 'iibb' in texto) else 'PERCEP'
+                try:
+                    with session_scope() as s:
+                        reglas = cargar_reglas(s)
+                        for i, fila in enumerate(filas):
+                            if not isinstance(fila, dict):
+                                continue
+                            run.leidos += 1
 
-                    datos = {
-                        'cuenta_alias': alias,
-                        'origen': ORIGEN_ML_PERCEPCION,
-                        'external_id': f'{key}-{codigo}',
-                        'periodo': key[:7],
-                        'fecha': datetime.fromisoformat(key + 'T00:00:00'),
-                        'concepto': str(etiqueta)[:300],
-                        'subtipo': str(fila.get('type') or '')[:40] or None,
-                        'monto': -monto,
-                        'percepciones': monto,
-                        'moneda': 'ARS',
-                        'computable': True,
-                        'raw': fila,
-                        'rubro_sugerido': rubro,
-                    }
-                    try:
-                        est = upsert_movimiento(s, datos, reglas)
-                        if est == 'nuevo':
-                            run.nuevos += 1
-                        elif est == 'actualizado':
-                            run.actualizados += 1
-                    except Exception as e:
-                        run.errores.append({'periodo': key, 'error': str(e)[:300]})
+                            monto = abs(_dec(fila.get('amount')) or Decimal('0'))
+                            if monto == 0:
+                                continue
 
-            # El ritmo lo marca _billing_get; acá solo se informa el avance.
+                            rubro, etiqueta = _clasificar_percepcion(fila)
+
+                            estado = str(fila.get('status') or '').strip().upper()
+                            # Solo lo aplicado suma; lo demás queda auditable
+                            computable = estado in ('APPLIED', '')
+
+                            # Clave estable: identifica la percepción, no su
+                            # posición en la respuesta.
+                            doc = fila.get('document_id')
+                            tipo = (fila.get('tax_type')
+                                    or fila.get('regimen_tax_type') or '')
+                            if doc:
+                                ext_id = f'{grupo}-{doc}-{tipo or i}'
+                            else:
+                                cargo = fila.get('perception_charge_number')
+                                ext_id = (f'{grupo}-{key}-{tipo}-{cargo}'
+                                          if cargo else
+                                          f'{grupo}-{key}-{tipo or i}')
+
+                            fecha = _parse_fecha(fila.get('bill_date'))
+                            if fecha is None:
+                                fecha = datetime.fromisoformat(key + 'T00:00:00')
+
+                            base = _dec(fila.get('taxable_amount'))
+                            alicuota = _dec(fila.get('aliquot'))
+                            nota = None
+                            if base and alicuota:
+                                nota = (f'Base {base} x alícuota {alicuota}% '
+                                        f'= {monto}')
+
+                            datos = {
+                                'cuenta_alias': alias,
+                                'origen': ORIGEN_ML_PERCEPCION,
+                                'external_id': ext_id,
+                                'periodo': key[:7],
+                                'fecha': fecha,
+                                'concepto': str(etiqueta)[:300],
+                                'subtipo': str(tipo)[:40] or None,
+                                'monto': -monto,
+                                'percepciones': monto,
+                                'monto_bruto': base,
+                                'moneda': fila.get('currency') or 'ARS',
+                                'estado': estado or None,
+                                'computable': computable,
+                                'documento': fila.get('legal_document_number'),
+                                'notas': nota,
+                                'raw': fila,
+                                'rubro_sugerido': rubro,
+                                'revisar': not computable,
+                                'nota_revision': (f'Percepción en estado '
+                                                  f'{estado}: no suma al resultado'
+                                                  if not computable else None),
+                            }
+                            try:
+                                est = upsert_movimiento(s, datos, reglas)
+                                if est == 'nuevo':
+                                    run.nuevos += 1
+                                elif est == 'actualizado':
+                                    run.actualizados += 1
+                            except Exception as e:
+                                run.errores.append({'periodo': key,
+                                                    'error': str(e)[:300]})
+                except Exception as e:
+                    run.errores.append({
+                        'periodo': key, 'grupo': grupo,
+                        'error': f'no se pudo guardar: {str(e)[:250]}'})
+
             run.progreso(f'período {key[:7]} listo — {run.nuevos} percepciones')
 
         return run.resultado()

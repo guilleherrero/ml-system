@@ -19481,6 +19481,7 @@ try:
     from modules.contabilidad import (
         sembrar_plan as _sembrar_plan_contable,
         migrar_tokens_mp_mal_guardados as _migrar_tokens_mp,
+        limpiar_percepciones_con_id_posicional as _limpiar_percep,
     )
     _res_plan = _sembrar_plan_contable()
     if _res_plan.get('rubros_creados') or _res_plan.get('reglas_creadas'):
@@ -19492,6 +19493,13 @@ try:
     _res_tok = _migrar_tokens_mp()
     if _res_tok.get('corregidas'):
         print(f'[contabilidad] tokens MP reubicados: {_res_tok["corregidas"]}')
+
+    # Borra las percepciones que la primera version importo con un id
+    # posicional: al reimportar se mezclaban entre si y se acumulaban.
+    _res_per = _limpiar_percep()
+    if _res_per.get('borrados'):
+        print(f'[contabilidad] percepciones con id posicional borradas: '
+              f'{_res_per}')
 
     # Trae a la tabla contable los costos ya cargados en config/costos.json
     # (el modulo "Cargar costos"). Idempotente: no pisa costos mas detallados.
