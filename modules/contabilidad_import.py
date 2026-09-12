@@ -42,7 +42,7 @@ from web.models_contabilidad import (
 )
 from modules.contabilidad import (
     CONCEPTO_ML_RUBRO, ENTIDAD_FISCAL_RUBRO, SUBTIPO_ML_RUBRO,
-    cargar_reglas, upsert_movimiento,
+    cargar_reglas, rubro_de_subtipo, upsert_movimiento,
 )
 
 MP_API = 'https://api.mercadopago.com'
@@ -548,8 +548,9 @@ def _rubro_desde_detalle(charge: dict, extra: dict = None) -> tuple:
     visible antes que un total silenciosamente mal.
     """
     sub = (charge.get('detail_sub_type') or '').strip().upper()
-    if sub in SUBTIPO_ML_RUBRO:
-        return SUBTIPO_ML_RUBRO[sub], None
+    directo = rubro_de_subtipo(sub)
+    if directo:
+        return directo, None
 
     concepto_tipo = (charge.get('concept_type')
                      or (extra or {}).get('concept_type') or '').strip().upper()

@@ -284,6 +284,33 @@ def gastos():
 # CARGA MASIVA DE COSTOS
 # ══════════════════════════════════════════════════════════════════════════════
 
+@bp.route('/traer-costos', methods=['POST'])
+def traer_costos():
+    """
+    Trae los costos ya cargados en el sistema (config/costos.json, el módulo
+    "Cargar costos") y recalcula el CMV del año con ellos.
+    """
+    try:
+        res = cierre.importar_costos_del_sistema()
+        if res.get('error'):
+            flash(f'No se pudieron leer los costos del sistema: {res["error"]}',
+                  'danger')
+        elif not res.get('cargados') and not res.get('actualizados'):
+            flash(res.get('mensaje')
+                  or 'No había costos nuevos para traer del sistema.', 'warning')
+        else:
+            hoy = date.today()
+            cmv = cierre.aplicar_cmv(date(hoy.year, 1, 1), hoy)
+            flash(f'{res["cargados"]} costos traídos del sistema y '
+                  f'{res["actualizados"]} actualizados. '
+                  f'CMV recalculado: {cmv["generados"]} movimientos nuevos, '
+                  f'{cmv["ventas_sin_costo"]} ventas siguen sin costo.',
+                  'success')
+    except Exception as e:
+        flash(f'Error trayendo los costos: {e}', 'danger')
+    return redirect(url_for('contabilidad.costos'))
+
+
 @bp.route('/costos', methods=['GET', 'POST'])
 def costos():
     resultado = None

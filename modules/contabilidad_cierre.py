@@ -327,6 +327,93 @@ def cargar_costos_texto(contenido: str, vigente_desde_default: date = None,
             'rechazados': rechazados, 'delimitador': repr(delim)}
 
 
+def importar_costos_del_sistema(vigente_desde: date = None) -> dict:
+    """
+    Trae los costos que ya estan cargados en el sistema (`config/costos.json`,
+    el Modulo 7 / "Cargar costos") a la tabla contable.
+
+    Existe porque pedirle al usuario que vuelva a cargar a mano costos que ya
+    habia cargado es hacerle trabajar dos veces. El JSON tiene la forma
+    {item_id: {alias, titulo, costo, updated}} y se guarda por la capa de
+    persistencia (kv_store en Render), no leyendo el archivo del disco.
+
+    Idempotente: si el costo ya existe con la misma vigencia, lo actualiza en
+    vez de duplicarlo.
+    """
+    import os as _os
+
+    try:
+        from core.db_storage import db_load
+    except Exception as e:
+        return {'error': f'no se pudo acceder a la persistencia: {e}'}
+
+    ruta = _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+        'config', 'costos.json')
+
+    try:
+        costos = db_load(ruta) or {}
+    except Exception as e:
+        return {'error': f'no se pudo leer config/costos.json: {e}'}
+
+    if not isinstance(costos, dict) or not costos:
+        return {'cargados': 0, 'actualizados': 0, 'sin_costo': 0,
+                'mensaje': 'No hay costos cargados en config/costos.json'}
+
+    # Vigencia por defecto: el 1 de enero del año en curso, para que alcance a
+    # todas las ventas del año que se estan contabilizando.
+    vigente = vigente_desde or date(date.today().year, 1, 1)
+
+    cargados = actualizados = sin_costo = 0
+    with session_scope() as s:
+        for item_id, datos in costos.items():
+            if not isinstance(datos, dict):
+                continue
+            item_id = str(item_id).strip().upper()
+            if not item_id:
+                continue
+
+            crudo = datos.get('costo')
+            if crudo in (None, '', 0):
+                sin_costo += 1
+                continue
+            try:
+                costo = Decimal(str(crudo))
+            except Exception:
+                sin_costo += 1
+                continue
+            if costo <= 0:
+                sin_costo += 1
+                continue
+
+            # Si ya hay un costo para ese item con cualquier vigencia, no se
+            # pisa: el de la tabla contable puede ser mas detallado (FOB,
+            # flete, impuestos) que el numero suelto del JSON.
+            existente = (s.query(CostoProducto)
+                         .filter_by(item_id=item_id, variacion='')
+                         .order_by(CostoProducto.vigente_desde.desc())
+                         .first())
+
+            if existente is None:
+                s.add(CostoProducto(
+                    item_id=item_id, variacion='',
+                    titulo=(datos.get('titulo') or '')[:300] or None,
+                    costo_unitario=costo, moneda_costo='ARS',
+                    vigente_desde=vigente, origen_dato='costos_json',
+                    notas=(f'Importado de config/costos.json'
+                           f'{" — actualizado " + str(datos.get("updated")) if datos.get("updated") else ""}'),
+                ))
+                cargados += 1
+            elif (existente.origen_dato == 'costos_json'
+                  and Decimal(str(existente.costo_unitario)) != costo):
+                existente.costo_unitario = costo
+                existente.titulo = (datos.get('titulo') or existente.titulo)
+                actualizados += 1
+
+    return {'cargados': cargados, 'actualizados': actualizados,
+            'sin_costo': sin_costo, 'total_en_json': len(costos)}
+
+
 def items_sin_costo(cuenta_alias: str = None, desde: date = None) -> list:
     """
     Publicaciones con ventas pero sin costo cargado, ordenadas por lo facturado.

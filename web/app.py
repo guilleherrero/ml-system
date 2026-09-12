@@ -19492,6 +19492,16 @@ try:
     _res_tok = _migrar_tokens_mp()
     if _res_tok.get('corregidas'):
         print(f'[contabilidad] tokens MP reubicados: {_res_tok["corregidas"]}')
+
+    # Trae a la tabla contable los costos ya cargados en config/costos.json
+    # (el modulo "Cargar costos"). Idempotente: no pisa costos mas detallados.
+    try:
+        from modules.contabilidad_cierre import importar_costos_del_sistema
+        _res_costos = importar_costos_del_sistema()
+        if _res_costos.get('cargados') or _res_costos.get('actualizados'):
+            print(f'[contabilidad] costos traidos del sistema: {_res_costos}')
+    except Exception as _e:
+        print(f'[contabilidad] no se pudieron traer los costos: {_e}')
 except Exception as _e:
     print(f'[contabilidad] ERROR sembrando el plan de rubros: {_e}')
 

@@ -64,12 +64,16 @@ PLAN_RUBROS = [
 
     # ── Cargos de la plataforma ──
     ('COM_ML',        'Comisiones por venta ML',        TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 200),
+    # ML cobra aparte un cargo fijo por unidad vendida, distinto del porcentaje
+    # de comisión: va en su propio rubro porque se comporta distinto.
+    ('CARGO_FIJO',    'Cargo fijo por unidad vendida',  TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 205),
     ('ENVIO_ML',      'Cargos de envío ML',             TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 210),
     ('ADS_ML',        'Publicidad (Product Ads)',       TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 220),
     ('FULL_ML',       'Almacenamiento y servicios Full', TIPO_GASTO,   'Plataforma', True,  AMBITO_NEGOCIO, 230),
     ('COM_MP',        'Comisiones Mercado Pago',        TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 240),
     ('FIN_ML',        'Tarifas de financiación',        TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 250),
     ('SEGURO',        'Seguros y garantías',            TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 260),
+    ('SERV_ML',       'Servicios y suscripciones de ML', TIPO_GASTO,   'Plataforma', True,  AMBITO_NEGOCIO, 265),
     ('CANCEL',        'Cancelaciones y devoluciones',   TIPO_GASTO,    'Plataforma', True,  AMBITO_NEGOCIO, 270),
 
     # ── Impuestos ──
@@ -113,7 +117,18 @@ PLAN_RUBROS = [
 # Lo que no esté acá NO se adivina: cae en SIN_CLASIF con revisar=True.
 
 SUBTIPO_ML_RUBRO = {
-    # Venta
+    # ── Subtipos REALES de MLA, tomados de la facturación de la cuenta ──
+    # Los ejemplos de la documentación usan otros códigos (CV, CXD); estos son
+    # los que devuelve Argentina en la práctica, con su etiqueta textual.
+    'CVFV':    'COM_ML',       # "Cargo por vender"
+    'CVFF':    'CARGO_FIJO',   # "Costo por unidad vendida" (cargo fijo)
+    'CVFN':    'FIN_ML',       # "Costo por ofrecer cuotas"
+    'CFF':     'ENVIO_ML',     # "Cargo por envíos de Mercado Libre"
+    'CDSD':    'CANCEL',       # "Cargo por devolución"
+    'CPAD':    'ADS_ML',       # campaña de Product Ads
+    'CESM':    'SERV_ML',      # "Cargo por mantenimiento de Mi página"
+
+    # Venta (códigos de la documentación, se dejan por compatibilidad)
     'CV':      'COM_ML',      # cobro por venta
     'BV':      'COM_ML',
     'CVPREM':  'COM_ML',
@@ -144,6 +159,28 @@ SUBTIPO_ML_RUBRO = {
     'CEW':     'SEGURO',
     'BEW':     'SEGURO',
 }
+
+def rubro_de_subtipo(subtipo: str):
+    """
+    Rubro de un subtipo de facturación de ML, o None si no se reconoce.
+
+    En ML la inicial marca el signo del concepto: `C` es cargo y `B` es la
+    anulación o bonificación del MISMO concepto (CVFV "Cargo por vender" ↔
+    BVFV "Anulación del cargo por vender"). Así que si no conocemos el código
+    con B, se prueba su equivalente con C y se usa ese rubro. Eso hace que un
+    par nuevo entre bien clasificado sin tocar la tabla.
+    """
+    sub = (subtipo or '').strip().upper()
+    if not sub:
+        return None
+    if sub in SUBTIPO_ML_RUBRO:
+        return SUBTIPO_ML_RUBRO[sub]
+    if sub.startswith('B'):
+        equivalente = 'C' + sub[1:]
+        if equivalente in SUBTIPO_ML_RUBRO:
+            return SUBTIPO_ML_RUBRO[equivalente]
+    return None
+
 
 # Cuando no hay subtipo conocido pero sí `concept_type`
 CONCEPTO_ML_RUBRO = {
@@ -416,6 +453,13 @@ def reclasificar_pendientes(cuenta_alias: str = None, solo_sin_clasificar: bool 
                 'monto': mov.monto,
                 'proveedor': mov.proveedor,
             }
+            # Re-derivar el rubro del subtipo nativo, no solo pasar las reglas:
+            # si no, ampliar el mapa de subtipos no servía de nada para lo ya
+            # importado y habia que reimportar el año entero.
+            if mov.origen == ORIGEN_ML_BILLING:
+                sugerido = rubro_de_subtipo(mov.subtipo)
+                if sugerido:
+                    datos['rubro_sugerido'] = sugerido
             res = clasificar(s, datos, reglas)
             revisados += 1
             if res['rubro_id'] != mov.rubro_id:
@@ -425,6 +469,10 @@ def reclasificar_pendientes(cuenta_alias: str = None, solo_sin_clasificar: bool 
                 mov.revisar = res['revisar']
                 mov.nota_revision = res['nota_revision']
                 cambiados += 1
+            elif res['rubro_id'] and not res['revisar'] and mov.revisar:
+                # Mismo rubro pero ya no hay nada que revisar
+                mov.revisar = False
+                mov.nota_revision = None
 
         return {'revisados': revisados, 'reclasificados': cambiados}
 

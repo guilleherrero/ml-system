@@ -833,6 +833,160 @@ def test_token_mp_en_campo_equivocado():
     check(not res4['corregidas'], 'la migración es idempotente', str(res4))
 
 
+def test_subtipos_reales_mla():
+    """
+    Los subtipos que devuelve MLA en la practica no son los de los ejemplos de
+    la documentacion. En la primera corrida real 1.830 de 2.056 detalles
+    quedaron sin clasificar por eso. Estos son los codigos observados en la
+    facturacion de la cuenta.
+    """
+    seccion('Subtipos reales de facturación de MLA')
+
+    esperado = {
+        'CVFV': 'COM_ML',      # Cargo por vender
+        'CVFF': 'CARGO_FIJO',  # Costo por unidad vendida
+        'CVFN': 'FIN_ML',      # Costo por ofrecer cuotas
+        'CFF':  'ENVIO_ML',    # Cargo por envíos de Mercado Libre
+        'CDSD': 'CANCEL',      # Cargo por devolución
+        'CESM': 'SERV_ML',     # Cargo por mantenimiento de Mi página
+    }
+    for sub, rubro in esperado.items():
+        check(cont.rubro_de_subtipo(sub) == rubro,
+              f'{sub} se mapea a {rubro}',
+              f'devolvió {cont.rubro_de_subtipo(sub)}')
+
+    # La inicial B es la anulación del mismo concepto: mismo rubro, sin
+    # necesidad de listarla aparte.
+    for sub_b, rubro in (('BVFV', 'COM_ML'), ('BVFN', 'FIN_ML'),
+                         ('BFF', 'ENVIO_ML'), ('BVFF', 'CARGO_FIJO')):
+        check(cont.rubro_de_subtipo(sub_b) == rubro,
+              f'{sub_b} (anulación) cae en el mismo rubro que su cargo',
+              f'devolvió {cont.rubro_de_subtipo(sub_b)}')
+
+    check(cont.rubro_de_subtipo('CQUIENSABE') is None,
+          'un subtipo realmente desconocido sigue devolviendo None')
+    check(cont.rubro_de_subtipo('') is None and cont.rubro_de_subtipo(None) is None,
+          'un subtipo vacío no rompe')
+
+    # Los rubros nuevos existen en el plan
+    codigos = {r[0] for r in cont.PLAN_RUBROS}
+    check('CARGO_FIJO' in codigos and 'SERV_ML' in codigos,
+          'los rubros nuevos están en el plan', str(sorted(codigos))[:120])
+
+
+def test_reclasificar_aplica_mapa_de_subtipos():
+    """
+    Al ampliar el mapa de subtipos, lo ya importado tenia que poder
+    reclasificarse sin reimportar el año entero. El reclasificador solo pasaba
+    las reglas y no volvia a mirar el subtipo nativo, asi que no servia.
+    """
+    seccion('Reclasificar aplica el mapa de subtipos')
+
+    # Un movimiento de facturación con un subtipo que el mapa NO conocía
+    with webdb.session_scope() as s:
+        reglas = cont.cargar_reglas(s)
+        cont.upsert_movimiento(s, {
+            'cuenta_alias': ALIAS,
+            'origen': 'ml_billing',
+            'external_id': 'ML-reclas-1',
+            'fecha': datetime(2026, 5, 10, 12, 0),
+            'concepto': 'Cargo por vender',
+            'subtipo': 'CVFV',
+            'monto': Decimal('-5815'),
+            'rubro_sugerido': None,       # entra sin rubro, como en la realidad
+            'revisar': True,
+            'nota_revision': 'Subtipo de billing no mapeado: CVFV',
+        }, reglas)
+
+    with webdb.session_scope() as s:
+        mov = s.query(Movimiento).filter_by(external_id='ML-reclas-1').one()
+        check(s.get(Rubro, mov.rubro_id).codigo == RUBRO_SIN_CLASIFICAR,
+              'el movimiento arranca sin clasificar')
+
+    res = cont.reclasificar_pendientes()
+    check(res['reclasificados'] >= 1,
+          'la reclasificación mueve al menos un movimiento', str(res))
+
+    with webdb.session_scope() as s:
+        mov = s.query(Movimiento).filter_by(external_id='ML-reclas-1').one()
+        check(s.get(Rubro, mov.rubro_id).codigo == 'COM_ML',
+              'el CVFV quedó en comisiones por venta sin reimportar nada',
+              f'quedó en {s.get(Rubro, mov.rubro_id).codigo}')
+        check(mov.revisar is False and mov.nota_revision is None,
+              'se limpia la marca de revisar y la nota')
+
+
+def test_importar_costos_del_sistema():
+    """
+    Los costos ya cargados en config/costos.json (el modulo "Cargar costos")
+    tienen que entrar solos: pedirle al usuario que los cargue de nuevo es
+    hacerlo trabajar dos veces.
+    """
+    seccion('Traer los costos ya cargados en el sistema')
+
+    import core.db_storage as almacen
+    original = almacen.db_load
+
+    almacen.db_load = lambda ruta: {
+        'MLA1481911017': {'alias': 'Novara', 'titulo': 'Cortador Ender Pro',
+                          'costo': 21500, 'updated': '2026-08-01'},
+        'MLA1694974575': {'alias': 'Novara', 'titulo': 'Parches Uñas',
+                          'costo': 7800.50, 'updated': '2026-08-01'},
+        'MLA9999999999': {'alias': 'Novara', 'titulo': 'Sin costo cargado',
+                          'costo': None},
+        'MLA8888888888': {'alias': 'Novara', 'titulo': 'Costo cero', 'costo': 0},
+        'MLA7777777777': 'no es un dict',
+    }
+    try:
+        res = cierre.importar_costos_del_sistema(vigente_desde=date(2026, 1, 1))
+        check(res.get('cargados') == 2,
+              'trae los 2 costos válidos del JSON del sistema', str(res))
+        check(res.get('sin_costo') == 2,
+              'cuenta los que están sin costo o en cero', str(res))
+
+        with webdb.session_scope() as s:
+            c = s.query(CostoProducto).filter_by(item_id='MLA1694974575').one()
+            check(c.costo_unitario == Decimal('7800.50'),
+                  'el costo con decimales se guarda exacto',
+                  f'quedó {c.costo_unitario}')
+            check(c.origen_dato == 'costos_json',
+                  'queda marcado de dónde salió el costo')
+            check(c.vigente_desde == date(2026, 1, 1),
+                  'la vigencia cubre todo el año que se contabiliza')
+
+        # Idempotente
+        res2 = cierre.importar_costos_del_sistema(vigente_desde=date(2026, 1, 1))
+        check(res2.get('cargados') == 0,
+              'volver a traerlos no duplica', str(res2))
+
+        # Si el costo cambia en el JSON, se actualiza
+        almacen.db_load = lambda ruta: {
+            'MLA1481911017': {'titulo': 'Cortador Ender Pro', 'costo': 23900},
+        }
+        res3 = cierre.importar_costos_del_sistema(vigente_desde=date(2026, 1, 1))
+        check(res3.get('actualizados') == 1,
+              'un costo que cambió en el sistema se actualiza', str(res3))
+        with webdb.session_scope() as s:
+            c = s.query(CostoProducto).filter_by(item_id='MLA1481911017').one()
+            check(c.costo_unitario == Decimal('23900'),
+                  'el costo actualizado quedó bien')
+
+        # Un JSON vacío no rompe
+        almacen.db_load = lambda ruta: {}
+        res4 = cierre.importar_costos_del_sistema()
+        check(res4.get('cargados') == 0 and 'mensaje' in res4,
+              'sin costos en el sistema devuelve un mensaje claro', str(res4))
+
+        # Un error de la capa de persistencia no revienta
+        def _explota(ruta):
+            raise RuntimeError('kv_store caído')
+        almacen.db_load = _explota
+        res5 = cierre.importar_costos_del_sistema()
+        check('error' in res5, 'un fallo al leer se informa sin romper', str(res5))
+    finally:
+        almacen.db_load = original
+
+
 def main():
     print('═' * 70)
     print('TESTS DEL SISTEMA CONTABLE')
@@ -851,6 +1005,9 @@ def main():
     test_rango_periodos()
     test_limite_billing()
     test_token_mp_en_campo_equivocado()
+    test_subtipos_reales_mla()
+    test_reclasificar_aplica_mapa_de_subtipos()
+    test_importar_costos_del_sistema()
 
     print('\n' + '═' * 70)
     print(f'PASARON: {len(PASADOS)}    FALLARON: {len(FALLOS)}')
