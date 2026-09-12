@@ -49,6 +49,8 @@
 .cb-num.pos{color:#166534}.cb-num.neg{color:#b91c1c}
 .cb-detalle{font-size:.74rem;color:var(--color-neutral-600);margin-top:.4rem;
   border-top:1px dashed var(--color-neutral-200);padding-top:.4rem;line-height:1.6}
+.cb-frase-mia{font-size:.72rem;background:#e0e7ff;color:#3730a3;
+  padding:2px 8px;border-radius:9px}
 .cb-vacio{font-size:.85rem;color:var(--color-neutral-600);padding:1.2rem;text-align:center}
 .cb-acciones{display:flex;gap:.4rem;margin-top:.6rem}
 </style>
@@ -78,7 +80,7 @@
 const ALIAS = {{ alias | tojson }};
 const ITEMS = {{ items | tojson }};
 const S = {bandeja: [], acciones: [], aprendizajes: [], resumen: null, cands: [],
-           competidores: [], items: ITEMS};
+           competidores: [], grupos: [], items: ITEMS};
 
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -98,14 +100,16 @@ const VEREDICTOS = {
 };
 
 async function cargar() {
-  const [r, b, a, ap, co] = await Promise.all([
+  const [r, b, a, ap, co, gr] = await Promise.all([
     fetch(`/api/cerebro/resumen/${ALIAS}`).then(r => r.json()),
     fetch(`/api/cerebro/bandeja/${ALIAS}`).then(r => r.json()),
     fetch(`/api/cerebro/acciones/${ALIAS}?limit=200`).then(r => r.json()),
     fetch(`/api/cerebro/aprendizajes/${ALIAS}`).then(r => r.json()),
     fetch(`/api/cerebro/competidores/${ALIAS}`).then(r => r.json()).catch(() => ({})),
+    fetch(`/api/cerebro/grupos/${ALIAS}`).then(r => r.json()).catch(() => ({})),
   ]);
   S.competidores = co.competidores || [];
+  S.grupos = (gr.grupos || []);
   S.resumen = r.resumen || {};
   S.bandeja = b.propuestas || [];
   S.cands   = b.candidatos_competidor || [];
@@ -242,20 +246,14 @@ const CLASES = {
 };
 
 function pintarCompetidores(el) {
-  // Agrupado por publicacion propia: lo que importa no es la lista de
-  // competidores sino contra quien se esta comparando cada publicacion tuya.
-  // Una lista plana no deja ver eso, y sin ver la foto no hay forma de saber si
-  // dos titulos parecidos son el mismo producto.
-  var grupos = {};
+  // Agrupado por PRODUCTO, no por publicacion. El mismo producto suele estar
+  // publicado varias veces —negro, rojo, catalogo, tradicional— y contra todas
+  // compiten los mismos vendedores: cargar competidores publicacion por
+  // publicacion es hacer el mismo trabajo varias veces y despues leer varios
+  // analisis que dicen lo mismo.
+  var porItem = {};
   S.competidores.forEach(function (c) {
-    var k = c.item_propio || '_sin_asociar';
-    (grupos[k] = grupos[k] || []).push(c);
-  });
-
-  var claves = Object.keys(grupos).sort(function (a, b) {
-    if (a === '_sin_asociar') return 1;
-    if (b === '_sin_asociar') return -1;
-    return grupos[b].length - grupos[a].length;
+    (porItem[c.item_propio || '_sin_asociar'] = porItem[c.item_propio || '_sin_asociar'] || []).push(c);
   });
 
   var cabecera = `
@@ -263,50 +261,144 @@ function pintarCompetidores(el) {
       <div class="cb-fila"><span class="t">Cómo se cargan</span></div>
       <div class="cb-meta" style="margin:.3rem 0 .6rem">
         ML cortó el acceso a las búsquedas, así que el sistema no puede detectarlos
-        solo. Los elegís vos: entrá a <a href="/bookmarklet/${ALIAS}">Capturar
-        competidores</a>, buscá tu producto en ML como lo buscaría un comprador y
-        tildá — mirando la foto — cuáles son competencia de verdad.
-        Solo los que marques <b>directos</b> se usan para precio, para el diagnóstico
-        de por qué te ganan y para <b>Optimizar IA</b>.
+        solo. Los elegís vos desde <a href="/bookmarklet/${ALIAS}">Capturar
+        competidores</a>, mirando la foto. Se cargan <b>una vez por producto</b> y
+        los ven todas tus publicaciones de ese producto.
+        Solo los <b>directos</b> se usan para precio, para el diagnóstico de por qué
+        te ganan y para Optimizar IA.
       </div>
+      <button class="app-btn app-btn-xs" onclick="verGrupos()">
+        <i class="bi bi-collection"></i> Administrar grupos de producto</button>
     </div>`;
 
-  if (!S.competidores.length) {
+  if (!S.competidores.length && !S.grupos.length) {
     el.innerHTML = cabecera + `<div class="cb-card"><div class="cb-vacio">
-      Todavía no cargaste ninguno. Sin competidores confirmados hay tres cosas que
-      no pueden funcionar: el motor de precio, el diagnóstico de por qué te está
-      ganando, y Optimizar IA —que hasta ahora los buscaba en el endpoint que ML
-      bloqueó y recibía lista vacía.</div></div>`;
+      Todavía no hay nada. Empezá agrupando tus publicaciones del mismo producto
+      y después capturá competidores para cada grupo.</div></div>`;
     return;
   }
 
-  el.innerHTML = cabecera + claves.map(function (k) {
-    var comps = grupos[k];
-    var mia = S.items.filter(function (i) { return i.id === k; })[0];
-    var titulo = k === '_sin_asociar'
-      ? 'Sin asociar a ninguna publicación tuya'
-      : (mia ? mia.titulo : k);
-    var directos = comps.filter(function (c) { return c.clase === 'directo'; }).length;
+  // Un bloque por grupo; las publicaciones sin grupo van solas al final
+  var bloques = [], usados = {};
+  S.grupos.forEach(function (g) {
+    var comps = {}, items = g.items || [];
+    items.forEach(function (id) {
+      usados[id] = true;
+      (porItem[id] || []).forEach(function (c) {
+        var prev = comps[c.id];
+        if (!prev || (c.puntaje || 0) > (prev.puntaje || 0)) comps[c.id] = c;
+      });
+    });
+    bloques.push(bloqueGrupo(g.nombre, items, Object.values(comps), g.id));
+  });
+  Object.keys(porItem).forEach(function (id) {
+    if (usados[id]) return;
+    var mia = S.items.filter(function (i) { return i.id === id; })[0];
+    bloques.push(bloqueGrupo(
+      id === '_sin_asociar' ? 'Sin asociar' : (mia ? mia.titulo : id),
+      id === '_sin_asociar' ? [] : [id], porItem[id], null));
+  });
 
-    return `
-      <div class="cb-card" style="padding:0;overflow:hidden">
-        <div style="padding:.7rem 1rem;background:var(--color-neutral-50);
-                    border-bottom:1px solid var(--color-neutral-200)">
-          <div class="cb-fila">
-            <span class="cb-pill tipo">tu publicación</span>
-            <span class="t">${esc(titulo.slice(0, 62))}</span>
-            <span class="cb-meta" style="margin-left:auto">
-              ${comps.length} competidor${comps.length === 1 ? '' : 'es'} ·
-              ${directos} directo${directos === 1 ? '' : 's'}</span>
-          </div>
-          ${k !== '_sin_asociar' ? `<div class="cb-meta">${esc(k)}
-            ${mia && mia.precio ? ' · tu precio $' + Number(mia.precio).toLocaleString('es-AR') : ''}</div>` : ''}
-        </div>
-        <div style="padding:.6rem 1rem">
-          ${comps.map(tarjetaCompetidor).join('')}
-        </div>
-      </div>`;
+  el.innerHTML = cabecera + bloques.join('');
+}
+
+function bloqueGrupo(nombre, items, comps, grupoId) {
+  var directos = comps.filter(function (c) { return c.clase === 'directo'; }).length;
+  var míos = items.map(function (id) {
+    var m = S.items.filter(function (i) { return i.id === id; })[0];
+    return `<span class="cb-frase-mia">${esc(m ? m.titulo.slice(0, 42) : id)}${
+      m && m.precio ? ' · $' + Number(m.precio).toLocaleString('es-AR') : ''}</span>`;
   }).join('');
+
+  return `
+    <div class="cb-card" style="padding:0;overflow:hidden">
+      <div style="padding:.7rem 1rem;background:var(--color-neutral-50);
+                  border-bottom:1px solid var(--color-neutral-200)">
+        <div class="cb-fila">
+          <span class="cb-pill tipo">${items.length > 1 ? 'grupo de producto' : 'tu publicación'}</span>
+          <span class="t">${esc(nombre.slice(0, 58))}</span>
+          <span class="cb-meta" style="margin-left:auto">
+            ${comps.length} competidor${comps.length === 1 ? '' : 'es'} ·
+            ${directos} directo${directos === 1 ? '' : 's'}</span>
+        </div>
+        ${items.length ? `<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem">
+          ${míos}
+          ${grupoId ? `<button class="app-btn app-btn-xs app-btn-ghost"
+             onclick="verGrupos()">editar grupo</button>` : ''}
+        </div>` : ''}
+        ${items.length > 1 ? `<div class="cb-meta" style="margin-top:.35rem">
+          Un solo análisis de competencia para las ${items.length}. Lo que sea
+          propio de cada una sale al momento del informe.</div>` : ''}
+      </div>
+      <div style="padding:.6rem 1rem">
+        ${comps.length ? comps.map(tarjetaCompetidor).join('')
+          : `<div class="cb-vacio" style="padding:.8rem">Sin competidores cargados todavía.</div>`}
+      </div>
+    </div>`;
+}
+
+// ── Grupos de producto ──────────────────────────────────────────────────────
+
+async function verGrupos() {
+  const j = await (await fetch(`/api/cerebro/grupos/${ALIAS}`)).json();
+  const el = document.getElementById('cb-panel');
+  const fila = (g, sug) => `
+    <div class="cb-card ${sug ? 'pendiente' : 'funciono'}">
+      <div class="cb-fila">
+        <span class="cb-pill ${sug ? 'neutra' : 'tipo'}">${sug ? 'propuesto' : 'confirmado'}</span>
+        <span class="t">${esc(g.nombre)}</span>
+        <span class="cb-meta" style="margin-left:auto">${g.items.length} publicaciones</span>
+      </div>
+      <div class="cb-detalle">
+        ${g.items.map(id => {
+          const m = S.items.filter(i => i.id === id)[0];
+          return esc(m ? m.titulo.slice(0, 55) : id);
+        }).join('<br>')}
+      </div>
+      <div class="cb-acciones">
+        ${sug ? `<button class="app-btn app-btn-xs"
+            onclick='confirmarGrupo(${JSON.stringify(g).replace(/'/g, "&apos;")})'>
+            <i class="bi bi-check2"></i> Confirmar grupo</button>`
+          : `<button class="app-btn app-btn-xs app-btn-ghost"
+            onclick="borrarGrupo('${g.id}')"><i class="bi bi-trash"></i> Deshacer</button>`}
+      </div>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="cb-card">
+      <div class="cb-fila"><span class="t">Grupos de producto</span>
+        <button class="app-btn app-btn-xs app-btn-ghost" style="margin-left:auto"
+          onclick="pintar('competidores')">← volver</button></div>
+      <div class="cb-meta" style="margin-top:.3rem">
+        Juntá las publicaciones que son el <b>mismo producto</b> en distintas variantes.
+        Los competidores se cargan una vez para el grupo y valen para todas.
+        La propuesta sale del parecido de título ignorando color y talle — confirmala
+        vos, porque agrupar mal significa compararte contra otro producto.
+      </div>
+    </div>
+    ${(j.grupos || []).map(g => fila(g, false)).join('')}
+    ${(j.sugeridos || []).filter(g => g.items.length > 1).map(g => fila(g, true)).join('')}
+    ${!(j.grupos || []).length && !(j.sugeridos || []).some(g => g.items.length > 1)
+      ? `<div class="cb-card"><div class="cb-vacio">No encontré publicaciones que
+         parezcan el mismo producto.</div></div>` : ''}`;
+}
+
+async function confirmarGrupo(g) {
+  await fetch('/api/cerebro/grupo/guardar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS, nombre: g.nombre, items: g.items}),
+  });
+  await cargar();
+  verGrupos();
+}
+
+async function borrarGrupo(id) {
+  await fetch('/api/cerebro/grupo/eliminar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS, grupo_id: id}),
+  });
+  await cargar();
+  verGrupos();
 }
 
 function tarjetaCompetidor(c) {

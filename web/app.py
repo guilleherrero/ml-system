@@ -11895,11 +11895,26 @@ def api_mis_publicaciones_cors(alias):
         resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
         resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Cerebro-Token'
         return resp
-    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
-    items = [{'id': i.get('id', ''), 'titulo': i.get('titulo', ''),
-              'precio': i.get('precio'), 'thumbnail': i.get('thumbnail', '')}
-             for i in stock.get('items', []) if i.get('id')]
-    items.sort(key=lambda i: i['titulo'])
+    from modules import grupos_producto as gp
+    propios = _items_propios(alias)
+    por_id = {i['id']: i for i in propios}
+
+    # Se ofrece el GRUPO, no la publicacion suelta: el competidor se carga una
+    # vez por producto. Se guarda contra la primera publicacion del grupo y
+    # competidores_del_grupo lo reparte a todas las hermanas.
+    items, agrupados = [], set()
+    for g in gp.listar_grupos(alias):
+        miembros = [i for i in (g.get('items') or []) if i in por_id]
+        if not miembros:
+            continue
+        agrupados.update(miembros)
+        items.append({'id': miembros[0], 'titulo': f'{g.get("nombre", "")} '
+                                                  f'({len(miembros)} publicaciones)',
+                      'grupo': True})
+    for i in propios:
+        if i['id'] not in agrupados:
+            items.append({'id': i['id'], 'titulo': i.get('titulo', ''), 'grupo': False})
+    items.sort(key=lambda i: (not i['grupo'], i['titulo']))
     return _cors(jsonify({'ok': True, 'items': items}))
 
 
@@ -11938,6 +11953,49 @@ def api_cerebro_competidores(alias):
                                  if item_id else []),
         'resumen': cerebro.resumen_competidores(alias),
     })
+
+
+@app.route('/api/cerebro/grupos/<alias>')
+def api_cerebro_grupos(alias):
+    """Los grupos de producto guardados, mas la propuesta para lo que falta."""
+    from modules import grupos_producto as gp
+    guardados = gp.listar_grupos(alias)
+    agrupados = {i for g in guardados for i in (g.get('items') or [])}
+    sueltos = [i for i in _items_propios(alias) if i['id'] not in agrupados]
+    return jsonify({'ok': True, 'grupos': guardados,
+                    'sugeridos': gp.sugerir_grupos(sueltos)})
+
+
+@app.route('/api/cerebro/grupo/guardar', methods=['POST'])
+def api_cerebro_guardar_grupo():
+    """Crea o actualiza un grupo de producto.
+
+    El agrupado se propone solo pero no se aplica solo: dos productos pueden
+    tener titulos casi iguales y ser cosas distintas, y agrupar mal significa
+    analizar contra la competencia equivocada.
+    """
+    from modules import grupos_producto as gp
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    items = body.get('items') or []
+    if not alias or not items:
+        return jsonify({'ok': False, 'error': 'Faltan alias o items'}), 400
+    g = gp.guardar_grupo(alias, grupo_id=(body.get('grupo_id') or None),
+                         nombre=(body.get('nombre') or '').strip(), items=items)
+    _audit('CEREBRO_GUARDAR_GRUPO', alias=alias, grupo=g.get('id'), items=len(items))
+    return jsonify({'ok': True, 'grupo': g})
+
+
+@app.route('/api/cerebro/grupo/eliminar', methods=['POST'])
+def api_cerebro_eliminar_grupo():
+    from modules import grupos_producto as gp
+    body  = request.get_json() or {}
+    alias = (body.get('alias') or '').strip()
+    gid   = (body.get('grupo_id') or '').strip()
+    if not gp.eliminar_grupo(alias, gid):
+        return jsonify({'ok': False, 'error': 'Grupo no encontrado'}), 404
+    _audit('CEREBRO_ELIMINAR_GRUPO', alias=alias, grupo=gid)
+    return jsonify({'ok': True})
 
 
 @app.route('/api/cerebro/competidor/agregar', methods=['POST'])
@@ -12192,8 +12250,11 @@ def _competidores_para_optimizar(alias: str, item_id: str) -> list:
     faltaba era pasarle los que el usuario confirmo.
     """
     try:
-        from modules import cerebro
-        confirmados = cerebro.competidores_para_precio(alias, item_id)
+        from modules import grupos_producto as gp
+        # Del GRUPO, no de la publicacion suelta: el mismo producto suele estar
+        # publicado varias veces —negro, rojo, catalogo, tradicional— y contra
+        # todas compiten los mismos. Los competidores se cargan una vez.
+        confirmados = gp.directos_del_grupo(alias, item_id)
     except Exception as e:
         app.logger.warning('[optimizar] no pude leer competidores de %s: %s', item_id, e)
         return []
