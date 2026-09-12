@@ -578,6 +578,100 @@ confianza de cada veredicto y no generaliza con un solo caso.
 
 ---
 
+## 8.6 Estrategia de cartera dentro del grupo — *definido 2026-09-12*
+
+Un grupo de producto (8.7) junta las publicaciones propias que son el mismo
+producto. Hoy esas publicaciones hacen todas lo mismo: mismo precio aproximado,
+mismas cuotas, mismas keywords, todas peleando las mismas busquedas. Eso produce
+dos daños a la vez: **se canibalizan entre si** —cinco publicaciones compitiendo
+por la misma keyword— y **ante una baja de la competencia bajan las cinco**,
+cuando alcanzaria con que baje una.
+
+Caso real (Novara, 12/09/2026): cinco cortadores de puntas a $60.578, $60.578,
+$72.000, $75.000 y $75.000, contra PATIOSCRAFTS a $32.550 ocupando tres de los
+cuatro primeros lugares de la busqueda.
+
+**La idea: cada publicacion del grupo tiene un ROL distinto, y del rol salen las
+palancas.** La consecuencia practica es la que importa: cuando un competidor
+baja, el sistema no dice "baja el precio". Dice *"baja la atacante hasta X y no
+toques las otras cuatro"*, y calcula si esa sola baja alcanza usando el margen
+del GRUPO, no el de una publicacion suelta.
+
+### 8.6.1 Roles
+
+| Rol | Que hace | Quien deberia serlo |
+|---|---|---|
+| Atacante | Pelea precio de frente | Menor costo unitario o menor comision (Clasica antes que Premium); idealmente la de stock mas clavado |
+| Margen | No persigue. Precio alto, estable | Mejor conversion y mejor reputacion: quien llega ahi ya decidio |
+| Volumen / Ads | Concentra publicidad y promociones | Solo la de mejor conversion — pagar visitas para una que convierte 1,6% es tirar plata |
+| Cuotas | Absorbe el costo financiero | Donde el comprador realmente las usa (`cuotas_breakdown`, `pct_contado`) |
+| Full | Unica del grupo en Full | La de mejor rotacion: Full da visibilidad pero cobra almacenamiento, y en una publicacion clavada se come la ganancia |
+| Nicho | Cubre un cluster de autosuggest que las otras no tocan | La de menor solapamiento de keywords |
+| A rehacer | Candidata a reconstruir (8.5) o pausar | La que no gana en ninguna dimension |
+
+### 8.6.2 Restricciones que el sistema ya puede conocer
+
+- **El stock manda sobre el rol.** Una publicacion con 467 dias de stock no
+  puede ser la de margen: tiene capital inmovilizado y necesita rotar. La que
+  rota rapido protege precio; la clavada ataca o liquida. Conecta con el
+  semaforo de portafolio (bloque 11).
+- **La de catalogo tiene el rol casi forzado.** No se le puede optimizar
+  contenido —titulo, ficha y descripcion los controla la ficha— asi que solo
+  puede ser atacante de precio o candidata a Full. Nunca la de nicho por
+  keywords. El sistema no deberia proponer lo imposible.
+- **Las promociones de ML se coordinan.** Entra una del grupo, no las cinco;
+  aceptarlas todas es descontarse cinco veces.
+
+### 8.6.3 Lo que NO se hace
+
+El señuelo de precio —una publicacion barata que no se piensa cumplir— no entra.
+ML lo cobra por reputacion y el costo aparece meses despues.
+
+### 8.6.4 Condiciones para que esto sea confiable
+
+- **Sin costos cargados no hay estrategia.** Sin `costo` no hay margen, y sin
+  margen no se puede decidir quien ataca sin perder plata. Al 12/09 buena parte
+  del catalogo tiene `costo` y `margen_pct` en null.
+- **Cada rol asignado es una hipotesis que se mide.** Este es el riesgo central:
+  una asignacion equivocada no produce un error visible, produce meses de
+  decisiones coherentes en la direccion equivocada. El rol entra a Cerebro como
+  cualquier otra accion y recibe veredicto a 7 y 14 dias. Sin eso, es un tablero
+  que da confianza sin haberla ganado.
+
+### 8.6.5 Multi-cuenta — pendiente de verificar con ML
+
+El usuario planteo sumar las cuentas de sus hijos al mismo analisis para no
+canibalizarse entre cuentas. Tecnicamente el sistema ya es multi-tenant y seria
+una extension natural del grupo. **No se construye hasta verificarlo con ML**:
+hay reglas sobre cuentas relacionadas y publicaciones duplicadas entre ellas, y
+el riesgo no es simetrico — el upside es evitar canibalizacion, el downside es
+una sancion sobre varias cuentas a la vez.
+
+---
+
+## 8.7 Grupos de producto — *implementado 2026-09-12*
+
+Junta las publicaciones propias que son el mismo producto en distintas
+variantes. Los competidores se cargan **una vez por grupo** y los ven todas las
+hermanas; el analisis y las sugerencias siguen siendo **por publicacion**, que
+es donde separar tiene sentido.
+
+- `modules/grupos_producto.py`: propuesta automatica por parecido de titulo
+  ignorando tokens de variante (color, talle, pack), union por transitividad,
+  persistencia, y `competidores_del_grupo` / `directos_del_grupo`.
+- La propuesta no se aplica sola: dos productos pueden tener titulos casi
+  iguales y ser cosas distintas, y agrupar mal significa analizar contra la
+  competencia equivocada.
+- Un item pertenece a un solo grupo. Un competidor cargado en dos hermanas se
+  cuenta una vez, con el mejor puntaje.
+- Optimizar IA pide los directos del grupo; el bookmarklet ofrece grupos antes
+  que publicaciones sueltas.
+
+Grupos detectados en Novara: Trusa Modeladora Biobella (6), Cortador Puntas (5),
+Delineador Cejas Regina (4), Cepillo Secador Alisador (3), Rizador Pestañas (2).
+
+---
+
 ## 8.5 Reconstructor de publicación — *definido 2026-09-10*
 
 El motor que arma titulo, ficha y "descripcion superadora" a partir de
@@ -975,6 +1069,73 @@ Lo construido en el Sprint A:
 Lo que falta para cerrar el loop (Sprint B en adelante): la pantalla de Cerebro,
 el bot de Telegram sobre la misma bandeja, y que `top_acciones` lea
 `aprendizajes.json` para ordenar por historial propio (bloque 5).
+
+## Estado al 2026-09-12 — donde retomar
+
+Lo construido y deployado en esta sesion, en orden:
+
+- **Duplicados**: 8vo eje `catalogo`. La publicacion de catalogo y la tradicional
+  del mismo producto ya no se marcan como duplicado — ese falso positivo pedia
+  pausar una de las dos por $273.936/mes.
+- **Preguntas**: el job marcaba como vista toda pregunta que veia aunque el envio
+  fallara; habia una del 01/06 sin responder hace 100 dias que nunca iba a
+  llegar. Ademas, pasada una semana una pregunta deja de ir al telefono: el
+  comprador ya no esta.
+- **`modules/diagnostico_keywords.py`** + pantalla `/keywords/<alias>` + job
+  `keywords_diario` (05:00). Cruza titulo, ficha y descripcion contra
+  autosuggest. Filtra marcas ajenas antes de calcular: recomendaba "suma
+  maybelline al titulo", que es infraccion de ML. Resultado real: 39
+  publicaciones, 8 errores de escritura, ~$1,57M identificados.
+- **`modules/catalogo_competencia.py`**: quien mas vende en una ficha de
+  catalogo y por que no la ganas.
+- **`cerebro.aplicar_o_registrar`**: cierra propone -> aplica. Las propuestas de
+  `defensa_publicacion` y `competencia_diagnostico` quedaban pendientes para
+  siempre y no se evaluaban nunca.
+- **`price_to_win` con backoff**: un 429 se descartaba igual que "no compite".
+- **Pantalla `/cerebro/<alias>`**: bandeja, midiendo, veredictos, aprendizajes y
+  competidores. Existian 14 endpoints y ninguna pantalla.
+- **Bookmarklet "Enviar a Cerebro"** (`/bookmarklet/<alias>`): panel con foto,
+  precio y vendedor para elegir competidores uno por uno. Unica via que queda.
+- **`modules/grupos_producto.py`** (bloque 8.7).
+- **Optimizar IA usa los competidores confirmados del grupo.**
+
+### Lo que se descubrio y conviene no volver a averiguar
+
+- `/sites/MLA/search`, el mismo con `category`, y `/highlights` devuelven **403**
+  desde Render. Responden `/trends` (terminos, no publicaciones) y
+  `/products/search` (fichas). **No hay camino por API a competidores fuera de
+  catalogo**: el bookmarklet no es una opcion, es la unica.
+- `/items/{id}` de **otro vendedor** devuelve 403. Cargar un competidor pegando
+  su MLA no funciona.
+- Por eso `fetch_competitors_full` devolvia lista vacia y **Optimizar IA venia
+  generando titulos y descripciones sin dato alguno de competencia**, y sin
+  preguntas ni reseñas de competidores. Falla en silencio: no rompe, se degrada.
+- `/products/{cpid}/items` **si** responde: es como se resuelve una ficha a la
+  publicacion que gana la buy box.
+- El nombre del producto de catalogo de Biobella dice **"Abriertas"**. El typo
+  esta en la ficha, no en el titulo, y por eso se propaga.
+
+### Lo que el usuario tiene que hacer antes de seguir
+
+1. Cargar **costos** (al menos cortadores y trusas). Sin `costo` no hay margen y
+   la mitad de lo construido no puede calcular nada.
+2. Marcar **directos** entre los competidores capturados. Solo los directos se
+   usan.
+3. Aplicar los **8 errores de escritura**: gratis y el cambio mas limpio de medir.
+4. Dejar correr **dos semanas** para los primeros veredictos.
+
+### Lo siguiente, en orden
+
+1. Agrupar preguntas por tema (entrada mas fuerte del reconstructor 8.5).
+2. Alerta de vendedor ajeno en ficha de marca propia (`catalogo_competencia` ya
+   lo detecta, falta correrlo en el job de buy box).
+3. Reconstructor de publicacion (8.5).
+4. Estrategia de cartera (8.6) — recien con costos cargados y veredictos reales.
+5. Mejorar Salud del Catalogo con el diagnostico de `catalogo_competencia`.
+
+Pendientes viejos que siguen abiertos: el lanzador no registra en Cerebro;
+`ads`, `full` y `repricing` devuelven cero candidatos en el Top 3 y nadie
+investigo por que; la skill `meli-reglas` sigue con el hash viejo.
 
 ## Sprints
 
