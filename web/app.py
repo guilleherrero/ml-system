@@ -11781,6 +11781,9 @@ def _capturar_lote(alias: str, body: dict):
     from modules import cerebro
     filas = body.get('competidores') or []
     query = (body.get('query') or '').strip()
+    # Si el usuario dijo a que publicacion suya pertenecen, manda su decision:
+    # el parecido por titulo es una ayuda, no una autoridad.
+    forzado = (body.get('item_propio') or '').strip().upper()
     if not filas:
         return _cors(jsonify({'ok': False, 'error': 'La pagina no tenia resultados'})), 400
 
@@ -11834,7 +11837,10 @@ def _capturar_lote(alias: str, body: dict):
             'sold_quantity': f.get('sold_quantity'),
         }
         try:
-            item_propio, _score, _corta = cerebro.sugerir_item_propio(comp['title'], propios)
+            if forzado:
+                item_propio = forzado
+            else:
+                item_propio, _score, _corta = cerebro.sugerir_item_propio(comp['title'], propios)
             puntaje = None
             if item_propio:
                 p = next((x for x in propios if x['id'] == item_propio), None)
@@ -11873,6 +11879,28 @@ def _capturar_lote(alias: str, body: dict):
         'query': query, 'mis_posiciones': mios,
         'total_en_pagina': len(filas),
     }))
+
+
+@app.route('/api/mis-publicaciones-cors/<alias>', methods=['GET', 'OPTIONS'])
+def api_mis_publicaciones_cors(alias):
+    """Las publicaciones propias, con foto, para el selector del bookmarklet.
+
+    Va con CORS porque la lee el bookmarklet desde mercadolibre.com.ar: el
+    usuario tiene que poder decir a que publicacion suya pertenece cada
+    competidor en el momento de elegirlo, no despues.
+    """
+    if request.method == 'OPTIONS':
+        resp = make_response('', 204)
+        resp.headers['Access-Control-Allow-Origin']  = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Cerebro-Token'
+        return resp
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    items = [{'id': i.get('id', ''), 'titulo': i.get('titulo', ''),
+              'precio': i.get('precio'), 'thumbnail': i.get('thumbnail', '')}
+             for i in stock.get('items', []) if i.get('id')]
+    items.sort(key=lambda i: i['titulo'])
+    return _cors(jsonify({'ok': True, 'items': items}))
 
 
 @app.route('/api/pending-competidores', methods=['GET'])
@@ -12231,7 +12259,8 @@ def cerebro_panel(alias):
     # competidor que se carga: un competidor sin publicacion asociada no sirve
     # para precio ni para diagnostico (correcciones 1 y 2).
     stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
-    items = sorted(({'id': i.get('id', ''), 'titulo': i.get('titulo', '')}
+    items = sorted(({'id': i.get('id', ''), 'titulo': i.get('titulo', ''),
+                     'precio': i.get('precio')}
                     for i in stock.get('items', []) if i.get('id')),
                    key=lambda i: i['titulo'])
     return render_template('cerebro.html', alias=alias, items=items,
