@@ -57,14 +57,28 @@
       if (!id && cpid) id = cpid;
       if (!id || vistos[id]) continue;
       vistos[id] = true;
-      var todo = txt(c), img = c.querySelector('img');
+      var todo = txt(c);
+      var img = c.querySelector('img');
+      var foto = '';
+      if (img) {
+        // ML carga las imagenes recien cuando la tarjeta entra en pantalla: en
+        // src queda un placeholder de 1x1 y la real esta en data-src. Leer solo
+        // src dejaba sin foto a todo lo que no se hubiera visto todavia, que es
+        // justo lo que se necesita para reconocer el producto.
+        foto = img.getAttribute('data-src') || '';
+        if (!foto) {
+          var ss = img.getAttribute('data-srcset') || img.getAttribute('srcset') || '';
+          if (ss) foto = ss.split(',')[0].trim().split(' ')[0];
+        }
+        if (!foto && img.src && img.src.indexOf('data:') !== 0) foto = img.src;
+      }
       var sold = todo.match(/([\d.]+)\s*vendidos?/i);
       var stock = todo.match(/[ÚU]ltim[ao]s?\s*\d*[^.|]{0,30}/i);
       filas.push({
         id: id, es_ficha: esFicha, catalog_product_id: cpid,
         title: txt(c.querySelector('[class*="poly-component__title"]')) || txt(aT),
         price: precio(c), permalink: href.split('?')[0],
-        thumbnail: img ? (img.getAttribute('data-src') || img.src || '') : '',
+        thumbnail: foto,
         seller: txt(c.querySelector('[class*="poly-component__seller"]')) || '-',
         free_ship: /(env[íi]o|llega)\s+gratis/i.test(todo),
         sold_quantity: sold ? parseInt(sold[1].replace(/\./g, ''), 10) : null,
@@ -199,20 +213,41 @@
     });
   };
 
+  // Recorrer la pagina antes de leer, para que ML cargue las imagenes de las
+  // tarjetas que estan abajo. Sin esto la mitad de los competidores llega sin
+  // foto, que es justamente lo que se necesita para reconocer el producto.
+  function despertarImagenes(cuando) {
+    var y = window.scrollY, alto = document.body.scrollHeight, paso = window.innerHeight * 0.9;
+    var pos = 0;
+    (function bajar() {
+      if (pos < alto) {
+        window.scrollTo(0, pos);
+        pos += paso;
+        return setTimeout(bajar, 90);
+      }
+      window.scrollTo(0, y);
+      setTimeout(cuando, 500);
+    })();
+  }
+
   // La grilla de ML se arma despues del HTML: si se hace clic apenas carga,
   // todavia no hay nada que leer.
   var intentos = 0;
   (function esperar() {
-    filas = leer();
-    if (filas.length) {
-      sub.textContent = filas.length + ' publicaciones en esta página. Tildá las que te compiten.';
+    if (!leer().length) {
+      if (++intentos > 12) {
+        sub.textContent = 'No encontré publicaciones. Esperá a que cargue la página de resultados.';
+        return;
+      }
+      return setTimeout(esperar, 700);
+    }
+    sub.textContent = 'Cargando las fotos…';
+    despertarImagenes(function () {
+      filas = leer();
+      var sinFoto = filas.filter(function (f) { return !f.thumbnail; }).length;
+      sub.textContent = filas.length + ' publicaciones. Tildá las que te compiten.'
+        + (sinFoto ? ' (' + sinFoto + ' sin foto)' : '');
       pintar(); actualizar();
-      return;
-    }
-    if (++intentos > 12) {
-      sub.textContent = 'No encontré publicaciones. Esperá a que cargue la página de resultados.';
-      return;
-    }
-    setTimeout(esperar, 700);
+    });
   })();
 })();
