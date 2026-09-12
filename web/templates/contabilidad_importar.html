@@ -105,7 +105,8 @@
                 {% else %}
                 <span class="badge app-badge-crit">falta</span>
                 {% endif %}
-                {% if c.token_env %}<div class="cont-sub">{{ c.token_env }}</div>{% endif %}
+                {# Nunca se imprime el valor del token, solo de dónde sale. #}
+                {% if c.fuente_token %}<div class="cont-sub">{{ c.fuente_token }}</div>{% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -137,13 +138,17 @@
           </div>
           <div class="col-12">
             <label class="form-label cont-sub" for="mp_token_env">
-              Variable de entorno del token
+              Token de Mercado Pago, o el nombre de su variable de entorno
             </label>
-            <input type="text" class="form-control form-control-sm" id="mp_token_env"
-                   name="token_env" placeholder="MP_ACCESS_TOKEN_PROD">
+            <input type="password" class="form-control form-control-sm" id="mp_token_env"
+                   name="token_env" autocomplete="off"
+                   placeholder="MP_ACCESS_TOKEN  ·  o pegá el token directo">
             <div class="cont-sub mt-1">
-              Recomendado: el token vive en la variable de entorno de Render y no en la
-              base de datos. Si la dejás vacía, el sistema prueba
+              Acepta las dos cosas y se da cuenta de cuál pusiste. Lo más prolijo es
+              cargar el token como variable de entorno en Render y escribir acá solo su
+              nombre, así el secreto no queda en la base. Si pegás el token, queda
+              guardado en la base pero nunca se vuelve a mostrar en pantalla.
+              Dejándolo vacío el sistema prueba <code>MP_ACCESS_TOKEN</code> y
               <code>MP_ACCESS_TOKEN_PROD</code>.
             </div>
           </div>

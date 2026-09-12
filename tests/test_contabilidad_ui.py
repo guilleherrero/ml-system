@@ -345,8 +345,26 @@ def test_cuenta_mp(cliente):
     cuentas = cont.listar_cuentas_mp()
     check(any(c['alias'] == 'Novara' for c in cuentas),
           'la cuenta de MP quedó guardada', str(cuentas))
-    check(any(c['token_env'] == 'MP_ACCESS_TOKEN_PROD' for c in cuentas),
-          'guarda el nombre de la variable de entorno, no el secreto')
+    check(all('token_env' not in c and 'access_token' not in c for c in cuentas),
+          'el listado NO expone el valor ni el nombre del token', str(cuentas))
+
+    # El campo acepta un token pegado: tiene que guardarlo como token y avisar
+    r = cliente.post('/contabilidad/cuentas-mp', data={
+        'alias': 'CuentaPegada', 'ml_alias': 'Novara',
+        'token_env': 'APP_USR-1234567890123456-091213-abcdef0123456789abcdef0123456789-55993545',
+    }, follow_redirects=True)
+    cuerpo = r.get_data(as_text=True)
+    check(r.status_code == 200, 'pegar el token en el campo no rompe')
+    check('token' in cuerpo.lower(),
+          'la pantalla avisa que interpretó el valor como token')
+    pegada = [c for c in cont.listar_cuentas_mp() if c['alias'] == 'CuentaPegada']
+    check(pegada and pegada[0]['tiene_token'],
+          'la cuenta con el token pegado queda con token válido', str(pegada))
+    check(pegada and pegada[0]['fuente_token'] == 'guardado en la base',
+          'informa que el token quedó en la base, no en una variable',
+          str(pegada))
+    check('APP_USR-1234567890123456' not in cuerpo,
+          'el token pegado NO se vuelve a imprimir en la pantalla')
 
     # Alias vacío: error manejado, no 500
     r = cliente.post('/contabilidad/cuentas-mp', data={'alias': ''},

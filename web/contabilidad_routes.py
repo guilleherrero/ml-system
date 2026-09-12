@@ -410,13 +410,23 @@ def api_importaciones():
 def cuentas_mp():
     f = request.form
     try:
-        cont.guardar_cuenta_mp(
+        res = cont.guardar_cuenta_mp(
             alias=f.get('alias'),
             ml_alias=f.get('ml_alias'),
             token_env=f.get('token_env'),
             access_token=f.get('access_token') or None,
         )
-        flash('Cuenta de Mercado Pago guardada.', 'success')
+        # Decirle qué interpretó: el campo acepta las dos cosas, así que sin
+        # este aviso el usuario no sabe si guardó un token o un nombre.
+        if res.get('guardado_como') == 'token':
+            flash('Cuenta guardada. Detecté que pegaste el token en vez del '
+                  'nombre de la variable, así que lo guardé como token — no se '
+                  'va a volver a mostrar en pantalla.', 'success')
+        elif res.get('guardado_como') == 'variable':
+            flash('Cuenta guardada, leyendo el token de la variable de entorno.',
+                  'success')
+        else:
+            flash('Cuenta de Mercado Pago guardada.', 'success')
     except Exception as e:
         flash(f'No se pudo guardar: {e}', 'danger')
     return redirect(url_for('contabilidad.importar'))

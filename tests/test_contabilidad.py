@@ -698,6 +698,141 @@ def test_rango_periodos():
           f'días cubiertos: {total_dias}')
 
 
+def test_limite_billing():
+    """
+    La API de facturación de ML permite 5 requests por minuto. La primera
+    versión usaba 0,35 s de pausa y la importación de un año moría con 429 en
+    la sexta página, perdiendo los 2.056 movimientos ya leídos. Estos tests
+    fijan el comportamiento corregido.
+    """
+    seccion('Límite de la API de facturación (5 por minuto)')
+    import time as _t
+
+    check(imp.PAUSA_BILLING >= 12.0,
+          'la pausa entre llamadas a /billing respeta el límite de 5 por minuto',
+          f'PAUSA_BILLING = {imp.PAUSA_BILLING}')
+
+    check(imp._es_429(Exception('GET /x failed: {"status":429,'
+                                '"type":"TOO_MANY_REQUESTS_ERROR"}')),
+          'se reconoce el 429 de MercadoLibre')
+    check(not imp._es_429(Exception('GET /x failed: 404 not found')),
+          'un 404 no se confunde con un 429')
+
+    # El limitador serializa: con la pausa bajada, dos turnos se espacian
+    original = imp.PAUSA_BILLING
+    imp.PAUSA_BILLING = 0.25
+    imp._ultima_llamada_billing[0] = 0.0
+    try:
+        t0 = _t.monotonic()
+        imp._esperar_turno_billing()
+        imp._esperar_turno_billing()
+        transcurrido = _t.monotonic() - t0
+    finally:
+        imp.PAUSA_BILLING = original
+        imp._ultima_llamada_billing[0] = 0.0
+    check(transcurrido >= 0.24,
+          'el limitador espacia dos llamadas consecutivas',
+          f'transcurrido: {transcurrido:.3f}s')
+
+    # _billing_get reintenta ante 429 y no aborta
+    class ClienteFalso:
+        def __init__(self, fallos):
+            self.fallos = fallos
+            self.llamadas = 0
+
+        def _get(self, path, params):
+            self.llamadas += 1
+            if self.llamadas <= self.fallos:
+                raise Exception('{"status":429,"type":"TOO_MANY_REQUESTS_ERROR"}')
+            return {'results': [], 'last_id': None}
+
+    imp.PAUSA_BILLING = 0.01
+    espera_original = imp.ESPERA_429_INICIAL
+    imp.ESPERA_429_INICIAL = 0.01
+    try:
+        c = ClienteFalso(fallos=2)
+        res = imp._billing_get(c, '/billing/x', {})
+        check(res is not None and c.llamadas == 3,
+              'ante 429 reintenta en vez de abortar la importación',
+              f'llamadas: {c.llamadas}')
+
+        # Agotados los reintentos, sí propaga
+        c2 = ClienteFalso(fallos=99)
+        try:
+            imp._billing_get(c2, '/billing/x', {})
+            check(False, 'agotados los reintentos propaga el error')
+        except Exception:
+            check(c2.llamadas == imp.REINTENTOS_429 + 1,
+                  'agotados los reintentos propaga el error',
+                  f'llamadas: {c2.llamadas}')
+    finally:
+        imp.PAUSA_BILLING = original
+        imp.ESPERA_429_INICIAL = espera_original
+        imp._ultima_llamada_billing[0] = 0.0
+
+
+def test_token_mp_en_campo_equivocado():
+    """
+    En la primera corrida real el token se pegó en el campo que pedía el nombre
+    de la variable de entorno, y el sistema reportaba "falta token" sin explicar
+    nada. Ahora se detecta, se guarda donde va y nunca se vuelve a mostrar.
+    """
+    seccion('Token de MP pegado en el campo del nombre de variable')
+
+    check(cont._parece_token('APP_USR-3490679534133896-071012-'
+                             '5eb61814161dfe5db63dbf9f48a71d55-55993545'),
+          'un token de producción se reconoce como token')
+    check(cont._parece_token('TEST-1234567890123456-091213-'
+                             'abcdef0123456789abcdef0123456789-55993545'),
+          'un token de prueba se reconoce como token')
+    check(not cont._parece_token('MP_ACCESS_TOKEN'),
+          'un nombre de variable NO se confunde con un token')
+    check(not cont._parece_token('MP_ACCESS_TOKEN_PROD'),
+          'un nombre de variable con sufijo tampoco se confunde')
+    check(not cont._parece_token(''), 'el vacío no es un token')
+
+    tok = ('APP_USR-9999999999999999-091213-'
+           'ffffffff0123456789abcdef01234567-55993545')
+    res = cont.guardar_cuenta_mp(alias='MP-Test', ml_alias=ALIAS, token_env=tok)
+    check(res['guardado_como'] == 'token',
+          'guardar_cuenta_mp detecta el token pegado y avisa', str(res))
+
+    with webdb.session_scope() as s:
+        from web.models_contabilidad import CuentaMP
+        c = s.query(CuentaMP).filter_by(alias='MP-Test').one()
+        check(c.access_token == tok,
+              'el token quedó guardado en el campo del token')
+        check(c.token_env is None,
+              'el campo del nombre de variable quedó limpio')
+
+    listado = [c for c in cont.listar_cuentas_mp() if c['alias'] == 'MP-Test']
+    check(listado and listado[0]['tiene_token'],
+          'la cuenta figura con token válido')
+    check(listado and 'access_token' not in listado[0]
+          and 'token_env' not in listado[0],
+          'el listado nunca devuelve el valor del token', str(listado))
+
+    # Un nombre de variable real se guarda como variable
+    res2 = cont.guardar_cuenta_mp(alias='MP-Env', token_env='MP_ACCESS_TOKEN')
+    check(res2['guardado_como'] == 'variable',
+          'un nombre de variable se guarda como variable', str(res2))
+
+    # La migración arregla una fila que ya quedó mal en la base
+    with webdb.session_scope() as s:
+        from web.models_contabilidad import CuentaMP
+        s.add(CuentaMP(alias='MP-Roto', token_env=tok, access_token=None))
+    res3 = cont.migrar_tokens_mp_mal_guardados()
+    check('MP-Roto' in res3['corregidas'],
+          'la migración detecta y corrige la fila mal guardada', str(res3))
+    with webdb.session_scope() as s:
+        from web.models_contabilidad import CuentaMP
+        c = s.query(CuentaMP).filter_by(alias='MP-Roto').one()
+        check(c.access_token == tok and c.token_env is None,
+              'la fila corregida quedó con el token en su lugar')
+    res4 = cont.migrar_tokens_mp_mal_guardados()
+    check(not res4['corregidas'], 'la migración es idempotente', str(res4))
+
+
 def main():
     print('═' * 70)
     print('TESTS DEL SISTEMA CONTABLE')
@@ -714,6 +849,8 @@ def main():
     test_gasto_manual()
     test_multicuenta()
     test_rango_periodos()
+    test_limite_billing()
+    test_token_mp_en_campo_equivocado()
 
     print('\n' + '═' * 70)
     print(f'PASARON: {len(PASADOS)}    FALLARON: {len(FALLOS)}')

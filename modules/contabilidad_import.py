@@ -27,6 +27,7 @@ Y uno de criterio: los rechazados, cancelados y devueltos se guardan pero con
 `computable=False`, así quedan auditables y fuera de los totales.
 """
 import os
+import threading
 import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -53,10 +54,25 @@ ESTADOS_NO_COMPUTABLES = {
     'pending', 'invalid',
 }
 
-# Pausa entre llamadas. Billing es sensible a 429 y la documentación pide
-# consumo secuencial, no batch.
-PAUSA_ML = 0.35
+# ── Límite real de la API de facturación de ML ────────────────────────────────
+#
+# Los endpoints /billing/integration/* permiten 5 requests por minuto. No es una
+# recomendación: el servidor responde
+#   {"status":429,"type":"TOO_MANY_REQUESTS_ERROR",
+#    "message":"Rate limit exceeded: 5 requests per minute. Available tokens: 0"}
+#
+# La primera versión usaba una pausa de 0,35 s (unas 170 por minuto) y por eso
+# la importación de un año se cortaba en la sexta página. El intervalo de abajo
+# deja margen sobre el límite; no bajarlo sin volver a medir contra la API.
+BILLING_REQUESTS_POR_MINUTO = 5
+PAUSA_BILLING = 13.0   # segundos entre llamadas a /billing (60/5 = 12, +margen)
+PAUSA_ML = 0.35        # resto de la API de ML (órdenes, ítems): sin este límite
 PAUSA_MP = 0.20
+
+# Reintentos ante 429: la espera arranca en 45 s porque la ventana del límite es
+# de un minuto, así que reintentar antes solo vuelve a chocar.
+REINTENTOS_429 = 4
+ESPERA_429_INICIAL = 45.0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -115,6 +131,55 @@ def _claves_periodo(desde: date, hasta: date):
             m, y = 1, y + 1
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# LIMITADOR DE LA API DE FACTURACIÓN
+# ══════════════════════════════════════════════════════════════════════════════
+
+_ultima_llamada_billing = [0.0]   # lista para poder mutarla desde la función
+_lock_billing = threading.Lock()
+
+
+def _esperar_turno_billing():
+    """
+    Serializa las llamadas a /billing y garantiza el intervalo mínimo entre
+    ellas, incluso si dos importaciones corren a la vez (la UI las dispara en
+    threads). El lock es lo que evita que dos threads pasen juntos y se coman
+    el 429 igual.
+    """
+    with _lock_billing:
+        ahora = time.monotonic()
+        espera = PAUSA_BILLING - (ahora - _ultima_llamada_billing[0])
+        if espera > 0:
+            time.sleep(espera)
+        _ultima_llamada_billing[0] = time.monotonic()
+
+
+def _es_429(exc) -> bool:
+    texto = str(exc)
+    return '429' in texto or 'TOO_MANY_REQUESTS' in texto
+
+
+def _billing_get(client, path: str, params: dict):
+    """
+    GET a /billing respetando el límite de 5 por minuto, con reintentos ante
+    429 en vez de abortar la importación entera.
+
+    Devuelve el JSON, o lanza la última excepción si agotó los reintentos.
+    """
+    ultima = None
+    for intento in range(REINTENTOS_429 + 1):
+        _esperar_turno_billing()
+        try:
+            return client._get(path, params)
+        except Exception as e:
+            ultima = e
+            if not _es_429(e) or intento == REINTENTOS_429:
+                raise
+            # Espera creciente: la ventana del límite es de un minuto
+            time.sleep(ESPERA_429_INICIAL * (1.5 ** intento))
+    raise ultima
+
+
 class _Run:
     """Context manager que registra la corrida en cont_import_runs."""
 
@@ -155,6 +220,29 @@ class _Run:
             else:
                 run.estado = 'ok'
         return False  # nunca traga la excepción
+
+    def progreso(self, mensaje: str = None):
+        """
+        Vuelca el avance a la base sin cerrar la corrida. Una importación de
+        facturación tarda varios minutos por el límite de 5 por minuto, así que
+        el usuario necesita ver que avanza en vez de mirar una fila quieta.
+        """
+        try:
+            with session_scope() as s:
+                run = s.get(ImportRun, self.run_id)
+                if run is None:
+                    return
+                run.leidos = self.leidos
+                run.nuevos = self.nuevos
+                run.actualizados = self.actualizados
+                run.paginas = self.paginas
+                run.sin_clasificar = self.sin_clasificar
+                run.errores = self.errores or None
+                if mensaje:
+                    run.mensaje = mensaje[:2000]
+        except Exception:
+            # El progreso es informativo: si falla, la importación sigue
+            pass
 
     def resultado(self):
         return {
@@ -315,76 +403,84 @@ def importar_mp_pagos(alias: str, desde: date, hasta: date,
                 c.collector_id = mi_id
 
     with _Run(alias, ORIGEN_MP_PAYMENT, desde=desde, hasta=hasta) as run:
-        with session_scope() as s:
-            reglas = cargar_reglas(s)
+        for v_desde, v_hasta in _ventanas(desde, hasta, dias_ventana):
+            offset = 0
+            limit = 50  # máximo estable de /v1/payments/search
+            while True:
+                params = {
+                    'sort': 'date_created',
+                    'criteria': 'asc',
+                    'range': 'date_created',
+                    'begin_date': f'{v_desde.isoformat()}T00:00:00.000-03:00',
+                    'end_date': f'{v_hasta.isoformat()}T23:59:59.999-03:00',
+                    'offset': offset,
+                    'limit': limit,
+                }
+                try:
+                    data = _mp_get(token, '/v1/payments/search', params)
+                except Exception as e:
+                    run.errores.append({
+                        'ventana': f'{v_desde}..{v_hasta}',
+                        'offset': offset, 'error': str(e)[:300],
+                    })
+                    break
 
-            for v_desde, v_hasta in _ventanas(desde, hasta, dias_ventana):
-                offset = 0
-                limit = 50  # máximo estable de /v1/payments/search
-                while True:
-                    params = {
-                        'sort': 'date_created',
-                        'criteria': 'asc',
-                        'range': 'date_created',
-                        'begin_date': f'{v_desde.isoformat()}T00:00:00.000-03:00',
-                        'end_date': f'{v_hasta.isoformat()}T23:59:59.999-03:00',
-                        'offset': offset,
-                        'limit': limit,
-                    }
-                    try:
-                        data = _mp_get(token, '/v1/payments/search', params)
-                    except Exception as e:
-                        run.errores.append({
-                            'ventana': f'{v_desde}..{v_hasta}',
-                            'offset': offset, 'error': str(e)[:300],
-                        })
-                        break
+                run.paginas += 1
+                resultados = data.get('results') or []
+                if not resultados:
+                    break
 
-                    run.paginas += 1
-                    resultados = data.get('results') or []
-                    if not resultados:
-                        break
-
-                    for pago in resultados:
-                        run.leidos += 1
-                        try:
-                            datos = _normalizar_pago_mp(pago, mi_id, alias)
-                            if datos['fecha'] is None:
+                # Una transacción por página, para no perder lo ya leído si
+                # falla más adelante.
+                try:
+                    with session_scope() as s:
+                        reglas = cargar_reglas(s)
+                        for pago in resultados:
+                            run.leidos += 1
+                            try:
+                                datos = _normalizar_pago_mp(pago, mi_id, alias)
+                                if datos['fecha'] is None:
+                                    run.errores.append({
+                                        'pago': pago.get('id'), 'error': 'sin fecha',
+                                    })
+                                    continue
+                                estado_up = upsert_movimiento(s, datos, reglas)
+                                if estado_up == 'nuevo':
+                                    run.nuevos += 1
+                                elif estado_up == 'actualizado':
+                                    run.actualizados += 1
+                            except Exception as e:
                                 run.errores.append({
-                                    'pago': pago.get('id'), 'error': 'sin fecha',
+                                    'pago': pago.get('id'), 'error': str(e)[:300],
                                 })
-                                continue
-                            estado_up = upsert_movimiento(s, datos, reglas)
-                            if estado_up == 'nuevo':
-                                run.nuevos += 1
-                            elif estado_up == 'actualizado':
-                                run.actualizados += 1
-                        except Exception as e:
-                            run.errores.append({
-                                'pago': pago.get('id'), 'error': str(e)[:300],
-                            })
+                except Exception as e:
+                    run.errores.append({
+                        'ventana': f'{v_desde}..{v_hasta}',
+                        'error': f'no se pudo guardar la página: {str(e)[:250]}',
+                    })
 
-                    s.flush()
-                    paging = data.get('paging') or {}
-                    total = paging.get('total')
-                    offset += limit
-                    # Corte por total informado o por página incompleta
-                    if len(resultados) < limit:
-                        break
-                    if total is not None and offset >= int(total):
-                        break
-                    if offset >= 1000:
-                        # Tope duro de la API: la ventana es demasiado densa.
-                        # Se subdivide en días para no perder nada.
-                        run.errores.append({
-                            'ventana': f'{v_desde}..{v_hasta}',
-                            'error': 'ventana densa, se subdivide por día',
-                        })
-                        for d_desde, d_hasta in _ventanas(v_desde, v_hasta, 1):
-                            _importar_mp_dia(token, mi_id, alias, d_desde,
-                                             d_hasta, s, reglas, run)
-                        break
-                    time.sleep(PAUSA_MP)
+                paging = data.get('paging') or {}
+                total = paging.get('total')
+                offset += limit
+                # Corte por total informado o por página incompleta
+                if len(resultados) < limit:
+                    break
+                if total is not None and offset >= int(total):
+                    break
+                if offset >= 1000:
+                    # Tope duro de la API: la ventana es demasiado densa.
+                    # Se subdivide en días para no perder nada.
+                    run.errores.append({
+                        'ventana': f'{v_desde}..{v_hasta}',
+                        'error': 'ventana densa, se subdivide por día',
+                    })
+                    for d_desde, d_hasta in _ventanas(v_desde, v_hasta, 1):
+                        _importar_mp_dia(token, mi_id, alias, d_desde,
+                                         d_hasta, run)
+                    break
+                time.sleep(PAUSA_MP)
+
+            run.progreso(f'ventana {v_desde} → {v_hasta} — {run.nuevos} nuevos')
 
         with session_scope() as s:
             c = s.query(CuentaMP).filter_by(alias=alias).one_or_none()
@@ -394,7 +490,7 @@ def importar_mp_pagos(alias: str, desde: date, hasta: date,
         return run.resultado()
 
 
-def _importar_mp_dia(token, mi_id, alias, d_desde, d_hasta, s, reglas, run):
+def _importar_mp_dia(token, mi_id, alias, d_desde, d_hasta, run):
     """Subdivisión de emergencia cuando una ventana supera el tope de offset."""
     offset, limit = 0, 50
     while offset < 1000:
@@ -413,20 +509,26 @@ def _importar_mp_dia(token, mi_id, alias, d_desde, d_hasta, s, reglas, run):
         resultados = data.get('results') or []
         if not resultados:
             return
-        for pago in resultados:
-            run.leidos += 1
-            try:
-                datos = _normalizar_pago_mp(pago, mi_id, alias)
-                if datos['fecha'] is None:
-                    continue
-                est = upsert_movimiento(s, datos, reglas)
-                if est == 'nuevo':
-                    run.nuevos += 1
-                elif est == 'actualizado':
-                    run.actualizados += 1
-            except Exception as e:
-                run.errores.append({'pago': pago.get('id'), 'error': str(e)[:300]})
-        s.flush()
+        try:
+            with session_scope() as s:
+                reglas = cargar_reglas(s)
+                for pago in resultados:
+                    run.leidos += 1
+                    try:
+                        datos = _normalizar_pago_mp(pago, mi_id, alias)
+                        if datos['fecha'] is None:
+                            continue
+                        est = upsert_movimiento(s, datos, reglas)
+                        if est == 'nuevo':
+                            run.nuevos += 1
+                        elif est == 'actualizado':
+                            run.actualizados += 1
+                    except Exception as e:
+                        run.errores.append({'pago': pago.get('id'),
+                                            'error': str(e)[:300]})
+        except Exception as e:
+            run.errores.append({'dia': str(d_desde),
+                                'error': f'no se pudo guardar: {str(e)[:250]}'})
         if len(resultados) < limit:
             return
         offset += limit
@@ -538,72 +640,82 @@ def importar_ml_billing(alias: str, desde: date, hasta: date,
     if client is None:
         raise ValueError(f'No hay cuenta ML con alias "{alias}"')
 
+    combos = [(k, g, d) for k in _claves_periodo(desde, hasta)
+              for g in grupos for d in document_types]
+
     with _Run(alias, ORIGEN_ML_BILLING, desde=desde, hasta=hasta) as run:
-        with session_scope() as s:
-            reglas = cargar_reglas(s)
+        run.progreso(f'0 de {len(combos)} bloques — '
+                     f'límite de la API: {BILLING_REQUESTS_POR_MINUTO}/min')
 
-            for key in _claves_periodo(desde, hasta):
-                for grupo in grupos:
-                    for doc_type in document_types:
-                        from_id = 0
-                        while True:
-                            path = (f'/billing/integration/periods/key/{key}'
-                                    f'/group/{grupo}/details')
-                            params = {
-                                'document_type': doc_type,
-                                'limit': 1000,
-                                'from_id': from_id,
-                                'sort_by': 'ID',
-                                'order_by': 'ASC',
-                            }
+        for i, (key, grupo, doc_type) in enumerate(combos, 1):
+            from_id = 0
+            while True:
+                path = (f'/billing/integration/periods/key/{key}'
+                        f'/group/{grupo}/details')
+                params = {
+                    'document_type': doc_type,
+                    'limit': 1000,
+                    'from_id': from_id,
+                    'sort_by': 'ID',
+                    'order_by': 'ASC',
+                }
+                try:
+                    data = _billing_get(client, path, params)
+                except Exception as e:
+                    # Ningún bloque hace fallar la importación entera: se
+                    # registra y se sigue con el siguiente. Perder un mes es
+                    # mucho mejor que perder los once que ya se leyeron.
+                    run.errores.append({
+                        'periodo': key, 'grupo': grupo,
+                        'document_type': doc_type, 'error': str(e)[:300],
+                    })
+                    break
+
+                run.paginas += 1
+                resultados = (data or {}).get('results') or []
+                if not resultados:
+                    break
+
+                # UNA TRANSACCIÓN POR PÁGINA. Antes toda la importación iba en
+                # una sola y un fallo al final descartaba lo ya leído: así se
+                # perdieron 2.056 movimientos en la primera corrida real.
+                try:
+                    with session_scope() as s:
+                        reglas = cargar_reglas(s)
+                        for item in resultados:
+                            run.leidos += 1
                             try:
-                                data = client._get(path, params)
+                                datos = _normalizar_detalle_billing(
+                                    item, alias, grupo, key)
+                                if datos['fecha'] is None:
+                                    datos['fecha'] = datetime.fromisoformat(
+                                        key + 'T00:00:00')
+                                if datos.get('rubro_sugerido') is None:
+                                    run.sin_clasificar += 1
+                                est = upsert_movimiento(s, datos, reglas)
+                                if est == 'nuevo':
+                                    run.nuevos += 1
+                                elif est == 'actualizado':
+                                    run.actualizados += 1
                             except Exception as e:
-                                msg = str(e)
-                                # Período sin datos o sin permisos: no es fatal
-                                if any(c in msg for c in ('404', '403', '400')):
-                                    run.errores.append({
-                                        'periodo': key, 'grupo': grupo,
-                                        'document_type': doc_type,
-                                        'error': msg[:200],
-                                    })
-                                    break
-                                raise
+                                run.errores.append({
+                                    'periodo': key,
+                                    'detalle': (item.get('charge_info') or {}).get('detail_id'),
+                                    'error': str(e)[:300],
+                                })
+                except Exception as e:
+                    run.errores.append({
+                        'periodo': key, 'grupo': grupo,
+                        'error': f'no se pudo guardar la página: {str(e)[:250]}',
+                    })
 
-                            run.paginas += 1
-                            resultados = (data or {}).get('results') or []
-                            if not resultados:
-                                break
+                last_id = (data or {}).get('last_id')
+                if not last_id or last_id == from_id:
+                    break
+                from_id = last_id
 
-                            for item in resultados:
-                                run.leidos += 1
-                                try:
-                                    datos = _normalizar_detalle_billing(
-                                        item, alias, grupo, key)
-                                    if datos['fecha'] is None:
-                                        datos['fecha'] = datetime.fromisoformat(
-                                            key + 'T00:00:00')
-                                    if datos.get('rubro_sugerido') is None:
-                                        run.sin_clasificar += 1
-                                    est = upsert_movimiento(s, datos, reglas)
-                                    if est == 'nuevo':
-                                        run.nuevos += 1
-                                    elif est == 'actualizado':
-                                        run.actualizados += 1
-                                except Exception as e:
-                                    run.errores.append({
-                                        'periodo': key,
-                                        'detalle': (item.get('charge_info') or {}).get('detail_id'),
-                                        'error': str(e)[:300],
-                                    })
-
-                            s.flush()
-
-                            last_id = (data or {}).get('last_id')
-                            if not last_id or last_id == from_id:
-                                break
-                            from_id = last_id
-                            time.sleep(PAUSA_ML)
+            run.progreso(f'{i} de {len(combos)} bloques — '
+                         f'{run.nuevos} nuevos, {run.sin_clasificar} sin clasificar')
 
         return run.resultado()
 
@@ -621,18 +733,21 @@ def importar_ml_percepciones(alias: str, desde: date, hasta: date) -> dict:
         raise ValueError(f'No hay cuenta ML con alias "{alias}"')
 
     with _Run(alias, ORIGEN_ML_PERCEPCION, desde=desde, hasta=hasta) as run:
-        with session_scope() as s:
-            reglas = cargar_reglas(s)
+        for key in _claves_periodo(desde, hasta):
+            path = f'/billing/integration/periods/key/{key}/perceptions/summary'
+            # Mismo límite de 5 por minuto que el resto de /billing: en la
+            # primera corrida real los nueve meses fallaron con 429 porque la
+            # importación de facturación ya había agotado la cuota.
+            try:
+                data = _billing_get(client, path, {})
+            except Exception as e:
+                run.errores.append({'periodo': key, 'error': str(e)[:250]})
+                continue
 
-            for key in _claves_periodo(desde, hasta):
-                path = f'/billing/integration/periods/key/{key}/perceptions/summary'
-                try:
-                    data = client._get(path, {})
-                except Exception as e:
-                    run.errores.append({'periodo': key, 'error': str(e)[:200]})
-                    continue
+            run.paginas += 1
 
-                run.paginas += 1
+            with session_scope() as s:
+                reglas = cargar_reglas(s)
                 # La respuesta trae una lista de percepciones por tipo/jurisdicción
                 filas = []
                 if isinstance(data, dict):
@@ -683,8 +798,8 @@ def importar_ml_percepciones(alias: str, desde: date, hasta: date) -> dict:
                     except Exception as e:
                         run.errores.append({'periodo': key, 'error': str(e)[:300]})
 
-                s.flush()
-                time.sleep(PAUSA_ML)
+            # El ritmo lo marca _billing_get; acá solo se informa el avance.
+            run.progreso(f'período {key[:7]} listo — {run.nuevos} percepciones')
 
         return run.resultado()
 
@@ -810,66 +925,74 @@ def importar_ml_ordenes(alias: str, desde: date, hasta: date,
         seller_id = (client.get_me() or {}).get('id')
 
     with _Run(alias, ORIGEN_ML_ORDER, desde=desde, hasta=hasta) as run:
-        with session_scope() as s:
-            reglas = cargar_reglas(s)
+        for v_desde, v_hasta in _ventanas(desde, hasta, dias_ventana):
+            offset, limit = 0, 50
+            while True:
+                params = {
+                    'seller': seller_id,
+                    'order.date_created.from': f'{v_desde.isoformat()}T00:00:00.000-03:00',
+                    'order.date_created.to': f'{v_hasta.isoformat()}T23:59:59.000-03:00',
+                    'sort': 'date_asc',
+                    'offset': offset,
+                    'limit': limit,
+                }
+                try:
+                    data = client._get('/orders/search', params)
+                except Exception as e:
+                    run.errores.append({
+                        'ventana': f'{v_desde}..{v_hasta}',
+                        'offset': offset, 'error': str(e)[:300],
+                    })
+                    break
 
-            for v_desde, v_hasta in _ventanas(desde, hasta, dias_ventana):
-                offset, limit = 0, 50
-                while True:
-                    params = {
-                        'seller': seller_id,
-                        'order.date_created.from': f'{v_desde.isoformat()}T00:00:00.000-03:00',
-                        'order.date_created.to': f'{v_hasta.isoformat()}T23:59:59.000-03:00',
-                        'sort': 'date_asc',
-                        'offset': offset,
-                        'limit': limit,
-                    }
-                    try:
-                        data = client._get('/orders/search', params)
-                    except Exception as e:
-                        run.errores.append({
-                            'ventana': f'{v_desde}..{v_hasta}',
-                            'offset': offset, 'error': str(e)[:300],
-                        })
-                        break
+                run.paginas += 1
+                resultados = (data or {}).get('results') or []
+                if not resultados:
+                    break
 
-                    run.paginas += 1
-                    resultados = (data or {}).get('results') or []
-                    if not resultados:
-                        break
+                # Una transacción por página: un fallo en la página 80 de 87 no
+                # puede descartar las 79 anteriores.
+                try:
+                    with session_scope() as s:
+                        reglas = cargar_reglas(s)
+                        for orden in resultados:
+                            run.leidos += 1
+                            try:
+                                for datos in _normalizar_orden(orden, alias):
+                                    if datos['fecha'] is None:
+                                        continue
+                                    if datos.get('rubro_sugerido') is None:
+                                        run.sin_clasificar += 1
+                                    est = upsert_movimiento(s, datos, reglas)
+                                    if est == 'nuevo':
+                                        run.nuevos += 1
+                                    elif est == 'actualizado':
+                                        run.actualizados += 1
+                            except Exception as e:
+                                run.errores.append({
+                                    'orden': orden.get('id'), 'error': str(e)[:300],
+                                })
+                except Exception as e:
+                    run.errores.append({
+                        'ventana': f'{v_desde}..{v_hasta}',
+                        'error': f'no se pudo guardar la página: {str(e)[:250]}',
+                    })
 
-                    for orden in resultados:
-                        run.leidos += 1
-                        try:
-                            for datos in _normalizar_orden(orden, alias):
-                                if datos['fecha'] is None:
-                                    continue
-                                if datos.get('rubro_sugerido') is None:
-                                    run.sin_clasificar += 1
-                                est = upsert_movimiento(s, datos, reglas)
-                                if est == 'nuevo':
-                                    run.nuevos += 1
-                                elif est == 'actualizado':
-                                    run.actualizados += 1
-                        except Exception as e:
-                            run.errores.append({
-                                'orden': orden.get('id'), 'error': str(e)[:300],
-                            })
+                total = ((data or {}).get('paging') or {}).get('total')
+                offset += limit
+                if len(resultados) < limit:
+                    break
+                if total is not None and offset >= int(total):
+                    break
+                if offset >= 10000:
+                    run.errores.append({
+                        'ventana': f'{v_desde}..{v_hasta}',
+                        'error': 'ventana supera el tope de offset de /orders',
+                    })
+                    break
+                time.sleep(PAUSA_ML)
 
-                    s.flush()
-                    total = ((data or {}).get('paging') or {}).get('total')
-                    offset += limit
-                    if len(resultados) < limit:
-                        break
-                    if total is not None and offset >= int(total):
-                        break
-                    if offset >= 10000:
-                        run.errores.append({
-                            'ventana': f'{v_desde}..{v_hasta}',
-                            'error': 'ventana supera el tope de offset de /orders',
-                        })
-                        break
-                    time.sleep(PAUSA_ML)
+            run.progreso(f'ventana {v_desde} → {v_hasta} — {run.nuevos} nuevos')
 
         return run.resultado()
 

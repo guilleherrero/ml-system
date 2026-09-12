@@ -1032,6 +1032,11 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 31 | `get_mp_resumen` sumaba pagos `rejected` y `refunded` con el mismo peso que los aprobados | idem | Infla los cobros con ventas que nunca se cobraron (ej. un Ender Pro de $60.578 rechazado y otro devuelto en la misma semana). **Resuelto**: se guardan con `computable=False`, quedan auditables y fuera de los totales | A |
 | 32 | `get_mp_resumen` topea el parametro `dias` en 90, asi que no habia forma de pedir la facturacion del anio | idem | Imposible responder "cuanto facturé del 1 de enero a hoy". **Resuelto**: los importadores toman `desde`/`hasta` arbitrarios | A |
 | 33 | `list_accounts` del MCP devuelve `{"aliases": []}` | MCP local | Deja inutilizables `get_my_items`, `get_item_health` y todo lo que pide alias. **Pendiente de diagnostico** | A |
+| 34 | El importador de facturacion usaba una pausa de 0,35 s entre llamadas (unas 170 por minuto), pero `/billing/integration/*` permite **5 requests por minuto**. La API responde `{"status":429,"type":"TOO_MANY_REQUESTS_ERROR","message":"Rate limit exceeded: 5 requests per minute. Available tokens: 0"}` | `modules/contabilidad_import.py` | En la primera corrida real del 12/09 la importacion de enero-a-septiembre murio con 429 en la sexta pagina. Se habia leido la advertencia de la documentacion sobre los 429 y aun asi la pausa se calibro a ojo en vez de al limite real. **Resuelto**: limitador con lock (13 s entre llamadas) mas reintentos con espera creciente desde 45 s, y tests que fijan el comportamiento | A |
+| 35 | Los tres importadores envolvian TODA la corrida en un solo `session_scope`, asi que una excepcion al final descartaba todo lo ya leido | idem | En la misma corrida se perdieron los 2.056 movimientos de facturacion que ya estaban leidos: el historial decia "2056 nuevos" y el panel mostraba Plataforma en $0, porque el rollback se los llevo. Un import de varios minutos no puede ser todo-o-nada. **Resuelto**: una transaccion por pagina en ordenes, facturacion, percepciones y MP | A |
+| 36 | El formulario de cuentas de MP pedia el *nombre de la variable de entorno* en un campo que invitaba a pegar el token, y despues reportaba un "falta token" incomprensible. Peor: el valor se renderizaba en la tabla de la pantalla | `web/contabilidad_routes.py`, `contabilidad_importar.html`, `listar_cuentas_mp` | El usuario pego el token de produccion completo y quedo guardado en `token_env` y visible en pantalla. **Resuelto**: `_parece_token` distingue token de nombre de variable y lo guarda donde va avisando que interpreto; el listado ya no devuelve nunca el valor ni el nombre del token, solo su origen; `migrar_tokens_mp_mal_guardados` corrige en el arranque las filas que ya quedaron mal | A |
+| 37 | 1.830 de los 2.056 detalles de facturacion leidos cayeron en SIN_CLASIF: el mapa `SUBTIPO_ML_RUBRO` cubre muchos menos subtipos de los que ML devuelve en la practica | `modules/contabilidad.py` | El desglose por rubro queda casi vacio y el resultado no refleja los cargos de plataforma. **Pendiente**: se resuelve con datos reales, no adivinando — reimportar un mes con el rate limit ya corregido, mirar que subtipos y que `transaction_detail` devuelve ML, y ampliar el mapa y las reglas semilla desde ahi | A |
+| 38 | Un access token de ML estaba commiteado en `.claude/settings.local.json` desde el primer commit del 22/04, en un repo **publico** (verificado: la API de GitHub reporta `visibility: public` y un clone anonimo funciona) | `.claude/settings.local.json` | Un barrido de los 168 archivos trackeados encontro ese unico secreto real; `config/accounts.json` y `.env` ya estaban bien ignorados, asi que el refresh token y el client_secret nunca se expusieron. Los access token de ML expiran a las 6 h, asi que el valor esta con certeza practica muerto; queda visible el client_id. **Resuelto** el tracking (git rm --cached + .gitignore). **Pendiente de decision del usuario**: el valor sigue en el historial de git, y si el repo debe seguir siendo publico | A |
 
 ### Estado al cierre del Sprint A
 
@@ -1179,12 +1184,18 @@ python main.py contabilidad cmv      <desde> <hasta> [alias]
 1. **Cargar el token de MP en Render** como variable de entorno
    (`MP_ACCESS_TOKEN_PROD`) y dar de alta la cuenta en `cont_cuentas_mp`. Hoy
    el token vive solo en el MCP local, que no persiste nada.
-2. **Cargar los costos de mercaderia.** Buena parte del catalogo tiene `costo`
+2. **Cuanto tarda un import.** Por el limite de 5 requests por minuto, la
+   facturacion de un año son unos 8 minutos (9 periodos x 2 grupos x 2 tipos de
+   documento = 36 llamadas a 13 s) y las percepciones otros 2. No es lentitud
+   del codigo: es el limite de ML. Corre en segundo plano y la pantalla de
+   Importar refresca el avance sola.
+
+3. **Cargar los costos de mercaderia.** Buena parte del catalogo tiene `costo`
    y `margen_pct` en `null`. Mientras falten, `resumen()` devuelve una
    advertencia de nivel critico que dice explicitamente que lo que se ve es
    margen sobre plataforma y NO ganancia. El listado de que falta sale con
    `contabilidad sin-costo`.
-3. **Cerrar el circuito con el MCP.** Exponer `resumen`, `pendientes` y
+4. **Cerrar el circuito con el MCP.** Exponer `resumen`, `pendientes` y
    `cerrar_periodo` como tools del MCP, para poder preguntar "cuanto gane en
    agosto" desde el chat sin abrir el panel.
 

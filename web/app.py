@@ -19478,12 +19478,20 @@ except Exception as _e:
 # Siembra el plan de rubros y las reglas de clasificación del sistema contable.
 # Es idempotente: en cada arranque solo inserta lo que falte.
 try:
-    from modules.contabilidad import sembrar_plan as _sembrar_plan_contable
+    from modules.contabilidad import (
+        sembrar_plan as _sembrar_plan_contable,
+        migrar_tokens_mp_mal_guardados as _migrar_tokens_mp,
+    )
     _res_plan = _sembrar_plan_contable()
     if _res_plan.get('rubros_creados') or _res_plan.get('reglas_creadas'):
         print(f'[contabilidad] plan sembrado: {_res_plan}')
     else:
         print('[contabilidad] plan de rubros OK')
+    # Mueve a su lugar cualquier token que haya quedado guardado en el campo
+    # del nombre de variable de entorno. Idempotente.
+    _res_tok = _migrar_tokens_mp()
+    if _res_tok.get('corregidas'):
+        print(f'[contabilidad] tokens MP reubicados: {_res_tok["corregidas"]}')
 except Exception as _e:
     print(f'[contabilidad] ERROR sembrando el plan de rubros: {_e}')
 

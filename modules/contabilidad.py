@@ -972,24 +972,64 @@ def ultimas_importaciones(limite: int = 20) -> list:
         } for r in filas]
 
 
+def _parece_token(valor: str) -> bool:
+    """
+    Distingue un token pegado de un nombre de variable de entorno.
+
+    Existe porque en la primera corrida real el usuario pegó el token completo
+    en el campo que pedía el nombre de la variable — el campo invitaba a
+    confundirse. En vez de dejarlo fallar en silencio, se detecta y se guarda
+    donde va.
+
+    Un nombre de variable es corto y en mayúsculas con guiones bajos
+    (MP_ACCESS_TOKEN); un token de MP/ML trae guiones medios y es largo.
+    """
+    v = (valor or '').strip()
+    if not v:
+        return False
+    return (v.startswith(('APP_USR-', 'TEST-'))
+            or len(v) > 60
+            or (v.count('-') >= 3 and len(v) > 30))
+
+
 def listar_cuentas_mp() -> list:
-    """Cuentas de Mercado Pago dadas de alta."""
+    """
+    Cuentas de Mercado Pago dadas de alta.
+
+    NUNCA devuelve el valor del token: solo si existe y, cuando es un nombre de
+    variable de entorno, ese nombre (que no es secreto). Devolverlo era lo que
+    hacía que el token apareciera escrito en la pantalla.
+    """
     import os as _os
     with session_scope() as s:
         filas = s.query(CuentaMP).order_by(CuentaMP.alias).all()
         out = []
         for c in filas:
+            env_valido = (c.token_env
+                          and not _parece_token(c.token_env)
+                          and _os.environ.get(c.token_env))
             tiene_token = bool(
-                (c.token_env and _os.environ.get(c.token_env))
+                env_valido
                 or c.access_token
                 or _os.environ.get(
                     f'MP_ACCESS_TOKEN_{c.alias.upper().replace(" ", "_")}')
+                or _os.environ.get('MP_ACCESS_TOKEN')
                 or _os.environ.get('MP_ACCESS_TOKEN_PROD')
             )
+            # De dónde sale el token, para que el usuario sepa qué configuró
+            if env_valido:
+                fuente = f'variable {c.token_env}'
+            elif c.access_token:
+                fuente = 'guardado en la base'
+            elif tiene_token:
+                fuente = 'variable de entorno del sistema'
+            else:
+                fuente = None
+
             out.append({
                 'id': c.id, 'alias': c.alias, 'ml_alias': c.ml_alias,
                 'collector_id': c.collector_id, 'nickname': c.nickname,
-                'token_env': c.token_env, 'tiene_token': tiene_token,
+                'tiene_token': tiene_token, 'fuente_token': fuente,
                 'activo': c.activo,
                 'last_import': (c.last_import_at.isoformat()
                                 if c.last_import_at else None),
@@ -1003,12 +1043,24 @@ def guardar_cuenta_mp(alias: str, ml_alias: str = None, token_env: str = None,
     Da de alta o actualiza una cuenta de MP. Cubre el requisito de asociar
     varias cuentas para tener la vista global y la separada.
 
-    Preferencia por `token_env`: el secreto vive en la variable de entorno de
-    Render y no en la base.
+    Si en `token_env` viene un token pegado en vez de un nombre de variable, se
+    guarda como token y no como nombre: es el error natural con ese campo y no
+    tiene sentido castigarlo con un "falta token" incomprensible.
+
+    Devuelve `guardado_como` para que la UI pueda avisar qué interpretó.
     """
     alias = (alias or '').strip()
     if not alias:
         raise ValueError('El alias de la cuenta es obligatorio')
+
+    token_env = (token_env or '').strip()
+    access_token = (access_token or '').strip()
+    guardado_como = None
+
+    if token_env and _parece_token(token_env):
+        access_token = token_env
+        token_env = ''
+        guardado_como = 'token'
 
     with session_scope() as s:
         cuenta = s.query(CuentaMP).filter_by(alias=alias).one_or_none()
@@ -1016,12 +1068,34 @@ def guardar_cuenta_mp(alias: str, ml_alias: str = None, token_env: str = None,
             cuenta = CuentaMP(alias=alias)
             s.add(cuenta)
         cuenta.ml_alias = (ml_alias or '').strip() or None
-        if token_env is not None:
-            cuenta.token_env = (token_env or '').strip() or None
+        if token_env:
+            cuenta.token_env = token_env
+            guardado_como = guardado_como or 'variable'
         if access_token:
-            cuenta.access_token = access_token.strip()
+            cuenta.access_token = access_token
+            cuenta.token_env = None   # un token concreto manda sobre la variable
         if collector_id is not None:
             cuenta.collector_id = (collector_id or '').strip() or None
         cuenta.activo = True
         s.flush()
-        return {'ok': True, 'alias': cuenta.alias, 'id': cuenta.id}
+        return {'ok': True, 'alias': cuenta.alias, 'id': cuenta.id,
+                'guardado_como': guardado_como}
+
+
+def migrar_tokens_mp_mal_guardados() -> dict:
+    """
+    Corrige cuentas donde un token quedó guardado en `token_env` (el campo del
+    nombre de variable). Idempotente, se corre en cada arranque.
+
+    Es la contracara en datos del arreglo de arriba: sin esto, la fila que ya
+    quedó mal en producción sigue mal para siempre.
+    """
+    with session_scope() as s:
+        corregidas = []
+        for c in s.query(CuentaMP).all():
+            if c.token_env and _parece_token(c.token_env):
+                if not c.access_token:
+                    c.access_token = c.token_env
+                c.token_env = None
+                corregidas.append(c.alias)
+        return {'corregidas': corregidas}
