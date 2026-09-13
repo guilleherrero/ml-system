@@ -19482,6 +19482,7 @@ try:
         sembrar_plan as _sembrar_plan_contable,
         migrar_tokens_mp_mal_guardados as _migrar_tokens_mp,
         limpiar_percepciones_con_id_posicional as _limpiar_percep,
+        neutralizar_resumen_percepciones as _neutralizar_percep,
     )
     _res_plan = _sembrar_plan_contable()
     if _res_plan.get('rubros_creados') or _res_plan.get('reglas_creadas'):
@@ -19500,6 +19501,12 @@ try:
     if _res_per.get('borrados'):
         print(f'[contabilidad] percepciones con id posicional borradas: '
               f'{_res_per}')
+
+    # El resumen de percepciones repite cargos que ya estan en el detalle de
+    # facturacion: se saca del resultado para no duplicar lo impositivo.
+    _res_neu = _neutralizar_percep()
+    if _res_neu.get('neutralizados'):
+        print(f'[contabilidad] resumen de percepciones neutralizado: {_res_neu}')
 
     # Trae a la tabla contable los costos ya cargados en config/costos.json
     # (el modulo "Cargar costos"). Idempotente: no pisa costos mas detallados.

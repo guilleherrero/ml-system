@@ -823,11 +823,18 @@ def importar_ml_percepciones(alias: str, desde: date, hasta: date,
                             if monto == 0:
                                 continue
 
-                            rubro, etiqueta = _clasificar_percepcion(fila)
-
+                            rubro_real, etiqueta = _clasificar_percepcion(fila)
                             estado = str(fila.get('status') or '').strip().upper()
-                            # Solo lo aplicado suma; lo demás queda auditable
-                            computable = estado in ('APPLIED', '')
+
+                            # NO SUMA. Las percepciones ya vienen, cargo por
+                            # cargo, en el detalle de facturacion (subtipos
+                            # CIVA, CIRE, IBNQ, IBCA, ...). Este endpoint es un
+                            # RESUMEN de esos mismos cargos, no otra fuente:
+                            # contarlo ademas duplicaba exactamente todo lo
+                            # impositivo. Se guarda en un rubro neutro para
+                            # poder cruzarlo contra el detalle.
+                            rubro = 'CONCIL_PERCEP'
+                            computable = False
 
                             # Clave estable: identifica la percepción, no su
                             # posición en la respuesta.
@@ -871,10 +878,12 @@ def importar_ml_percepciones(alias: str, desde: date, hasta: date,
                                 'notas': nota,
                                 'raw': fila,
                                 'rubro_sugerido': rubro,
-                                'revisar': not computable,
-                                'nota_revision': (f'Percepción en estado '
-                                                  f'{estado}: no suma al resultado'
-                                                  if not computable else None),
+                                'revisar': False,
+                                'nota_revision': (
+                                    f'Resumen de percepciones ({rubro_real}, '
+                                    f'estado {estado or "sin estado"}): el cargo '
+                                    f'ya está contabilizado en el detalle de '
+                                    f'facturación'),
                             }
                             try:
                                 est = upsert_movimiento(s, datos, reglas)

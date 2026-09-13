@@ -102,6 +102,9 @@ PLAN_RUBROS = [
     # ── Neutros: se registran y se ven, pero no afectan el resultado ──
     ('TRASPASO',      'Transferencias entre cuentas propias', TIPO_NEUTRO, 'Neutros', False, AMBITO_NEGOCIO, 600),
     ('CONCIL_MP',     'Contrapartida MP de ventas ya contabilizadas', TIPO_NEUTRO, 'Neutros', False, AMBITO_NEGOCIO, 610),
+    # El resumen de percepciones repite cargos que ya vienen en el detalle de
+    # facturacion. Se guarda para poder conciliar, pero no suma.
+    ('CONCIL_PERCEP', 'Resumen de percepciones (ya contabilizadas en facturación)', TIPO_NEUTRO, 'Neutros', False, AMBITO_NEGOCIO, 620),
     ('PERSONAL',      'Personal / retiros',             TIPO_NEUTRO,   'Personal',   False, AMBITO_PERSONAL, 700),
     (RUBRO_SIN_CLASIFICAR, 'Sin clasificar',            TIPO_NEUTRO,   'Pendientes', False, AMBITO_NEGOCIO, 900),
 ]
@@ -127,6 +130,31 @@ SUBTIPO_ML_RUBRO = {
     'CDSD':    'CANCEL',       # "Cargo por devolución"
     'CPAD':    'ADS_ML',       # campaña de Product Ads
     'CESM':    'SERV_ML',      # "Cargo por mantenimiento de Mi página"
+
+    # ── Percepciones impositivas, observadas en el detalle de facturación ──
+    # Vienen por /group/ML/details, NO solo por /perceptions/summary. Mapearlas
+    # acá es lo que evita que queden sin clasificar y que haya que sumarlas
+    # desde el resumen (que las repetiría).
+    'CIVA':    'PERCEP',       # "Percepción de IVA Régimen General"
+    'CIVAPP':  'PERCEP',
+    'CIRE':    'PERCEP',       # "Percepción especial de IVA RG5319/2023"
+    'IIBB':    'IIBB',         # IIBB régimen general, por provincia
+    'IIBBME':  'IIBB',
+    'IBCF':    'IIBB',         # CABA
+    'IBCFME':  'IIBB',
+    'CIBCPP':  'IIBB',
+    'CIBBPP':  'IIBB',
+    'IBCA':    'IIBB',         # Catamarca
+    'CBCAPP':  'IIBB',
+    'IBCO':    'IIBB',         # Corrientes
+    'IBNQ':    'IIBB',         # Neuquén
+    'CBNQPP':  'IIBB',
+    'IBTU':    'IIBB',         # Tucumán
+    'CBTUPP':  'IIBB',
+    'CIBT':    'IIBB',         # Tucumán régimen especial
+    'IBLP':    'IIBB',         # La Pampa
+    'IBSA':    'IIBB',         # Salta
+    'CGMV':    'IIBB',         # CABA régimen especial
 
     # Venta (códigos de la documentación, se dejan por compatibilidad)
     'CV':      'COM_ML',      # cobro por venta
@@ -1128,6 +1156,45 @@ def guardar_cuenta_mp(alias: str, ml_alias: str = None, token_env: str = None,
         s.flush()
         return {'ok': True, 'alias': cuenta.alias, 'id': cuenta.id,
                 'guardado_como': guardado_como}
+
+
+def neutralizar_resumen_percepciones() -> dict:
+    """
+    Saca del resultado las percepciones importadas desde /perceptions/summary.
+
+    Se descubrio mirando el libro en produccion que las percepciones llegan
+    TAMBIEN por el detalle de facturacion, con sus propios subtipos (CIVA,
+    CIRE, IBNQ, IBCA, ...). El resumen es un resumen de esos mismos cargos, no
+    una fuente distinta, asi que importarlo ademas duplicaba exactamente todo
+    lo impositivo: en produccion, 25,4 millones de percepciones donde habia
+    12,7, y 10,6 de IIBB donde habia 5,3.
+
+    El detalle de facturacion queda como fuente buena — es granular y por
+    cargo. Las filas del resumen se mueven al rubro neutro CONCIL_PERCEP y se
+    marcan no computables: siguen visibles para cruzar contra el detalle, pero
+    no suman. Idempotente.
+    """
+    with session_scope() as s:
+        rubro_id = rubro_id_por_codigo(s, 'CONCIL_PERCEP')
+        if not rubro_id:
+            return {'neutralizados': 0, 'error': 'falta el rubro CONCIL_PERCEP'}
+
+        filas = (s.query(Movimiento)
+                 .filter(Movimiento.origen == ORIGEN_ML_PERCEPCION)
+                 .filter((Movimiento.computable == True)          # noqa: E712
+                         | (Movimiento.rubro_id != rubro_id))
+                 .all())
+        total = Decimal('0')
+        for m in filas:
+            if m.computable:
+                total += Decimal(str(m.monto or 0))
+            m.computable = False
+            m.rubro_id = rubro_id
+            m.rubro_manual = False
+            m.revisar = False
+            m.nota_revision = ('Resumen de percepciones: el cargo ya está '
+                               'contabilizado en el detalle de facturación')
+        return {'neutralizados': len(filas), 'monto_sacado': float(total)}
 
 
 def limpiar_percepciones_con_id_posicional() -> dict:

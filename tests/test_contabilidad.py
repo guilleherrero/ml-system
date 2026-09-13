@@ -1081,6 +1081,13 @@ def test_percepciones_contra_esquema_real():
             check(not any(e[0].isdigit() for e in por_ext),
                   'ningún id quedó con el formato posicional viejo')
 
+            # Ahora NO suman: el resumen repite cargos del detalle de facturación
+            check(all(m.computable is False for m in filas),
+                  'ninguna fila del resumen es computable (ya está en el detalle)')
+            check(all(s.get(Rubro, m.rubro_id).codigo == 'CONCIL_PERCEP'
+                      for m in filas),
+                  'todas van al rubro neutro de conciliación')
+
             iva_mov = por_ext.get('ML-123456789-CRGI')
             check(iva_mov is not None and iva_mov.fecha.date() == date(2026, 1, 29),
                   'usa bill_date en vez del día 1 del período',
@@ -1093,19 +1100,10 @@ def test_percepciones_contra_esquema_real():
                   and 'alícuota' in iva_mov.notas,
                   'deja anotada la base y la alícuota para poder auditar',
                   iva_mov.notas if iva_mov else '')
-            check(iva_mov is not None
-                  and s.get(Rubro, iva_mov.rubro_id).codigo == 'PERCEP',
-                  'la de IVA quedó en Percepciones')
-
-            iibb_mov = por_ext.get('ML-987654321-CRIB')
-            check(iibb_mov is not None
-                  and s.get(Rubro, iibb_mov.rubro_id).codigo == 'IIBB',
-                  'la de Ingresos Brutos quedó en IIBB')
-
-            anulada = por_ext.get('ML-111222333-CRGI')
-            check(anulada is not None and anulada.computable is False,
-                  'la percepción no aplicada se guarda pero no computa',
-                  str(anulada.computable) if anulada else 'no está')
+            check(iva_mov is not None and iva_mov.nota_revision
+                  and 'detalle de facturación' in iva_mov.nota_revision,
+                  'la nota explica por qué no suma',
+                  iva_mov.nota_revision if iva_mov else '')
 
         # Reimportar no duplica ni cambia montos
         res2 = imp.importar_ml_percepciones(ALIAS, date(2026, 1, 1), date(2026, 1, 31))
@@ -1116,14 +1114,12 @@ def test_percepciones_contra_esquema_real():
                     .filter(Movimiento.origen == 'ml_percepcion').count())
             check(cant == 3, 'siguen siendo 3 percepciones', f'hay {cant}')
 
-        # Solo suman las aplicadas: 229314.11 + 50000
+        # Nada del resumen entra al resultado
         r = cont.resumen(date(2026, 1, 1), date(2026, 1, 31))
-        percep = {f['codigo']: f['total'] for f in r['por_rubro']}
-        check(abs(percep.get('PERCEP', 0) + 229314.11) < 0.01,
-              'el total de Percepciones es solo la aplicada',
-              f'dio {percep.get("PERCEP")}')
-        check(abs(percep.get('IIBB', 0) + 50000.0) < 0.01,
-              'el total de IIBB es el correcto', f'dio {percep.get("IIBB")}')
+        codigos = {f['codigo'] for f in r['por_rubro']}
+        check('CONCIL_PERCEP' not in codigos,
+              'el resumen de percepciones no aparece en el resultado '
+              '(no es computable)', str(sorted(codigos))[:160])
     finally:
         gestor.AccountManager = original_gestor
         imp.PAUSA_BILLING = pausa_original
@@ -1161,6 +1157,84 @@ def test_limpieza_percepciones_viejas():
     check(res2['borrados'] == 0, 'la limpieza es idempotente', str(res2))
 
 
+def test_percepciones_no_se_duplican_con_facturacion():
+    """
+    El bug que encontro el usuario mirando el libro: las percepciones llegan
+    TAMBIEN por el detalle de facturacion (subtipos CIVA, CIRE, IBNQ, IBCA...)
+    y ademas se importaban del resumen. Mismo peso contado dos veces: en
+    produccion 25,4 millones de percepciones donde habia 12,7.
+    """
+    seccion('Percepciones: detalle de facturación vs resumen')
+
+    # Los subtipos de percepcion del DETALLE ahora se clasifican
+    for sub, esperado in (('CIVA', 'PERCEP'), ('CIRE', 'PERCEP'),
+                          ('IBNQ', 'IIBB'), ('IBCA', 'IIBB'),
+                          ('IIBB', 'IIBB'), ('CGMV', 'IIBB'),
+                          ('CIBT', 'IIBB'), ('IBSA', 'IIBB')):
+        check(cont.rubro_de_subtipo(sub) == esperado,
+              f'el subtipo de facturación {sub} se mapea a {esperado}',
+              f'dio {cont.rubro_de_subtipo(sub)}')
+
+    # Una percepcion por el detalle SI computa
+    with webdb.session_scope() as s:
+        reglas = cont.cargar_reglas(s)
+        cont.upsert_movimiento(s, imp._normalizar_detalle_billing({
+            'charge_info': {
+                'creation_date_time': '2026-02-11T00:00:00',
+                'detail_id': 4242424242,
+                'transaction_detail': 'Percepción de IVA Régimen General',
+                'detail_amount': 88109.0,
+                'detail_type': 'CHARGE', 'detail_sub_type': 'CIVA',
+            },
+            'currency_info': {'currency_id': 'ARS'},
+        }, ALIAS, 'ML', '2026-02-01'), reglas)
+
+    r = cont.resumen(date(2026, 2, 1), date(2026, 2, 28))
+    percep = {f['codigo']: f['total'] for f in r['por_rubro']}
+    check(abs(percep.get('PERCEP', 0) + 88109.0) < 0.01,
+          'la percepción del detalle de facturación sí suma, una sola vez',
+          f'dio {percep.get("PERCEP")}')
+
+
+def test_neutralizar_resumen_percepciones():
+    seccion('Migración: sacar del resultado el resumen de percepciones')
+
+    # Simula lo que quedo en produccion: filas del resumen computando
+    with webdb.session_scope() as s:
+        rid = cont.rubro_id_por_codigo(s, 'PERCEP')
+        for i, monto in enumerate((-757407, -88109)):
+            s.add(Movimiento(
+                cuenta_alias=ALIAS, origen='ml_percepcion',
+                external_id=f'ML-99900{i}-CIRE', periodo='2026-04',
+                fecha=datetime(2026, 4, 10), concepto='MLA_RE_IVA',
+                monto=Decimal(monto), rubro_id=rid, computable=True,
+            ))
+
+    antes = cont.resumen(date(2026, 4, 1), date(2026, 4, 30))['totales']['impuestos']
+    res = cont.neutralizar_resumen_percepciones()
+    check(res['neutralizados'] >= 2,
+          'neutraliza las filas del resumen que estaban computando', str(res))
+    check(abs(res['monto_sacado'] + 845516) < 1,
+          'informa cuánto saca del resultado', str(res))
+
+    despues = cont.resumen(date(2026, 4, 1), date(2026, 4, 30))['totales']['impuestos']
+    check(despues > antes,
+          'el total de impuestos baja al dejar de duplicar',
+          f'antes {antes} → después {despues}')
+
+    with webdb.session_scope() as s:
+        filas = (s.query(Movimiento)
+                 .filter(Movimiento.origen == 'ml_percepcion').all())
+        check(all(not m.computable for m in filas),
+              'ninguna fila del resumen quedó computable')
+        check(all(s.get(Rubro, m.rubro_id).codigo == 'CONCIL_PERCEP'
+                  for m in filas),
+              'todas quedaron en el rubro neutro')
+
+    res2 = cont.neutralizar_resumen_percepciones()
+    check(res2['neutralizados'] == 0, 'la migración es idempotente', str(res2))
+
+
 def main():
     print('═' * 70)
     print('TESTS DEL SISTEMA CONTABLE')
@@ -1184,6 +1258,8 @@ def main():
     test_importar_costos_del_sistema()
     test_percepciones_contra_esquema_real()
     test_limpieza_percepciones_viejas()
+    test_percepciones_no_se_duplican_con_facturacion()
+    test_neutralizar_resumen_percepciones()
 
     print('\n' + '═' * 70)
     print(f'PASARON: {len(PASADOS)}    FALLARON: {len(FALLOS)}')
