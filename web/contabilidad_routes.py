@@ -119,13 +119,15 @@ def _ctx_base():
 def dashboard():
     desde, hasta = _rango_pedido()
     cuenta = request.args.get('cuenta') or None
+    vista = request.args.get('vista') or 'neto'
+    incluir_costos = vista != 'bruto'
 
-    resumen = cont.resumen(desde, hasta, cuenta)
+    resumen = cont.resumen(desde, hasta, cuenta, incluir_costos=incluir_costos)
     por_cuenta = []
     cuentas = cont.listar_cuentas()
     if len(cuentas) > 1 and not cuenta:
         for alias in cuentas:
-            r = cont.resumen(desde, hasta, alias)
+            r = cont.resumen(desde, hasta, alias, incluir_costos=incluir_costos)
             por_cuenta.append({
                 'cuenta': alias,
                 'ingresos': r['totales']['ingresos'],
@@ -141,6 +143,7 @@ def dashboard():
         desde=desde.isoformat(),
         hasta=hasta.isoformat(),
         cuenta_sel=cuenta or '',
+        vista=vista,
         por_cuenta=por_cuenta,
         faltan_costos=faltan_costos[:10],
         cant_faltan_costos=len(faltan_costos),

@@ -9,8 +9,8 @@
 {% include "_contabilidad_tabs.html" %}
 
 {% for aviso in resumen.advertencias %}
-<div class="app-alert-banner {{ 'app-alert-banner-crit' if aviso.nivel == 'critico' else 'app-alert-banner-warn' }} mb-3">
-  <i class="bi {{ 'bi-exclamation-octagon-fill' if aviso.nivel == 'critico' else 'bi-exclamation-triangle-fill' }}"></i>
+<div class="app-alert-banner {{ 'app-alert-banner-crit' if aviso.nivel == 'critico' else ('app-alert-banner-info' if aviso.nivel == 'info' else 'app-alert-banner-warn') }} mb-3">
+  <i class="bi {{ 'bi-exclamation-octagon-fill' if aviso.nivel == 'critico' else ('bi-eye' if aviso.nivel == 'info' else 'bi-exclamation-triangle-fill') }}"></i>
   <div>
     {{ aviso.texto }}
     {% if aviso.nivel == 'critico' %}
@@ -45,22 +45,35 @@
       {% endfor %}
     </select>
   </div>
+  <input type="hidden" name="vista" value="{{ vista }}">
   <button type="submit" class="app-btn app-btn-primary">
     <i class="bi bi-funnel"></i> Aplicar
   </button>
   <div class="cont-rangos ms-auto">
     {% set anio = desde[:4]|int %}
-    <a href="?desde={{ anio }}-01-01&hasta={{ hasta }}&cuenta={{ cuenta_sel }}">Año en curso</a>
-    <a href="?desde={{ hasta[:7] }}-01&hasta={{ hasta }}&cuenta={{ cuenta_sel }}">Este mes</a>
-    <a href="?desde={{ anio - 1 }}-01-01&hasta={{ anio - 1 }}-12-31&cuenta={{ cuenta_sel }}">{{ anio - 1 }}</a>
+    <a href="?desde={{ anio }}-01-01&hasta={{ hasta }}&cuenta={{ cuenta_sel }}&vista={{ vista }}">Año en curso</a>
+    <a href="?desde={{ hasta[:7] }}-01&hasta={{ hasta }}&cuenta={{ cuenta_sel }}&vista={{ vista }}">Este mes</a>
+    <a href="?desde={{ anio - 1 }}-01-01&hasta={{ anio - 1 }}-12-31&cuenta={{ cuenta_sel }}&vista={{ vista }}">{{ anio - 1 }}</a>
   </div>
 </form>
+
+<!-- ── Vista: neto (con costo de mercadería) vs. bruto ML ─────── -->
+<div class="cont-tabs">
+  <a href="?desde={{ desde }}&hasta={{ hasta }}&cuenta={{ cuenta_sel }}&vista=neto"
+     class="{{ 'on' if vista != 'bruto' else '' }}" title="Resultado real: descuenta el costo de mercadería">
+    Neto — con costo de mercadería
+  </a>
+  <a href="?desde={{ desde }}&hasta={{ hasta }}&cuenta={{ cuenta_sel }}&vista=bruto"
+     class="{{ 'on' if vista == 'bruto' else '' }}" title="Como lo vería MercadoLibre: sin descontar lo que pagaste por el producto">
+    Bruto ML — sin costo de mercadería
+  </a>
+</div>
 
 <!-- ── El número ────────────────────────────────────────────── -->
 <div class="row g-3 mb-3">
   <div class="col-12 col-lg-4">
     <div class="cont-resultado {{ 'pos' if resumen.totales.resultado >= 0 else 'neg' }} h-100">
-      <div class="lbl">Resultado del período</div>
+      <div class="lbl">Resultado del período {{ '(bruto ML)' if vista == 'bruto' else '' }}</div>
       <div class="num">{{ resumen.totales.resultado | pesos }}</div>
       <div class="cont-sub mt-2">
         {{ desde | fecha_corta }} al {{ hasta | fecha_corta }}
@@ -83,7 +96,7 @@
           <div class="num" style="font-size:var(--text-h3);color:var(--color-neutral-700)">
             {{ resumen.totales.costos | pesos }}
           </div>
-          <div class="lbl">Costo mercadería</div>
+          <div class="lbl">Costo mercadería{{ ' (no aplicado)' if vista == 'bruto' else '' }}</div>
         </div>
       </div>
       <div class="col-6 col-md-3">

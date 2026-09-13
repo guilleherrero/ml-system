@@ -727,13 +727,19 @@ def _mes_de_fecha():
 
 
 def resumen(desde: date, hasta: date, cuenta_alias: str = None,
-            incluir_personal: bool = False) -> dict:
+            incluir_personal: bool = False, incluir_costos: bool = True) -> dict:
     """
     Resumen del período: resultado, desglose por rubro y serie mensual.
 
     `resultado` suma únicamente movimientos con `computable=True` y rubro con
     `afecta_resultado=True`. Los personales y traspasos quedan reportados
     aparte, no sumados.
+
+    `incluir_costos=False` da la vista "bruto ML": el costo de mercadería
+    (CMV e importación) se sigue calculando y se reporta en `totales.costos`
+    para referencia, pero no se resta de `resultado`. Es el número que se ve
+    en los reportes de ML, que no conocen el costo del producto — sirve para
+    comparar contra eso, no para saber la ganancia real del negocio.
 
     La serie mensual se arma por fecha calendario, no por período de
     facturación de ML. Ver `_mes_de_fecha`.
@@ -811,14 +817,19 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
                     totales['impuestos'] += total
                 elif tipo == TIPO_FINANCIERO:
                     totales['financiero'] += total
-                totales['resultado'] += total
 
-                if mes in por_mes:
-                    por_mes[mes]['resultado'] += total
-                    if total >= 0:
-                        por_mes[mes]['ingresos'] += total
-                    else:
-                        por_mes[mes]['egresos'] += total
+                # Vista bruta ML: el costo de mercadería se muestra (arriba)
+                # pero no entra al resultado ni a la serie mensual.
+                cuenta_para_resultado = incluir_costos or tipo != TIPO_COSTO
+                if cuenta_para_resultado:
+                    totales['resultado'] += total
+
+                    if mes in por_mes:
+                        por_mes[mes]['resultado'] += total
+                        if total >= 0:
+                            por_mes[mes]['ingresos'] += total
+                        else:
+                            por_mes[mes]['egresos'] += total
 
         ingresos = totales['ingresos']
         margen_pct = (float(totales['resultado'] / ingresos * 100)
@@ -829,6 +840,7 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
             'hasta': hasta.isoformat(),
             'cuenta': cuenta_alias or 'TODAS',
             'criterio': 'caja_pura',
+            'vista': 'neto' if incluir_costos else 'bruto',
             'totales': {k: float(v) for k, v in totales.items()},
             'margen_pct': margen_pct,
             # Orden de lectura de un estado de resultados (Ingresos, Costos,
@@ -844,17 +856,25 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
             ],
             'pendientes_de_clasificar': cant_sin_clasif,
             # Aviso honesto: sin COGS el resultado no es ganancia real
-            'advertencias': _advertencias(totales, cant_sin_clasif),
+            'advertencias': _advertencias(totales, cant_sin_clasif, incluir_costos),
         }
 
 
-def _advertencias(totales: dict, cant_sin_clasif: int) -> list:
+def _advertencias(totales: dict, cant_sin_clasif: int,
+                   incluir_costos: bool = True) -> list:
     """
     Avisos que tienen que viajar junto al número. La regla es no mostrar un
     resultado que parezca ganancia cuando estructuralmente no lo es.
     """
     avisos = []
-    if totales['costos'] == 0 and totales['ingresos'] > 0:
+    if not incluir_costos:
+        avisos.append({
+            'nivel': 'info',
+            'texto': 'Vista bruta: el costo de mercadería no se descuenta del '
+                     'resultado (se muestra aparte, para referencia). No es la '
+                     'ganancia real del negocio.',
+        })
+    elif totales['costos'] == 0 and totales['ingresos'] > 0:
         avisos.append({
             'nivel': 'critico',
             'texto': 'No hay costo de mercadería cargado en el período. '
