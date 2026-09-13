@@ -330,8 +330,14 @@ def costos():
             except Exception as e:
                 flash(f'No se pudo leer el archivo: {e}', 'danger')
                 contenido = ''
+        # Default: 1 de enero del año en curso, no el mes actual. `costo_vigente()`
+        # solo aplica un costo a ventas con fecha >= vigente_desde, así que un
+        # costo cargado hoy con vigencia "1 del mes actual" queda sin efecto
+        # para todas las ventas de enero en adelante — el CMV les da "sin
+        # costo" aunque el costo esté cargado. Mismo criterio que ya usa
+        # `importar_costos_del_sistema()` para el mismo problema.
         vigente = _fecha(request.form.get('vigente_desde'),
-                         date.today().replace(day=1))
+                         date(date.today().year, 1, 1))
         if contenido.strip():
             try:
                 resultado = cierre.cargar_costos_texto(
@@ -358,7 +364,7 @@ def costos():
         'contabilidad_costos.html',
         resultado=resultado,
         faltantes=faltantes,
-        mes_actual=date.today().replace(day=1).isoformat(),
+        mes_actual=date(date.today().year, 1, 1).isoformat(),
         **_ctx_base(),
     )
 

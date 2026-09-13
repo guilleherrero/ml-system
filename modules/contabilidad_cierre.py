@@ -636,6 +636,13 @@ def conciliar_billing(alias: str, periodo: str) -> dict:
 
     Si no coincide, el sistema no dice "todo bien": informa la diferencia y el
     subtipo donde está. Es la prueba de que no falta ni un dato.
+
+    El endpoint exige `document_type` (BILL / CREDIT_NOTE, igual que el
+    importador de `/details`) y devuelve los ítems anidados en
+    `bill_includes.charges` y `bill_includes.bonuses` — NO en `charges` en la
+    raíz. Sin este ajuste el llamado devuelve 422 (o, si se ignora el error,
+    cero cargos) y la conciliación siempre da "no cuadra" aunque el libro esté
+    bien: no es que falten datos, es que se estaba mirando la clave equivocada.
     """
     from core.account_manager import AccountManager
 
@@ -650,23 +657,27 @@ def conciliar_billing(alias: str, periodo: str) -> dict:
     resumen_api = {}
     errores = []
     for grupo in ('ML', 'MP'):
-        try:
-            data = client._get(path, {'group': grupo})
-        except Exception as e:
-            errores.append({'grupo': grupo, 'error': str(e)[:300]})
-            continue
-        for cargo in ((data or {}).get('charges') or []):
-            tipo = (cargo.get('type') or '').strip().upper()
-            if not tipo:
+        for doc_type in ('BILL', 'CREDIT_NOTE'):
+            try:
+                data = client._get(path, {'group': grupo, 'document_type': doc_type})
+            except Exception as e:
+                errores.append({'grupo': grupo, 'document_type': doc_type,
+                                'error': str(e)[:300]})
                 continue
-            monto = abs(Decimal(str(cargo.get('amount') or 0)))
-            entrada = resumen_api.setdefault(tipo, {
-                'tipo': tipo,
-                'label': cargo.get('label') or tipo,
-                'resumen': Decimal('0'),
-            })
-            entrada['resumen'] += monto
-        time.sleep(PAUSA_ML)
+            incluye = (data or {}).get('bill_includes') or {}
+            items = (incluye.get('charges') or []) + (incluye.get('bonuses') or [])
+            for cargo in items:
+                tipo = (cargo.get('type') or '').strip().upper()
+                if not tipo:
+                    continue
+                monto = abs(Decimal(str(cargo.get('amount') or 0)))
+                entrada = resumen_api.setdefault(tipo, {
+                    'tipo': tipo,
+                    'label': cargo.get('label') or tipo,
+                    'resumen': Decimal('0'),
+                })
+                entrada['resumen'] += monto
+            time.sleep(PAUSA_ML)
 
     # Lo que tenemos importado, agrupado por subtipo
     with session_scope() as s:
