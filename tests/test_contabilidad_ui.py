@@ -397,6 +397,56 @@ def test_rango_invertido(cliente):
     check(r.status_code == 200, 'una página no numérica no rompe')
 
 
+def test_csv_costos_faltantes(cliente):
+    """
+    El CSV es el camino de ida y vuelta: se descarga, se completa la columna
+    costo en Excel y se pega de vuelta. Si no abre en columnas en Excel en
+    español o se comen los acentos, no sirve.
+    """
+    seccion('Descarga del CSV de publicaciones sin costo')
+
+    # Una venta de una publicación sin costo cargado: es la fila que el CSV
+    # tiene que traer.
+    with webdb.session_scope() as s:
+        reglas = cont.cargar_reglas(s)
+        cont.upsert_movimiento(s, {
+            'cuenta_alias': ALIAS, 'origen': 'ml_order',
+            'external_id': 'SINCOSTO-1', 'periodo': '2026-04',
+            'fecha': datetime(2026, 4, 5), 'concepto': 'Serum sin costo',
+            'subtipo': 'VENTA', 'monto': Decimal('250000'),
+            'item_id': 'MLA1111111111', 'cantidad': 1,
+            'rubro_sugerido': 'VTA_ML',
+        }, reglas)
+
+    r = cliente.get('/contabilidad/costos-faltantes.csv')
+    check(r.status_code == 200, 'responde 200', str(r.status_code))
+    check('text/csv' in r.headers.get('Content-Type', ''),
+          'se sirve como CSV', r.headers.get('Content-Type'))
+    check('attachment' in r.headers.get('Content-Disposition', ''),
+          'se descarga en vez de abrirse en el navegador',
+          r.headers.get('Content-Disposition'))
+
+    cuerpo = r.data.decode('utf-8-sig')
+    lineas = [l for l in cuerpo.splitlines() if l.strip()]
+    check(lineas[0] == 'item_id;titulo;ventas;facturado;costo',
+          'la cabecera tiene las columnas que espera el cargador',
+          lineas[0])
+    check(r.data.startswith('\ufeff'.encode('utf-8')),
+          'lleva BOM para que Excel no rompa los acentos')
+    check(len(lineas) >= 2, 'trae al menos una publicación sin costo',
+          f'{len(lineas)} líneas')
+    check(lineas[1].rstrip().endswith(';'),
+          'la columna costo viene vacía, lista para completar', lineas[1])
+
+    # El formato que sale tiene que poder volver a entrar
+    from modules import contabilidad_cierre as _c
+    res = _c.cargar_costos_texto(
+        lineas[0] + '\n' + lineas[1].rstrip() + '1234')
+    check(res['cargados'] + res['actualizados'] == 1,
+          'el CSV completado se vuelve a cargar sin tocar nada',
+          str(res)[:200])
+
+
 def main():
     print('═' * 70)
     print('TESTS DE LAS PANTALLAS DE CONTABILIDAD')
@@ -415,6 +465,7 @@ def main():
         test_cuenta_mp(cliente)
         test_api_resumen(cliente)
         test_rango_invertido(cliente)
+        test_csv_costos_faltantes(cliente)
 
     print('\n' + '═' * 70)
     print(f'PASARON: {len(PASADOS)}    FALLARON: {len(FALLOS)}')

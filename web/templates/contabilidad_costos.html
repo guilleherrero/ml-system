@@ -158,12 +158,21 @@ MLA2240715828&#9;Delineador De Cejas&#9;4200"></textarea>
     <div class="app-card">
       <div class="app-card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-list-check"></i> Publicaciones sin costo</span>
-        {% if faltantes %}<span class="badge app-badge-crit">{{ faltantes | length }}</span>{% endif %}
+        <span class="d-flex align-items-center gap-2">
+          {% if faltantes %}
+          <a class="app-btn app-btn-ghost" style="padding:.25rem .6rem"
+             href="{{ url_for('contabilidad.costos_faltantes_csv') }}">
+            <i class="bi bi-filetype-csv"></i> Descargar
+          </a>
+          <span class="badge app-badge-crit">{{ faltantes | length }}</span>
+          {% endif %}
+        </span>
       </div>
       {% if faltantes %}
       <div class="p-3 pb-0 cont-sub">
         Ordenadas por lo facturado: arrancá por arriba, es donde más mueve el resultado.
-        Copiá el ID y pegalo en el cuadro de la izquierda con su costo.
+        Lo más rápido es <strong>Descargar</strong>, completar la columna
+        <code>costo</code> en Excel y pegar todo de vuelta en el cuadro de la izquierda.
       </div>
       <div class="table-responsive" style="max-height:520px;overflow-y:auto">
         <table class="table app-data-table mb-0">

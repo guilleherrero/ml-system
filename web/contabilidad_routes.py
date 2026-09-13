@@ -16,8 +16,12 @@ Pantallas:
 import threading
 from datetime import date, datetime, timedelta
 
+import csv
+import io
+
 from flask import (
-    Blueprint, flash, jsonify, redirect, render_template, request, url_for,
+    Blueprint, Response, flash, jsonify, redirect, render_template, request,
+    url_for,
 )
 
 from modules import contabilidad as cont
@@ -353,6 +357,35 @@ def costos():
         faltantes=faltantes,
         mes_actual=date.today().replace(day=1).isoformat(),
         **_ctx_base(),
+    )
+
+
+@bp.route('/costos-faltantes.csv')
+def costos_faltantes_csv():
+    """
+    Las publicaciones con ventas y sin costo, en un CSV con la columna `costo`
+    vacía y ordenadas por lo facturado.
+
+    Es el camino de ida y vuelta completo: se descarga, se completa la columna
+    en Excel y se pega de nuevo en "Cargar costos nuevos". Sin esto había que
+    copiar 121 IDs a mano de la pantalla, que es exactamente el trabajo que el
+    sistema tiene que ahorrar.
+    """
+    faltantes = cierre.items_sin_costo(request.args.get('cuenta') or None)
+
+    buf = io.StringIO()
+    # delimiter=';' para que Excel en español lo abra en columnas sin pedir nada
+    w = csv.writer(buf, delimiter=';')
+    w.writerow(['item_id', 'titulo', 'ventas', 'facturado', 'costo'])
+    for f in faltantes:
+        w.writerow([f['item_id'], f.get('titulo') or '', f['ventas'],
+                    round(float(f['facturado'] or 0)), ''])
+
+    return Response(
+        '﻿' + buf.getvalue(),   # BOM: Excel respeta los acentos
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition':
+                 f'attachment; filename=costos-faltantes-{date.today()}.csv'},
     )
 
 
