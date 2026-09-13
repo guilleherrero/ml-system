@@ -105,6 +105,11 @@ PLAN_RUBROS = [
     # El resumen de percepciones repite cargos que ya vienen en el detalle de
     # facturacion. Se guarda para poder conciliar, pero no suma.
     ('CONCIL_PERCEP', 'Resumen de percepciones (ya contabilizadas en facturación)', TIPO_NEUTRO, 'Neutros', False, AMBITO_NEGOCIO, 620),
+    # Débito automático en MP de la factura mensual de ML. La factura es la
+    # SUMA de cargos que ya están en el libro uno por uno (comisiones, envíos,
+    # publicidad, IIBB, percepciones). Pagarla no es un gasto nuevo: es la
+    # salida de caja de gastos ya contabilizados. Neutro, o se duplicaría todo.
+    ('CONCIL_FACT_ML', 'Pago de la factura mensual de ML (cargos ya contabilizados)', TIPO_NEUTRO, 'Neutros', False, AMBITO_NEGOCIO, 630),
     ('PERSONAL',      'Personal / retiros',             TIPO_NEUTRO,   'Personal',   False, AMBITO_PERSONAL, 700),
     (RUBRO_SIN_CLASIFICAR, 'Sin clasificar',            TIPO_NEUTRO,   'Pendientes', False, AMBITO_NEGOCIO, 900),
 ]
@@ -155,6 +160,21 @@ SUBTIPO_ML_RUBRO = {
     'IBLP':    'IIBB',         # La Pampa
     'IBSA':    'IIBB',         # Salta
     'CGMV':    'IIBB',         # CABA régimen especial
+    'BIB':     'IIBB',         # "Anulación de percepción IIBB Buenos Aires"
+    'BBNQ':    'IIBB',         # anulaciones provinciales: la B no lleva C
+    'BBCA':    'IIBB',
+    'BBSA':    'IIBB',
+    'BIBME':   'IIBB',
+
+    # ── Full: no son solo almacenamiento, también penalidades y retiros ──
+    'CFBA':    'FULL_ML',      # "Cargo por stock antiguo en Full"
+    'CFRS':    'FULL_ML',      # "Cargo por retiro de stock Full"
+    'CFPB':    'FULL_ML',      # "Cargo por incumplimiento en Envíos Full"
+
+    # ── Otros cargos vistos en la facturación real ──
+    'CPOPC':   'COM_MP',       # "Cargo por cobrar con Mercado Pago"
+    'CRIA':    'FIN_ML',       # "Cargo por adelanto de disponibilidad de dinero"
+    'CSERRE':  'PERSONAL',     # "Cargo por uso de servicio de restaurantes"
 
     # Venta (códigos de la documentación, se dejan por compatibilidad)
     'CV':      'COM_ML',      # cobro por venta
@@ -197,6 +217,10 @@ def rubro_de_subtipo(subtipo: str):
     BVFV "Anulación del cargo por vender"). Así que si no conocemos el código
     con B, se prueba su equivalente con C y se usa ese rubro. Eso hace que un
     par nuevo entre bien clasificado sin tocar la tabla.
+
+    En las percepciones provinciales el cargo no empieza con C sino con I
+    (IBNQ "Percepción IIBB Neuquén" ↔ BBNQ "Anulación de esa percepción",
+    IIBBME ↔ BIBME), así que la segunda pasada prueba con I.
     """
     sub = (subtipo or '').strip().upper()
     if not sub:
@@ -204,9 +228,9 @@ def rubro_de_subtipo(subtipo: str):
     if sub in SUBTIPO_ML_RUBRO:
         return SUBTIPO_ML_RUBRO[sub]
     if sub.startswith('B'):
-        equivalente = 'C' + sub[1:]
-        if equivalente in SUBTIPO_ML_RUBRO:
-            return SUBTIPO_ML_RUBRO[equivalente]
+        for equivalente in ('C' + sub[1:], 'I' + sub[1:]):
+            if equivalente in SUBTIPO_ML_RUBRO:
+                return SUBTIPO_ML_RUBRO[equivalente]
     return None
 
 
@@ -680,6 +704,28 @@ def _rango_periodos(desde: date, hasta: date) -> list:
     return out
 
 
+def _mes_de_fecha():
+    """
+    Mes calendario ('YYYY-MM') de la fecha del movimiento, en SQL.
+
+    NO se usa `Movimiento.periodo` para la serie mensual. `periodo` es el
+    período de FACTURACIÓN de ML, que no coincide con el mes calendario: un
+    cargo del 30 de agosto puede caer en el período de facturación de
+    septiembre. Mezclarlos hacía que el gráfico mostrara las ventas de un mes
+    contra los cargos de otro — por eso el último mes daba negativo: 13 días
+    de ventas contra un período entero de comisiones e impuestos. El total
+    anual siempre estuvo bien (la diferencia entre meses sumaba exactamente
+    cero); lo que estaba mal era el reparto. `periodo` se conserva en la tabla
+    porque es lo que permite cruzar contra la factura que manda ML.
+
+    Se usa `extract`, no recortar el texto de la fecha: SQLAlchemy lo compila
+    a lo nativo de cada motor (Postgres y SQLite) y no depende de cómo el
+    servidor decida imprimir un timestamp.
+    """
+    return (func.extract('year', Movimiento.fecha),
+            func.extract('month', Movimiento.fecha))
+
+
 def resumen(desde: date, hasta: date, cuenta_alias: str = None,
             incluir_personal: bool = False) -> dict:
     """
@@ -688,10 +734,14 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
     `resultado` suma únicamente movimientos con `computable=True` y rubro con
     `afecta_resultado=True`. Los personales y traspasos quedan reportados
     aparte, no sumados.
+
+    La serie mensual se arma por fecha calendario, no por período de
+    facturación de ML. Ver `_mes_de_fecha`.
     """
+    anio_sql, mes_num_sql = _mes_de_fecha()
     with session_scope() as s:
         q = (s.query(
-                Movimiento.periodo,
+                anio_sql.label('anio'), mes_num_sql.label('mes_num'),
                 Rubro.codigo, Rubro.nombre, Rubro.tipo, Rubro.grupo,
                 Rubro.afecta_resultado, Rubro.ambito, Rubro.orden,
                 func.sum(Movimiento.monto).label('total'),
@@ -701,7 +751,7 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
              .filter(Movimiento.fecha >= datetime.combine(desde, datetime.min.time()))
              .filter(Movimiento.fecha <= datetime.combine(hasta, datetime.max.time()))
              .filter(Movimiento.computable == True)  # noqa: E712
-             .group_by(Movimiento.periodo, Rubro.codigo, Rubro.nombre,
+             .group_by(anio_sql, mes_num_sql, Rubro.codigo, Rubro.nombre,
                        Rubro.tipo, Rubro.grupo, Rubro.afecta_resultado,
                        Rubro.ambito, Rubro.orden))
         if cuenta_alias:
@@ -723,8 +773,9 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
         }
         cant_sin_clasif = 0
 
-        for (periodo, codigo, nombre, tipo, grupo, afecta, ambito, orden,
-             total, cantidad) in filas:
+        for (anio, mes_num, codigo, nombre, tipo, grupo, afecta, ambito,
+             orden, total, cantidad) in filas:
+            mes = f'{int(anio):04d}-{int(mes_num):02d}'
             total = Decimal(str(total or 0))
             codigo = codigo or RUBRO_SIN_CLASIFICAR
             nombre = nombre or 'Sin clasificar'
@@ -762,12 +813,12 @@ def resumen(desde: date, hasta: date, cuenta_alias: str = None,
                     totales['financiero'] += total
                 totales['resultado'] += total
 
-                if periodo in por_mes:
-                    por_mes[periodo]['resultado'] += total
+                if mes in por_mes:
+                    por_mes[mes]['resultado'] += total
                     if total >= 0:
-                        por_mes[periodo]['ingresos'] += total
+                        por_mes[mes]['ingresos'] += total
                     else:
-                        por_mes[periodo]['egresos'] += total
+                        por_mes[mes]['egresos'] += total
 
         ingresos = totales['ingresos']
         margen_pct = (float(totales['resultado'] / ingresos * 100)
@@ -1195,6 +1246,52 @@ def neutralizar_resumen_percepciones() -> dict:
             m.nota_revision = ('Resumen de percepciones: el cargo ya está '
                                'contabilizado en el detalle de facturación')
         return {'neutralizados': len(filas), 'monto_sacado': float(total)}
+
+
+def reclasificar_billing_por_subtipo() -> dict:
+    """
+    Aplica el mapa de subtipos de ML a lo ya importado que quedó pendiente.
+
+    Ampliar SUBTIPO_ML_RUBRO no alcanza: las filas que se importaron antes
+    siguen sin rubro hasta que alguien apreta "Reclasificar" en la bandeja.
+    Esto lo hace solo al arrancar, así el mapa nuevo vale también para el
+    año que ya está en la base y no hay que reimportar (una reimportación
+    del año son ~1 hora por el límite de 5 pedidos/minuto de /billing).
+
+    Solo toca facturación de ML sin rubro y sin decisión humana. Idempotente:
+    si no hay nada mapeable nuevo, no cambia nada.
+    """
+    with session_scope() as s:
+        sin_clasif_id = rubro_id_por_codigo(s, RUBRO_SIN_CLASIFICAR)
+
+        filas = (s.query(Movimiento)
+                 .filter(Movimiento.origen == ORIGEN_ML_BILLING)
+                 .filter(Movimiento.rubro_manual == False)  # noqa: E712
+                 .filter(or_(Movimiento.rubro_id == None,   # noqa: E711
+                             Movimiento.rubro_id == sin_clasif_id))
+                 .all())
+
+        cambiados = 0
+        por_subtipo = {}
+        for m in filas:
+            codigo = rubro_de_subtipo(m.subtipo)
+            if not codigo:
+                continue
+            rid = rubro_id_por_codigo(s, codigo)
+            if not rid or rid == m.rubro_id:
+                continue
+            rubro = s.get(Rubro, rid)
+            m.rubro_id = rid
+            m.ambito = rubro.ambito if rubro else AMBITO_NEGOCIO
+            m.regla_id = None
+            m.revisar = False
+            m.nota_revision = None
+            cambiados += 1
+            por_subtipo[m.subtipo] = por_subtipo.get(m.subtipo, 0) + 1
+
+        return {'pendientes_revisados': len(filas),
+                'reclasificados': cambiados,
+                'por_subtipo': por_subtipo}
 
 
 def limpiar_percepciones_con_id_posicional() -> dict:

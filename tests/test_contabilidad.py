@@ -1235,6 +1235,203 @@ def test_neutralizar_resumen_percepciones():
     check(res2['neutralizados'] == 0, 'la migración es idempotente', str(res2))
 
 
+def test_serie_mensual_por_fecha_no_por_periodo():
+    """
+    El bug que hacia que "el ultimo mes" diera negativo.
+
+    `periodo` es el periodo de FACTURACION de ML, no el mes calendario: un
+    cargo del 30 de agosto puede venir en el periodo de septiembre. La serie
+    mensual agrupaba por `periodo` mientras las ventas entraban por fecha, asi
+    que el grafico comparaba las ventas de un mes contra los cargos de otro.
+    En produccion el mes en curso mostraba -3.140.168 cuando el septiembre
+    real era +330.225. El total anual nunca estuvo mal: la diferencia entre
+    meses sumaba exactamente cero, lo que estaba mal era el reparto.
+    """
+    seccion('Serie mensual: por fecha calendario, no por período de facturación')
+
+    alias = 'SerieMes'
+    with webdb.session_scope() as s:
+        rid_vta = cont.rubro_id_por_codigo(s, 'VTA_ML')
+        rid_com = cont.rubro_id_por_codigo(s, 'COM_ML')
+        # Venta del 20 de mayo, periodo de facturacion de mayo
+        s.add(Movimiento(
+            cuenta_alias=alias, origen=ORIGEN_ML_ORDER, external_id='SM-1',
+            periodo='2026-05', fecha=datetime(2026, 5, 20),
+            concepto='Venta', monto=Decimal('100000'),
+            rubro_id=rid_vta, computable=True))
+        # Comision del 30 de mayo que ML factura en el periodo de JUNIO.
+        # Es el caso real: fecha en un mes, periodo en el siguiente.
+        s.add(Movimiento(
+            cuenta_alias=alias, origen='ml_billing', external_id='SM-2',
+            periodo='2026-06', fecha=datetime(2026, 5, 30),
+            concepto='Cargo por vender', subtipo='CVFV',
+            monto=Decimal('-30000'), rubro_id=rid_com, computable=True))
+
+    r = cont.resumen(date(2026, 5, 1), date(2026, 6, 30), cuenta_alias=alias)
+    meses = {m['periodo']: m for m in r['por_mes']}
+
+    check(abs(meses['2026-05']['resultado'] - 70000) < 0.01,
+          'el cargo cae en el mes de su fecha, no en el de la factura',
+          f'mayo dio {meses["2026-05"]["resultado"]}')
+    check(abs(meses['2026-06']['resultado']) < 0.01,
+          'el mes siguiente no queda cargado con gastos que no son suyos',
+          f'junio dio {meses["2026-06"]["resultado"]}')
+
+    # La suma de los meses tiene que dar el total del periodo: si no, el
+    # grafico y el resultado se contradicen (que es lo que pasaba).
+    suma_meses = sum(m['resultado'] for m in r['por_mes'])
+    check(abs(suma_meses - r['totales']['resultado']) < 0.01,
+          'la suma de los meses coincide con el resultado del período',
+          f'meses {suma_meses} vs total {r["totales"]["resultado"]}')
+
+    # Y el mes por separado tiene que dar lo mismo que el mes dentro del año
+    solo_mayo = cont.resumen(date(2026, 5, 1), date(2026, 5, 31),
+                             cuenta_alias=alias)['totales']['resultado']
+    check(abs(solo_mayo - meses['2026-05']['resultado']) < 0.01,
+          'pedir el mes solo da lo mismo que el mes dentro del rango anual',
+          f'solo mayo {solo_mayo} vs serie {meses["2026-05"]["resultado"]}')
+
+
+def test_subtipos_full_y_anulaciones_provinciales():
+    """
+    Subtipos que quedaron en la bandeja de produccion con 250 pendientes.
+    Las anulaciones provinciales de IIBB no empiezan con C sino con I
+    (IBNQ ↔ BBNQ), asi que el fallback B→C no las cubria.
+    """
+    seccion('Subtipos de Full, anulaciones provinciales y otros cargos')
+
+    esperados = {
+        'CFBA': 'FULL_ML',    # cargo por stock antiguo en Full
+        'CFRS': 'FULL_ML',    # cargo por retiro de stock Full
+        'CFPB': 'FULL_ML',    # incumplimiento en Envíos Full
+        'CPOPC': 'COM_MP',    # cargo por cobrar con Mercado Pago
+        'CRIA': 'FIN_ML',     # adelanto de disponibilidad de dinero
+        'CSERRE': 'PERSONAL',  # servicio de restaurantes: no es del negocio
+        'BIB': 'IIBB',        # anulación de percepción IIBB Buenos Aires
+        'BBNQ': 'IIBB',
+        'BBCA': 'IIBB',
+        'BBSA': 'IIBB',
+        'BIBME': 'IIBB',
+        'BIRE': 'PERCEP',     # bonificación de percepción de IVA especial
+        'BIVA': 'PERCEP',
+    }
+    for sub, esperado in esperados.items():
+        check(cont.rubro_de_subtipo(sub) == esperado,
+              f'{sub} → {esperado}', f'dio {cont.rubro_de_subtipo(sub)}')
+
+    # El fallback B→I resuelve un par nuevo sin tocar la tabla
+    check(cont.rubro_de_subtipo('BBCF') == 'IIBB',
+          'una anulación provincial nueva se resuelve por el par I',
+          f'dio {cont.rubro_de_subtipo("BBCF")}')
+    check(cont.rubro_de_subtipo('BZZZZ') is None,
+          'un código que no tiene par conocido sigue yendo a pendientes')
+
+
+def test_reclasificar_billing_por_subtipo():
+    """
+    Ampliar el mapa no alcanzaba: lo ya importado seguia sin rubro hasta que
+    alguien apretaba "Reclasificar". Ahora corre al arrancar.
+    """
+    seccion('Migración: aplicar el mapa de subtipos a lo ya importado')
+
+    alias = 'RecSub'
+    with webdb.session_scope() as s:
+        sc = cont.rubro_id_por_codigo(s, RUBRO_SIN_CLASIFICAR)
+        s.add(Movimiento(
+            cuenta_alias=alias, origen='ml_billing', external_id='RS-1',
+            periodo='2026-07', fecha=datetime(2026, 7, 10),
+            concepto='Cargo por stock antiguo en Full', subtipo='CFBA',
+            monto=Decimal('-2350'), rubro_id=sc, computable=True,
+            revisar=True, nota_revision='Subtipo de billing no mapeado: CFBA'))
+        # Lo que un humano ya decidio no se toca
+        rid_gasto = cont.rubro_id_por_codigo(s, 'GASTO_OTRO')
+        s.add(Movimiento(
+            cuenta_alias=alias, origen='ml_billing', external_id='RS-2',
+            periodo='2026-07', fecha=datetime(2026, 7, 11),
+            concepto='Cargo por retiro de stock Full', subtipo='CFRS',
+            monto=Decimal('-2975'), rubro_id=rid_gasto, rubro_manual=True,
+            computable=True))
+
+    res = cont.reclasificar_billing_por_subtipo()
+    check(res['reclasificados'] >= 1,
+          'reclasifica el pendiente con subtipo ahora mapeado', str(res))
+
+    with webdb.session_scope() as s:
+        m1 = (s.query(Movimiento)
+              .filter_by(cuenta_alias=alias, external_id='RS-1').one())
+        check(s.get(Rubro, m1.rubro_id).codigo == 'FULL_ML',
+              'CFBA quedó en Almacenamiento y servicios Full',
+              s.get(Rubro, m1.rubro_id).codigo)
+        check(not m1.revisar and not m1.nota_revision,
+              'deja de estar marcado para revisar')
+
+        m2 = (s.query(Movimiento)
+              .filter_by(cuenta_alias=alias, external_id='RS-2').one())
+        check(s.get(Rubro, m2.rubro_id).codigo == 'GASTO_OTRO',
+              'no pisa la clasificación manual de un humano',
+              s.get(Rubro, m2.rubro_id).codigo)
+
+    res2 = cont.reclasificar_billing_por_subtipo()
+    check(res2['reclasificados'] == 0, 'es idempotente', str(res2))
+
+
+def test_debito_de_factura_ml_no_duplica():
+    """
+    Lo que planteo el usuario: ML cobra cargo por cargo y ademas debita el
+    resumen mensual por Mercado Pago. Si ese debito entra como gasto, se
+    cuenta dos veces toda la factura (IIBB, percepciones, publicidad).
+    """
+    seccion('Débito de la factura mensual de ML: no puede sumar de nuevo')
+
+    alias = 'FactML'
+    pago = {
+        'id': 77770001,
+        'date_approved': '2026-06-08T10:00:00.000-03:00',
+        'description': 'Pago de factura de Mercado Libre',
+        'transaction_amount': 4200000.0,
+        'status': 'approved',
+        'currency_id': 'ARS',
+        'collector_id': 111111,
+        'payer': {'id': 222222},
+        'payment_type_id': 'account_money',
+    }
+    datos = imp._normalizar_pago_mp(pago, '222222', alias)
+    check(datos['rubro_sugerido'] == 'CONCIL_FACT_ML',
+          'el débito de la factura va al rubro neutro',
+          str(datos.get('rubro_sugerido')))
+    check(datos['computable'] is False,
+          'queda no computable: no puede inflar los gastos')
+    check(datos['revisar'] is True,
+          'queda marcado para revisar, no se decide en silencio')
+
+    with webdb.session_scope() as s:
+        reglas = cont.cargar_reglas(s)
+        cont.upsert_movimiento(s, datos, reglas)
+
+    r = cont.resumen(date(2026, 6, 1), date(2026, 6, 30), cuenta_alias=alias)
+    check(abs(r['totales']['resultado']) < 0.01,
+          'pagar la factura no cambia el resultado del mes',
+          str(r['totales']))
+    check(r['totales']['impuestos'] == 0,
+          'el IIBB de la factura no se cuenta por segunda vez',
+          str(r['totales']['impuestos']))
+
+    # Un gasto real que NO es la factura sigue entrando como gasto
+    otro = imp._normalizar_pago_mp({
+        'id': 77770002,
+        'date_approved': '2026-06-09T10:00:00.000-03:00',
+        'description': 'Pago a proveedor Distribuidora Sur',
+        'transaction_amount': 500000.0, 'status': 'approved',
+        'currency_id': 'ARS', 'collector_id': 333333,
+        'payer': {'id': 222222}, 'payment_type_id': 'account_money',
+    }, '222222', alias)
+    check(otro.get('rubro_sugerido') != 'CONCIL_FACT_ML',
+          'un pago a proveedor no se confunde con la factura de ML',
+          str(otro.get('rubro_sugerido')))
+    check(otro['computable'] is True,
+          'y sigue siendo computable')
+
+
 def main():
     print('═' * 70)
     print('TESTS DEL SISTEMA CONTABLE')
@@ -1260,6 +1457,10 @@ def main():
     test_limpieza_percepciones_viejas()
     test_percepciones_no_se_duplican_con_facturacion()
     test_neutralizar_resumen_percepciones()
+    test_serie_mensual_por_fecha_no_por_periodo()
+    test_subtipos_full_y_anulaciones_provinciales()
+    test_reclasificar_billing_por_subtipo()
+    test_debito_de_factura_ml_no_duplica()
 
     print('\n' + '═' * 70)
     print(f'PASARON: {len(PASADOS)}    FALLARON: {len(FALLOS)}')

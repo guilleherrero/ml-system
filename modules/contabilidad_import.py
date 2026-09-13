@@ -27,6 +27,7 @@ Y uno de criterio: los rechazados, cancelados y devueltos se guardan pero con
 `computable=False`, así quedan auditables y fuera de los totales.
 """
 import os
+import re
 import threading
 import time
 from datetime import date, datetime, timedelta
@@ -299,6 +300,29 @@ def _mp_user_id(token: str) -> str:
     return str(_mp_get(token, '/users/me', {}).get('id') or '')
 
 
+# Débito automático en MP de la factura mensual de ML. ML cobra cargo por
+# cargo en la facturación (comisiones, envíos, publicidad, IIBB, percepciones)
+# y además, antes del 10, manda el resumen y lo debita de Mercado Pago. Ese
+# débito NO es un gasto nuevo: es la salida de caja de gastos que ya están en
+# el libro uno por uno. Si entra como gasto, se duplica todo lo de la factura.
+_RX_FACTURA_ML = re.compile(
+    r'(?:factura|resumen|liquidaci[oó]n|cargos?|d[eé]bito\s+autom[aá]tico)'
+    r'[^\n]{0,40}?mercado\s*(?:libre|pago)'
+    r'|mercado\s*(?:libre|pago)[^\n]{0,40}?'
+    r'(?:factura|resumen|liquidaci[oó]n|cargos?|d[eé]bito\s+autom[aá]tico)'
+    r'|mercadolibre\s*s\.?r\.?l',
+    re.IGNORECASE,
+)
+
+
+def _es_pago_de_factura_ml(concepto: str, pago: dict) -> bool:
+    """True si el movimiento parece el débito de la factura mensual de ML."""
+    if _RX_FACTURA_ML.search(concepto or ''):
+        return True
+    tipo_op = str(pago.get('operation_type') or '').strip().lower()
+    return tipo_op in ('invoice_payment', 'account_fund')
+
+
 def _normalizar_pago_mp(pago: dict, mi_id: str, alias: str) -> dict:
     """
     Convierte un pago de MP al formato del libro.
@@ -375,6 +399,23 @@ def _normalizar_pago_mp(pago: dict, mi_id: str, alias: str) -> dict:
     # duplicar el ingreso.
     if orden_ml and monto > 0:
         datos['rubro_sugerido'] = 'CONCIL_MP'
+
+    # El débito de la factura mensual de ML tampoco suma: los cargos que la
+    # componen ya están en el libro desde la facturación. Va a rubro neutro y
+    # marcado para revisar, para que se vea y se pueda corregir a mano si
+    # alguna vez el patrón se equivoca. Tiene prioridad sobre las reglas de
+    # texto (AFIP, Rentas): sin esto, el IIBB de la factura entraría otra vez
+    # como impuesto y quedaría contado dos veces.
+    elif monto < 0 and _es_pago_de_factura_ml(concepto, pago):
+        datos['rubro_sugerido'] = 'CONCIL_FACT_ML'
+        datos['computable'] = False
+        datos['revisar'] = True
+        datos['nota_revision'] = (
+            'Parece el débito de la factura mensual de ML. No suma: los '
+            'cargos que la componen (comisiones, envíos, publicidad, IIBB, '
+            'percepciones) ya están contabilizados uno por uno desde la '
+            'facturación. Si NO es la factura, asignale el rubro real.'
+        )
 
     return datos
 

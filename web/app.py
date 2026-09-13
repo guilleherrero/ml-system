@@ -19483,6 +19483,7 @@ try:
         migrar_tokens_mp_mal_guardados as _migrar_tokens_mp,
         limpiar_percepciones_con_id_posicional as _limpiar_percep,
         neutralizar_resumen_percepciones as _neutralizar_percep,
+        reclasificar_billing_por_subtipo as _reclasificar_billing,
     )
     _res_plan = _sembrar_plan_contable()
     if _res_plan.get('rubros_creados') or _res_plan.get('reglas_creadas'):
@@ -19507,6 +19508,12 @@ try:
     _res_neu = _neutralizar_percep()
     if _res_neu.get('neutralizados'):
         print(f'[contabilidad] resumen de percepciones neutralizado: {_res_neu}')
+
+    # Aplica el mapa de subtipos de ML a lo que ya estaba importado y quedo
+    # pendiente. Sin esto, ampliar el mapa no servia para el ano ya cargado.
+    _res_rec = _reclasificar_billing()
+    if _res_rec.get('reclasificados'):
+        print(f'[contabilidad] facturacion reclasificada por subtipo: {_res_rec}')
 
     # Trae a la tabla contable los costos ya cargados en config/costos.json
     # (el modulo "Cargar costos"). Idempotente: no pisa costos mas detallados.
