@@ -481,9 +481,22 @@ def cierre_periodo():
         periodos.append(f'{cur:%Y-%m}')
         cur = (cur - timedelta(days=1)).replace(day=1)
 
+    # Conciliación contra el estado de cuenta de ML del cierre del 10. Es
+    # local, no pega a la API: sirve para poner las dos pantallas al lado y
+    # ver qué línea no coincide, en vez de comparar dos totales a ciegas.
+    estado_ml = None
+    try:
+        anio, mes = (int(x) for x in periodo.split('-')[:2])
+        estado_ml = cierre.conciliar_estado_cuenta(date(anio, mes, 10),
+                                                   alias or None)
+    except Exception as e:
+        flash(f'No se pudo armar la conciliación del estado de cuenta: {e}',
+              'warning')
+
     return render_template(
         'contabilidad_cierre.html',
         resultado=resultado,
+        estado_ml=estado_ml,
         alias_sel=alias,
         periodo_sel=periodo,
         periodos=periodos,

@@ -31,7 +31,7 @@ from web.models_contabilidad import (
     CostoProducto, Movimiento, Rubro,
 )
 from modules.contabilidad import (
-    SUBTIPO_ML_RUBRO, rubro_id_por_codigo,
+    SUBTIPO_ML_RUBRO, rubro_de_subtipo, rubro_id_por_codigo,
 )
 
 PAUSA_ML = 0.35
@@ -356,9 +356,45 @@ def importar_costos_del_sistema(vigente_desde: date = None) -> dict:
     except Exception as e:
         return {'error': f'no se pudo leer config/costos.json: {e}'}
 
-    if not isinstance(costos, dict) or not costos:
+    if not isinstance(costos, dict):
+        costos = {}
+
+    # Segunda fuente: la COLUMNA COSTO del snapshot de Stock y Rentabilidad
+    # (data/stock_<Alias>.json, {"items": [{"id", "titulo", "costo", ...}]}).
+    # Hay costos cargados ahi que no estan en config/costos.json, y sin esto
+    # quedaban publicaciones con ventas y sin costo — o sea, resultado
+    # sobreestimado. costos.json manda: es lo que el usuario carga a mano.
+    del_stock = 0
+    try:
+        from core.account_manager import AccountManager
+        aliases = [c.alias for c in AccountManager().list_accounts()]
+    except Exception:
+        aliases = []
+
+    data_dir = _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'data')
+    for alias in aliases:
+        seguro = str(alias).replace(' ', '_').replace('/', '-')
+        try:
+            snap = db_load(_os.path.join(data_dir, f'stock_{seguro}.json')) or {}
+        except Exception:
+            continue
+        for it in (snap.get('items') or []):
+            if not isinstance(it, dict):
+                continue
+            iid = str(it.get('id') or '').strip().upper()
+            if not iid or iid in costos:
+                continue
+            if it.get('costo') in (None, '', 0):
+                continue
+            costos[iid] = {'titulo': it.get('titulo'), 'costo': it.get('costo'),
+                           'alias': alias, 'fuente': 'stock'}
+            del_stock += 1
+
+    if not costos:
         return {'cargados': 0, 'actualizados': 0, 'sin_costo': 0,
-                'mensaje': 'No hay costos cargados en config/costos.json'}
+                'mensaje': 'No hay costos cargados ni en config/costos.json '
+                           'ni en la columna costo de Stock y Rentabilidad'}
 
     # Vigencia por defecto: el 1 de enero del año en curso, para que alcance a
     # todas las ventas del año que se estan contabilizando.
@@ -400,8 +436,11 @@ def importar_costos_del_sistema(vigente_desde: date = None) -> dict:
                     titulo=(datos.get('titulo') or '')[:300] or None,
                     costo_unitario=costo, moneda_costo='ARS',
                     vigente_desde=vigente, origen_dato='costos_json',
-                    notas=(f'Importado de config/costos.json'
-                           f'{" — actualizado " + str(datos.get("updated")) if datos.get("updated") else ""}'),
+                    notas=(
+                        'Importado de la columna costo de Stock y Rentabilidad'
+                        if datos.get('fuente') == 'stock' else
+                        f'Importado de config/costos.json'
+                        f'{" — actualizado " + str(datos.get("updated")) if datos.get("updated") else ""}'),
                 ))
                 cargados += 1
             elif (existente.origen_dato == 'costos_json'
@@ -411,7 +450,8 @@ def importar_costos_del_sistema(vigente_desde: date = None) -> dict:
                 actualizados += 1
 
     return {'cargados': cargados, 'actualizados': actualizados,
-            'sin_costo': sin_costo, 'total_en_json': len(costos)}
+            'sin_costo': sin_costo, 'total_en_json': len(costos),
+            'de_columna_stock': del_stock}
 
 
 def items_sin_costo(cuenta_alias: str = None, desde: date = None) -> list:
@@ -451,6 +491,142 @@ def items_sin_costo(cuenta_alias: str = None, desde: date = None) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 # CONCILIACIÓN CONTRA EL RESUMEN DE FACTURACIÓN DE ML
 # ══════════════════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONCILIACIÓN CONTRA EL ESTADO DE CUENTA DE MERCADOLIBRE
+# ══════════════════════════════════════════════════════════════════════════════
+# ML no factura por mes calendario: CIERRA EL 10. El estado de cuenta con
+# cierre 10/ago cubre del 11/jul al 10/ago, y se paga el 17. Esto se verificó
+# contra el estado de cuenta real de cierre 10/ago/2026.
+#
+# Dos cosas que no son obvias y que hay que respetar para que los números den:
+#
+#   1. Las percepciones NO van dentro de la ventana. ML las imputa todas
+#      juntas el día siguiente al cierre (11/ago para el cierre del 10/ago).
+#      Sumadas en la ventana, aparecen las del cierre anterior y da el doble.
+#
+#   2. ML agrupa por concepto comercial, no por subtipo:
+#      - CDSD ("Cargo por devolución") va DENTRO de "Cargos de envíos de
+#        Mercado Libre", no en una línea de cancelaciones.
+#      - CFWA y CFCB son los "Cargos de envíos full".
+#      Sin esto parecía faltar plata: envíos daba 133.660 menos, que era
+#      exactamente el CDSD del período.
+#
+# Todo subtipo que no esté acá cae en "otros_no_mapeados": el principio es el
+# mismo que la bandeja de pendientes, nada se esconde para que cierre.
+
+LINEAS_ESTADO_ML = [
+    ('Cargos por venta',
+     ('CVFV', 'CVFF', 'CVFN', 'CV', 'CVPREM')),
+    ('Cargos de envíos de Mercado Libre',
+     ('CXD', 'CFF', 'CDSD', 'CFLX')),
+    ('Cargos por publicidad',
+     ('PADS', 'CPAD')),
+    ('Cargos de envíos full',
+     ('CFWA', 'CFCB', 'CFBA', 'CFRS', 'CFPB')),
+    ('Cargos de Mi página',
+     ('CESM',)),
+    ('Otros cargos',
+     ('CPOPC', 'CRIA', 'CSERRE')),
+]
+
+def _es_impositivo(sub: str) -> bool:
+    """
+    True si el subtipo es impositivo: va en la sección Percepciones del estado
+    de cuenta, no en los cargos comerciales ni en "Anulaciones de cargos".
+
+    Se resuelve por el rubro, no por una lista aparte: así una anulación
+    (BIRE↔CIRE, BBNQ↔IBNQ, BIB) queda del lado impositivo por el mismo camino
+    que el cargo, y no hay dos fuentes de verdad que se puedan desincronizar.
+    """
+    return rubro_de_subtipo(sub) in ('PERCEP', 'IIBB')
+
+
+def conciliar_estado_cuenta(cierre: date, cuenta_alias: str = None) -> dict:
+    """
+    Reproduce el estado de cuenta de ML de un cierre, desde el libro propio.
+
+    `cierre` es la fecha de cierre que muestra ML (el 10 de cada mes). Devuelve
+    las mismas líneas que la pantalla de ML para poder ponerlas al lado y ver
+    cuál no coincide, en vez de comparar un total contra otro y no saber dónde
+    está la diferencia.
+    """
+    # La ventana de cargos: del día siguiente al cierre anterior, hasta el
+    # cierre. Cierre 10/ago → del 11/jul al 10/ago.
+    mes_ant = cierre.month - 1 or 12
+    anio_ant = cierre.year - (1 if cierre.month == 1 else 0)
+    try:
+        cierre_ant = date(anio_ant, mes_ant, cierre.day)
+    except ValueError:                       # cierre el 31 y el mes anterior no lo tiene
+        cierre_ant = date(anio_ant, mes_ant, 28)
+    desde = date.fromordinal(cierre_ant.toordinal() + 1)
+    # Las percepciones se imputan el día siguiente al cierre
+    dia_percep = date.fromordinal(cierre.toordinal() + 1)
+
+    def _por_subtipo(d1, d2):
+        with session_scope() as s:
+            q = (s.query(Movimiento.subtipo, func.sum(Movimiento.monto))
+                 .filter(Movimiento.origen == ORIGEN_ML_BILLING)
+                 .filter(Movimiento.fecha >= datetime.combine(d1, datetime.min.time()))
+                 .filter(Movimiento.fecha <= datetime.combine(d2, datetime.max.time()))
+                 .group_by(Movimiento.subtipo))
+            if cuenta_alias:
+                q = q.filter(Movimiento.cuenta_alias == cuenta_alias)
+            return {(sub or '').strip().upper(): Decimal(str(tot or 0))
+                    for sub, tot in q.all()}
+
+    cargos_sub = _por_subtipo(desde, cierre)
+    percep_sub = _por_subtipo(dia_percep, dia_percep)
+
+    usados = set()
+    lineas = []
+    for etiqueta, subtipos in LINEAS_ESTADO_ML:
+        total = Decimal('0')
+        detalle = {}
+        for sub in subtipos:
+            if sub in cargos_sub:
+                total += cargos_sub[sub]
+                detalle[sub] = float(abs(cargos_sub[sub]))
+                usados.add(sub)
+        if total or detalle:
+            lineas.append({'linea': etiqueta, 'total': float(abs(total)),
+                           'subtipos': detalle})
+
+    # Anulaciones de cargos: todas las B* que no son impositivas
+    anul = Decimal('0')
+    anul_detalle = {}
+    for sub, monto in cargos_sub.items():
+        if sub.startswith('B') and not _es_impositivo(sub):
+            anul += monto
+            anul_detalle[sub] = float(monto)
+            usados.add(sub)
+    if anul_detalle:
+        lineas.append({'linea': 'Anulaciones de cargos', 'total': float(-anul),
+                       'subtipos': anul_detalle})
+
+    # Lo que no entró en ninguna línea. Se muestra, no se esconde.
+    otros = {sub: float(m) for sub, m in cargos_sub.items()
+             if sub and sub not in usados and not _es_impositivo(sub)}
+
+    total_cargos = sum(Decimal(str(m)) for sub, m in cargos_sub.items()
+                       if not _es_impositivo(sub))
+
+    total_percep = sum(percep_sub.values()) if percep_sub else Decimal('0')
+
+    return {
+        'cierre': cierre.isoformat(),
+        'vencimiento': date.fromordinal(cierre.toordinal() + 7).isoformat(),
+        'ventana_cargos': {'desde': desde.isoformat(), 'hasta': cierre.isoformat()},
+        'dia_percepciones': dia_percep.isoformat(),
+        'cuenta': cuenta_alias or 'TODAS',
+        'lineas': lineas,
+        'total_cargos': float(-total_cargos),
+        'percepciones': {sub: float(abs(m)) for sub, m in percep_sub.items()},
+        'total_percepciones': float(-total_percep),
+        'total_facturado': float(-(total_cargos + total_percep)),
+        'otros_no_mapeados': otros,
+    }
+
 
 def conciliar_billing(alias: str, periodo: str) -> dict:
     """

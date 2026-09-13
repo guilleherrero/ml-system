@@ -1432,6 +1432,112 @@ def test_debito_de_factura_ml_no_duplica():
           'y sigue siendo computable')
 
 
+def test_conciliar_estado_cuenta_ml():
+    """
+    Contra el estado de cuenta REAL de Guille, cierre 10/ago/2026.
+
+    Los importes de los subtipos son los que tiene el libro en produccion para
+    la ventana 11/jul-10/ago; los de la derecha, los que muestra la pantalla de
+    ML. Este test es el que fija las dos cosas que no eran obvias: que ML cierra
+    el 10 (no a fin de mes) y que las percepciones se imputan el dia 11.
+    """
+    seccion('Conciliación contra el estado de cuenta de ML (cierre del 10)')
+
+    alias = 'EstadoML'
+    # Cargos de la ventana 11/jul → 10/ago, tal como estan en produccion
+    cargos = {
+        'CVFV': -2449454, 'CVFF': -721155, 'CVFN': -1216256,   # venta
+        'CXD': -1573752, 'CFF': -250503, 'CDSD': -133660,      # envios (CDSD incluido)
+        'PADS': -589827,                                        # publicidad
+        'CFWA': -13489, 'CFCB': -9403,                          # full
+        'CESM': -15999,                                         # Mi pagina
+        'BVFV': 265792, 'BVFN': 178094, 'BVFF': 32880,          # anulaciones
+        'BXD': 38122, 'BFF': 11860, 'BDSD': 20490, 'BESM': 1032,
+        'BIRE': 12021, 'BIVA': 1070, 'BIB': 1427,               # anulaciones de impuestos:
+        'BBNQ': 182, 'BBSA': 403, 'BIBME': 448, 'BBCA': 456,    # NO son "anulaciones de cargos"
+    }
+    # Percepciones: ML las imputa todas el 11/ago, el dia siguiente al cierre
+    percepciones = {'CIRE': -1176244 + 0, 'IIBB': -699117}
+
+    with webdb.session_scope() as s:
+        reglas = cont.cargar_reglas(s)
+        for i, (sub, monto) in enumerate(cargos.items()):
+            cont.upsert_movimiento(s, {
+                'cuenta_alias': alias, 'origen': 'ml_billing',
+                'external_id': f'EC-{sub}', 'periodo': '2026-08',
+                'fecha': datetime(2026, 7, 20), 'concepto': f'Cargo {sub}',
+                'subtipo': sub, 'monto': Decimal(monto),
+                'rubro_sugerido': cont.rubro_de_subtipo(sub),
+            }, reglas)
+        for sub, monto in percepciones.items():
+            cont.upsert_movimiento(s, {
+                'cuenta_alias': alias, 'origen': 'ml_billing',
+                'external_id': f'EC-P-{sub}', 'periodo': '2026-08',
+                'fecha': datetime(2026, 8, 11), 'concepto': f'Percepción {sub}',
+                'subtipo': sub, 'monto': Decimal(monto),
+                'rubro_sugerido': cont.rubro_de_subtipo(sub),
+            }, reglas)
+
+    r = cierre.conciliar_estado_cuenta(date(2026, 8, 10), alias)
+
+    check(r['ventana_cargos'] == {'desde': '2026-07-11', 'hasta': '2026-08-10'},
+          'la ventana del cierre del 10/ago va del 11/jul al 10/ago',
+          str(r['ventana_cargos']))
+    check(r['dia_percepciones'] == '2026-08-11',
+          'las percepciones se toman del día siguiente al cierre',
+          r['dia_percepciones'])
+    check(r['vencimiento'] == '2026-08-17',
+          'el vencimiento es una semana después del cierre', r['vencimiento'])
+
+    lineas = {l['linea']: l['total'] for l in r['lineas']}
+    esperado = {
+        'Cargos por venta': 4386865,                  # ML: 4.386.887,82
+        'Cargos de envíos de Mercado Libre': 1957915,  # ML: 1.957.915,05
+        'Cargos por publicidad': 589827,               # ML: 589.828,97
+        'Cargos de envíos full': 22892,                # ML: 22.892,75
+        'Cargos de Mi página': 15999,                  # ML: 15.999,00
+    }
+    for linea, valor in esperado.items():
+        check(abs(lineas.get(linea, 0) - valor) < 2,
+              f'"{linea}" da {valor:,}'.replace(',', '.'),
+              f'dio {lineas.get(linea)}')
+
+    # CDSD tiene que estar en envios, no en una linea aparte: es la diferencia
+    # de 133.660 que hacia parecer que faltaba plata en envios.
+    subs_envios = next(l['subtipos'] for l in r['lineas']
+                       if l['linea'] == 'Cargos de envíos de Mercado Libre')
+    check('CDSD' in subs_envios,
+          'el cargo por devolución (CDSD) va dentro de envíos, como en ML')
+
+    # Las anulaciones impositivas NO van en "Anulaciones de cargos"
+    anul = next(l for l in r['lineas'] if l['linea'] == 'Anulaciones de cargos')
+    check(all(s not in anul['subtipos']
+              for s in ('BIRE', 'BIVA', 'BIB', 'BBNQ', 'BBSA', 'BIBME', 'BBCA')),
+          'las anulaciones de percepciones no se cuentan como anulación de cargo',
+          str(sorted(anul['subtipos'])))
+    check(abs(anul['total'] + 548270) < 2,
+          'las anulaciones de cargos suman -548.270', str(anul['total']))
+
+    # Percepciones: exactas contra el estado de cuenta
+    check(abs(r['total_percepciones'] - 1875361) < 2,
+          'las percepciones dan 1.875.361, igual que el estado de cuenta',
+          str(r['total_percepciones']))
+
+    check(not r['otros_no_mapeados'],
+          'ningún subtipo queda fuera de las líneas del estado de cuenta',
+          str(r['otros_no_mapeados']))
+
+    # Y el total: cargos netos de anulaciones + percepciones
+    # 6.973.498 de cargos menos 548.270 de anulaciones. ML muestra
+    # 6.607.936,53 porque su linea de anulaciones son 369.077,06: el resto lo
+    # acredita por nota de credito de facturas anteriores, fuera de esta factura.
+    check(abs(r['total_cargos'] - 6425228) < 2,
+          'el total de cargos del libro da 6.425.228', str(r['total_cargos']))
+    check(abs(r['total_facturado'] - (r['total_cargos']
+                                     + r['total_percepciones'])) < 2,
+          'el total facturado es cargos + percepciones')
+
+
 def main():
     print('═' * 70)
     print('TESTS DEL SISTEMA CONTABLE')
@@ -1461,6 +1567,7 @@ def main():
     test_subtipos_full_y_anulaciones_provinciales()
     test_reclasificar_billing_por_subtipo()
     test_debito_de_factura_ml_no_duplica()
+    test_conciliar_estado_cuenta_ml()
 
     print('\n' + '═' * 70)
     print(f'PASARON: {len(PASADOS)}    FALLARON: {len(FALLOS)}')

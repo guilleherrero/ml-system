@@ -264,4 +264,74 @@
   </div>
 </div>
 {% endif %}
+
+{% if estado_ml %}
+<!-- ML no factura por mes calendario: cierra el 10. Esta tarjeta reproduce el
+     estado de cuenta desde el libro propio para poder compararlo linea a
+     linea con la pantalla de Mercado Libre. -->
+<div class="app-card mt-3">
+  <div class="app-card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-receipt"></i> Estado de cuenta de ML — cierre {{ estado_ml.cierre | fecha_corta }}</span>
+    <span class="cont-sub">Vence {{ estado_ml.vencimiento | fecha_corta }}</span>
+  </div>
+
+  <div class="p-3 pb-0 cont-sub">
+    ML cierra el 10 de cada mes, no a fin de mes. Esta liquidación toma los cargos
+    del <strong>{{ estado_ml.ventana_cargos.desde | fecha_corta }}</strong> al
+    <strong>{{ estado_ml.ventana_cargos.hasta | fecha_corta }}</strong>, y las
+    percepciones del <strong>{{ estado_ml.dia_percepciones | fecha_corta }}</strong>,
+    que es cuando ML las imputa todas juntas. Ponela al lado de
+    <em>Facturación → Detalle de cuenta</em> en Mercado Libre: cada línea tiene que dar igual.
+  </div>
+
+  <div class="table-responsive">
+    <table class="table app-data-table mb-0">
+      <thead>
+        <tr><th>Línea del estado de cuenta</th><th>Subtipos de ML</th><th class="cont-num">Nuestro libro</th></tr>
+      </thead>
+      <tbody>
+        {% for l in estado_ml.lineas %}
+        <tr>
+          <td>{{ l.linea }}</td>
+          <td class="cont-sub">
+            {% for sub, monto in l.subtipos.items() %}{{ sub }}{% if not loop.last %} · {% endif %}{% endfor %}
+          </td>
+          <td class="cont-num">{{ l.total | pesos }}</td>
+        </tr>
+        {% endfor %}
+        <tr style="font-weight:var(--font-weight-semibold)">
+          <td colspan="2">Total de cargos</td>
+          <td class="cont-num">{{ estado_ml.total_cargos | pesos }}</td>
+        </tr>
+        <tr>
+          <td>Percepciones (IVA e Ingresos Brutos)</td>
+          <td class="cont-sub">
+            {% for sub in estado_ml.percepciones %}{{ sub }}{% if not loop.last %} · {% endif %}{% endfor %}
+          </td>
+          <td class="cont-num">{{ estado_ml.total_percepciones | pesos }}</td>
+        </tr>
+        <tr style="font-weight:var(--font-weight-semibold)">
+          <td colspan="2">Total facturado</td>
+          <td class="cont-num">{{ estado_ml.total_facturado | pesos }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if estado_ml.otros_no_mapeados %}
+  <div class="p-3 border-top">
+    <div class="app-alert-banner app-alert-banner-warn mb-0">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <div>
+        <strong>Subtipos que no entraron en ninguna línea.</strong>
+        Están en el total pero no sabemos en qué línea los pone ML:
+        {% for sub, monto in estado_ml.otros_no_mapeados.items() %}
+        <code>{{ sub }}</code> {{ monto | pesos }}{% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}
