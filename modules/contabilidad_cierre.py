@@ -19,6 +19,7 @@ no alcanza con importar, hay que poder demostrar que lo importado está completo
 """
 import csv
 import io
+import re
 import time
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -35,6 +36,11 @@ from modules.contabilidad import (
 )
 
 PAUSA_ML = 0.35
+
+# Código de publicación de MLA: 'MLA' + dígitos. Se busca dentro del texto de
+# la celda, no se exige que la celda entera sea el código — ver su uso en
+# `cargar_costos_texto`.
+_RX_ITEM_ID = re.compile(r'MLA\d{6,}')
 
 # Tolerancia en pesos para considerar que dos totales coinciden. Redondeos de
 # la propia API hacen que exigir igualdad exacta dé falsos positivos.
@@ -247,15 +253,20 @@ def cargar_costos_texto(contenido: str, vigente_desde_default: date = None,
                 'error': 'No se encontraron filas'}
 
     mapa = _mapear_columnas(filas[0])
-    if 'item_id' in mapa and 'costo_unitario' in mapa:
-        cuerpo = filas[1:]
-    else:
-        # Sin cabecera reconocible: se asume item_id en la primera columna y
-        # costo en la segunda, que es el pegado mínimo más común.
-        mapa = {'item_id': 0, 'costo_unitario': 1}
-        if len(filas[0]) > 2:
-            mapa['titulo'] = 2
-        cuerpo = filas
+    # Si se reconoció aunque sea UNA columna por nombre, la primera fila es
+    # cabecera y hay que saltearla — antes, si solo "costo" se reconocía y
+    # "item_id"/"publicación" no (por ejemplo por acentos rotos al exportar
+    # el CSV), se perdía esa pista y la cabecera se colaba como si fuera una
+    # fila de datos más (rechazada, pero ensuciando el resultado).
+    hay_cabecera = bool(mapa)
+    ocupadas = set(mapa.values())
+    for campo in ('item_id', 'costo_unitario'):
+        if campo not in mapa:
+            libres = [i for i in range(len(filas[0])) if i not in ocupadas]
+            if libres:
+                mapa[campo] = libres[0]
+                ocupadas.add(libres[0])
+    cuerpo = filas[1:] if hay_cabecera else filas
 
     default_fecha = vigente_desde_default or date.today().replace(day=1)
     cargados = actualizados = 0
@@ -270,7 +281,15 @@ def cargar_costos_texto(contenido: str, vigente_desde_default: date = None,
                 v = (fila[i] or '').strip()
                 return v or None
 
-            item_id = (val('item_id') or '').upper().replace(' ', '')
+            # La celda puede traer el título y el código pegados con un salto
+            # de línea (pasa al copiar la columna "Publicación" de Mis
+            # Publicaciones): "Título del producto\nMLA1234567890". Por eso
+            # se busca el patrón MLA+dígitos DENTRO del texto en vez de exigir
+            # que la celda entera sea el item_id — si no, se rechazaban todas
+            # las filas de una carga real por igual.
+            crudo_item_id = (val('item_id') or '').upper()
+            m = _RX_ITEM_ID.search(crudo_item_id)
+            item_id = m.group(0) if m else crudo_item_id.replace(' ', '').replace('\n', '')
             if not item_id:
                 rechazados.append({'fila': nro, 'motivo': 'sin item_id'})
                 continue
