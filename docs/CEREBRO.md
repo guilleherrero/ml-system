@@ -1498,6 +1498,40 @@ directo a soporte de ML.
   de jobs hardcodeado en 12 (quedo desactualizado apenas se agrego el job 13).
   Ahora sale de `len(scheduler.get_jobs())`.
 
+### Enriquecimiento de pantallas tras comparar contra el artifact original (2026-09-18)
+
+Guille había armado un prototipo standalone (Claude Artifact) antes de escribir
+la spec formal. Al comparar contra lo construido en `ml-system` aparecieron
+gaps reales de funcionalidad (no solo visuales — el estilo Bootstrap/sidebar
+de `ml-system` se mantiene a propósito, decisión explícita del usuario).
+Decisiones tomadas:
+
+- **Las 3 estrategias se siguen mostrando juntas** (no un selector que
+  muestra una sola), pero cada publicación ahora trae más información por
+  fila: ROI%, margen%, "contra hoy por venta" (delta vs. lo que gana hoy la
+  publicación real), y banderas (`ok`/`warn`/`bad`): gana o no al competidor
+  más barato, si supera el competidor más caro (`competidor_max`, nuevo,
+  faltaba en el formulario), si hay publicidad cargada, y una advertencia
+  específica de "efecto umbral" (si el precio queda justo debajo de $33.000,
+  sugiere el precio redondeado arriba del umbral y cuánto ganarías ahí).
+- **`Publicacion.publicidad_dia` por perfil** (existía en el dataclass desde
+  el sprint 1, nunca se expuso en el formulario): ahora hay una columna en
+  "Las 3 publicaciones" y `_pricing_calcular_core` suma automáticamente el
+  total en vez de pedirlo aparte (evita que un `publicidad_total` suelto no
+  coincida con la suma real de los 3 perfiles).
+- **`resultado_prueba()`** nuevo en `precio_motor.py` + `POST
+  /api/pricing/verificar_prueba`: veredicto manual simple ("cargá lo medido,
+  te dice si conviene") — adelanta una porción chica del sprint 4 sin
+  necesitar el snapshot diario automático ni un experimento abierto. Reusa la
+  misma fórmula de reparto Batalla/Medio/Compensa que ya tenía
+  `mapa_decision()` (se extrajo a `_ganancia_promedio_ponderada()` para no
+  duplicarla). Solo en `/pricing/existente` (Modo A) — en Modo B no hay
+  publicación real contra la cual medir una prueba.
+- Pendiente, no agregado todavía: la visualización tipo "línea numérica"
+  (ladder) del artifact, y la guía de uso inline (qué es Dato/Supuesto/
+  Medido, qué hace cada estrategia) — quedan para cuando haya lugar, no son
+  bloqueantes.
+
 ### Pendiente
 
 Sprints 4-5 de la spec (evolucion a 7/14 dias + curva de demanda + "ganar el

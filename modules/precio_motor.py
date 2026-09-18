@@ -640,6 +640,15 @@ def ventas_para_empatar(g_dia_hoy: float, ganancias: list[float],
     return meta / max(validas), meta / min(validas)
 
 
+def _ganancia_promedio_ponderada(ganancias: list[float], mix_batalla_pct: float,
+                                 split_medio: float) -> float:
+    """Ganancia por venta promedio si la Batalla se lleva `mix_batalla_pct`% de
+    las ventas y el resto se reparte Medio/Compensa segun `split_medio`."""
+    b = mix_batalla_pct / 100
+    sp = split_medio / 100
+    return b * ganancias[0] + (1 - b) * (sp * ganancias[1] + (1 - sp) * ganancias[2])
+
+
 def mapa_decision(g_dia_hoy: float, ganancias: list[float], split_medio: float,
                   publicidad_total: float, ventas_hoy: float) -> dict:
     """Solo tiene sentido para la estrategia 'comp' (la unica donde las tres
@@ -653,15 +662,42 @@ def mapa_decision(g_dia_hoy: float, ganancias: list[float], split_medio: float,
     base = max(0.5, ventas_hoy)
     filas = sorted({max(0.5, round(base * m * 2) / 2)
                     for m in (0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4)}, reverse=True)
-    sp = split_medio / 100
-
-    def avg(b):  # b en fraccion
-        return b * ganancias[0] + (1 - b) * (sp * ganancias[1] + (1 - sp) * ganancias[2])
 
     return {
         "cols": cols,
         "filas": filas,
-        "celdas": [[u * avg(cc / 100) - publicidad_total - g_dia_hoy for cc in cols] for u in filas],
+        "celdas": [[u * _ganancia_promedio_ponderada(ganancias, cc, split_medio) - publicidad_total - g_dia_hoy
+                    for cc in cols] for u in filas],
+    }
+
+
+def resultado_prueba(ganancias: list[float], g_dia_hoy: float, publicidad_total: float,
+                     ventas_dia_prueba: float, mix_batalla_pct: float | None = None,
+                     split_medio: float = 50.0) -> dict:
+    """Evalua a mano lo que paso en una prueba real contra la ganancia de hoy.
+
+    Version simple del veredicto (spec sprint 4) que no necesita el snapshot
+    diario automatico: se carga lo medido y da un numero. `mix_batalla_pct` es
+    el % de las ventas de la prueba que se llevo la Batalla — solo importa
+    cuando las tres publicaciones dejan ganancias distintas (estrategia
+    'comp'); si no se pasa, se promedia entre las publicaciones viables.
+    """
+    finitas = [g for g in ganancias if g is not None and math.isfinite(g)]
+    if not finitas:
+        return {"viable": False}
+
+    if mix_batalla_pct is not None and len(ganancias) == 3 and all(math.isfinite(g) for g in ganancias):
+        ganancia_prom = _ganancia_promedio_ponderada(ganancias, mix_batalla_pct, split_medio)
+    else:
+        ganancia_prom = sum(finitas) / len(finitas)
+
+    ganancia_dia_prueba = ventas_dia_prueba * ganancia_prom - publicidad_total
+    delta = ganancia_dia_prueba - g_dia_hoy
+    return {
+        "viable": True,
+        "ganancia_dia_prueba": round(ganancia_dia_prueba, 2),
+        "delta_vs_hoy": round(delta, 2),
+        "conviene": delta >= 0,
     }
 
 

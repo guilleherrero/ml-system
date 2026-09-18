@@ -21,6 +21,12 @@
 .pc-goal-vel  { background:var(--color-warning-100); color:var(--color-warning-700); }
 .pc-motivo { font-size:.72rem; color:var(--color-neutral-500); }
 .pc-faltante { background:var(--color-warning-100); border:1px solid var(--color-warning-200,#fde68a); border-radius:8px; padding:.5rem .75rem; font-size:.78rem; color:var(--color-warning-700); margin-bottom:.5rem; }
+.pc-perfil-row-4 { display:grid; grid-template-columns:1.1fr .6fr .6fr .7fr; gap:.5rem; margin-bottom:.4rem; }
+.pc-perfil-row-4 input { font-size:.82rem; }
+.pc-bandera { display:inline-block; font-size:.7rem; border-radius:6px; padding:.15rem .45rem; margin:.15rem .25rem 0 0; }
+.pc-bandera-ok   { background:#d1fae5; color:#065f46; }
+.pc-bandera-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
+.pc-bandera-bad  { background:var(--color-critical-100,#fee2e2); color:var(--color-critical-700,#b91c1c); }
 </style>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
@@ -40,10 +46,14 @@
             <label class="pc-etiqueta d-block">Costo del producto (puesto en depósito)</label>
             <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" id="pcCosto" required>
           </div>
-          <div class="mb-0">
+          <div class="mb-2">
             <label class="pc-etiqueta d-block">Precio del competidor más barato <span class="text-muted">(opcional)</span></label>
             <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="pcCompetidor">
             <div class="pc-etiqueta mt-1">Sin este dato no se puede calcular "Competir" ni el precio a probar.</div>
+          </div>
+          <div class="mb-0">
+            <label class="pc-etiqueta d-block">Precio del competidor más caro <span class="text-muted">(opcional)</span></label>
+            <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="pcCompetidorMax">
           </div>
         </div>
       </div>
@@ -74,23 +84,26 @@
       <div class="pc-card">
         <div class="pc-card-header">Las 3 publicaciones</div>
         <div class="pc-card-body">
-          <div class="pc-perfil-row">
-            <div class="pc-etiqueta">Nombre</div><div class="pc-etiqueta">Comisión %</div><div class="pc-etiqueta">Cuotas %</div>
+          <div class="pc-perfil-row-4">
+            <div class="pc-etiqueta">Nombre</div><div class="pc-etiqueta">Comisión %</div><div class="pc-etiqueta">Cuotas %</div><div class="pc-etiqueta">Ads $/día</div>
           </div>
-          <div class="pc-perfil-row">
+          <div class="pc-perfil-row-4">
             <input class="form-control form-control-sm" value="Batalla" id="pcNombre0">
             <input type="number" step="0.01" class="form-control form-control-sm" value="17" id="pcComision0">
             <input type="number" step="0.01" class="form-control form-control-sm" value="0" id="pcCuotas0">
+            <input type="number" step="100" min="0" class="form-control form-control-sm" value="0" id="pcAds0">
           </div>
-          <div class="pc-perfil-row">
+          <div class="pc-perfil-row-4">
             <input class="form-control form-control-sm" value="Medio" id="pcNombre1">
             <input type="number" step="0.01" class="form-control form-control-sm" value="17" id="pcComision1">
             <input type="number" step="0.01" class="form-control form-control-sm" value="5.75" id="pcCuotas1">
+            <input type="number" step="100" min="0" class="form-control form-control-sm" value="0" id="pcAds1">
           </div>
-          <div class="pc-perfil-row mb-0">
+          <div class="pc-perfil-row-4 mb-0">
             <input class="form-control form-control-sm" value="Compensa" id="pcNombre2">
             <input type="number" step="0.01" class="form-control form-control-sm" value="17" id="pcComision2">
             <input type="number" step="0.01" class="form-control form-control-sm" value="10.75" id="pcCuotas2">
+            <input type="number" step="100" min="0" class="form-control form-control-sm" value="0" id="pcAds2">
           </div>
         </div>
       </div>
@@ -186,6 +199,7 @@ document.getElementById('pcForm').addEventListener('submit', function (e) {
   const payload = {
     costo: document.getElementById('pcCosto').value,
     competidor_min: document.getElementById('pcCompetidor').value || 0,
+    competidor_max: document.getElementById('pcCompetidorMax').value || 0,
     objetivo: {
       modo: document.getElementById('pcModo').value,
       objetivo: document.getElementById('pcObjetivo').value,
@@ -195,6 +209,7 @@ document.getElementById('pcForm').addEventListener('submit', function (e) {
       nombre: document.getElementById('pcNombre' + i).value,
       comision: document.getElementById('pcComision' + i).value,
       costo_cuotas: document.getElementById('pcCuotas' + i).value,
+      publicidad_dia: document.getElementById('pcAds' + i).value || 0,
     })),
     cargos: {
       iibb: document.getElementById('pcIibb').value,
@@ -250,14 +265,24 @@ function render(d) {
       '<span class="pc-motivo">' + g.desc + '</span></div>' +
       '<div class="pc-card-body">';
     html += '<table class="table table-sm pc-result-table mb-1"><thead><tr>' +
-      '<th>Publicación</th><th class="text-end">Precio</th><th class="text-end">Ganancia/venta</th></tr></thead><tbody>';
-    nombres.forEach((nombre, i) => {
-      html += '<tr><td>' + nombre + '</td>' +
-        '<td class="text-end">' + fmtMoney(r.precios[i]) + '</td>' +
-        '<td class="text-end">' + fmtMoney(r.ganancias[i]) + '</td></tr>';
+      '<th>Publicación</th><th class="text-end">Precio</th><th class="text-end">Ganancia/venta</th>' +
+      '<th class="text-end">ROI</th><th class="text-end">Margen</th></tr></thead><tbody>';
+    (r.publicaciones || []).forEach((f, i) => {
+      html += '<tr><td>' + nombres[i] + '</td>' +
+        '<td class="text-end">' + fmtMoney(f.precio) + '</td>' +
+        '<td class="text-end">' + fmtMoney(f.ganancia_venta) + '</td>' +
+        '<td class="text-end">' + (f.roi_pct !== null ? f.roi_pct + '%' : '-') + '</td>' +
+        '<td class="text-end">' + (f.margen_pct !== null ? f.margen_pct + '%' : '-') + '</td></tr>';
     });
     html += '</tbody></table>';
-    html += '<div class="pc-motivo"><i class="bi bi-info-circle me-1"></i>Batalla: ' +
+    (r.publicaciones || []).forEach(f => {
+      (f.banderas || []).forEach(b => { html += `<span class="pc-bandera pc-bandera-${b.tipo}">${b.texto}</span>`; });
+      if (f.advertencia_umbral) {
+        const u = f.advertencia_umbral;
+        html += `<div class="pc-bandera pc-bandera-warn d-block mt-1">${u.texto} A ${fmtMoney(u.precio_sugerido)} ganarías ${fmtMoney(u.ganancia_sugerida)} por venta.</div>`;
+      }
+    });
+    html += '<div class="pc-motivo mt-1"><i class="bi bi-info-circle me-1"></i>Batalla: ' +
       (MOTIVOS[r.motivo_batalla] || r.motivo_batalla) + '</div>';
     html += '</div></div>';
   });

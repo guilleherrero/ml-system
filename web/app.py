@@ -17,6 +17,7 @@ except AttributeError:
 
 import json
 import logging
+import math
 import os
 import re
 import sys
@@ -9525,7 +9526,13 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
         nombre=p.get('nombre', ''),
         comision=float(p.get('comision', 0)),
         costo_cuotas=float(p.get('costo_cuotas', 0)),
+        publicidad_dia=float(p.get('publicidad_dia', 0) or 0),
     ) for p in perfiles_in]
+    # La publicidad no se descuenta por venta (nunca de ganancia_publicacion),
+    # solo de la ganancia por dia — se suma acá una sola vez, no se pide
+    # aparte, para que no se pueda cargar un total que no coincida con los 3
+    # perfiles (lo que traía el campo publicidad_total suelto de antes).
+    publicidad_total = sum(p.publicidad_dia for p in pubs)
 
     obj_in = body.get('objetivo') or {}
     modo = obj_in.get('modo')
@@ -9540,6 +9547,10 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
         competidor_min = float(body.get('competidor_min') or 0)
     except (TypeError, ValueError):
         competidor_min = 0
+    try:
+        competidor_max = float(body.get('competidor_max') or 0)
+    except (TypeError, ValueError):
+        competidor_max = 0
 
     # situacion_hoy es opcional: solo Modo A (publicacion existente) lo manda.
     # g_dia_hoy viene YA CALCULADO por /api/pricing/contexto con el fee_rate
@@ -9548,14 +9559,47 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
     # numero medido con uno hipotetico. Ver docs/CEREBRO.md seccion 12.
     situacion_hoy = body.get('situacion_hoy') or {}
     g_dia_hoy = situacion_hoy.get('ganancia_dia')
-    publicidad_total = float(body.get('publicidad_total') or 0)
+    g_venta_hoy = situacion_hoy.get('ganancia_venta')
 
     resultado = {}
     for goal in ('rent', 'comp', 'vel'):
         precios, ganancias, motivo = pm.estrategia(goal, pubs, c, costo, obj, competidor_min)
+        publicaciones = []
+        for i, (p, g) in enumerate(zip(precios, ganancias)):
+            viable = math.isfinite(p) and math.isfinite(g)
+            fila = {
+                'precio': round(p, 2) if viable else None,
+                'ganancia_venta': round(g, 2) if viable else None,
+                'roi_pct': round(g / costo * 100, 1) if viable and costo > 0 else None,
+                'margen_pct': round(g / p * 100, 1) if viable and p > 0 else None,
+                'contra_hoy_venta': round(g - g_venta_hoy, 2) if (viable and g_venta_hoy is not None) else None,
+                'banderas': [],
+            }
+            if viable:
+                if i == 0 and competidor_min > 0:
+                    if p <= competidor_min:
+                        fila['banderas'].append({'tipo': 'ok', 'texto': f'Queda debajo del competidor más barato (${competidor_min:,.0f}).'})
+                    elif goal != 'rent':
+                        fila['banderas'].append({'tipo': 'warn', 'texto': f'Tu piso no te deja ganarle al más barato (${competidor_min:,.0f}).'})
+                if competidor_max > 0 and p > competidor_max:
+                    fila['banderas'].append({'tipo': 'bad', 'texto': f'Queda más cara que el competidor más caro (${competidor_max:,.0f}).'})
+                if p < c.umbral_envio and p >= c.umbral_envio * 0.85:
+                    p_sugerido = pm.redondear_arriba(c.umbral_envio, c)
+                    g_sugerida = pm.ganancia_publicacion(p_sugerido, pubs[i], c, costo)
+                    fila['advertencia_umbral'] = {
+                        'texto': f'Está debajo de ${c.umbral_envio:,.0f}: pagás cargo fijo.',
+                        'precio_sugerido': round(p_sugerido, 2), 'ganancia_sugerida': round(g_sugerida, 2),
+                    }
+                if pubs[i].publicidad_dia > 0:
+                    fila['banderas'].append({'tipo': 'warn', 'texto': f'Publicidad: ${pubs[i].publicidad_dia:,.0f} por día.'})
+            else:
+                fila['banderas'].append({'tipo': 'bad', 'texto': 'No viable: los cargos más el objetivo superan el 100% del precio.'})
+            publicaciones.append(fila)
+
         entry = {
-            'precios':   [None if p == float('inf') else round(p, 2) for p in precios],
-            'ganancias': [None if g == float('inf') else round(g, 2) for g in ganancias],
+            'precios':   [f['precio'] for f in publicaciones],
+            'ganancias': [f['ganancia_venta'] for f in publicaciones],
+            'publicaciones': publicaciones,
             'motivo_batalla': motivo,
         }
         if g_dia_hoy is not None:
@@ -9583,7 +9627,9 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
         })
 
     return {'estrategias': resultado, 'faltantes': faltantes, 'costo': costo,
-            'competidor_min': competidor_min, 'perfiles': perfiles_in, 'objetivo': obj_in}, None
+            'competidor_min': competidor_min, 'competidor_max': competidor_max,
+            'publicidad_total': publicidad_total, 'perfiles': perfiles_in, 'objetivo': obj_in,
+            'g_dia_hoy': g_dia_hoy}, None
 
 
 @app.route('/api/pricing/calcular', methods=['POST'])
@@ -9817,11 +9863,12 @@ def api_pricing_contexto():
     except Exception:
         pass
 
-    ganancia_dia_hoy = None
+    ganancia_dia_hoy, ganancia_venta_hoy = None, None
     if costo not in (None, '', 0) and fee_rate_real:
         from modules import precio_motor as pm
         g_venta = pm.margen_unitario(precio, costo, fee_rate_real)
         if g_venta is not None:
+            ganancia_venta_hoy = round(g_venta, 2)
             ganancia_dia_hoy = round(g_venta * ventas_dia, 2)
 
     faltantes = []
@@ -9839,7 +9886,7 @@ def api_pricing_contexto():
         'item': {'id': item_id, 'titulo': item.get('title', ''), 'precio': precio,
                  'listing_type_id': listing_type, 'stock': stock},
         'situacion_hoy': {'precio': precio, 'ventas_dia': ventas_dia,
-                           'ganancia_dia': ganancia_dia_hoy,
+                           'ganancia_dia': ganancia_dia_hoy, 'ganancia_venta': ganancia_venta_hoy,
                            'fee_rate_real': fee_rate_real,
                            'etiqueta': 'Medido' if fee_rate_real else 'Sin datos (sin ventas en 30 días)'},
         'comision_pct': comision_pct, 'comision_etiqueta': comision_etiqueta,
@@ -9940,6 +9987,41 @@ def api_pricing_experimentos():
         } for f in filas]
 
     return jsonify({'ok': True, 'experimentos': out})
+
+
+@app.route('/api/pricing/verificar_prueba', methods=['POST'])
+def api_pricing_verificar_prueba():
+    """Veredicto manual simple: cargás lo que pasó y te dice si conviene.
+
+    No depende del snapshot diario automático (sprint 3) ni de tener un
+    experimento abierto — es cálculo puro sobre las ganancias que ya devolvió
+    /calcular para la estrategia elegida. La versión con datos medidos
+    automáticamente día a día es el sprint 4.
+    """
+    from modules import precio_motor as pm
+
+    body = request.get_json() or {}
+    ganancias = body.get('ganancias')
+    if not isinstance(ganancias, list) or len(ganancias) != 3:
+        return jsonify({'ok': False, 'error': 'Faltan las 3 ganancias de la estrategia aplicada.'}), 400
+    ganancias = [float('inf') if g is None else float(g) for g in ganancias]
+
+    try:
+        g_dia_hoy = float(body.get('g_dia_hoy'))
+        ventas_dia_prueba = float(body.get('ventas_dia_prueba'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Faltan ganancia de hoy o ventas/día de la prueba.'}), 400
+
+    mix = body.get('mix_batalla_pct')
+    resultado = pm.resultado_prueba(
+        ganancias, g_dia_hoy, float(body.get('publicidad_total') or 0), ventas_dia_prueba,
+        mix_batalla_pct=float(mix) if mix not in (None, '') else None,
+        split_medio=float(body.get('split_medio', 50)))
+
+    if not resultado.get('viable'):
+        return jsonify({'ok': False, 'error': 'Ninguna publicación de esta estrategia es viable.'}), 400
+
+    return jsonify({'ok': True, **resultado})
 
 
 @app.route('/api/evaluar-producto', methods=['POST'])

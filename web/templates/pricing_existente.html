@@ -27,6 +27,15 @@
 .pc-mapa-table td { text-align:right; padding:.15rem .35rem; }
 .pc-mapa-pos { color:#065f46; background:#ecfdf5; }
 .pc-mapa-neg { color:#991b1b; background:#fef2f2; }
+.pc-perfil-row-4 { display:grid; grid-template-columns:1.1fr .6fr .6fr .7fr; gap:.5rem; margin-bottom:.4rem; }
+.pc-bandera { display:inline-block; font-size:.7rem; border-radius:6px; padding:.15rem .45rem; margin:.15rem .25rem 0 0; }
+.pc-bandera-ok   { background:#d1fae5; color:#065f46; }
+.pc-bandera-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
+.pc-bandera-bad  { background:var(--color-critical-100,#fee2e2); color:var(--color-critical-700,#b91c1c); }
+.pc-sub-metric { font-size:.7rem; color:var(--color-neutral-500); }
+.pc-verdict { border-radius:10px; padding:.7rem .9rem; font-size:.85rem; margin-top:.5rem; }
+.pc-verdict-ok  { background:#d1fae5; color:#065f46; }
+.pc-verdict-bad { background:var(--color-critical-100,#fee2e2); color:var(--color-critical-700,#b91c1c); }
 </style>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
@@ -72,9 +81,13 @@
               <label class="pc-etiqueta d-block">Costo del producto <span id="peCostoEtq"></span></label>
               <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" id="peCosto" required>
             </div>
-            <div class="mb-0">
+            <div class="mb-2">
               <label class="pc-etiqueta d-block">Precio del competidor más barato <span id="peCompEtq"></span></label>
               <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="peCompetidor">
+            </div>
+            <div class="mb-0">
+              <label class="pc-etiqueta d-block">Precio del competidor más caro <span class="pc-etiqueta">(opcional)</span></label>
+              <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="peCompetidorMax">
             </div>
           </div>
         </div>
@@ -105,23 +118,26 @@
         <div class="pc-card">
           <div class="pc-card-header">Las 3 publicaciones <span class="pc-etiqueta" id="peComisionEtq"></span></div>
           <div class="pc-card-body">
-            <div class="pc-perfil-row">
-              <div class="pc-etiqueta">Nombre</div><div class="pc-etiqueta">Comisión %</div><div class="pc-etiqueta">Cuotas %</div>
+            <div class="pc-perfil-row-4">
+              <div class="pc-etiqueta">Nombre</div><div class="pc-etiqueta">Comisión %</div><div class="pc-etiqueta">Cuotas %</div><div class="pc-etiqueta">Ads $/día</div>
             </div>
-            <div class="pc-perfil-row">
+            <div class="pc-perfil-row-4">
               <input class="form-control form-control-sm" value="Batalla" id="peNombre0">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peComision0">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas0">
+              <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds0" value="0">
             </div>
-            <div class="pc-perfil-row">
+            <div class="pc-perfil-row-4">
               <input class="form-control form-control-sm" value="Medio" id="peNombre1">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peComision1">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas1">
+              <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds1" value="0">
             </div>
-            <div class="pc-perfil-row mb-0">
+            <div class="pc-perfil-row-4 mb-0">
               <input class="form-control form-control-sm" value="Compensa" id="peNombre2">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peComision2">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas2">
+              <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds2" value="0">
             </div>
           </div>
         </div>
@@ -133,6 +149,41 @@
           <i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una
         </button>
       </form>
+
+      <div class="pc-card" id="pePruebaCard" style="display:none">
+        <div class="pc-card-header">Resultado de la prueba</div>
+        <div class="pc-card-body">
+          <p class="pc-sub-metric">Aplicaste una de las 3 estrategias y la dejaste correr unos días — cargá lo que pasó de verdad y te dice si conviene.</p>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="pc-etiqueta d-block">Estrategia aplicada</label>
+              <select class="form-select form-select-sm" id="peEstrategiaProbada">
+                <option value="rent">Máxima rentabilidad</option>
+                <option value="comp" selected>Competir sin perder rentabilidad</option>
+                <option value="vel">Velocidad</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="pc-etiqueta d-block">Días medidos</label>
+              <input type="number" step="1" min="1" class="form-control form-control-sm" id="peDiasPrueba">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="pc-etiqueta d-block">Ventas/día en la prueba</label>
+              <input type="number" step="0.1" min="0" class="form-control form-control-sm" id="peVentasPrueba">
+            </div>
+            <div class="col-6" id="pePruebaMixBox">
+              <label class="pc-etiqueta d-block">% de ventas que se llevó la Batalla</label>
+              <input type="number" step="1" min="0" max="100" class="form-control form-control-sm" id="pePruebaMix">
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm w-100" id="peBtnVerificar">
+            <i class="bi bi-check2-circle me-1"></i>Ver veredicto
+          </button>
+          <div id="pePruebaResultado"></div>
+        </div>
+      </div>
     </div>
 
     <div class="col-lg-7">
@@ -220,6 +271,7 @@ function buildPayload() {
   return {
     costo: document.getElementById('peCosto').value,
     competidor_min: document.getElementById('peCompetidor').value || 0,
+    competidor_max: document.getElementById('peCompetidorMax').value || 0,
     objetivo: {
       modo: document.getElementById('peModo').value,
       objetivo: document.getElementById('peObjetivo').value,
@@ -229,6 +281,7 @@ function buildPayload() {
       nombre: document.getElementById('peNombre' + i).value,
       comision: document.getElementById('peComision' + i).value,
       costo_cuotas: document.getElementById('peCuotas' + i).value,
+      publicidad_dia: document.getElementById('peAds' + i).value || 0,
     })),
     situacion_hoy: PE_CONTEXTO ? PE_CONTEXTO.situacion_hoy : null,
     contexto_extra: PE_CONTEXTO ? {
@@ -250,7 +303,12 @@ const MOTIVOS = {
   piso_no_permite_ganar: 'El piso no permite ganarle al competidor sin romper el margen mínimo.',
 };
 
+let PE_ULTIMO_RESULTADO = null;
+
 function renderResultados(d) {
+  PE_ULTIMO_RESULTADO = d;
+  document.getElementById('pePruebaCard').style.display = '';
+
   const nombres = [0, 1, 2].map(i => document.getElementById('peNombre' + i).value);
   let html = '';
   (d.faltantes || []).forEach(f => {
@@ -262,12 +320,26 @@ function renderResultados(d) {
     const r = d.estrategias[goal];
     html += `<div class="pc-card"><div class="pc-card-header d-flex align-items-center justify-content-between">` +
       `<span class="pc-goal-badge ${g.cls}">${g.label}</span><span class="pc-motivo">${g.desc}</span></div><div class="pc-card-body">`;
-    html += '<table class="table table-sm pc-result-table mb-1"><thead><tr><th>Publicación</th><th class="text-end">Precio</th><th class="text-end">Ganancia/venta</th></tr></thead><tbody>';
-    nombres.forEach((nombre, i) => {
-      html += `<tr><td>${nombre}</td><td class="text-end">${fmtMoney(r.precios[i])}</td><td class="text-end">${fmtMoney(r.ganancias[i])}</td></tr>`;
+    html += '<table class="table table-sm pc-result-table mb-1"><thead><tr><th>Publicación</th><th class="text-end">Precio</th>' +
+      '<th class="text-end">Ganancia/venta</th><th class="text-end">ROI</th><th class="text-end">Margen</th>' +
+      (d.g_dia_hoy !== null && d.g_dia_hoy !== undefined ? '<th class="text-end">Contra hoy</th>' : '') + '</tr></thead><tbody>';
+    (r.publicaciones || []).forEach((f, i) => {
+      html += `<tr><td>${nombres[i]}</td><td class="text-end">${fmtMoney(f.precio)}</td><td class="text-end">${fmtMoney(f.ganancia_venta)}</td>` +
+        `<td class="text-end">${f.roi_pct !== null ? f.roi_pct + '%' : '-'}</td><td class="text-end">${f.margen_pct !== null ? f.margen_pct + '%' : '-'}</td>`;
+      if (d.g_dia_hoy !== null && d.g_dia_hoy !== undefined) {
+        html += `<td class="text-end ${f.contra_hoy_venta >= 0 ? 'text-success' : 'text-danger'}">${f.contra_hoy_venta !== null ? fmtMoney(f.contra_hoy_venta) : '-'}</td>`;
+      }
+      html += '</tr>';
     });
     html += '</tbody></table>';
-    html += `<div class="pc-motivo"><i class="bi bi-info-circle me-1"></i>Batalla: ${MOTIVOS[r.motivo_batalla] || r.motivo_batalla}</div>`;
+    (r.publicaciones || []).forEach(f => {
+      (f.banderas || []).forEach(b => { html += `<span class="pc-bandera pc-bandera-${b.tipo}">${b.texto}</span>`; });
+      if (f.advertencia_umbral) {
+        const u = f.advertencia_umbral;
+        html += `<div class="pc-bandera pc-bandera-warn d-block mt-1">${u.texto} A ${fmtMoney(u.precio_sugerido)} ganarías ${fmtMoney(u.ganancia_sugerida)} por venta.</div>`;
+      }
+    });
+    html += `<div class="pc-motivo mt-1"><i class="bi bi-info-circle me-1"></i>Batalla: ${MOTIVOS[r.motivo_batalla] || r.motivo_batalla}</div>`;
 
     if (r.empate) {
       const e = r.empate;
@@ -338,6 +410,49 @@ document.getElementById('peBtnIA').addEventListener('click', function () {
     .catch(err => {
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una';
+    });
+});
+
+document.getElementById('peEstrategiaProbada').addEventListener('change', function () {
+  document.getElementById('pePruebaMixBox').style.display = this.value === 'comp' ? '' : 'none';
+});
+document.getElementById('pePruebaMixBox').style.display = 'none';
+
+document.getElementById('peBtnVerificar').addEventListener('click', function () {
+  if (!PE_ULTIMO_RESULTADO) { alert('Primero calculá las estrategias.'); return; }
+  const goal = document.getElementById('peEstrategiaProbada').value;
+  const r = PE_ULTIMO_RESULTADO.estrategias[goal];
+  const ganancias = r.ganancias;
+  const publicidadTotal = PE_ULTIMO_RESULTADO.publicidad_total || 0;
+  const gDiaHoy = PE_ULTIMO_RESULTADO.g_dia_hoy;
+  const ventasDiaPrueba = parseFloat(document.getElementById('peVentasPrueba').value);
+  if (gDiaHoy === null || gDiaHoy === undefined) {
+    document.getElementById('pePruebaResultado').innerHTML =
+      '<div class="pc-faltante">No hay ganancia de hoy calculada para esta publicación (falta costo o ventas históricas) — no se puede comparar.</div>';
+    return;
+  }
+  if (!ventasDiaPrueba) { alert('Cargá las ventas/día medidas en la prueba.'); return; }
+
+  const payload = {
+    ganancias, g_dia_hoy: gDiaHoy, publicidad_total: publicidadTotal,
+    ventas_dia_prueba: ventasDiaPrueba,
+    mix_batalla_pct: goal === 'comp' ? (parseFloat(document.getElementById('pePruebaMix').value) || null) : null,
+  };
+
+  fetch('/api/pricing/verificar_prueba', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
+  })
+    .then(r2 => r2.json())
+    .then(v => {
+      if (!v.ok) { document.getElementById('pePruebaResultado').innerHTML = `<div class="pc-faltante bloq">${v.error}</div>`; return; }
+      const dias = document.getElementById('peDiasPrueba').value;
+      const pocosDias = dias && parseInt(dias) < 7 ? ` Ojo: ${dias} días es poco, conviene llegar a 7.` : '';
+      document.getElementById('pePruebaResultado').innerHTML = v.conviene
+        ? `<div class="pc-verdict pc-verdict-ok"><strong>Conviene seguir.</strong> Con la prueba ganás ${fmtMoney(v.ganancia_dia_prueba)} por día, ${fmtMoney(v.delta_vs_hoy)} más que hoy.${pocosDias}</div>`
+        : `<div class="pc-verdict pc-verdict-bad"><strong>Conviene volver al precio de hoy.</strong> Con la prueba ganás ${fmtMoney(v.ganancia_dia_prueba)} por día, ${fmtMoney(-v.delta_vs_hoy)} menos que hoy.${pocosDias}</div>`;
+    })
+    .catch(err => {
+      document.getElementById('pePruebaResultado').innerHTML = `<div class="pc-faltante bloq">Error: ${err}</div>`;
     });
 });
 
