@@ -581,11 +581,12 @@ function renderResultados(d) {
       const e = r.empate;
       html += `<div class="pc-empate"><i class="bi bi-graph-up me-1"></i>`;
       if (e.es_exacto) {
-        html += `Para que esta estrategia convenga hacen falta <strong>${e.minimo.toFixed(2)} ventas/día</strong> (número exacto).`;
+        html += `Para que esta estrategia convenga hacen falta <strong>${e.minimo.toFixed(2)} ventas/día</strong> ` +
+          `<span class="pc-etiqueta">(≈ ${(e.minimo * 30).toFixed(1)} por mes)</span> (número exacto).`;
       } else {
         html += `Para que convenga hacen falta <strong>${e.parejo.toFixed(2)} ventas/día</strong> ` +
-          `<span class="pc-etiqueta">(Supuesto: repartidas por igual entre las 3 publicaciones)</span>.`;
-        html += `<div class="pc-sub-metric mt-1">Si el reparto no es parejo, puede ir de ${e.minimo.toFixed(2)} (si se las llevan las más rentables) a ${e.maximo.toFixed(2)} (si se las lleva la más barata) — mirá el mapa de decisión abajo para el número exacto según el reparto real.</div>`;
+          `<span class="pc-etiqueta">(≈ ${(e.parejo * 30).toFixed(1)} por mes — Supuesto: repartidas por igual entre las 3 publicaciones)</span>.`;
+        html += `<div class="pc-sub-metric mt-1">Si el reparto no es parejo, puede ir de ${e.minimo.toFixed(2)} (≈${(e.minimo * 30).toFixed(0)}/mes, si se las llevan las más rentables) a ${e.maximo.toFixed(2)} (≈${(e.maximo * 30).toFixed(0)}/mes, si se las lleva la más barata) — mirá el mapa de decisión abajo para el número exacto según el reparto real.</div>`;
       }
       html += '</div>';
     }
