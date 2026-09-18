@@ -1715,7 +1715,18 @@ este bloque completo.
   para escribir títulos hace falta Opus. En vez de bajar el modelo por mi
   cuenta, se agregó un checkbox opt-in ("Usar modelo económico") en la
   pantalla, apagado por default, para que Guille lo prenda y juzgue la
-  calidad él mismo caso por caso.
+  calidad él mismo caso por caso. Prueba real con Haiku: fallo 4 validaciones
+  (keyword principal ausente, descripcion 4529 vs 1000-1800 esperado, frase
+  TIER1 ausente, simbolos prohibidos) — evidencia a favor de la decision
+  original del archivo protegido de reservar Opus para esto.
+- **Reforzado tras la respuesta de Guille** ("no quiero perder calidad,
+  quiero que los títulos estén bien"): la vista previa ya mostraba los
+  errores de `validar_sintesis` en rojo, pero `/api/pricing/trio/crear` no
+  volvía a chequearlos — se podía crear una publicación real con un título
+  que no cumplía las reglas si el usuario ignoraba el aviso. Ahora se
+  revalida en el momento de crear (sobre el texto final, por si se editó a
+  mano en la vista previa) y se bloquea esa publicación puntual si sigue sin
+  cumplir.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba
