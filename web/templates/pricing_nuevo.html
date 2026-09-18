@@ -27,6 +27,8 @@
 .pc-bandera-ok   { background:#d1fae5; color:#065f46; }
 .pc-bandera-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
 .pc-bandera-bad  { background:var(--color-critical-100,#fee2e2); color:var(--color-critical-700,#b91c1c); }
+.pc-desglose-table { font-size:.76rem; background:var(--color-neutral-50); }
+.pc-desglose-table td { padding:.2rem .5rem; border:none; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
@@ -268,11 +270,27 @@ function render(d) {
       '<th>Publicación</th><th class="text-end">Precio</th><th class="text-end">Ganancia/venta</th>' +
       '<th class="text-end">ROI</th><th class="text-end">Margen</th></tr></thead><tbody>';
     (r.publicaciones || []).forEach((f, i) => {
-      html += '<tr><td>' + nombres[i] + '</td>' +
+      const descId = `desglose-${goal}-${i}`;
+      html += '<tr><td>' + nombres[i] +
+        (f.desglose ? ` <button type="button" class="btn btn-link btn-sm p-0 pc-toggle-desglose" data-target="${descId}" style="font-size:.7rem">(ver costos)</button>` : '') + '</td>' +
         '<td class="text-end">' + fmtMoney(f.precio) + '</td>' +
         '<td class="text-end">' + fmtMoney(f.ganancia_venta) + '</td>' +
         '<td class="text-end">' + (f.roi_pct !== null ? f.roi_pct + '%' : '-') + '</td>' +
         '<td class="text-end">' + (f.margen_pct !== null ? f.margen_pct + '%' : '-') + '</td></tr>';
+      if (f.desglose) {
+        const ds = f.desglose;
+        html += `<tr id="${descId}" style="display:none"><td colspan="5"><table class="table table-sm pc-desglose-table mb-0">` +
+          `<tr><td>Precio</td><td class="text-end">${fmtMoney(ds.precio)}</td></tr>` +
+          `<tr><td>Comisión (${ds.comision_pct}%)</td><td class="text-end text-danger">-${fmtMoney(ds.comision_monto)}</td></tr>` +
+          (ds.cuotas_monto ? `<tr><td>Costo de cuotas (${ds.cuotas_pct}%)</td><td class="text-end text-danger">-${fmtMoney(ds.cuotas_monto)}</td></tr>` : '') +
+          `<tr><td>IIBB (${ds.iibb_pct}%)</td><td class="text-end text-danger">-${fmtMoney(ds.iibb_monto)}</td></tr>` +
+          `<tr><td>Percepción de IVA (${ds.percepcion_pct}%)</td><td class="text-end text-danger">-${fmtMoney(ds.percepcion_monto)}</td></tr>` +
+          `<tr><td>${ds.paga_envio ? 'Envío gratis (precio ≥ umbral)' : 'Envío'}</td><td class="text-end text-danger">${ds.envio_monto ? '-' + fmtMoney(ds.envio_monto) : '$0 (no paga)'}</td></tr>` +
+          `<tr><td>${ds.paga_cargo_fijo ? 'Cargo fijo (precio < umbral)' : 'Cargo fijo'}</td><td class="text-end text-danger">${ds.fijo_monto ? '-' + fmtMoney(ds.fijo_monto) : '$0 (no paga)'}</td></tr>` +
+          `<tr><td>Costo del producto</td><td class="text-end text-danger">-${fmtMoney(ds.costo_producto)}</td></tr>` +
+          `<tr class="fw-bold"><td>Ganancia</td><td class="text-end text-success">${fmtMoney(ds.ganancia)}</td></tr>` +
+          '</table></td></tr>';
+      }
     });
     html += '</tbody></table>';
     (r.publicaciones || []).forEach(f => {
@@ -289,5 +307,12 @@ function render(d) {
 
   document.getElementById('pcResultados').innerHTML = html;
 }
+
+document.getElementById('pcResultados').addEventListener('click', function (e) {
+  const toggleBtn = e.target.closest('.pc-toggle-desglose');
+  if (!toggleBtn) return;
+  const row = document.getElementById(toggleBtn.dataset.target);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+});
 </script>
 {% endblock %}

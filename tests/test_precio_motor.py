@@ -386,6 +386,68 @@ class TestEstrategiaBordes(unittest.TestCase):
         self.assertEqual(gd_sin - gd_con, 500)
 
 
+class TestDesgloseCostos(unittest.TestCase):
+    """Detalle de costos por linea, pedido por el usuario el 2026-09-18:
+    'necesito ver los costos calculados' (comision, cuotas, IIBB, percepcion,
+    envio/cargo fijo segun el umbral)."""
+
+    def test_ganancia_del_desglose_coincide_con_ganancia_publicacion(self):
+        # places=1 (no 2): cada linea se redondea a centavos individualmente
+        # antes de sumar (como una factura real), asi que puede haber un
+        # centavo de diferencia acumulada contra el calculo sin redondear.
+        c = pm.Cargos()
+        pub = pm.Publicacion("Batalla", 17.0, 5.75)
+        for precio in (10000, 20000, 32999, 40999, 60578):
+            d = pm.desglose_costos(precio, pub, c, 15000)
+            self.assertAlmostEqual(d["ganancia"], pm.ganancia_publicacion(precio, pub, c, 15000), places=1)
+
+    def test_arriba_del_umbral_paga_envio_no_cargo_fijo(self):
+        c = pm.Cargos()
+        pub = pm.Publicacion("Batalla", 17.0, 0.0)
+        d = pm.desglose_costos(40999, pub, c, 15000)
+        self.assertTrue(d["paga_envio"])
+        self.assertEqual(d["envio_monto"], c.envio)
+        self.assertFalse(d["paga_cargo_fijo"])
+        self.assertEqual(d["fijo_monto"], 0.0)
+
+    def test_debajo_del_umbral_paga_cargo_fijo_no_envio(self):
+        c = pm.Cargos()
+        pub = pm.Publicacion("Batalla", 17.0, 0.0)
+        d = pm.desglose_costos(20000, pub, c, 15000)
+        self.assertFalse(d["paga_envio"])
+        self.assertEqual(d["envio_monto"], 0.0)
+        self.assertTrue(d["paga_cargo_fijo"])
+        self.assertEqual(d["fijo_monto"], c.fijo_15k_25k)
+
+    def test_envio_bajo_umbral_paga_los_dos(self):
+        c = pm.Cargos(envio_bajo_umbral=True)
+        pub = pm.Publicacion("Batalla", 17.0, 0.0)
+        d = pm.desglose_costos(20000, pub, c, 15000)
+        self.assertTrue(d["paga_envio"])
+        self.assertTrue(d["paga_cargo_fijo"])
+
+
+class TestVentasParaEmpatarParejo(unittest.TestCase):
+    """Numero unico de empate (reparto parejo), pedido por el usuario el
+    2026-09-18 porque el rango min-max no se entendia."""
+
+    def test_reparto_parejo_cae_dentro_del_rango(self):
+        ganancias = [9929.27, 18331.83, 18594.38]
+        minimo, maximo = pm.ventas_para_empatar(53129.42, ganancias, 0)
+        parejo = pm.ventas_para_empatar_parejo(53129.42, ganancias, 0)
+        self.assertGreaterEqual(parejo, minimo)
+        self.assertLessEqual(parejo, maximo)
+
+    def test_parejo_usa_el_promedio_simple(self):
+        ganancias = [9929.27, 18331.83, 18594.38]
+        promedio = sum(ganancias) / 3
+        parejo = pm.ventas_para_empatar_parejo(53129.42, ganancias, 0)
+        self.assertAlmostEqual(parejo, 53129.42 / promedio, places=4)
+
+    def test_sin_ganancias_validas_es_none(self):
+        self.assertIsNone(pm.ventas_para_empatar_parejo(1000, [float('inf')] * 3, 0))
+
+
 class TestResultadoPrueba(unittest.TestCase):
     """Veredicto manual simple (adelanto del sprint 4, pedido por Guille el
     2026-09-18 al comparar contra el artifact original)."""

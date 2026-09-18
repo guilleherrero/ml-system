@@ -9592,6 +9592,7 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
                     }
                 if pubs[i].publicidad_dia > 0:
                     fila['banderas'].append({'tipo': 'warn', 'texto': f'Publicidad: ${pubs[i].publicidad_dia:,.0f} por día.'})
+                fila['desglose'] = pm.desglose_costos(p, pubs[i], c, costo)
             else:
                 fila['banderas'].append({'tipo': 'bad', 'texto': 'No viable: los cargos más el objetivo superan el 100% del precio.'})
             publicaciones.append(fila)
@@ -9606,8 +9607,10 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
             empate = pm.ventas_para_empatar(float(g_dia_hoy), ganancias, publicidad_total)
             if empate:
                 minimo, maximo = empate
+                parejo = pm.ventas_para_empatar_parejo(float(g_dia_hoy), ganancias, publicidad_total)
                 entry['empate'] = {
                     'minimo': round(minimo, 2), 'maximo': round(maximo, 2),
+                    'parejo': round(parejo, 2) if parejo is not None else None,
                     # Si la diferencia entre publicaciones es chica, el numero es
                     # practicamente exacto — no hace falta mostrar un rango ni el mapa.
                     'es_exacto': (maximo - minimo) / minimo < 0.03 if minimo > 0 else True,

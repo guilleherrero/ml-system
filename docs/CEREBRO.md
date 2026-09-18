@@ -1662,6 +1662,25 @@ Generador de Trío. Recordarle a Guille los bugs diferidos del §11
 (items 51-54 de la checklist) — quedó pactado avisar cuando se terminara
 este bloque completo.
 
+### Ajustes pedidos por Guille probando la pantalla en vivo (2026-09-18)
+
+- El botón "Pedirle a Claude que recomiende una" fallaba en producción por
+  falta de crédito en la cuenta de Anthropic asociada a la `ANTHROPIC_API_KEY`
+  de Render (key terminada en `d33U1AAA`) — no era un bug de código, se
+  confirmó reproduciendo el mismo error localmente. Guille cargó crédito;
+  pendiente de reconfirmar en pantalla que ya funciona.
+- El número de empate ("Para que convenga hacen falta entre X y Y ventas/día")
+  no se entendía como rango. **Agregado** `pm.ventas_para_empatar_parejo()`:
+  un solo número asumiendo que las 3 publicaciones se reparten las ventas por
+  igual, marcado como "Supuesto". El rango sigue disponible como detalle
+  secundario, y el mapa de decisión para cuando el reparto real no sea parejo.
+- Faltaba ver el desglose de costos por publicación (comisión, IIBB,
+  percepción, envío vs. cargo fijo según el umbral de $33.000). **Agregado**
+  `pm.desglose_costos()` — línea por línea de qué se descuenta a un precio
+  dado, expuesto en `/calcular` como `publicaciones[i].desglose` y con un
+  toggle "(ver costos)" en ambas pantallas (Modo A y Modo B).
+- 8 tests nuevos (60 en total).
+
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba
 registrado como correccion 27. Todos **diferidos a pedido de Guille** hasta

@@ -533,6 +533,43 @@ def ganancia_publicacion(precio: float, pub: Publicacion, c: Cargos, costo: floa
     return precio * (1 - tasa_cargos(pub, c)) - cargo_fijo(precio, c) - costo
 
 
+def desglose_costos(precio: float, pub: Publicacion, c: Cargos, costo: float) -> dict:
+    """Linea por linea de que se descuenta a un precio dado, para mostrarlo
+    en pantalla — pedido explicito del usuario (2026-09-18): "necesito ver
+    los costos calculados". Mismos montos que ganancia_publicacion(), solo
+    que desglosados en vez de sumados.
+    """
+    comision_monto   = round(precio * pub.comision / 100, 2)
+    cuotas_monto     = round(precio * pub.costo_cuotas / 100, 2)
+    iibb_monto       = round(precio * c.iibb / 100, 2)
+    percepcion_monto = round(precio * c.percepcion_iva / 100, 2)
+
+    paga_envio = precio >= c.umbral_envio or c.envio_bajo_umbral
+    envio_monto = round(c.envio, 2) if paga_envio else 0.0
+
+    if precio < c.umbral_envio:
+        if precio < 15000:   fijo_monto = round(c.fijo_menos_15k, 2)
+        elif precio < 25000: fijo_monto = round(c.fijo_15k_25k, 2)
+        else:                fijo_monto = round(c.fijo_25k_umbral, 2)
+    else:
+        fijo_monto = 0.0
+
+    ganancia = round(precio - comision_monto - cuotas_monto - iibb_monto
+                     - percepcion_monto - envio_monto - fijo_monto - costo, 2)
+
+    return {
+        "precio": round(precio, 2),
+        "comision_pct": pub.comision, "comision_monto": comision_monto,
+        "cuotas_pct": pub.costo_cuotas, "cuotas_monto": cuotas_monto,
+        "iibb_pct": c.iibb, "iibb_monto": iibb_monto,
+        "percepcion_pct": c.percepcion_iva, "percepcion_monto": percepcion_monto,
+        "paga_envio": paga_envio, "envio_monto": envio_monto,
+        "paga_cargo_fijo": fijo_monto > 0, "fijo_monto": fijo_monto,
+        "costo_producto": round(costo, 2),
+        "ganancia": ganancia,
+    }
+
+
 def _step(P: float) -> int:
     return 100 if P < 10000 else 1000
 
@@ -638,6 +675,20 @@ def ventas_para_empatar(g_dia_hoy: float, ganancias: list[float],
     validas = [g for g in ganancias if g > 0 and math.isfinite(g)]
     if not validas: return None
     return meta / max(validas), meta / min(validas)
+
+
+def ventas_para_empatar_parejo(g_dia_hoy: float, ganancias: list[float],
+                               publicidad_total: float) -> float | None:
+    """Un solo numero de ventas/dia para empatar con hoy, asumiendo que las
+    publicaciones viables se reparten las ventas por igual (supuesto de
+    arranque, mas facil de leer que el rango min-max de
+    ventas_para_empatar()). El rango sigue disponible para cuando el reparto
+    real no sea parejo — ver mapa_decision()."""
+    meta = g_dia_hoy + publicidad_total
+    validas = [g for g in ganancias if g > 0 and math.isfinite(g)]
+    if not validas: return None
+    promedio = sum(validas) / len(validas)
+    return meta / promedio if promedio > 0 else None
 
 
 def _ganancia_promedio_ponderada(ganancias: list[float], mix_batalla_pct: float,
