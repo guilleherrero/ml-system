@@ -701,6 +701,29 @@ def resultado_prueba(ganancias: list[float], g_dia_hoy: float, publicidad_total:
     }
 
 
+def veredicto_experimento(dias_medidos: int, ganancia_dia_promedio: float | None,
+                          ganancia_dia_previa: float) -> str:
+    """Veredicto de un experimento a partir de lo medido en snapshots_diarios.
+
+    'pendiente' antes de los 7 dias (no hay serie confiable todavia).
+    'inconcluso' con 7-13 dias si el resultado es ambiguo (dentro del +-5% de
+    la ganancia previa — no alcanza para decidir).
+    A partir de 14 dias se define 'conviene' o 'no_conviene' salvo que siga
+    dentro de la zona ambigua, donde sigue 'inconcluso' (no se fuerza una
+    decision con datos insuficientes).
+    """
+    if dias_medidos < 7 or ganancia_dia_promedio is None:
+        return "pendiente"
+    if ganancia_dia_previa == 0:
+        return "conviene" if ganancia_dia_promedio > 0 else "no_conviene"
+    delta_pct = (ganancia_dia_promedio - ganancia_dia_previa) / abs(ganancia_dia_previa)
+    if abs(delta_pct) < 0.05:
+        return "inconcluso"
+    if dias_medidos < 14:
+        return "inconcluso"
+    return "conviene" if delta_pct > 0 else "no_conviene"
+
+
 def escalera_meta(multiplicador: float, g_dia_hoy: float, pub: Publicacion, c: Cargos,
                   costo: float, precios: list[float], stock: int, dias_reposicion: int,
                   piso_precio: float, competidor_min: float) -> list[dict]:

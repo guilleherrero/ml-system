@@ -416,5 +416,33 @@ class TestResultadoPrueba(unittest.TestCase):
         self.assertFalse(r['viable'])
 
 
+class TestVeredictoExperimento(unittest.TestCase):
+    """Sprint 4: veredicto a 7/14 dias a partir de lo medido."""
+
+    def test_antes_de_7_dias_es_pendiente(self):
+        self.assertEqual(pm.veredicto_experimento(3, 60000, 53129.42), "pendiente")
+
+    def test_sin_ganancia_medida_es_pendiente(self):
+        self.assertEqual(pm.veredicto_experimento(10, None, 53129.42), "pendiente")
+
+    def test_zona_ambigua_es_inconcluso_incluso_a_14_dias(self):
+        # +2% no alcanza para decidir aunque ya pasaron 14 dias
+        self.assertEqual(pm.veredicto_experimento(14, 53129.42 * 1.02, 53129.42), "inconcluso")
+
+    def test_7_a_13_dias_con_diferencia_clara_sigue_inconcluso(self):
+        # +30% es una diferencia clara, pero con solo 10 dias todavia no se define
+        self.assertEqual(pm.veredicto_experimento(10, 53129.42 * 1.30, 53129.42), "inconcluso")
+
+    def test_14_dias_con_mejora_clara_conviene(self):
+        self.assertEqual(pm.veredicto_experimento(14, 53129.42 * 1.30, 53129.42), "conviene")
+
+    def test_14_dias_con_baja_clara_no_conviene(self):
+        self.assertEqual(pm.veredicto_experimento(14, 53129.42 * 0.70, 53129.42), "no_conviene")
+
+    def test_ganancia_previa_cero(self):
+        self.assertEqual(pm.veredicto_experimento(14, 100, 0), "conviene")
+        self.assertEqual(pm.veredicto_experimento(14, -100, 0), "no_conviene")
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

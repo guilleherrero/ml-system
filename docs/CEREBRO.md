@@ -1532,15 +1532,57 @@ Decisiones tomadas:
   Medido, qué hace cada estrategia) — quedan para cuando haya lugar, no son
   bloqueantes.
 
+### Sprint 4 — hecho (2026-09-18)
+
+- Tabla `curva_demanda`.
+- `modules.precio_motor.veredicto_experimento(dias_medidos, ganancia_dia_promedio, ganancia_dia_previa)`:
+  `pendiente` antes de 7 días; `inconcluso` si la diferencia contra la
+  ganancia previa es menor al 5% (aunque hayan pasado 14 días — no fuerza una
+  decisión con una diferencia chica) o si todavía no llegó a 14 días con una
+  diferencia clara; `conviene`/`no_conviene` recién a partir de 14 días con
+  diferencia clara. 7 tests nuevos.
+- `GET /api/pricing/evolucion?experimento_id=`: arma la serie diaria desde
+  `snapshots_diarios` (recalcula ganancia/día con `margen_unitario()` sobre
+  el fee_rate real medido de cada snapshot, resta `publicidad_dia` fija del
+  experimento) y devuelve el veredicto.
+- `POST /api/pricing/cerrar`: fija `cerrado_en` + `veredicto`, escribe el
+  punto en `curva_demanda`. Bloquea cerrar dos veces.
+- `GET /api/pricing/curva_demanda`: los puntos medidos del producto.
+- `GET /api/pricing/escalera`: expone `escalera_meta()` del motor con el
+  "precio a probar" (el más alto que le gana al competidor, no rompe el piso
+  y el stock alcanza).
+- Pantalla `/pricing/existente` ampliada: tarjeta "Ganar el doble" (escalera
+  con banderas), tarjeta "Experimentos de este producto" (lista + evolución +
+  botón cerrar), y botón "Aplicar" en cada fila viable de cada estrategia
+  (llama a `/api/pricing/aplicar` con confirmación nativa del navegador antes
+  de escribir).
+- **Bug encontrado y corregido de paso**: `/api/pricing/config` (guardado de
+  cargos por cuenta, sprint 2) nunca se leía de verdad en `/pricing/existente`
+  — el formulario traía `cfg.perfiles` pero no `cfg.cargos`, así que el motor
+  siempre calculaba con los defaults del sistema sin importar lo guardado.
+  Se agregó el editor de "Cargos fijos e impuestos" (igual que en Modo B) con
+  botón para guardar, y ahora sí se manda `cargos` en cada cálculo.
+- **Probado end-to-end en local con datos sintéticos** (no se tocó ningún
+  precio real): se insertó un experimento y 15 días de snapshots directo por
+  ORM (sin pasar por `/aplicar` ni por el job real) para poder probar
+  `/evolucion` y `/cerrar` sin esperar 15 días reales ni escribir en ML.
+  `/escalera` se probó con los mismos números del caso de referencia del
+  motor (coincide con el §8 de la spec). El botón "Aplicar" de la pantalla
+  **no se probó en vivo** — dispara un `confirm()` nativo del navegador antes
+  de escribir, así que solo se ejecuta si Guille lo confirma manualmente
+  probando la pantalla.
+
 ### Pendiente
 
-Sprints 4-5 de la spec (evolucion a 7/14 dias + curva de demanda + "ganar el
-doble", generador de trio). Las incognitas del §10 de la spec (escalon de
-cuotas por API, categorias con catalogo obligatorio) siguen sin probar. La
-del "fee_rate real" quedo parcialmente resuelta en el sprint 2 (ver arriba)
-pero no del todo: falta decidir que hacer con el costo de cuotas real por
-escalon para publicaciones Premium. `/aplicar` esta implementado pero sin
-probar en vivo (ver arriba) — probarlo con Guille antes de confiar en el.
+Sprint 5 de la spec (generador de trio). Las incognitas del §10 de la spec
+(escalon de cuotas por API, categorias con catalogo obligatorio) siguen sin
+probar — hay que resolverlas antes de construir la creacion automatica de
+publicaciones nuevas, como pide la spec en su seccion 10. La del "fee_rate
+real" quedo parcialmente resuelta en el sprint 2 (ver arriba) pero no del
+todo: falta decidir que hacer con el costo de cuotas real por escalon para
+publicaciones Premium. `/aplicar` y el boton "Aplicar" de la pantalla estan
+implementados pero sin probar en vivo (ver arriba) — probarlos con Guille
+antes de confiar en ellos.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba

@@ -10024,6 +10024,210 @@ def api_pricing_verificar_prueba():
     return jsonify({'ok': True, **resultado})
 
 
+@app.route('/api/pricing/evolucion')
+def api_pricing_evolucion():
+    """Sprint 4: serie diaria de un experimento + veredicto a 7/14 dias.
+
+    Arma la serie con lo que ya capturo el job de snapshots_diarios (sprint
+    3) — no llama a ML. Ganancia por dia se recalcula con margen_unitario()
+    (mismo criterio que /contexto: fee_rate real medido, no el desglose de
+    Cargos) sobre el precio y ventas de cada snapshot, sumado entre los
+    item_ids del experimento y restando la publicidad_dia fija.
+    """
+    from modules import precio_motor as pm
+    from web.db import session_scope
+    from web.models_pricing import PrecioExperimento, SnapshotDiario
+
+    try:
+        experimento_id = int(request.args.get('experimento_id', ''))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Falta experimento_id.'}), 400
+
+    with session_scope() as s:
+        exp = s.get(PrecioExperimento, experimento_id)
+        if not exp:
+            return jsonify({'ok': False, 'error': 'Experimento no encontrado.'}), 404
+
+        snaps = (s.query(SnapshotDiario)
+                .filter(SnapshotDiario.alias == exp.alias, SnapshotDiario.item_id.in_(exp.item_ids))
+                .order_by(SnapshotDiario.fecha).all())
+
+        por_fecha: dict[str, dict] = {}
+        for sn in snaps:
+            costo = float(exp.costo)
+            ganancia_dia_item = None
+            if sn.precio is not None and sn.fee_rate is not None and sn.ventas_dia is not None:
+                g_venta = pm.margen_unitario(float(sn.precio), costo, float(sn.fee_rate))
+                if g_venta is not None:
+                    ganancia_dia_item = g_venta * float(sn.ventas_dia)
+            d = por_fecha.setdefault(sn.fecha, {'fecha': sn.fecha, 'precio': float(sn.precio) if sn.precio else None,
+                                                'ventas_dia': 0.0, 'ganancia_dia': None, '_tiene_dato': False})
+            if sn.ventas_dia is not None:
+                d['ventas_dia'] += float(sn.ventas_dia)
+            if ganancia_dia_item is not None:
+                d['ganancia_dia'] = (d['ganancia_dia'] or 0) + ganancia_dia_item - float(exp.publicidad_dia)
+                d['_tiene_dato'] = True
+
+        serie = sorted(por_fecha.values(), key=lambda x: x['fecha'])
+        medibles = [d['ganancia_dia'] for d in serie if d['_tiene_dato']]
+        for d in serie:
+            d.pop('_tiene_dato')
+
+        dias_medidos = len(medibles)
+        ganancia_dia_promedio = round(sum(medibles) / len(medibles), 2) if medibles else None
+        veredicto = pm.veredicto_experimento(dias_medidos, ganancia_dia_promedio, float(exp.ganancia_dia_previa))
+
+        return jsonify({'ok': True,
+            'experimento': {
+                'id': exp.id, 'producto_key': exp.producto_key, 'item_ids': exp.item_ids,
+                'estrategia': exp.estrategia, 'precios_antes': exp.precios_antes, 'precios_despues': exp.precios_despues,
+                'ganancia_dia_previa': float(exp.ganancia_dia_previa), 'meta_ventas_dia': float(exp.meta_ventas_dia),
+                'iniciado_en': exp.iniciado_en.isoformat() if exp.iniciado_en else None,
+                'cerrado_en': exp.cerrado_en.isoformat() if exp.cerrado_en else None,
+                'veredicto_guardado': exp.veredicto,
+            },
+            'serie': serie, 'dias_medidos': dias_medidos,
+            'ganancia_dia_promedio': ganancia_dia_promedio, 'veredicto': veredicto})
+
+
+@app.route('/api/pricing/cerrar', methods=['POST'])
+def api_pricing_cerrar():
+    """Cierra un experimento: fija el veredicto y deja el punto en curva_demanda."""
+    from modules import precio_motor as pm
+    from web.db import session_scope
+    from web.models_pricing import PrecioExperimento, SnapshotDiario, CurvaDemanda
+
+    body = request.get_json() or {}
+    try:
+        experimento_id = int(body.get('experimento_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Falta experimento_id.'}), 400
+
+    with session_scope() as s:
+        exp = s.get(PrecioExperimento, experimento_id)
+        if not exp:
+            return jsonify({'ok': False, 'error': 'Experimento no encontrado.'}), 404
+        if exp.cerrado_en:
+            return jsonify({'ok': False, 'error': 'Este experimento ya está cerrado.'}), 400
+
+        snaps = (s.query(SnapshotDiario)
+                .filter(SnapshotDiario.alias == exp.alias, SnapshotDiario.item_id.in_(exp.item_ids))
+                .order_by(SnapshotDiario.fecha).all())
+        costo = float(exp.costo)
+        ganancias_dia, ventas_dia_vals, ultimo_precio = [], [], None
+        for sn in snaps:
+            if sn.precio is not None:
+                ultimo_precio = float(sn.precio)
+            if sn.precio is not None and sn.fee_rate is not None and sn.ventas_dia is not None:
+                g_venta = pm.margen_unitario(float(sn.precio), costo, float(sn.fee_rate))
+                if g_venta is not None:
+                    ganancias_dia.append(g_venta * float(sn.ventas_dia) - float(exp.publicidad_dia))
+                    ventas_dia_vals.append(float(sn.ventas_dia))
+
+        dias_medidos = len(ganancias_dia)
+        ganancia_dia_prom = sum(ganancias_dia) / dias_medidos if dias_medidos else None
+        ventas_dia_prom = sum(ventas_dia_vals) / len(ventas_dia_vals) if ventas_dia_vals else 0
+
+        veredicto = pm.veredicto_experimento(dias_medidos, ganancia_dia_prom, float(exp.ganancia_dia_previa))
+        exp.cerrado_en = datetime.now()
+        exp.veredicto = veredicto
+        if body.get('notas'):
+            exp.notas = str(body.get('notas'))[:2000]
+
+        if dias_medidos > 0 and ultimo_precio is not None:
+            s.add(CurvaDemanda(
+                alias=exp.alias, producto_key=exp.producto_key, experimento_id=exp.id,
+                precio=ultimo_precio, ventas_dia=round(ventas_dia_prom, 2),
+                ganancia_dia=round(ganancia_dia_prom, 2), dias_medidos=dias_medidos,
+            ))
+
+    return jsonify({'ok': True, 'veredicto': veredicto, 'dias_medidos': dias_medidos})
+
+
+@app.route('/api/pricing/curva_demanda')
+def api_pricing_curva_demanda():
+    """Curva de demanda del producto: un punto por experimento cerrado."""
+    from web.db import session_scope
+    from web.models_pricing import CurvaDemanda
+
+    alias = request.args.get('alias', '')
+    producto_key = request.args.get('producto_key', '')
+    if not alias or not producto_key:
+        return jsonify({'ok': False, 'error': 'Faltan alias y producto_key.'}), 400
+
+    with session_scope() as s:
+        filas = (s.query(CurvaDemanda)
+                .filter_by(alias=alias, producto_key=producto_key)
+                .order_by(CurvaDemanda.precio).all())
+        puntos = [{'precio': float(f.precio), 'ventas_dia': float(f.ventas_dia),
+                   'ganancia_dia': float(f.ganancia_dia), 'dias_medidos': f.dias_medidos,
+                   'experimento_id': f.experimento_id} for f in filas]
+
+    return jsonify({'ok': True, 'puntos': puntos})
+
+
+@app.route('/api/pricing/escalera')
+def api_pricing_escalera():
+    """Seccion "ganar el doble": escalera de precios candidatos con ventas
+    necesarias, dias de stock y el efecto umbral marcado.
+    """
+    from modules import precio_motor as pm
+
+    alias = request.args.get('alias', '')
+    item_id = request.args.get('item_id', '')
+    try:
+        multiplicador = float(request.args.get('multiplicador', 2))
+        g_dia_hoy = float(request.args.get('g_dia_hoy'))
+        comision = float(request.args.get('comision'))
+        costo_cuotas = float(request.args.get('costo_cuotas', 0))
+        costo = float(request.args.get('costo'))
+        stock = int(float(request.args.get('stock', 0)))
+        dias_reposicion = int(float(request.args.get('dias_reposicion', 0)))
+        piso_precio = float(request.args.get('piso_precio', 0))
+        competidor_min = float(request.args.get('competidor_min', 0))
+        precio_base = float(request.args.get('precio_base'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Faltan parámetros (g_dia_hoy, comisión, costo, precio_base).'}), 400
+
+    cargos_in = request.args
+    c = pm.Cargos(
+        iibb=float(cargos_in.get('iibb', pm.Cargos.iibb)),
+        percepcion_iva=float(cargos_in.get('percepcion_iva', pm.Cargos.percepcion_iva)),
+        envio=float(cargos_in.get('envio', pm.Cargos.envio)),
+        umbral_envio=float(cargos_in.get('umbral_envio', pm.Cargos.umbral_envio)),
+        fijo_menos_15k=float(cargos_in.get('fijo_menos_15k', pm.Cargos.fijo_menos_15k)),
+        fijo_15k_25k=float(cargos_in.get('fijo_15k_25k', pm.Cargos.fijo_15k_25k)),
+        fijo_25k_umbral=float(cargos_in.get('fijo_25k_umbral', pm.Cargos.fijo_25k_umbral)),
+    )
+    pub = pm.Publicacion('Batalla', comision, costo_cuotas)
+
+    # Escalera de precios candidatos: desde precio_base bajando en escalones,
+    # redondeados igual que el resto del motor (terminacion 999/099).
+    precios = []
+    p = pm.redondear_arriba(precio_base, c)
+    for _ in range(8):
+        precios.append(p)
+        paso = 5000 if p > 20000 else max(1000, p * 0.1)
+        p = pm.redondear_abajo(p - paso, c)
+        if p <= costo:
+            break
+
+    pasos = pm.escalera_meta(multiplicador, g_dia_hoy, pub, c, costo, precios, stock,
+                             dias_reposicion, piso_precio, competidor_min)
+
+    # El "precio a probar" es el mas alto que no rompe ninguna de las 3 reglas.
+    precio_a_probar, regla = None, None
+    for paso in pasos:
+        if not paso.get('viable', True):
+            continue
+        if paso.get('rompe_piso') or paso.get('no_gana_competidor') or paso.get('stock_insuficiente'):
+            continue
+        precio_a_probar, regla = paso['precio'], 'le gana al competidor, no rompe el piso y el stock alcanza'
+        break
+
+    return jsonify({'ok': True, 'escalera': pasos, 'precio_a_probar': precio_a_probar, 'regla': regla})
+
+
 @app.route('/api/evaluar-producto', methods=['POST'])
 def api_evaluar_producto():
     from modules.lanzador_productos import _gather_market_data

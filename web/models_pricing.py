@@ -124,3 +124,25 @@ class SnapshotDiario(Base):
 
     def __repr__(self):
         return f'<SnapshotDiario {self.item_id} {self.fecha}>'
+
+
+class CurvaDemanda(Base):
+    """Un punto de la curva de demanda del producto, uno por experimento cerrado."""
+    __tablename__ = 'curva_demanda'
+    __table_args__ = (
+        Index('ix_curva_alias_producto', 'alias', 'producto_key'),
+    )
+
+    id              = Column(Integer, primary_key=True)
+    alias           = Column(String(80), nullable=False)
+    producto_key    = Column(String(120), nullable=False)
+    experimento_id  = Column(Integer, nullable=False)
+
+    precio          = Column(Numeric(12, 2), nullable=False)
+    ventas_dia      = Column(Numeric(10, 2), nullable=False)
+    ganancia_dia    = Column(Numeric(14, 2), nullable=False)
+    dias_medidos    = Column(Integer, nullable=False)
+    registrado_en   = Column(DateTime, nullable=False, default=datetime.now)
+
+    def __repr__(self):
+        return f'<CurvaDemanda {self.producto_key} ${self.precio}>'
