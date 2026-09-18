@@ -660,12 +660,12 @@ document.getElementById('peBtnVerificar').addEventListener('click', function () 
   const publicidadTotal = PE_ULTIMO_RESULTADO.publicidad_total || 0;
   const gDiaHoy = PE_ULTIMO_RESULTADO.g_dia_hoy;
   const ventasDiaPrueba = parseFloat(document.getElementById('peVentasPrueba').value);
+  if (!ventasDiaPrueba) { alert('Cargá las ventas/día medidas en la prueba — sin ese número no hay nada que comparar.'); return; }
   if (gDiaHoy === null || gDiaHoy === undefined) {
     document.getElementById('pePruebaResultado').innerHTML =
-      '<div class="pc-faltante">No hay ganancia de hoy calculada para esta publicación (falta costo o ventas históricas) — no se puede comparar.</div>';
+      '<div class="pc-faltante bloq"><i class="bi bi-exclamation-triangle me-1"></i>No hay ganancia de hoy calculada para esta publicación (falta costo o ventas históricas) — no se puede comparar.</div>';
     return;
   }
-  if (!ventasDiaPrueba) { alert('Cargá las ventas/día medidas en la prueba.'); return; }
 
   const payload = {
     ganancias, g_dia_hoy: gDiaHoy, publicidad_total: publicidadTotal,
@@ -910,6 +910,7 @@ const CUOTAS_LABEL = {0: 'Sin cuotas', 4: 'Interés bajo (4%)', 3: '3 cuotas', 6
 
 document.getElementById('peBtnTrioPreview').addEventListener('click', function () {
   if (!PE_CONTEXTO) return;
+  if (!confirm('Esto llama a Claude hasta 6 veces (hasta 3 títulos, con reintento si hace falta) para generar la vista previa — tiene costo real de API. ¿Generar igual?')) return;
   const btn = this;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generando (llama a Claude, puede tardar)...';

@@ -1680,6 +1680,20 @@ este bloque completo.
   dado, expuesto en `/calcular` como `publicaciones[i].desglose` y con un
   toggle "(ver costos)" en ambas pantallas (Modo A y Modo B).
 - 8 tests nuevos (60 en total).
+- **Bug real encontrado en "Resultado de la prueba"**: si faltaba cargar
+  "Ventas/día en la prueba" Y además no había "ganancia de hoy" calculada
+  (costo o fee_rate real sin datos), el chequeo de ganancia-de-hoy corría
+  primero y escribía un mensaje chico en pantalla en vez del `alert()` claro
+  de "falta cargar ventas/día" — parecía que el botón no hacía nada. Se
+  reordenaron los chequeos (ventas/día vacío primero, con alert nativo) y se
+  destacó más el mensaje de ganancia-de-hoy faltante.
+- **Aclaración importante, no bug**: "Ver veredicto" (Resultado de la prueba)
+  es matemática pura, nunca llama a Claude — se verificó en el código. El
+  gasto real de crédito de Anthropic que reportó Guille salió del generador
+  de trío, que llama a Claude hasta 6 veces por click (hasta 3 títulos, con
+  reintento si falla la validación) con `claude-opus-4-7`. Se agregó una
+  confirmación nativa antes de generar la vista previa del trío avisando el
+  costo, para que no vuelva a pasar sin querer.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba
