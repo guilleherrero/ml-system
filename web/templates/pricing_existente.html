@@ -598,15 +598,19 @@ function renderResultados(d) {
 }
 
 function renderMapa(mapa) {
-  let html = '<div class="mt-2"><div class="pc-etiqueta mb-1">Mapa de decisión — diferencia diaria de ganancia vs. hoy (filas: ventas/día, columnas: % que se lleva la Batalla)</div>';
-  html += '<div style="overflow-x:auto"><table class="table table-bordered pc-mapa-table mb-0"><thead><tr><th></th>' +
-    mapa.cols.map(c => `<th>${c}%</th>`).join('') + '</tr></thead><tbody>';
+  let html = '<div class="mt-2">';
+  html += '<div class="pc-etiqueta mb-1">Mapa de decisión — cuánto ganás de más o de menos por día comparado con hoy, según cuántas vendés y quién se las lleva</div>';
+  html += '<div style="overflow-x:auto"><table class="table table-bordered pc-mapa-table mb-0"><thead>';
+  html += `<tr><th rowspan="2" class="align-bottom">Ventas/día ↓</th><th colspan="${mapa.cols.length}" class="text-center">% de esas ventas que se lleva la Batalla (el resto se reparte Medio/Compensa) →</th></tr>`;
+  html += '<tr>' + mapa.cols.map(c => `<th class="text-center">${c}%</th>`).join('') + '</tr></thead><tbody>';
   mapa.filas.forEach((fila, i) => {
     html += `<tr><td><strong>${fila}</strong></td>` +
-      mapa.celdas[i].map(v => `<td class="${v >= 0 ? 'pc-mapa-pos' : 'pc-mapa-neg'}">${Math.round(v).toLocaleString('es-AR')}</td>`).join('') +
+      mapa.celdas[i].map(v => `<td class="${v >= 0 ? 'pc-mapa-pos' : 'pc-mapa-neg'}">${v >= 0 ? '+' : '−'}$${Math.round(Math.abs(v)).toLocaleString('es-AR')}</td>`).join('') +
       '</tr>';
   });
-  html += '</tbody></table></div></div>';
+  html += '</tbody></table></div>';
+  html += '<div class="pc-sub-metric mt-1"><span class="pc-bandera pc-bandera-ok">verde</span> ganás más que hoy ese día · <span class="pc-bandera pc-bandera-bad">rojo</span> ganás menos. Buscá la fila más parecida a cuántas vendés por día y la columna más parecida a qué % se lleva la Batalla — esa celda es tu resultado esperado.</div>';
+  html += '</div>';
   return html;
 }
 
