@@ -1694,6 +1694,28 @@ este bloque completo.
   reintento si falla la validación) con `claude-opus-4-7`. Se agregó una
   confirmación nativa antes de generar la vista previa del trío avisando el
   costo, para que no vuelva a pasar sin querer.
+- **Bug real encontrado en el generador de trío**: `SyntaxError: Unexpected
+  token '<'` en el navegador — el servidor tiene `gunicorn --timeout 120`
+  (`Procfile`) y con hasta 6 llamadas a Claude EN SERIE el trío podia superar
+  los 120s, gunicorn mataba el worker a la mitad y devolvia una pagina HTML
+  de error en vez de JSON. **Resuelto**: las llamadas por cluster ahora
+  corren en paralelo (`ThreadPoolExecutor`, no secuencial) — el tiempo total
+  pasa a ser el del cluster mas lento, no la suma de los tres. Se subio
+  ademas el timeout de gunicorn a 180s de margen. Ojo: sigue siendo
+  `--workers 1`, asi que mientras el trio corre (mas corto ahora, pero no
+  instantaneo) el resto de la app queda bloqueada para cualquiera que la use
+  — no se toco eso, cambiar el numero de workers tiene implicancias de
+  costo/recursos en el plan de Render que no correspondia decidir sin
+  preguntar.
+- **Pregunta de Guille: "¿puede usar un modelo más económico sin perder
+  calidad?"** — `seo_optimizer.py` ya tiene soporte para Haiku
+  (`_call_claude(..., fast=True)`), pero su propio docstring dice que Haiku
+  es para "análisis/validación estructurada" y Opus para "síntesis creativa,
+  títulos y descripciones finales" — el archivo protegido ya decidió que
+  para escribir títulos hace falta Opus. En vez de bajar el modelo por mi
+  cuenta, se agregó un checkbox opt-in ("Usar modelo económico") en la
+  pantalla, apagado por default, para que Guille lo prenda y juzgue la
+  calidad él mismo caso por caso.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba

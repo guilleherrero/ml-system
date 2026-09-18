@@ -10263,7 +10263,7 @@ def api_pricing_trio_preview():
     except Exception as e:
         return jsonify({'ok': False, 'error': f'No se pudo conectar la cuenta {alias}: {e}'}), 400
 
-    resultado = tg.generar_titulos_trio(item_id, client)
+    resultado = tg.generar_titulos_trio(item_id, client, modelo_economico=bool(body.get('modelo_economico')))
     if not resultado.get('ok'):
         return jsonify(resultado), 400
 

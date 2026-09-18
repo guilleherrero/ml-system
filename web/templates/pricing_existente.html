@@ -331,6 +331,12 @@
         </select>
         <div></div>
       </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" id="peTrioModeloEconomico">
+        <label class="form-check-label pc-etiqueta" for="peTrioModeloEconomico">
+          Usar modelo económico (Haiku) — más barato y rápido, pero el pipeline lo reserva para análisis, no para escribir. Probalo y juzgá vos la calidad.
+        </label>
+      </div>
       <button type="button" class="btn btn-outline-primary btn-sm" id="peBtnTrioPreview">
         <i class="bi bi-eye me-1"></i>Generar vista previa del trío
       </button>
@@ -910,7 +916,8 @@ const CUOTAS_LABEL = {0: 'Sin cuotas', 4: 'Interés bajo (4%)', 3: '3 cuotas', 6
 
 document.getElementById('peBtnTrioPreview').addEventListener('click', function () {
   if (!PE_CONTEXTO) return;
-  if (!confirm('Esto llama a Claude hasta 6 veces (hasta 3 títulos, con reintento si hace falta) para generar la vista previa — tiene costo real de API. ¿Generar igual?')) return;
+  const economico = document.getElementById('peTrioModeloEconomico').checked;
+  if (!confirm(`Esto llama a Claude hasta 6 veces (hasta 3 títulos, con reintento si hace falta) con el modelo ${economico ? 'económico (Haiku)' : 'de calidad (Opus)'} — tiene costo real de API. ¿Generar igual?`)) return;
   const btn = this;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generando (llama a Claude, puede tardar)...';
@@ -920,6 +927,7 @@ document.getElementById('peBtnTrioPreview').addEventListener('click', function (
     body: JSON.stringify({
       alias: document.getElementById('peAlias').value,
       item_id: PE_CONTEXTO.item.id,
+      modelo_economico: economico,
       perfiles: trioPerfiles(),
     }),
   })

@@ -17,6 +17,7 @@ son importables tal cual estan.
 """
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -58,13 +59,19 @@ def clusters_de_busqueda(suggestions: list, position_map: dict, max_clusters: in
 def _titulo_para_cluster(item_data: dict, description: str, category_attrs: dict,
                          category_name: str, category_path: str, product_type: str,
                          cluster: dict, autosuggest_raw: list, position_map: dict,
-                         console=None) -> dict:
+                         console=None, modelo_economico: bool = False) -> dict:
     """Genera UN titulo orientado a un cluster de busqueda especifico.
 
     El representante del cluster se empuja a TIER 1 (mayor prioridad, lo que
     determina la estructura del titulo en el prompt) — asi cada llamada
     produce un titulo distinto, en vez de reconverger siempre al mismo termino
     mas buscado del producto.
+
+    `modelo_economico`: usa Haiku (`_call_claude(..., fast=True)`) en vez de
+    Opus. El propio seo_optimizer.py reserva Haiku para analisis/validacion
+    estructurada, no para "sintesis creativa, titulos y descripciones
+    finales" (su docstring literal) — por eso esto es opt-in, decision
+    explicita de Guille caso a caso, no un default silencioso.
     """
     keyword_analysis = score_and_classify_keywords(
         autosuggest_raw, item_data.get("title", ""), [], [], position_map)
@@ -85,7 +92,7 @@ def _titulo_para_cluster(item_data: dict, description: str, category_attrs: dict
         category_path=category_path, tier1_kw=tier1_kw,
     )
     try:
-        raw = _call_claude(prompt, max_tokens=3500, console=console, fast=False)
+        raw = _call_claude(prompt, max_tokens=3500, console=console, fast=modelo_economico)
         parsed = _parse_synthesis(raw)
         errores = validar_sintesis(parsed, product_type, [tier1_kw], ancla, keyword_principal)
 
@@ -94,7 +101,7 @@ def _titulo_para_cluster(item_data: dict, description: str, category_attrs: dict
             # los errores concretos, despues se manda igual con los errores anotados.
             prompt_corr = prompt + "\n\nERRORES A CORREGIR (revisa y volve a escribir):\n" + \
                 "\n".join(f"- {e}" for e in errores)
-            raw = _call_claude(prompt_corr, max_tokens=3500, console=console, fast=False)
+            raw = _call_claude(prompt_corr, max_tokens=3500, console=console, fast=modelo_economico)
             parsed = _parse_synthesis(raw)
             errores = validar_sintesis(parsed, product_type, [tier1_kw], ancla, keyword_principal)
     except Exception as e:
@@ -117,7 +124,7 @@ def _titulo_para_cluster(item_data: dict, description: str, category_attrs: dict
     }
 
 
-def generar_titulos_trio(item_id: str, client, console=None) -> dict:
+def generar_titulos_trio(item_id: str, client, console=None, modelo_economico: bool = False) -> dict:
     """Punto de entrada: hasta 3 titulos (uno por cluster de busqueda real)
     para las publicaciones nuevas del trio, mas la descripcion y ficha
     tecnica de cada uno. No escribe nada en ML — es la "vista previa".
@@ -148,11 +155,19 @@ def generar_titulos_trio(item_id: str, client, console=None) -> dict:
     if not clusters:
         return {"ok": False, "error": "No se encontraron clusters de búsqueda con volumen suficiente."}
 
-    resultados = [
-        _titulo_para_cluster(item_data, description, category_attrs, category_name,
-                             category_path, tipo, cluster, autosuggest_raw, position_map, console)
-        for cluster in clusters
-    ]
+    # En paralelo, no secuencial: cada cluster es 1-2 llamadas a Claude
+    # independientes entre si, y con 3 clusters en serie el tiempo total
+    # podia superar el timeout del servidor (gunicorn --timeout 120, ver
+    # docs/CEREBRO.md seccion 12). Paralelizar corta el tiempo de punta a
+    # punta a lo que tarda el cluster mas lento, no la suma de los tres.
+    with ThreadPoolExecutor(max_workers=len(clusters)) as pool:
+        resultados = list(pool.map(
+            lambda cluster: _titulo_para_cluster(
+                item_data, description, category_attrs, category_name,
+                category_path, tipo, cluster, autosuggest_raw, position_map, console,
+                modelo_economico=modelo_economico),
+            clusters,
+        ))
 
     return {
         "ok": True,
