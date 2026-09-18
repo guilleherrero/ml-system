@@ -1413,12 +1413,70 @@ el Sprint 5 (generador de titulos, llama a `seo_optimizer.py`).
   entre cargas, se recalcula con lo que hay en el formulario cada vez. Se suma
   cuando Modo A (Sprint 2) lo necesite de verdad.
 
+### Sprint 2 — hecho (2026-09-18)
+
+- Tabla nueva `pricing_config` (`web/models_pricing.py`): cargos + 3 perfiles
+  por cuenta, override opcional por item_id. Las otras 3 tablas del §4 de la
+  spec (`precio_experimentos`, `snapshots_diarios`, `curva_demanda`) quedan
+  para el sprint 3/4, cuando haya algo que escribir ahi.
+- `GET/PUT /api/pricing/config`, `GET /api/pricing/contexto` (arma
+  precio/listing_type/stock real, ventas/dia y `fee_rate` real de ordenes de
+  30 dias via `stock_rentabilidad._compute_item_stats`, costo de
+  `costos.json`, comision base real via ML, competidores confirmados via
+  `cerebro.competidores_para_precio`, panel de faltantes).
+- `/api/pricing/calcular` ahora tambien acepta `situacion_hoy` (opcional) y
+  devuelve `empate` (ventas/dia para igualar hoy) + `mapa_decision` cuando la
+  estrategia es "comp" y la diferencia entre publicaciones supera el 3%
+  (regla de presentacion del §3.4 de la spec).
+- `POST /api/pricing/recomendar`: mismo motor + Claude (`claude-opus-4-7`,
+  mismo patron que `/api/evaluar-producto`) devolviendo el JSON del §6.
+  Degrada con gracia si Claude falla (probado en vivo: la cuenta de prueba
+  tenia el credito de API agotado, el endpoint respondio igual con
+  `confianza: "baja"` y el motivo en `datos_que_faltan`, no un 500).
+- Pantalla `/pricing/existente`: elegir cuenta + publicacion (reusa
+  `/api/costos-items/<alias>`, ya existente), trae contexto real, muestra
+  faltantes (bloquea el calculo si falta costo), calcula, y "Pedirle a Claude
+  que recomiende una".
+- **Bug real encontrado y corregido probando contra la cuenta NOVARA en
+  vivo**: `comision_pct` iba a salir de `core.fees.get_rate()`, que lee
+  `config/fees.json` calculado a precio de referencia $10.000 (por debajo del
+  umbral de envio gratis) — a ese precio el cargo fijo infla la tasa
+  (gold_special daba 26,3% en vez de ~13%, gold_pro 39,7% en vez de ~26,4%).
+  Usarlo tal cual hubiera duplicado el cargo fijo, que el motor ya calcula
+  por separado. Ademas se confirmo en vivo que la comision publicada de
+  `gold_pro` (Premium) viene MEZCLADA con el costo de cuotas, sin forma de
+  separarlos en `/sites/MLA/listing_prices` — por eso `/contexto` siempre
+  pide la tasa de `gold_special` (Clasica, sin cuotas propias) a un precio
+  por encima del umbral, y la etiqueta aclara que no tiene `category_id` (la
+  falta de `category_id` en `core/fees.py` ya estaba anotada como problema en
+  una nota previa de Novara/fees; sigue sin `category_id` real, asi que el
+  numero puede no calzar exacto con la categoria del producto — verificado
+  13% contra el 16% real medido para MLA5411 en la investigacion previa,
+  diferencia esperable sin category_id).
+- Verificado en vivo (cuenta NOVARA, item MLA1932975847): trae precio real
+  $60.578, `fee_rate_real` 0,2916 medido de ordenes, stock 98, cuotas_breakdown
+  real, y confirma el typo "Abriertas" del titulo (correccion 28) via el dato
+  real de la API.
+
+### Incognita nueva para el §10 de la spec (no estaba en la lista original)
+
+**Comision publicada de `gold_pro` incluye el costo de cuotas, sin
+desagregar.** No hay endpoint que separe "comision pura" de "costo de
+cuotas" para una publicacion Premium — solo se puede aislar la comision pura
+usando `gold_special` (que no tiene cuotas propias) como proxy. Si en algun
+momento se necesita el costo de cuotas real y exacto por escalon (3/6/9/12)
+en vez de la tabla de la spec, hay que investigar mas a fondo la respuesta de
+`/sites/MLA/listing_prices` para `gold_pro` con distintos parametros, o pedirlo
+directo a soporte de ML.
+
 ### Pendiente
 
-Sprints 2-5 de la spec (Modo A con datos reales, `/aplicar` + medicion diaria,
-evolucion + curva de demanda, generador de trio). Las incognitas del §10 de la
-spec (escalon de cuotas por API, fee_rate real, categorias con catalogo
-obligatorio) siguen sin probar.
+Sprints 3-5 de la spec (`/aplicar` + medicion diaria, evolucion + curva de
+demanda, generador de trio). Las incognitas del §10 de la spec (escalon de
+cuotas por API, categorias con catalogo obligatorio) siguen sin probar. La
+del "fee_rate real" quedo parcialmente resuelta este sprint (ver arriba) pero
+no del todo: falta decidir que hacer con el costo de cuotas real por escalon
+para publicaciones Premium.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba

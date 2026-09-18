@@ -332,8 +332,11 @@
     <a href="/lanzar-nuevo" class="{{ 'active' if request.path in ['/lanzar-nuevo','/lanzamientos','/evaluar-producto'] else '' }}">
       <i class="bi bi-rocket-takeoff"></i> Lanzar Producto
     </a>
-    <a href="/pricing/nuevo" class="{{ 'active' if request.path == '/pricing/nuevo' else '' }}">
+    <a href="/pricing/existente" class="{{ 'active' if request.path == '/pricing/existente' else '' }}">
       <i class="bi bi-calculator"></i> Calculadora de Precios
+    </a>
+    <a href="/pricing/nuevo" class="{{ 'active' if request.path == '/pricing/nuevo' else '' }}">
+      <i class="bi bi-box-seam"></i> — Producto nuevo
     </a>
 
     <!-- 📣 Marketing -->

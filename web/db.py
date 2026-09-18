@@ -69,4 +69,5 @@ def init_db():
     # al importarse
     from web import models_tienda        # noqa: F401
     from web import models_contabilidad  # noqa: F401
+    from web import models_pricing       # noqa: F401
     Base.metadata.create_all(engine)

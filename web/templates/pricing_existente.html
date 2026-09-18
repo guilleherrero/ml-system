@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %} — Calculadora de Precios (publicación existente){% endblock %}
+{% block content %}
+<style>
+.pc-card {
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; overflow:hidden; margin-bottom:.85rem;
+}
+.pc-card-header {
+  background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-100);
+  padding:.55rem 1rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-700);
+}
+.pc-card-body { padding:.9rem 1rem; }
+.pc-perfil-row { display:grid; grid-template-columns:1.2fr .8fr .8fr; gap:.5rem; margin-bottom:.4rem; }
+.pc-etiqueta { font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-500); }
+.pc-etiqueta.medido { color:#065f46; }
+.pc-etiqueta.faltante { color:var(--color-critical-700,#b91c1c); }
+.pc-result-table th, .pc-result-table td { font-size:.82rem; vertical-align:middle; }
+.pc-goal-badge { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:.25rem .55rem; border-radius:8px; }
+.pc-goal-rent { background:#d1fae5; color:#065f46; }
+.pc-goal-comp { background:var(--color-info-100,#dbeafe); color:var(--color-info-700,#1e40af); }
+.pc-goal-vel  { background:var(--color-warning-100); color:var(--color-warning-700); }
+.pc-motivo { font-size:.72rem; color:var(--color-neutral-500); }
+.pc-faltante { background:var(--color-warning-100); border:1px solid var(--color-warning-200,#fde68a); border-radius:8px; padding:.5rem .75rem; font-size:.78rem; color:var(--color-warning-700); margin-bottom:.5rem; }
+.pc-faltante.bloq { background:var(--color-critical-100,#fee2e2); border-color:var(--color-critical-200,#fecaca); color:var(--color-critical-700,#b91c1c); }
+.pc-empate { font-size:.78rem; background:var(--color-neutral-50); border-radius:8px; padding:.4rem .6rem; margin-top:.4rem; }
+.pc-mapa-table { font-size:.68rem; }
+.pc-mapa-table td { text-align:right; padding:.15rem .35rem; }
+.pc-mapa-pos { color:#065f46; background:#ecfdf5; }
+.pc-mapa-neg { color:#991b1b; background:#fef2f2; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>Calculadora de Estrategia de Precios</h5>
+    <div class="text-muted" style="font-size:.8rem">Modo A — publicación existente, datos reales de ML.</div>
+  </div>
+</div>
+
+<div class="pc-card">
+  <div class="pc-card-header">Elegí la publicación</div>
+  <div class="pc-card-body">
+    <div class="row g-2">
+      <div class="col-md-4">
+        <label class="pc-etiqueta d-block">Cuenta</label>
+        <select class="form-select form-select-sm" id="peAlias">
+          <option value="">Elegí una cuenta...</option>
+          {% for acc in accounts %}
+          <option value="{{ acc.alias }}">{{ acc.alias }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-8">
+        <label class="pc-etiqueta d-block">Publicación</label>
+        <select class="form-select form-select-sm" id="peItem" disabled>
+          <option value="">Elegí una cuenta primero...</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="peContenido" style="display:none">
+  <div class="row">
+    <div class="col-lg-5">
+      <div id="peFaltantes"></div>
+
+      <form id="peForm">
+        <div class="pc-card">
+          <div class="pc-card-header">Costo y competencia</div>
+          <div class="pc-card-body">
+            <div class="mb-2">
+              <label class="pc-etiqueta d-block">Costo del producto <span id="peCostoEtq"></span></label>
+              <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" id="peCosto" required>
+            </div>
+            <div class="mb-0">
+              <label class="pc-etiqueta d-block">Precio del competidor más barato <span id="peCompEtq"></span></label>
+              <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="peCompetidor">
+            </div>
+          </div>
+        </div>
+
+        <div class="pc-card">
+          <div class="pc-card-header">Objetivo</div>
+          <div class="pc-card-body">
+            <div class="row g-2">
+              <div class="col-5">
+                <label class="pc-etiqueta d-block">Modo</label>
+                <select class="form-select form-select-sm" id="peModo">
+                  <option value="roi">ROI</option>
+                  <option value="margen">Margen</option>
+                </select>
+              </div>
+              <div class="col-3">
+                <label class="pc-etiqueta d-block">Objetivo %</label>
+                <input type="number" step="0.1" class="form-control form-control-sm" id="peObjetivo" value="120">
+              </div>
+              <div class="col-4">
+                <label class="pc-etiqueta d-block">Piso %</label>
+                <input type="number" step="0.1" class="form-control form-control-sm" id="pePiso" value="60">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pc-card">
+          <div class="pc-card-header">Las 3 publicaciones <span class="pc-etiqueta" id="peComisionEtq"></span></div>
+          <div class="pc-card-body">
+            <div class="pc-perfil-row">
+              <div class="pc-etiqueta">Nombre</div><div class="pc-etiqueta">Comisión %</div><div class="pc-etiqueta">Cuotas %</div>
+            </div>
+            <div class="pc-perfil-row">
+              <input class="form-control form-control-sm" value="Batalla" id="peNombre0">
+              <input type="number" step="0.01" class="form-control form-control-sm" id="peComision0">
+              <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas0">
+            </div>
+            <div class="pc-perfil-row">
+              <input class="form-control form-control-sm" value="Medio" id="peNombre1">
+              <input type="number" step="0.01" class="form-control form-control-sm" id="peComision1">
+              <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas1">
+            </div>
+            <div class="pc-perfil-row mb-0">
+              <input class="form-control form-control-sm" value="Compensa" id="peNombre2">
+              <input type="number" step="0.01" class="form-control form-control-sm" id="peComision2">
+              <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas2">
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 mb-2" id="peBtn">
+          <i class="bi bi-calculator me-1"></i>Calcular las 3 estrategias
+        </button>
+        <button type="button" class="btn btn-outline-primary w-100" id="peBtnIA">
+          <i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una
+        </button>
+      </form>
+    </div>
+
+    <div class="col-lg-7">
+      <div id="peResultados"></div>
+      <div id="peRecomendacion"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let PE_CONTEXTO = null;
+
+document.getElementById('peAlias').addEventListener('change', function () {
+  const alias = this.value;
+  const itemSel = document.getElementById('peItem');
+  document.getElementById('peContenido').style.display = 'none';
+  if (!alias) { itemSel.disabled = true; itemSel.innerHTML = '<option value="">Elegí una cuenta primero...</option>'; return; }
+  itemSel.disabled = true;
+  itemSel.innerHTML = '<option value="">Cargando publicaciones...</option>';
+  fetch('/api/costos-items/' + encodeURIComponent(alias))
+    .then(r => r.json())
+    .then(d => {
+      const items = d.items || d || [];
+      itemSel.innerHTML = '<option value="">Elegí una publicación...</option>' +
+        items.map(it => `<option value="${it.id}">${it.id} — ${(it.titulo || '').slice(0, 60)} ($${Math.round(it.precio || 0).toLocaleString('es-AR')})</option>`).join('');
+      itemSel.disabled = false;
+    })
+    .catch(() => { itemSel.innerHTML = '<option value="">Error cargando publicaciones</option>'; });
+});
+
+document.getElementById('peItem').addEventListener('change', function () {
+  const alias = document.getElementById('peAlias').value;
+  const itemId = this.value;
+  if (!alias || !itemId) return;
+  document.getElementById('peContenido').style.display = 'none';
+  Promise.all([
+    fetch(`/api/pricing/contexto?alias=${encodeURIComponent(alias)}&item_id=${encodeURIComponent(itemId)}`).then(r => r.json()),
+    fetch(`/api/pricing/config?alias=${encodeURIComponent(alias)}&item_id=${encodeURIComponent(itemId)}`).then(r => r.json()),
+  ]).then(([ctx, cfg]) => {
+    if (!ctx.ok) { alert(ctx.error || 'Error trayendo la publicación'); return; }
+    PE_CONTEXTO = ctx;
+    document.getElementById('peContenido').style.display = '';
+
+    document.getElementById('peCosto').value = ctx.costo || '';
+    document.getElementById('peCostoEtq').innerHTML = etqBadge(ctx.costo_etiqueta);
+    document.getElementById('peCompetidor').value = ctx.competidor_min || '';
+    document.getElementById('peCompEtq').innerHTML = etqBadge(ctx.competidor_etiqueta);
+    document.getElementById('peComisionEtq').textContent = ctx.comision_etiqueta || '';
+
+    const perfiles = (cfg.perfiles && cfg.perfiles.length === 3) ? cfg.perfiles : [
+      {nombre: 'Batalla', comision: ctx.comision_pct || 17, costo_cuotas: 0},
+      {nombre: 'Medio', comision: ctx.comision_pct || 17, costo_cuotas: 5.75},
+      {nombre: 'Compensa', comision: ctx.comision_pct || 17, costo_cuotas: 10.75},
+    ];
+    perfiles.forEach((p, i) => {
+      document.getElementById('peNombre' + i).value = p.nombre;
+      document.getElementById('peComision' + i).value = p.comision;
+      document.getElementById('peCuotas' + i).value = p.costo_cuotas;
+    });
+
+    let html = '';
+    (ctx.faltantes || []).forEach(f => {
+      html += `<div class="pc-faltante ${f.bloqueante ? 'bloq' : ''}"><i class="bi bi-exclamation-triangle me-1"></i>` +
+        `<strong>${f.dato}:</strong> ${f.consecuencia}</div>`;
+    });
+    document.getElementById('peFaltantes').innerHTML = html;
+    document.getElementById('peBtn').disabled = ctx.faltantes.some(f => f.bloqueante);
+    document.getElementById('peResultados').innerHTML = '';
+    document.getElementById('peRecomendacion').innerHTML = '';
+  });
+});
+
+function etqBadge(etq) {
+  if (!etq) return '';
+  const cls = etq.toLowerCase().includes('falt') ? 'faltante' : (etq.toLowerCase().includes('medid') ? 'medido' : '');
+  return `<span class="pc-etiqueta ${cls}">(${etq})</span>`;
+}
+
+function fmtMoney(v) {
+  if (v === null || v === undefined) return 'No viable';
+  return '$' + v.toLocaleString('es-AR', {maximumFractionDigits: 0});
+}
+
+function buildPayload() {
+  return {
+    costo: document.getElementById('peCosto').value,
+    competidor_min: document.getElementById('peCompetidor').value || 0,
+    objetivo: {
+      modo: document.getElementById('peModo').value,
+      objetivo: document.getElementById('peObjetivo').value,
+      piso: document.getElementById('pePiso').value,
+    },
+    perfiles: [0, 1, 2].map(i => ({
+      nombre: document.getElementById('peNombre' + i).value,
+      comision: document.getElementById('peComision' + i).value,
+      costo_cuotas: document.getElementById('peCuotas' + i).value,
+    })),
+    situacion_hoy: PE_CONTEXTO ? PE_CONTEXTO.situacion_hoy : null,
+    contexto_extra: PE_CONTEXTO ? {
+      titulo: PE_CONTEXTO.item.titulo, stock: PE_CONTEXTO.item.stock,
+      cuotas_breakdown: PE_CONTEXTO.cuotas_breakdown,
+    } : {},
+  };
+}
+
+const GOALS = {
+  rent: {label: 'Máxima rentabilidad', cls: 'pc-goal-rent', desc: 'Las tres al objetivo.'},
+  comp: {label: 'Competir sin perder rentabilidad', cls: 'pc-goal-comp', desc: 'Solo la Batalla baja hasta el competidor, nunca debajo del piso.'},
+  vel:  {label: 'Velocidad con rentabilidad excelente', cls: 'pc-goal-vel', desc: 'Las tres bajan igualando la ganancia en pesos de la Batalla.'},
+};
+const MOTIVOS = {
+  sin_competidor: 'Sin dato de competidor: se usó el precio objetivo.',
+  objetivo_ya_gana: 'El precio objetivo ya le gana al competidor: no se bajó de más.',
+  debajo_del_competidor: 'Se bajó hasta 1% debajo del competidor.',
+  piso_no_permite_ganar: 'El piso no permite ganarle al competidor sin romper el margen mínimo.',
+};
+
+function renderResultados(d) {
+  const nombres = [0, 1, 2].map(i => document.getElementById('peNombre' + i).value);
+  let html = '';
+  (d.faltantes || []).forEach(f => {
+    html += `<div class="pc-faltante"><i class="bi bi-exclamation-triangle me-1"></i><strong>${f.dato}:</strong> ${f.consecuencia}</div>`;
+  });
+
+  ['rent', 'comp', 'vel'].forEach(goal => {
+    const g = GOALS[goal];
+    const r = d.estrategias[goal];
+    html += `<div class="pc-card"><div class="pc-card-header d-flex align-items-center justify-content-between">` +
+      `<span class="pc-goal-badge ${g.cls}">${g.label}</span><span class="pc-motivo">${g.desc}</span></div><div class="pc-card-body">`;
+    html += '<table class="table table-sm pc-result-table mb-1"><thead><tr><th>Publicación</th><th class="text-end">Precio</th><th class="text-end">Ganancia/venta</th></tr></thead><tbody>';
+    nombres.forEach((nombre, i) => {
+      html += `<tr><td>${nombre}</td><td class="text-end">${fmtMoney(r.precios[i])}</td><td class="text-end">${fmtMoney(r.ganancias[i])}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    html += `<div class="pc-motivo"><i class="bi bi-info-circle me-1"></i>Batalla: ${MOTIVOS[r.motivo_batalla] || r.motivo_batalla}</div>`;
+
+    if (r.empate) {
+      const e = r.empate;
+      html += `<div class="pc-empate"><i class="bi bi-graph-up me-1"></i>` +
+        (e.es_exacto
+          ? `Para que esta estrategia convenga hacen falta <strong>${e.minimo.toFixed(2)} ventas/día</strong> (número exacto).`
+          : `Para que convenga hacen falta entre <strong>${e.minimo.toFixed(2)} y ${e.maximo.toFixed(2)} ventas/día</strong>, según qué publicación se lleve la venta.`) +
+        '</div>';
+    }
+    if (r.mapa_decision) {
+      html += renderMapa(r.mapa_decision);
+    }
+    html += '</div></div>';
+  });
+  document.getElementById('peResultados').innerHTML = html;
+}
+
+function renderMapa(mapa) {
+  let html = '<div class="mt-2"><div class="pc-etiqueta mb-1">Mapa de decisión — diferencia diaria de ganancia vs. hoy (filas: ventas/día, columnas: % que se lleva la Batalla)</div>';
+  html += '<div style="overflow-x:auto"><table class="table table-bordered pc-mapa-table mb-0"><thead><tr><th></th>' +
+    mapa.cols.map(c => `<th>${c}%</th>`).join('') + '</tr></thead><tbody>';
+  mapa.filas.forEach((fila, i) => {
+    html += `<tr><td><strong>${fila}</strong></td>` +
+      mapa.celdas[i].map(v => `<td class="${v >= 0 ? 'pc-mapa-pos' : 'pc-mapa-neg'}">${Math.round(v).toLocaleString('es-AR')}</td>`).join('') +
+      '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  return html;
+}
+
+document.getElementById('peForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  const btn = document.getElementById('peBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Calculando...';
+  fetch('/api/pricing/calcular', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(buildPayload()),
+  })
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-calculator me-1"></i>Calcular las 3 estrategias';
+      if (!d.ok) { document.getElementById('peResultados').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`; return; }
+      renderResultados(d);
+    })
+    .catch(err => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-calculator me-1"></i>Calcular las 3 estrategias';
+      document.getElementById('peResultados').innerHTML = `<div class="pc-faltante bloq">Error: ${err}</div>`;
+    });
+});
+
+document.getElementById('peBtnIA').addEventListener('click', function () {
+  const btn = this;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Pensando...';
+  fetch('/api/pricing/recomendar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(buildPayload()),
+  })
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una';
+      if (!d.ok) { document.getElementById('peRecomendacion').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`; return; }
+      renderResultados(d);
+      renderRecomendacion(d.recomendacion);
+    })
+    .catch(err => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una';
+    });
+});
+
+function renderRecomendacion(r) {
+  if (!r || !r.estrategia_sugerida) {
+    document.getElementById('peRecomendacion').innerHTML =
+      `<div class="pc-faltante">No se pudo obtener la recomendación de Claude${r && r.datos_que_faltan && r.datos_que_faltan[0] ? ': ' + r.datos_que_faltan[0] : ''}.</div>`;
+    return;
+  }
+  let html = `<div class="pc-card"><div class="pc-card-header"><i class="bi bi-stars me-1"></i>Recomendación de Claude — confianza ${r.confianza}</div><div class="pc-card-body">`;
+  html += `<p><strong>Estrategia sugerida:</strong> ${GOALS[r.estrategia_sugerida] ? GOALS[r.estrategia_sugerida].label : r.estrategia_sugerida}</p>`;
+  html += `<p><strong>Precio a probar:</strong> ${fmtMoney(r.precio_a_probar)} <span class="pc-motivo">(${r.regla_aplicada})</span></p>`;
+  html += `<p>${r.por_que || ''}</p>`;
+  if (r.riesgos && r.riesgos.length) html += `<p><strong>Riesgos:</strong></p><ul>${r.riesgos.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  if (r.que_mirar_en_la_prueba && r.que_mirar_en_la_prueba.length) html += `<p><strong>Qué mirar en la prueba (${r.dias_sugeridos} días):</strong></p><ul>${r.que_mirar_en_la_prueba.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  if (r.datos_que_faltan && r.datos_que_faltan.length) html += `<div class="pc-faltante">Datos que le faltaron a Claude: ${r.datos_que_faltan.join(', ')}</div>`;
+  html += '</div></div>';
+  document.getElementById('peRecomendacion').innerHTML = html;
+}
+</script>
+{% endblock %}

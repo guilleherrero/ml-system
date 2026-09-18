@@ -9483,19 +9483,27 @@ def pricing_nuevo():
     return render_template('pricing_nuevo.html', accounts=get_accounts())
 
 
-@app.route('/api/pricing/calcular', methods=['POST'])
-def api_pricing_calcular():
-    """Motor puro: modules/precio_motor.py. No escribe nada, no llama a ML."""
-    from modules import precio_motor as pm
+@app.route('/pricing/existente')
+def pricing_existente():
+    """Calculadora de Estrategia de Precios — Modo A (publicacion existente)."""
+    return render_template('pricing_existente.html', accounts=get_accounts())
 
-    body = request.get_json() or {}
+
+def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
+    """Motor puro: modules/precio_motor.py. No escribe nada, no llama a ML.
+
+    Devuelve (resultado, None) o (None, mensaje_de_error). Compartido por
+    /api/pricing/calcular y /api/pricing/recomendar para no duplicar la
+    armada de Cargos/Publicacion/Objetivo ni la logica de empate/mapa.
+    """
+    from modules import precio_motor as pm
 
     try:
         costo = float(body.get('costo') or 0)
     except (TypeError, ValueError):
         costo = 0
     if costo <= 0:
-        return jsonify({'ok': False, 'error': 'Falta el costo del producto — no se puede calcular sin eso.'}), 400
+        return None, 'Falta el costo del producto — no se puede calcular sin eso.'
 
     cargos_in = body.get('cargos') or {}
     c = pm.Cargos(
@@ -9512,7 +9520,7 @@ def api_pricing_calcular():
 
     perfiles_in = body.get('perfiles') or []
     if len(perfiles_in) != 3:
-        return jsonify({'ok': False, 'error': 'Hacen falta exactamente 3 perfiles (Batalla, Medio, Compensa).'}), 400
+        return None, 'Hacen falta exactamente 3 perfiles (Batalla, Medio, Compensa).'
     pubs = [pm.Publicacion(
         nombre=p.get('nombre', ''),
         comision=float(p.get('comision', 0)),
@@ -9522,25 +9530,50 @@ def api_pricing_calcular():
     obj_in = body.get('objetivo') or {}
     modo = obj_in.get('modo')
     if modo not in ('roi', 'margen'):
-        return jsonify({'ok': False, 'error': 'El objetivo tiene que ser "roi" o "margen".'}), 400
+        return None, 'El objetivo tiene que ser "roi" o "margen".'
     try:
         obj = pm.Objetivo(modo=modo, objetivo=float(obj_in.get('objetivo')), piso=float(obj_in.get('piso')))
     except (TypeError, ValueError):
-        return jsonify({'ok': False, 'error': 'Faltan objetivo o piso.'}), 400
+        return None, 'Faltan objetivo o piso.'
 
     try:
         competidor_min = float(body.get('competidor_min') or 0)
     except (TypeError, ValueError):
         competidor_min = 0
 
+    # situacion_hoy es opcional: solo Modo A (publicacion existente) lo manda.
+    # g_dia_hoy viene YA CALCULADO por /api/pricing/contexto con el fee_rate
+    # real de ordenes historicas (que ya incluye comision+IVA+envio blended) —
+    # no se recalcula aca con los Cargos desglosados, para no mezclar un
+    # numero medido con uno hipotetico. Ver docs/CEREBRO.md seccion 12.
+    situacion_hoy = body.get('situacion_hoy') or {}
+    g_dia_hoy = situacion_hoy.get('ganancia_dia')
+    publicidad_total = float(body.get('publicidad_total') or 0)
+
     resultado = {}
     for goal in ('rent', 'comp', 'vel'):
         precios, ganancias, motivo = pm.estrategia(goal, pubs, c, costo, obj, competidor_min)
-        resultado[goal] = {
+        entry = {
             'precios':   [None if p == float('inf') else round(p, 2) for p in precios],
             'ganancias': [None if g == float('inf') else round(g, 2) for g in ganancias],
             'motivo_batalla': motivo,
         }
+        if g_dia_hoy is not None:
+            empate = pm.ventas_para_empatar(float(g_dia_hoy), ganancias, publicidad_total)
+            if empate:
+                minimo, maximo = empate
+                entry['empate'] = {
+                    'minimo': round(minimo, 2), 'maximo': round(maximo, 2),
+                    # Si la diferencia entre publicaciones es chica, el numero es
+                    # practicamente exacto — no hace falta mostrar un rango ni el mapa.
+                    'es_exacto': (maximo - minimo) / minimo < 0.03 if minimo > 0 else True,
+                }
+                if goal == 'comp' and not entry['empate']['es_exacto']:
+                    split_medio = float(body.get('split_medio', 50))
+                    entry['mapa_decision'] = pm.mapa_decision(
+                        float(g_dia_hoy), ganancias, split_medio, publicidad_total,
+                        float(situacion_hoy.get('ventas_dia', 1)))
+        resultado[goal] = entry
 
     faltantes = []
     if competidor_min <= 0:
@@ -9549,7 +9582,273 @@ def api_pricing_calcular():
             'consecuencia': 'Se puede calcular la estrategia "Máxima rentabilidad", no "Competir" ni el precio a probar.',
         })
 
-    return jsonify({'ok': True, 'estrategias': resultado, 'faltantes': faltantes})
+    return {'estrategias': resultado, 'faltantes': faltantes, 'costo': costo,
+            'competidor_min': competidor_min, 'perfiles': perfiles_in, 'objetivo': obj_in}, None
+
+
+@app.route('/api/pricing/calcular', methods=['POST'])
+def api_pricing_calcular():
+    resultado, error = _pricing_calcular_core(request.get_json() or {})
+    if error:
+        return jsonify({'ok': False, 'error': error}), 400
+    return jsonify({'ok': True, **resultado})
+
+
+@app.route('/api/pricing/recomendar', methods=['POST'])
+def api_pricing_recomendar():
+    """Igual que /calcular, mas el analisis de Claude (spec parrafo 6).
+
+    El motor calcula (siempre determinista); Claude interpreta y NUNCA
+    inventa precios propios — solo opina sobre los que ya calculo el motor.
+    """
+    body = request.get_json() or {}
+    resultado, error = _pricing_calcular_core(body)
+    if error:
+        return jsonify({'ok': False, 'error': error}), 400
+
+    contexto_extra = body.get('contexto_extra') or {}
+    prompt = f"""Sos un asesor de pricing para un vendedor de MercadoLibre Argentina. El motor de precios YA calculo las 3 estrategias — vos no calculas nada, opinas sobre lo que ya esta calculado.
+
+Producto: {contexto_extra.get('titulo', '(sin nombre)')}
+Costo: ${resultado['costo']:,.0f}
+Competidor mas barato conocido: {f"${resultado['competidor_min']:,.0f}" if resultado['competidor_min'] else '(sin dato)'}
+Objetivo: {resultado['objetivo'].get('modo')} {resultado['objetivo'].get('objetivo')}% (piso {resultado['objetivo'].get('piso')}%)
+
+Publicaciones: {json.dumps(resultado['perfiles'], ensure_ascii=False)}
+
+Las 3 estrategias ya calculadas (precios y ganancia por venta de cada publicacion, en el mismo orden que "Publicaciones" arriba):
+{json.dumps(resultado['estrategias'], ensure_ascii=False, indent=2)}
+
+Faltantes detectados: {json.dumps(resultado['faltantes'], ensure_ascii=False) or '(ninguno)'}
+
+Stock: {contexto_extra.get('stock', '(sin dato)')} · Dias de reposicion: {contexto_extra.get('dias_reposicion', '(sin dato)')}
+Reparto historico de cuotas de los compradores: {json.dumps(contexto_extra.get('cuotas_breakdown') or {}, ensure_ascii=False)}
+
+Reglas que tenes que respetar:
+- Piso absoluto de margen: nunca sugerir nada debajo de 15% de margen. Si una baja lo cruza, decilo.
+- Preferir reducir cuotas sin interes antes que bajar el precio, si los compradores no usan los escalones altos.
+- No canibalizar: ante una baja del competidor, tocar UNA sola publicacion, no las tres.
+- Si falta un dato critico (costo, ventas reales, competidor), decilo en "datos_que_faltan" y bajar "confianza" — nunca completar con un supuesto silencioso.
+
+Respondé SOLO con este JSON, sin texto adicional:
+{{
+  "estrategia_sugerida": "rent" | "comp" | "vel",
+  "precio_a_probar": <numero>,
+  "regla_aplicada": "explicacion corta de por que ese precio y no otro",
+  "por_que": "explicacion",
+  "riesgos": ["riesgo 1", "riesgo 2"],
+  "que_mirar_en_la_prueba": ["cosa 1", "cosa 2"],
+  "dias_sugeridos": <numero entero>,
+  "confianza": "alta" | "media" | "baja",
+  "datos_que_faltan": ["dato 1", "..."]
+}}"""
+
+    ai_recomendacion = {
+        'estrategia_sugerida': None, 'precio_a_probar': None, 'regla_aplicada': '',
+        'por_que': '', 'riesgos': [], 'que_mirar_en_la_prueba': [], 'dias_sugeridos': 14,
+        'confianza': 'baja', 'datos_que_faltan': ['No se pudo obtener el analisis de Claude.'],
+    }
+    try:
+        ai = anthropic.Anthropic()
+        resp = ai.messages.create(model='claude-opus-4-7', max_tokens=700,
+                                  messages=[{'role': 'user', 'content': prompt}])
+        _log_token_usage('Pricing — Recomendación', 'claude-opus-4-7',
+                         resp.usage.input_tokens, resp.usage.output_tokens)
+        raw = next((b.text for b in resp.content if hasattr(b, 'text')), '')
+        m = re.search(r'\{[\s\S]+\}', raw)
+        if m:
+            parsed = json.loads(m.group(0))
+            if isinstance(parsed.get('estrategia_sugerida'), str) and isinstance(parsed.get('riesgos'), list):
+                ai_recomendacion = parsed
+    except Exception as e:
+        app.logger.warning(f'[pricing/recomendar] Error con Claude: {e}')
+
+    return jsonify({'ok': True, **resultado, 'recomendacion': ai_recomendacion})
+
+
+@app.route('/api/pricing/config', methods=['GET'])
+def api_pricing_config_get():
+    from web.db import session_scope
+    from web.models_pricing import PricingConfig
+    from modules import precio_motor as pm
+
+    alias = request.args.get('alias', '')
+    item_id = request.args.get('item_id') or None
+    if not alias:
+        return jsonify({'ok': False, 'error': 'Falta alias'}), 400
+
+    with session_scope() as s:
+        row = None
+        if item_id:
+            row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id).first()
+        origen = 'item'
+        if row is None:
+            row = s.query(PricingConfig).filter_by(alias=alias, item_id=None).first()
+            origen = 'cuenta'
+        if row:
+            return jsonify({'ok': True, 'origen': origen, 'cargos': {
+                'iibb': float(row.iibb), 'percepcion_iva': float(row.percepcion_iva),
+                'envio': float(row.envio), 'umbral_envio': float(row.umbral_envio),
+                'envio_bajo_umbral': row.envio_bajo_umbral,
+                'fijo_menos_15k': float(row.fijo_menos_15k), 'fijo_15k_25k': float(row.fijo_15k_25k),
+                'fijo_25k_umbral': float(row.fijo_25k_umbral), 'redondeo': row.redondeo,
+            }, 'perfiles': row.perfiles})
+
+    # Sin config guardada todavia: defaults del motor unico (precio_motor.py)
+    dc = pm.Cargos()
+    return jsonify({'ok': True, 'origen': 'default', 'cargos': {
+        'iibb': dc.iibb, 'percepcion_iva': dc.percepcion_iva, 'envio': dc.envio,
+        'umbral_envio': dc.umbral_envio, 'envio_bajo_umbral': dc.envio_bajo_umbral,
+        'fijo_menos_15k': dc.fijo_menos_15k, 'fijo_15k_25k': dc.fijo_15k_25k,
+        'fijo_25k_umbral': dc.fijo_25k_umbral, 'redondeo': dc.redondeo,
+    }, 'perfiles': [
+        {'nombre': 'Batalla', 'comision': 17.0, 'costo_cuotas': 0.0},
+        {'nombre': 'Medio', 'comision': 17.0, 'costo_cuotas': 5.75},
+        {'nombre': 'Compensa', 'comision': 17.0, 'costo_cuotas': 10.75},
+    ]})
+
+
+@app.route('/api/pricing/config', methods=['PUT'])
+def api_pricing_config_put():
+    from web.db import session_scope
+    from web.models_pricing import PricingConfig
+
+    body = request.get_json() or {}
+    alias = body.get('alias', '')
+    item_id = body.get('item_id') or None
+    cargos = body.get('cargos') or {}
+    perfiles = body.get('perfiles') or []
+    if not alias:
+        return jsonify({'ok': False, 'error': 'Falta alias'}), 400
+    if len(perfiles) != 3:
+        return jsonify({'ok': False, 'error': 'Hacen falta exactamente 3 perfiles.'}), 400
+
+    with session_scope() as s:
+        row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id).first()
+        if row is None:
+            row = PricingConfig(alias=alias, item_id=item_id)
+            s.add(row)
+        row.iibb              = float(cargos.get('iibb', 3.0))
+        row.percepcion_iva    = float(cargos.get('percepcion_iva', 7.0))
+        row.envio             = float(cargos.get('envio', 5000))
+        row.umbral_envio      = float(cargos.get('umbral_envio', 33000))
+        row.envio_bajo_umbral = bool(cargos.get('envio_bajo_umbral', False))
+        row.fijo_menos_15k    = float(cargos.get('fijo_menos_15k', 1115))
+        row.fijo_15k_25k      = float(cargos.get('fijo_15k_25k', 2300))
+        row.fijo_25k_umbral   = float(cargos.get('fijo_25k_umbral', 2810))
+        row.redondeo          = bool(cargos.get('redondeo', True))
+        row.perfiles          = perfiles
+
+    return jsonify({'ok': True})
+
+
+@app.route('/api/pricing/contexto')
+def api_pricing_contexto():
+    """Modo A: todo lo que hace falta para calcular una publicacion existente.
+
+    No escribe nada. Si algo no se puede traer, queda en `faltantes` — nunca
+    se completa con un supuesto silencioso (spec, parrafo 7), salvo el envio
+    estimado, que ya viene marcado como tal en los defaults de Cargos.
+    """
+    from core.account_manager import AccountManager
+    from modules.stock_rentabilidad import _get_all_orders_30d, _compute_item_stats, _load_costos
+    from modules.cerebro import competidores_para_precio
+    from core.fees import get_fee_rates, get_rate
+
+    alias = request.args.get('alias', '')
+    item_id = request.args.get('item_id', '')
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias e item_id.'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo conectar la cuenta {alias}: {e}'}), 400
+
+    try:
+        item = client.get_item(item_id)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo traer la publicación {item_id}: {e}'}), 400
+    if not item or 'id' not in item:
+        return jsonify({'ok': False, 'error': f'Publicación {item_id} no encontrada.'}), 404
+
+    listing_type = item.get('listing_type_id', 'gold_special')
+    precio       = float(item.get('price') or 0)
+    stock        = item.get('available_quantity', 0)
+
+    try:
+        orders = _get_all_orders_30d(client)
+        stats  = _compute_item_stats(orders).get(item_id, {})
+    except Exception:
+        stats = {}
+    ventas_dia        = round((stats.get('units') or 0) / 30, 2)
+    fee_rate_real      = stats.get('fee_rate')  # blended real: comision+IVA+envio (ver nota abajo)
+    cuotas_breakdown   = stats.get('cuotas_breakdown')
+    cuotas_promedio    = stats.get('cuotas_promedio')
+
+    costo = (_load_costos().get(item_id) or {}).get('costo')
+
+    # La comision publicada de gold_pro (Premium) viene MEZCLADA con el costo
+    # de cuotas (no hay forma de separarlos en /sites/MLA/listing_prices —
+    # incognita abierta, ver docs/CEREBRO.md seccion 12). Para no duplicar el
+    # costo de cuotas al sumar Publicacion.costo_cuotas por separado, siempre
+    # se pide la comision de gold_special (Clasica, sin cuotas propias) como
+    # base "pura". Se consulta a un precio por encima del umbral de envio
+    # gratis para que el cargo fijo no infle el porcentaje (por eso NO se usa
+    # el cache de config/fees.json, calculado a $10.000 de referencia).
+    comision_pct = None
+    comision_etiqueta = 'Sin datos'
+    try:
+        rate = client.get_listing_fee_rate('gold_special', price=max(precio, 100000))
+        if rate:
+            comision_pct = round(rate * 100, 2)
+            comision_etiqueta = 'Dato (API de ML, gold_special — sin category_id, puede no calzar exacto con esta categoria)'
+    except Exception:
+        pass
+    if comision_pct is None:
+        comision_pct = round(get_rate(listing_type, get_fee_rates()) * 100, 2)
+        comision_etiqueta = 'Supuesto (cache local desactualizado, ver faltantes)'
+
+    competidores, competidor_min = [], 0.0
+    try:
+        competidores = competidores_para_precio(alias, item_id)
+        precios_comp = [c['price'] for c in competidores if (c.get('price') or 0) > 0]
+        competidor_min = min(precios_comp) if precios_comp else 0.0
+    except Exception:
+        pass
+
+    ganancia_dia_hoy = None
+    if costo not in (None, '', 0) and fee_rate_real:
+        from modules import precio_motor as pm
+        g_venta = pm.margen_unitario(precio, costo, fee_rate_real)
+        if g_venta is not None:
+            ganancia_dia_hoy = round(g_venta * ventas_dia, 2)
+
+    faltantes = []
+    if costo in (None, '', 0):
+        faltantes.append({'dato': 'Costo del producto', 'bloqueante': True,
+            'consecuencia': 'Bloquea todo el cálculo. Cargalo en la pantalla de Costos.'})
+    if not stats.get('units'):
+        faltantes.append({'dato': 'Ventas/día históricas', 'bloqueante': False,
+            'consecuencia': 'Se pueden calcular precios, pero no el empate ni el mapa de decisión.'})
+    if competidor_min <= 0:
+        faltantes.append({'dato': 'Precio de competidor', 'bloqueante': False,
+            'consecuencia': 'Se puede calcular "Máxima rentabilidad", no "Competir" ni el precio a probar.'})
+
+    return jsonify({'ok': True,
+        'item': {'id': item_id, 'titulo': item.get('title', ''), 'precio': precio,
+                 'listing_type_id': listing_type, 'stock': stock},
+        'situacion_hoy': {'precio': precio, 'ventas_dia': ventas_dia,
+                           'ganancia_dia': ganancia_dia_hoy,
+                           'fee_rate_real': fee_rate_real,
+                           'etiqueta': 'Medido' if fee_rate_real else 'Sin datos (sin ventas en 30 días)'},
+        'comision_pct': comision_pct, 'comision_etiqueta': comision_etiqueta,
+        'cuotas_breakdown': cuotas_breakdown, 'cuotas_promedio': cuotas_promedio,
+        'costo': float(costo) if costo not in (None, '') else None,
+        'costo_etiqueta': 'Dato' if costo not in (None, '', 0) else 'Faltante',
+        'competidor_min': competidor_min, 'competidores': competidores[:10],
+        'competidor_etiqueta': 'Medido' if competidor_min > 0 else 'Faltante',
+        'faltantes': faltantes})
 
 
 @app.route('/api/evaluar-producto', methods=['POST'])
