@@ -8,6 +8,7 @@ reales de la cuenta Novara y con el caso concreto que motivo el cambio.
 Correr:  python3 tests/test_precio_motor.py
 """
 
+import math
 import os
 import sys
 import unittest
@@ -232,6 +233,157 @@ class TestUnaSolaFuente(unittest.TestCase):
     def test_las_constantes_estan_en_un_solo_lugar(self):
         self.assertEqual(pm.UMBRAL_ENVIO_GRATIS_ARS, 33_000)
         self.assertGreater(pm.MARGEN_MINIMO_ACEPTABLE, 0)
+
+
+class TestEstrategiaTresPublicaciones(unittest.TestCase):
+    """Calculadora de Estrategia de Precios (spec 2026-09-18).
+
+    Configuracion comun: costo 15.000; cargos IIBB 3% + percepcion de IVA 7%
+    (ambas se restan siempre — para esta cuenta ninguna se recupera, ver
+    docs/CEREBRO.md), envio 5.000, umbral 33.000, fijos 1115/2300/2810,
+    redondeo activo. Perfiles Batalla (17%/0%), Medio (17%/5,75%),
+    Compensa (17%/10,75%). Situacion hoy: precio 60.578, 17%/10,75%,
+    3 ventas/dia. Competidor mas barato: 42.000.
+
+    Los numeros de referencia se recalcularon corriendo este mismo codigo con
+    percepcion de IVA incluida — la spec original solo restaba IIBB, asi que
+    sus valores de ejemplo no sirven tal cual (motivo: con mas costo, el
+    precio objetivo de la batalla ya no le gana solo al competidor en el caso
+    margen, así que "comp" difiere de "rent" en ambos casos, no solo en A).
+    """
+
+    def _setup(self):
+        c = pm.Cargos()
+        costo = 15000.0
+        pubs = [pm.Publicacion("Batalla", 17.0, 0.0),
+                pm.Publicacion("Medio", 17.0, 5.75),
+                pm.Publicacion("Compensa", 17.0, 10.75)]
+        return c, costo, pubs
+
+    def test_ganancia_hoy(self):
+        c, costo, _ = self._setup()
+        s = pm.Situacion(precio=60578, comision=17.0, costo_cuotas=10.75,
+                         ventas_dia=3, publicidad_dia=0)
+        g_venta, g_dia = pm.ganancia_hoy(s, c, costo)
+        self.assertAlmostEqual(g_venta, 17709.805, places=2)
+        self.assertAlmostEqual(g_dia, 53129.415, places=2)
+
+    def test_caso_a_roi_120_60(self):
+        c, costo, pubs = self._setup()
+        obj = pm.Objetivo(modo="roi", objetivo=120, piso=60)
+        esperado = {
+            "rent": ([52999, 56999, 61999], [18689.27, 18331.8275, 18594.3775]),
+            "comp": ([40999, 56999, 61999], [9929.27, 18331.8275, 18594.3775]),
+            "vel":  ([40999, 44999, 48999], [9929.27, 10261.8275, 10501.8775]),
+        }
+        for goal, (precios_esp, ganancias_esp) in esperado.items():
+            precios, ganancias, _ = pm.estrategia(goal, pubs, c, costo, obj, 42000)
+            self.assertEqual([round(p) for p in precios], precios_esp, msg=goal)
+            for g, ge in zip(ganancias, ganancias_esp):
+                self.assertAlmostEqual(g, ge, places=1, msg=goal)
+
+    def test_caso_b_margen_30_20(self):
+        c, costo, pubs = self._setup()
+        obj = pm.Objetivo(modo="margen", objetivo=30, piso=20)
+        esperado = {
+            "rent": ([46999, 53999, 62999], [14309.27, 16314.3275, 19216.8775]),
+            "comp": ([40999, 53999, 62999], [9929.27, 16314.3275, 19216.8775]),
+            "vel":  ([40999, 44999, 48999], [9929.27, 10261.8275, 10501.8775]),
+        }
+        for goal, (precios_esp, ganancias_esp) in esperado.items():
+            precios, ganancias, _ = pm.estrategia(goal, pubs, c, costo, obj, 42000)
+            self.assertEqual([round(p) for p in precios], precios_esp, msg=goal)
+            for g, ge in zip(ganancias, ganancias_esp):
+                self.assertAlmostEqual(g, ge, places=1, msg=goal)
+
+    def test_caso_c_escalera_meta_y_efecto_umbral(self):
+        """Con multiplicador x2 sobre el perfil Batalla: el par 34.999/32.999
+        tiene que mostrar que el precio MENOR deja MAS ganancia (no paga
+        envio por debajo del umbral de $33.000) — el motor tiene que
+        devolverlo asi, no "corregirlo"."""
+        c, costo, pubs = self._setup()
+        s = pm.Situacion(precio=60578, comision=17.0, costo_cuotas=10.75,
+                         ventas_dia=3, publicidad_dia=0)
+        _, g_dia_hoy = pm.ganancia_hoy(s, c, costo)
+        precios = [60999, 54999, 49999, 44999, 40999, 37999, 34999, 32999]
+        pasos = pm.escalera_meta(2.0, g_dia_hoy, pubs[0], c, costo, precios,
+                                 stock=10_000, dias_reposicion=0,
+                                 piso_precio=0, competidor_min=42000)
+        por_precio = {p["precio"]: p for p in pasos}
+        # El efecto umbral: 32.999 deja MAS ganancia que 34.999 (no paga envio)
+
+        self.assertGreater(por_precio[32999]["ganancia_venta"],
+                           por_precio[34999]["ganancia_venta"])
+        self.assertAlmostEqual(por_precio[34999]["ganancia_venta"], 5549.27, places=1)
+        self.assertAlmostEqual(por_precio[32999]["ganancia_venta"], 6279.27, places=1)
+
+
+class TestEstrategiaBordes(unittest.TestCase):
+    """Los 7 casos borde del §8 de la spec."""
+
+    def _setup(self):
+        c = pm.Cargos()
+        pub = pm.Publicacion("Batalla", 17.0, 0.0)
+        return c, pub
+
+    def test_costo_cuotas_altisimo_da_infinito(self):
+        c, _ = self._setup()
+        pub = pm.Publicacion("X", 50.0, 60.0)  # comision+cuotas+iibb+percep >= 100
+        self.assertTrue(math.isinf(pm.precio_para_ganancia(1000, pub, c, 15000)))
+
+    def test_margen_objetivo_mas_cargos_100_da_infinito(self):
+        c, pub = self._setup()
+        # rate() de "Batalla" ya es 27% (17+0+3+7); margen 80% + eso >= 100%
+        self.assertTrue(math.isinf(pm.precio_para_margen(0.80, pub, c, 15000)))
+
+    def test_sin_competidor_usa_precio_objetivo(self):
+        c, pub = self._setup()
+        obj = pm.Objetivo(modo="roi", objetivo=120, piso=60)
+        safe = pm.precio_objetivo(pub, c, 15000, obj)
+        floor = pm.precio_piso_objetivo(pub, c, 15000, obj)
+        _, motivo = pm.precio_batalla(safe, floor, 0, c)
+        self.assertEqual(motivo, "sin_competidor")
+
+    def test_piso_por_encima_del_competidor(self):
+        c, pub = self._setup()
+        # Piso carisimo (ROI 500%) que ningun competidor barato puede cumplir
+        obj = pm.Objetivo(modo="roi", objetivo=600, piso=500)
+        safe = pm.precio_objetivo(pub, c, 15000, obj)
+        floor = pm.precio_piso_objetivo(pub, c, 15000, obj)
+        _, motivo = pm.precio_batalla(safe, floor, 20000, c)
+        self.assertEqual(motivo, "piso_no_permite_ganar")
+
+    def test_redondeo_false_no_redondea(self):
+        c = pm.Cargos(redondeo=False)
+        pub = pm.Publicacion("Batalla", 17.0, 0.0)
+        obj = pm.Objetivo(modo="roi", objetivo=120, piso=60)
+        p = pm.precio_objetivo(pub, c, 15000, obj)
+        self.assertEqual(p, pm.precio_para_ganancia(15000 * 1.2, pub, c, 15000))
+        self.assertNotEqual(str(p)[-3:], "999")
+
+    def test_cargo_fijo_por_tramo(self):
+        c = pm.Cargos()
+        self.assertEqual(pm.cargo_fijo(10000, c), c.fijo_menos_15k)
+        self.assertEqual(pm.cargo_fijo(20000, c), c.fijo_15k_25k)
+        self.assertEqual(pm.cargo_fijo(30000, c), c.fijo_25k_umbral)
+        # Por encima del umbral: se paga envio, no cargo fijo
+        self.assertEqual(pm.cargo_fijo(40000, c), c.envio)
+
+    def test_publicidad_no_afecta_ganancia_por_venta(self):
+        c, pub = self._setup()
+        pub_con_ads = pm.Publicacion("Batalla", 17.0, 0.0, publicidad_dia=500)
+        g1 = pm.ganancia_publicacion(50000, pub, c, 15000)
+        g2 = pm.ganancia_publicacion(50000, pub_con_ads, c, 15000)
+        self.assertEqual(g1, g2)  # la publicidad no entra en ganancia_publicacion
+        # Solo afecta ganancia_hoy / dia, vía Situacion.publicidad_dia
+        s_sin = pm.Situacion(precio=50000, comision=17.0, costo_cuotas=0,
+                             ventas_dia=2, publicidad_dia=0)
+        s_con = pm.Situacion(precio=50000, comision=17.0, costo_cuotas=0,
+                             ventas_dia=2, publicidad_dia=500)
+        gv_sin, gd_sin = pm.ganancia_hoy(s_sin, c, 15000)
+        gv_con, gd_con = pm.ganancia_hoy(s_con, c, 15000)
+        self.assertEqual(gv_sin, gv_con)
+        self.assertEqual(gd_sin - gd_con, 500)
 
 
 if __name__ == '__main__':

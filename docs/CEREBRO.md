@@ -1049,6 +1049,10 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 48 | **Las percepciones no caen dentro de la ventana del cierre: ML las imputa TODAS JUNTAS el dia siguiente** (11/ago para el cierre del 10/ago) | `modules/contabilidad_cierre.py` | Sumarlas dentro de la ventana 11/jul-10/ago traia las del cierre anterior y daba 2.700.170 en vez de 1.875.361 — casi el doble, el mismo sintoma que la correccion 42 pero por otra causa. Fijado con un test contra los importes reales | A |
 | 49 | El importador de costos solo leia `config/costos.json` e ignoraba la **columna costo del snapshot de Stock y Rentabilidad** (`data/stock_<Alias>.json`), que es la otra fuente donde el usuario tiene costos cargados | `modules/contabilidad_cierre.py` | Quedaban 121 publicaciones con ventas y sin costo, con solo 140 de 3.538 ventas valuadas: el resultado mostraba margen sobre plataforma, no ganancia. **Resuelto**: se leen las dos fuentes, `costos.json` manda porque es lo que el usuario carga a mano | A |
 | 50 | La pantalla de costos listaba las publicaciones sin costo pero no habia forma de bajarlas: habia que copiar 121 IDs a mano de la tabla | `web/contabilidad_routes.py` | La columna costo del snapshot de Stock y Rentabilidad resulto NO ser una fuente independiente (sale de `costos.json`, y el snapshot cubre 80 publicaciones de las que 40 tienen costo), asi que la correccion 49 no sumo costos nuevos: el faltante es dato que Guille todavia no cargo. **Resuelto**: `/contabilidad/costos-faltantes.csv` baja las faltantes con la columna `costo` vacia, separador `;` y BOM para que Excel en español la abra bien; se completa y se pega de vuelta en el cargador masivo. Un test verifica que lo que sale vuelve a entrar sin tocar nada | A |
+| 51 | `discover_competitors` responde 400 "No se encontraron competidores" para MLA1932975847, que si tiene competencia | MCP local `ml_system_mcp/server.py` | El descubrimiento automatico de competidores falla en silencio para items que si compiten | **Diferido** a pedido del usuario (2026-09-18): retomar cuando termine la Calculadora de Estrategia de Precios (ver seccion 12) |
+| 52 | `get_competitor_details` con un `item_id` de catalogo devuelve datos cruzados de otro producto (probado con MLA2089950644: devolvio titulo y precio 0 de otro articulo) | idem | Cualquier pantalla que use este dato para un item de catalogo muestra informacion de un producto distinto sin avisar | **Diferido**, idem 51 |
+| 53 | `get_competitor_details` con un `product_id` tipo MLAU devuelve HTTP 500: `cannot access local variable 'no_active_listings' where it is not associated with a value` — la variable se usa antes de asignarse | idem | Corta la respuesta en vez de degradar; cualquier llamador que no espere un 500 se rompe | **Diferido**, idem 51 |
+| 54 | Falta una funcion para listar las publicaciones de un vendedor a partir de su `seller_id` | idem | No hay forma de traer el catalogo completo de un competidor por API; limitado por el 403 de ML en `/sites/MLA/search` (correccion 26) — evaluar via bookmarklet | **Diferido**, idem 51 |
 
 ### Estado al cierre del Sprint A
 
@@ -1336,6 +1340,90 @@ Lo construido y deployado en esta sesion, en orden:
 Pendientes viejos que siguen abiertos: el lanzador no registra en Cerebro;
 `ads`, `full` y `repricing` devuelven cero candidatos en el Top 3 y nadie
 investigo por que; la skill `meli-reglas` sigue con el hash viejo.
+
+## 12. Calculadora de Estrategia de Precios + Generador de Trio (spec 2026-09-18)
+
+Spec aparte de Guille, con su propio plan de 5 sprints. Objetivo: para un
+producto, calcular precios por estrategia (rentabilidad / competir / velocidad),
+decir cuantas ventas por dia hacen falta para que convenga, aplicar el cambio y
+medirlo. Mas un generador de las 3 publicaciones del "trio" (Batalla / Medio /
+Compensa). Detalle completo de la spec fuera de este doc (se la paso Guille
+directamente); acá solo el estado de avance y las decisiones que no estan en la
+spec original.
+
+### Decision: un solo motor, no dos
+
+La spec original pedia un archivo nuevo `modules/pricing_engine.py`. Antes de
+crearlo se encontro que ya existe `modules/precio_motor.py` (bloque 12.2,
+seccion 3 de este doc no — es el modulo real, no la spec de Cerebro), motor
+unico usado por `repricing.py`, `top_acciones_diarias.py`,
+`competencia_diagnostico.py` y `diagnostico_keywords.py`, con el mismo umbral
+de envio gratis ($33.000) y el mismo piso de margen (15%) que la nueva spec
+necesitaba. Crear un archivo aparte hubiera recreado el problema que
+`precio_motor.py` se creo para resolver (bloque 12.2: "cuatro logicas de precio
+que no se conocian entre si"). **Decision de Guille: ampliar `precio_motor.py`
+en vez de crear un archivo nuevo.** Las funciones de la spec (Cargos,
+Publicacion, Objetivo, `estrategia()`, `escalera_meta()`, etc.) viven ahi,
+reusando `UMBRAL_ENVIO_GRATIS_ARS` y `MARGEN_MINIMO_ACEPTABLE`. Tests en
+`tests/test_precio_motor.py` (no en un archivo aparte), clases
+`TestEstrategiaTresPublicaciones` y `TestEstrategiaBordes`.
+
+Cuando el bloque 3 de Cerebro (Precio, Sprint C — pendiente) se construya, tiene
+que reusar `estrategia()`/estas mismas funciones para la postura por
+publicacion, no reinventar la aritmetica de margen una tercera vez.
+
+### Decision: percepcion de IVA SI se resta (corrige la spec original)
+
+La spec original (§2) decia que la percepcion de IVA se recupera como credito
+fiscal y no se resta del precio — solo IIBB. Guille confirmo el 2026-09-18 que
+para esta cuenta eso es incorrecto: en la practica no se recupera, y tanto IIBB
+como percepcion de IVA son costo real y van siempre restados. `Cargos` tiene un
+campo `percepcion_iva` ademas de `iibb`; `tasa_cargos()` resta ambos. Los
+numeros de referencia del §8 de la spec original (Casos A/B/C) NO sirven tal
+cual porque asumian solo IIBB — se recalcularon corriendo el mismo codigo con
+percepcion incluida (7% ilustrativo en los tests, no la tasa real medida de
+7,08% — ver [memoria] ml-system-pricing-fees-real para la tasa real verificada).
+
+### Verificado antes de sprint 1, corrige algo que se le dijo mal a Guille
+
+Se le dijo a Guille que el hash MD5 de la Regla #1 (`seo_optimizer.py`) estaba
+roto. **Eso ya no es cierto** — quedo resuelto en el Sprint A de Cerebro
+(correccion 16 de la checklist de arriba): el hash actual del archivo
+(`0389b93a8c4ff11c8eaa97327a6f54c1`, verificado 2026-09-18) coincide con el
+re-baseado en `docs/ARQUITECTURA_OPTIMIZAR_IA.md`. Falta nada mas actualizarlo
+en la skill `meli-reglas` (detalle menor, no bloquea nada). Sigue en pie para
+el Sprint 5 (generador de titulos, llama a `seo_optimizer.py`).
+
+### Sprint 1 — hecho (2026-09-18)
+
+- `modules/precio_motor.py` ampliado: `Cargos`, `Publicacion`, `Situacion`,
+  `Objetivo`, `tasa_cargos`, `cargo_fijo`, `ganancia_publicacion`,
+  `redondear_arriba/abajo`, `precio_para_ganancia`, `precio_para_margen`,
+  `precio_objetivo`, `precio_piso_objetivo`, `precio_batalla`, `estrategia`,
+  `ganancia_hoy`, `ventas_para_empatar`, `mapa_decision`, `escalera_meta`.
+- `tests/test_precio_motor.py`: 11 tests nuevos (Caso A ROI, Caso B margen,
+  Caso C escalera + efecto umbral, 7 casos borde). 42/42 tests pasan (los 4
+  modulos que ya usaban `precio_motor.py` siguen sin romperse).
+- Pantalla Modo B (producto nuevo, sin publicacion todavia): `/pricing/nuevo`
+  + `POST /api/pricing/calcular`. Prueba manual en local: carga sin ML, calcula
+  las 3 estrategias, respeta el bloqueo cuando falta costo y marca el faltante
+  cuando no hay precio de competidor. Nav agregado bajo "🚀 Lanzamientos".
+- No incluido todavia (no lo pedia el criterio de aceptacion del sprint 1):
+  persistencia en `pricing_config` — la pantalla no guarda cargos/perfiles
+  entre cargas, se recalcula con lo que hay en el formulario cada vez. Se suma
+  cuando Modo A (Sprint 2) lo necesite de verdad.
+
+### Pendiente
+
+Sprints 2-5 de la spec (Modo A con datos reales, `/aplicar` + medicion diaria,
+evolucion + curva de demanda, generador de trio). Las incognitas del §10 de la
+spec (escalon de cuotas por API, fee_rate real, categorias con catalogo
+obligatorio) siguen sin probar.
+
+Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
+de `search_competitors` con `price:0`/`no_active_listings` ya estaba
+registrado como correccion 27. Todos **diferidos a pedido de Guille** hasta
+terminar los 5 sprints de este bloque — recordarle entonces.
 
 ## Sprints
 

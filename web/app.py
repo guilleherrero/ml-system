@@ -9473,6 +9473,85 @@ def evaluar_producto():
     return render_template('evaluar_producto.html', historial=historial, accounts=get_accounts())
 
 
+@app.route('/pricing/nuevo')
+def pricing_nuevo():
+    """Calculadora de Estrategia de Precios — Modo B (producto nuevo).
+
+    Sprint 1: solo carga manual, no depende de ML. Modo A (publicacion
+    existente, con /api/pricing/contexto trayendo datos reales) es Sprint 2.
+    """
+    return render_template('pricing_nuevo.html', accounts=get_accounts())
+
+
+@app.route('/api/pricing/calcular', methods=['POST'])
+def api_pricing_calcular():
+    """Motor puro: modules/precio_motor.py. No escribe nada, no llama a ML."""
+    from modules import precio_motor as pm
+
+    body = request.get_json() or {}
+
+    try:
+        costo = float(body.get('costo') or 0)
+    except (TypeError, ValueError):
+        costo = 0
+    if costo <= 0:
+        return jsonify({'ok': False, 'error': 'Falta el costo del producto — no se puede calcular sin eso.'}), 400
+
+    cargos_in = body.get('cargos') or {}
+    c = pm.Cargos(
+        iibb=float(cargos_in.get('iibb', pm.Cargos.iibb)),
+        percepcion_iva=float(cargos_in.get('percepcion_iva', pm.Cargos.percepcion_iva)),
+        envio=float(cargos_in.get('envio', pm.Cargos.envio)),
+        umbral_envio=float(cargos_in.get('umbral_envio', pm.Cargos.umbral_envio)),
+        envio_bajo_umbral=bool(cargos_in.get('envio_bajo_umbral', False)),
+        fijo_menos_15k=float(cargos_in.get('fijo_menos_15k', pm.Cargos.fijo_menos_15k)),
+        fijo_15k_25k=float(cargos_in.get('fijo_15k_25k', pm.Cargos.fijo_15k_25k)),
+        fijo_25k_umbral=float(cargos_in.get('fijo_25k_umbral', pm.Cargos.fijo_25k_umbral)),
+        redondeo=bool(cargos_in.get('redondeo', True)),
+    )
+
+    perfiles_in = body.get('perfiles') or []
+    if len(perfiles_in) != 3:
+        return jsonify({'ok': False, 'error': 'Hacen falta exactamente 3 perfiles (Batalla, Medio, Compensa).'}), 400
+    pubs = [pm.Publicacion(
+        nombre=p.get('nombre', ''),
+        comision=float(p.get('comision', 0)),
+        costo_cuotas=float(p.get('costo_cuotas', 0)),
+    ) for p in perfiles_in]
+
+    obj_in = body.get('objetivo') or {}
+    modo = obj_in.get('modo')
+    if modo not in ('roi', 'margen'):
+        return jsonify({'ok': False, 'error': 'El objetivo tiene que ser "roi" o "margen".'}), 400
+    try:
+        obj = pm.Objetivo(modo=modo, objetivo=float(obj_in.get('objetivo')), piso=float(obj_in.get('piso')))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Faltan objetivo o piso.'}), 400
+
+    try:
+        competidor_min = float(body.get('competidor_min') or 0)
+    except (TypeError, ValueError):
+        competidor_min = 0
+
+    resultado = {}
+    for goal in ('rent', 'comp', 'vel'):
+        precios, ganancias, motivo = pm.estrategia(goal, pubs, c, costo, obj, competidor_min)
+        resultado[goal] = {
+            'precios':   [None if p == float('inf') else round(p, 2) for p in precios],
+            'ganancias': [None if g == float('inf') else round(g, 2) for g in ganancias],
+            'motivo_batalla': motivo,
+        }
+
+    faltantes = []
+    if competidor_min <= 0:
+        faltantes.append({
+            'dato': 'Precio de competidor',
+            'consecuencia': 'Se puede calcular la estrategia "Máxima rentabilidad", no "Competir" ni el precio a probar.',
+        })
+
+    return jsonify({'ok': True, 'estrategias': resultado, 'faltantes': faltantes})
+
+
 @app.route('/api/evaluar-producto', methods=['POST'])
 def api_evaluar_producto():
     from modules.lanzador_productos import _gather_market_data

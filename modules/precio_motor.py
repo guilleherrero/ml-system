@@ -26,6 +26,9 @@ es una prediccion, es una cuenta exacta, y hasta ahora ningun modulo la hacia.
 
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass, field
+
 # ── Constantes unicas del sistema ────────────────────────────────────────────
 # Estaban repetidas y con valores distintos en cada modulo.
 
@@ -449,3 +452,241 @@ def impacto_estimado_baja(precio_actual, precio_nuevo, costo, fee_rate,
                     'la conversion estimada toma solo una fraccion de la mejora teorica'),
     }
     return round(impacto, 0), detalle
+
+
+# ── Estrategia de 3 publicaciones (Calculadora de Estrategia de Precios) ────
+# Todo lo de arriba evalua UN cambio de precio sobre una publicacion existente.
+# Esto resuelve el problema inverso y mas amplio: dado un costo y un objetivo
+# de ganancia (ROI o margen), que precio hay que poner en cada una de tres
+# publicaciones (Batalla / Medio / Compensa) segun la estrategia elegida, y
+# cuantas ventas por dia hacen falta para que convenga frente a lo que se gana
+# hoy. Vive acá y no en un archivo aparte para que siga habiendo un solo motor:
+# comparte UMBRAL_ENVIO_GRATIS_ARS y MARGEN_MINIMO_ACEPTABLE con el resto del
+# archivo en vez de redefinirlos.
+#
+# A diferencia de margen_unitario() (que toma un fee_rate ya mezclado, tipico
+# de datos reales de ordenes), acá los cargos van desglosados (comision +
+# cuotas + IIBB + percepcion de IVA) porque hace falta variar cada componente
+# por separado entre las tres publicaciones y por escalon de cuotas.
+#
+# Percepcion de IVA: en teoria es un credito fiscal recuperable, pero para
+# esta cuenta en la practica no se recupera — por eso se trata como costo
+# real, igual que el IIBB, y se resta siempre. Decision explicita del usuario
+# (no la default silenciosa que sugería la spec original).
+
+@dataclass
+class Cargos:
+    iibb: float = 3.0               # %
+    percepcion_iva: float = 7.0     # % — no se recupera para esta cuenta, se trata como costo real
+    envio: float = 5000.0           # $ por venta cuando corresponde
+    umbral_envio: float = 33000.0   # $ desde donde el envio lo paga el vendedor
+    envio_bajo_umbral: bool = False
+    fijo_menos_15k: float = 1115.0
+    fijo_15k_25k: float = 2300.0
+    fijo_25k_umbral: float = 2810.0
+    redondeo: bool = True           # precios terminados en 999
+
+
+@dataclass
+class Publicacion:
+    nombre: str                     # "Batalla" | "Medio" | "Compensa" (editable)
+    comision: float                 # %
+    costo_cuotas: float             # % (0 si el interes lo paga el comprador)
+    descripcion_tipo: str = ""      # "Clasica, cuotas con interes", etc.
+    publicidad_dia: float = 0.0     # $ por dia, 0 si no se invierte
+    listing_type: str = "gold_special"   # gold_special = Clasica, gold_pro = Premium
+    cuotas: int = 0                 # escalon de cuotas sin interes; 0 = sin cuotas propias
+
+
+@dataclass
+class Situacion:                    # "Tu situacion hoy"
+    precio: float
+    comision: float
+    costo_cuotas: float
+    ventas_dia: float
+    publicidad_dia: float = 0.0
+
+
+@dataclass
+class Objetivo:
+    modo: str                       # "roi" | "margen"
+    objetivo: float                 # % (ej. 120 en roi, 30 en margen)
+    piso: float                     # % en el mismo modo
+
+
+def tasa_cargos(pub: Publicacion, c: Cargos) -> float:
+    return (pub.comision + pub.costo_cuotas + c.iibb + c.percepcion_iva) / 100
+
+
+def cargo_fijo(precio: float, c: Cargos) -> float:
+    f = 0.0
+    if precio >= c.umbral_envio or c.envio_bajo_umbral:
+        f += c.envio
+    if precio < c.umbral_envio:
+        if precio < 15000:   f += c.fijo_menos_15k
+        elif precio < 25000: f += c.fijo_15k_25k
+        else:                f += c.fijo_25k_umbral
+    return f
+
+
+def ganancia_publicacion(precio: float, pub: Publicacion, c: Cargos, costo: float) -> float:
+    return precio * (1 - tasa_cargos(pub, c)) - cargo_fijo(precio, c) - costo
+
+
+def _step(P: float) -> int:
+    return 100 if P < 10000 else 1000
+
+
+def redondear_arriba(P: float, c: Cargos) -> float:
+    if not c.redondeo or math.isinf(P): return P
+    s = _step(P)
+    return math.ceil((P + 1) / s) * s - 1
+
+
+def redondear_abajo(P: float, c: Cargos) -> float:
+    if not c.redondeo or math.isinf(P): return P
+    s = _step(P)
+    return math.floor((P + 1) / s) * s - 1
+
+
+def precio_para_ganancia(G: float, pub: Publicacion, c: Cargos, costo: float) -> float:
+    """Precio que deja G pesos de ganancia. Itera porque el cargo fijo depende del precio."""
+    r = tasa_cargos(pub, c)
+    if r >= 1: return math.inf
+    P = (costo + G + c.envio) / (1 - r)
+    for _ in range(8):
+        P = (costo + G + cargo_fijo(P, c)) / (1 - r)
+    return P
+
+
+def precio_para_margen(m: float, pub: Publicacion, c: Cargos, costo: float) -> float:
+    """m viene en fraccion (0.30 = 30%)."""
+    d = 1 - tasa_cargos(pub, c) - m
+    if d <= 0: return math.inf
+    P = (costo + c.envio) / d
+    for _ in range(8):
+        P = (costo + cargo_fijo(P, c)) / d
+    return P
+
+
+def precio_objetivo(pub: Publicacion, c: Cargos, costo: float, obj: Objetivo) -> float:
+    return (precio_para_ganancia(costo * obj.objetivo / 100, pub, c, costo)
+            if obj.modo == "roi" else
+            precio_para_margen(obj.objetivo / 100, pub, c, costo))
+
+
+def precio_piso_objetivo(pub: Publicacion, c: Cargos, costo: float, obj: Objetivo) -> float:
+    return (precio_para_ganancia(costo * obj.piso / 100, pub, c, costo)
+            if obj.modo == "roi" else
+            precio_para_margen(obj.piso / 100, pub, c, costo))
+
+
+def precio_batalla(safe0: float, floor0: float, competidor_min: float, c: Cargos) -> tuple[float, str]:
+    """Precio de la publicacion de batalla. Devuelve (precio, motivo)."""
+    if competidor_min <= 0:
+        return redondear_arriba(safe0, c), "sin_competidor"
+    if safe0 <= competidor_min * 0.99:
+        # el precio objetivo ya le gana: no bajar de mas
+        return redondear_arriba(safe0, c), "objetivo_ya_gana"
+    p0 = redondear_abajo(competidor_min * 0.99, c)
+    if p0 >= floor0:
+        return p0, "debajo_del_competidor"
+    return redondear_arriba(floor0, c), "piso_no_permite_ganar"
+
+
+def estrategia(goal: str, pubs: list[Publicacion], c: Cargos, costo: float,
+              obj: Objetivo, competidor_min: float) -> tuple[list[float], list[float], str]:
+    """goal: 'rent' | 'comp' | 'vel'.
+
+    rent (Maxima rentabilidad): las tres al objetivo.
+    comp (Competir sin perder rentabilidad): solo la batalla baja, hasta el
+        competidor y nunca debajo del piso. Medio y Compensa quedan en el objetivo.
+    vel (Velocidad con rentabilidad excelente): las tres bajan igualando la
+        ganancia en pesos de la batalla, con el piso como limite inferior.
+    """
+    safe   = [precio_objetivo(p, c, costo, obj) for p in pubs]
+    floors = [precio_piso_objetivo(p, c, costo, obj) for p in pubs]
+    p0, motivo = precio_batalla(safe[0], floors[0], competidor_min, c)
+
+    if goal == "rent":
+        precios = [redondear_arriba(x, c) for x in safe]
+    elif goal == "comp":
+        precios = [p0] + [redondear_arriba(x, c) for x in safe[1:]]
+    elif goal == "vel":
+        G = ganancia_publicacion(p0, pubs[0], c, costo)
+        precios = [p0] + [redondear_arriba(max(floors[i], precio_para_ganancia(G, pubs[i], c, costo)), c)
+                          for i in (1, 2)]
+    else:
+        raise ValueError(goal)
+
+    ganancias = [ganancia_publicacion(precios[i], pubs[i], c, costo) for i in range(len(pubs))]
+    return precios, ganancias, motivo
+
+
+def ganancia_hoy(s: Situacion, c: Cargos, costo: float) -> tuple[float, float]:
+    r = (s.comision + s.costo_cuotas + c.iibb + c.percepcion_iva) / 100
+    g_venta = s.precio * (1 - r) - cargo_fijo(s.precio, c) - costo
+    g_dia = g_venta * s.ventas_dia - s.publicidad_dia
+    return g_venta, g_dia
+
+
+def ventas_para_empatar(g_dia_hoy: float, ganancias: list[float],
+                        publicidad_total: float) -> tuple[float, float] | None:
+    """Devuelve (minimo, maximo). El rango sale de que distintas publicaciones
+    dejan distinta ganancia por venta."""
+    meta = g_dia_hoy + publicidad_total
+    validas = [g for g in ganancias if g > 0 and math.isfinite(g)]
+    if not validas: return None
+    return meta / max(validas), meta / min(validas)
+
+
+def mapa_decision(g_dia_hoy: float, ganancias: list[float], split_medio: float,
+                  publicidad_total: float, ventas_hoy: float) -> dict:
+    """Solo tiene sentido para la estrategia 'comp' (la unica donde las tres
+    publicaciones dejan ganancias distintas segun quien se lleve la venta).
+
+    split_medio: % del reparto entre Medio y Compensa que se lleva Medio
+    (supuesto). Devuelve filas (ventas/dia) x columnas (% que se lleva la
+    batalla) con la diferencia diaria de ganancia vs. hoy.
+    """
+    cols = [20, 30, 40, 50, 60, 70, 80, 90, 100]
+    base = max(0.5, ventas_hoy)
+    filas = sorted({max(0.5, round(base * m * 2) / 2)
+                    for m in (0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4)}, reverse=True)
+    sp = split_medio / 100
+
+    def avg(b):  # b en fraccion
+        return b * ganancias[0] + (1 - b) * (sp * ganancias[1] + (1 - sp) * ganancias[2])
+
+    return {
+        "cols": cols,
+        "filas": filas,
+        "celdas": [[u * avg(cc / 100) - publicidad_total - g_dia_hoy for cc in cols] for u in filas],
+    }
+
+
+def escalera_meta(multiplicador: float, g_dia_hoy: float, pub: Publicacion, c: Cargos,
+                  costo: float, precios: list[float], stock: int, dias_reposicion: int,
+                  piso_precio: float, competidor_min: float) -> list[dict]:
+    """Para cada precio candidato: ganancia/venta, ventas/dia necesarias para
+    multiplicar la ganancia de hoy, dias de stock que eso implica, y banderas
+    de viabilidad. El "precio a probar" no lo elige esta funcion: es el precio
+    mas alto de la lista que cumple las tres condiciones (le gana al
+    competidor, no rompe el piso, el stock alcanza) — eso lo decide quien
+    llama, mostrando siempre la regla usada junto al numero."""
+    meta = g_dia_hoy * multiplicador
+    out = []
+    for p in precios:
+        g = ganancia_publicacion(p, pub, c, costo)
+        if g <= 0:
+            out.append({"precio": p, "viable": False}); continue
+        n = meta / g
+        dias = stock / n if n > 0 else math.inf
+        out.append({
+            "precio": p, "ganancia_venta": g, "ventas_necesarias": n,
+            "dias_stock": dias,
+            "rompe_piso": p < piso_precio,
+            "no_gana_competidor": competidor_min > 0 and p >= competidor_min,
+            "stock_insuficiente": dias < dias_reposicion,
+        })
+    return out
