@@ -13413,6 +13413,13 @@ def api_detalle_competidor():
             pass
         return 0.0, 0, []
 
+    # Correccion 53 (docs/CEREBRO.md): 'no_active_listings' se leia mas abajo
+    # sin haberse asignado en 3 caminos distintos — Intento 2 (/items/{id}
+    # directo), Intento 3 con catalogo encontrado y listings activos, e
+    # Intento 3 sin catalogo encontrado. Se inicializa una sola vez aca y
+    # cada camino la sobreescribe solo cuando corresponde.
+    no_active_listings = False
+
     try:
         manager = AccountManager()
         client  = manager.get_client(alias)
