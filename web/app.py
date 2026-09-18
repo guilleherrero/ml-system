@@ -10228,6 +10228,137 @@ def api_pricing_escalera():
     return jsonify({'ok': True, 'escalera': pasos, 'precio_a_probar': precio_a_probar, 'regla': regla})
 
 
+@app.route('/api/pricing/trio/preview', methods=['POST'])
+def api_pricing_trio_preview():
+    """Sprint 5 — vista previa del trio: titulos por cluster + ficha + fotos.
+
+    No crea nada en ML (regla del parrafo 0 de la spec). Cada perfil que
+    manda el body tiene que traer `cuotas` (0/4/3/6/9/12, ver
+    modules.trio_generador.CUOTAS_A_TAGS) para poder chequear duplicados de
+    tipo+cuotas antes de generar contenido.
+    """
+    from core.account_manager import AccountManager
+    from modules import trio_generador as tg
+
+    body = request.get_json() or {}
+    alias = body.get('alias', '')
+    item_id = body.get('item_id', '')
+    perfiles = body.get('perfiles') or []
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias e item_id.'}), 400
+    if len(perfiles) not in (2, 3):
+        return jsonify({'ok': False, 'error': 'Hacen falta 2 o 3 perfiles.'}), 400
+
+    duplicados = tg.perfiles_duplicados(perfiles)
+    if duplicados:
+        pares = '; '.join(f'{a} y {b}' for a, b in duplicados)
+        return jsonify({'ok': False,
+            'error': f'Hay publicaciones con el mismo tipo y escalón de cuotas ({pares}). Cada publicación del trío tiene que diferenciarse.'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo conectar la cuenta {alias}: {e}'}), 400
+
+    resultado = tg.generar_titulos_trio(item_id, client)
+    if not resultado.get('ok'):
+        return jsonify(resultado), 400
+
+    titulos = resultado['titulos']
+    if len(titulos) < len(perfiles):
+        resultado['aviso'] = (
+            f'Solo se encontraron {len(titulos)} cluster(s) de búsqueda con volumen — '
+            f'no se inventa un tercero. Se genera {"un título" if len(titulos)==1 else f"{len(titulos)} títulos"} en vez de {len(perfiles)}.'
+        )
+
+    for t in titulos:
+        t['ficha_faltante'] = tg.ficha_faltante(t.get('ficha_attrs') or {}, resultado['ficha_requerida'])
+        t['puede_crear'] = not t['ficha_faltante'] and bool(t.get('titulo')) and not t['errores_validacion']
+
+    return jsonify(resultado)
+
+
+@app.route('/api/pricing/trio/crear', methods=['POST'])
+def api_pricing_trio_crear():
+    """Sprint 5 — crea las publicaciones nuevas del trio, PAUSADAS.
+
+    Escribe en ML — exige `confirmado: true` explicito. Solo crea las
+    publicaciones NUEVAS (2, o 1 si solo alcanzo un cluster); la existente se
+    edita por precio via /api/pricing/aplicar, no se toca aca. Si se pasa
+    `experimento_id`, los item_ids creados se suman a ese experimento.
+    """
+    from core.account_manager import AccountManager
+    from modules import trio_generador as tg
+    from web.db import session_scope
+    from web.models_pricing import PrecioExperimento
+
+    body = request.get_json() or {}
+    if body.get('confirmado') is not True:
+        return jsonify({'ok': False, 'error': 'Falta la confirmación explícita (confirmado: true).'}), 400
+
+    alias = body.get('alias', '')
+    item_id_existente = body.get('item_id', '')
+    category_id = body.get('category_id', '')
+    publicaciones = body.get('publicaciones') or []
+    pictures = body.get('pictures') or []
+    if not alias or not category_id or not publicaciones:
+        return jsonify({'ok': False, 'error': 'Faltan alias, category_id o publicaciones a crear.'}), 400
+
+    duplicados = tg.perfiles_duplicados(publicaciones)
+    if duplicados:
+        return jsonify({'ok': False, 'error': 'Hay publicaciones con el mismo tipo y escalón de cuotas — no se crea nada.'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo conectar con ML: {e}'}), 400
+
+    creadas, errores = [], []
+    for pub in publicaciones:
+        listing_type, tags = tg.CUOTAS_A_TAGS.get(pub.get('cuotas', 0), ('gold_special', []))
+        faltan = tg.ficha_faltante(pub.get('ficha_attrs') or {}, body.get('ficha_requerida') or [])
+        if faltan:
+            errores.append(f"{pub.get('nombre')}: falta completar la ficha técnica ({', '.join(faltan)}).")
+            continue
+        if not pub.get('titulo'):
+            errores.append(f"{pub.get('nombre')}: sin título.")
+            continue
+
+        payload = {
+            'title': pub['titulo'][:60],
+            'category_id': category_id,
+            'price': float(pub.get('precio') or 0),
+            'currency_id': 'ARS',
+            'available_quantity': int(pub.get('stock') or 1),
+            'buying_mode': 'buy_it_now',
+            'condition': 'new',
+            'listing_type_id': listing_type,
+            'tags': tags,
+            'pictures': [{'id': p['id']} for p in pictures if p.get('id')],
+            'status': 'paused',
+        }
+        if pub.get('descripcion'):
+            payload['description'] = {'plain_text': pub['descripcion']}
+
+        try:
+            creado = client.create_item(payload)
+            if not creado or 'id' not in creado:
+                errores.append(f"{pub.get('nombre')}: ML no devolvió un item_id. Respuesta: {creado}")
+                continue
+            creadas.append({'nombre': pub.get('nombre'), 'item_id': creado['id']})
+        except Exception as e:
+            errores.append(f"{pub.get('nombre')}: {e}")
+
+    if creadas and body.get('experimento_id'):
+        with session_scope() as s:
+            exp = s.get(PrecioExperimento, int(body['experimento_id']))
+            if exp and exp.alias == alias:
+                exp.item_ids = list(exp.item_ids or []) + [c['item_id'] for c in creadas]
+
+    return jsonify({'ok': True, 'creadas': creadas, 'errores': errores,
+                    'recordatorio': 'Dar de alta las publicaciones nuevas en AppSeller para sincronizar stock.'})
+
+
 @app.route('/api/evaluar-producto', methods=['POST'])
 def api_evaluar_producto():
     from modules.lanzador_productos import _gather_market_data

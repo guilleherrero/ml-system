@@ -1572,17 +1572,95 @@ Decisiones tomadas:
   de escribir, así que solo se ejecuta si Guille lo confirma manualmente
   probando la pantalla.
 
+### Incognita §10.1 resuelta (2026-09-18, via documentacion oficial de ML)
+
+El escalon de cuotas **SI se puede fijar por API**, de forma deterministica,
+no depende de que ML apruebe una campana por seller (salvo `pcj-co-funded`,
+que si es opt-in pero universal). Se controla con el campo `tags` al crear o
+editar la publicacion, combinado con `listing_type_id`:
+
+| Perfil | listing_type_id | tag |
+|---|---|---|
+| Sin cuotas propias (Batalla) | `gold_special` | (ninguno) |
+| Interes bajo, 3-12 cuotas (comprador elige, vendedor paga 4% fijo) | `gold_special` | `pcj-co-funded` |
+| 3 cuotas al mismo precio | `gold_pro` | `3x_campaign` |
+| 6 cuotas al mismo precio (default de gold_pro) | `gold_pro` | (ninguno) |
+| 9 cuotas al mismo precio | `gold_pro` | `9x_campaign` |
+| 12 cuotas al mismo precio | `gold_pro` | `12x_campaign` |
+
+"Todos los sellers de MLA tienen habilitadas 3x, 9x y 12x_campaign" (doc
+oficial) — no hace falta validar por seller, solo por categoria:
+`POST /special_installments/$TAG/categories/$CATEGORY_ID/enabled`.
+
+**Ademas resuelve algo que quedo pendiente del sprint 2**: `GET
+/sites/MLA/listing_prices?price=&listing_type_id=&tags=&domain_id=` devuelve
+`sale_fee_details.percentage_fee` (comision pura) y
+`sale_fee_details.financing_add_on_fee` (costo de cuotas) **separados** — la
+comision de `gold_pro` no esta "mezclada sin forma de separarla" como se
+penso en el sprint 2, solo hacia falta pasar `tags` y `domain_id`
+(`core.fees`/`core/ml_client.get_listing_fee_rate` no los soportaba). El
+costo de cuotas real tambien varia por dominio/categoria, no es un numero
+fijo — los valores de la memoria del usuario (8,9/13,4/17,8/21,6% para
+Cortadoras de Pelo) son de ESA categoria puntual, no universales.
+
+Pendiente de implementar con esto: extender `get_listing_fee_rate` para
+aceptar `tags`/`domain_id`, y usarlo en `/api/pricing/contexto` y en la
+creacion del trio para fijar el `tags` correcto por perfil.
+
+### Sprint 5 — hecho (2026-09-18)
+
+- `modules/trio_generador.py` (archivo nuevo, `seo_optimizer.py` no se tocó):
+  `generar_titulos_trio(item_id, client)` genera hasta 3 títulos, uno por
+  cluster de búsqueda real (nunca inventa un cluster de más — si el
+  autosuggest solo da 1-2 con volumen, avisa y genera esos nomás). No llama a
+  `run_full_optimization` (esa función genera UN título óptimo, no varios por
+  cluster distinto a propósito) — llama directo a las piezas de más abajo del
+  pipeline v2 (`_build_synthesis_prompt`, `_call_claude`, `_parse_synthesis`,
+  `validar_sintesis`, ya existentes y confirmadas stateless) empujando el
+  representante de cada cluster a TIER 1 antes de armar el prompt. Reusa
+  `_cluster_keywords` (ya existe, Jaccard sobre tokens) para el agrupamiento
+  — no hizo falta escribir clustering nuevo.
+- **Corrección a la spec original**: el "caché de 24h" de autosuggest que
+  pedía el §9.2 no existe en el código real (se buscó a fondo, no está) — se
+  documenta la diferencia en vez de inventar que existe.
+- `CUOTAS_A_TAGS` mapea escalón de cuotas → `(listing_type_id, tags)` usando
+  la tabla oficial de ML encontrada arriba. `perfiles_duplicados()` bloquea 2
+  publicaciones con el mismo tipo+cuotas. `ficha_faltante()` compara contra
+  los atributos obligatorios reales de la categoría (`_get_category_attributes`).
+- `POST /api/pricing/trio/preview`: genera todo, no escribe nada en ML.
+- `POST /api/pricing/trio/crear`: exige `confirmado: true`, crea las
+  publicaciones **pausadas**, con las fotos de la publicación existente
+  reusadas por id, bloquea si falta la ficha o hay duplicado de tipo+cuotas,
+  suma los `item_id` creados al experimento abierto si se pasa
+  `experimento_id`, y devuelve el recordatorio de dar de alta en AppSeller.
+- Pantalla: tarjeta "Generador de trío" en `/pricing/existente` — precio y
+  escalón de cuotas por publicación, vista previa editable (título/
+  descripción), y botón de creación con confirmación nativa mostrando el
+  resumen completo antes de escribir.
+- **Probado en vivo, sin escribir nada en ML**: `generar_titulos_trio` corrido
+  contra el item real MLA1932975847 — trajo clusters reales (encontró 1 con
+  volumen para este producto puntual, y avisó en vez de inventar 2 más),
+  categoría, ficha requerida (Marca, Modelo) y las 6 fotos reales de la
+  publicación. La llamada a Claude fallo por el mismo problema de crédito de
+  cuenta que ya se vio antes (no es un bug) — se corrigió que ahora degrada
+  con gracia (antes tiraba una excepción sin capturar) en vez de romper el
+  endpoint. `/api/pricing/trio/crear` se probó solo en sus validaciones
+  (confirmado faltante, duplicados) — la creación real de publicaciones
+  **no se probó en vivo**, exactamente el mismo criterio que `/aplicar`.
+
 ### Pendiente
 
-Sprint 5 de la spec (generador de trio). Las incognitas del §10 de la spec
-(escalon de cuotas por API, categorias con catalogo obligatorio) siguen sin
-probar — hay que resolverlas antes de construir la creacion automatica de
-publicaciones nuevas, como pide la spec en su seccion 10. La del "fee_rate
-real" quedo parcialmente resuelta en el sprint 2 (ver arriba) pero no del
-todo: falta decidir que hacer con el costo de cuotas real por escalon para
-publicaciones Premium. `/aplicar` y el boton "Aplicar" de la pantalla estan
-implementados pero sin probar en vivo (ver arriba) — probarlos con Guille
-antes de confiar en ellos.
+Incógnitas del §10 que siguen sin resolver: categorías con catálogo
+obligatorio (verificar antes de crear títulos propios — no hay código que lo
+chequee todavía), costo de envío real por producto (sigue estimado en $5.000).
+`/aplicar`, el botón "Aplicar" y la creación del trío están implementados
+pero **ninguno se probó escribiendo de verdad en ML** — probarlos con Guille,
+mirando la pantalla, antes de confiar en ellos para uso real.
+
+Con esto terminan los 5 sprints de la Calculadora de Estrategia de Precios +
+Generador de Trío. Recordarle a Guille los bugs diferidos del §11
+(items 51-54 de la checklist) — quedó pactado avisar cuando se terminara
+este bloque completo.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba
