@@ -110,6 +110,7 @@ def _titulo_para_cluster(item_data: dict, description: str, category_attrs: dict
             "cluster_representative": cluster["representative"],
             "cluster_variantes": cluster["variants"],
             "volumen_query_count": cluster["query_count"],
+            "tier1_kw": tier1_kw, "ancla": ancla, "keyword_principal": keyword_principal,
             "errores_validacion": [f"No se pudo generar con Claude: {e}"],
         }
 
@@ -120,6 +121,7 @@ def _titulo_para_cluster(item_data: dict, description: str, category_attrs: dict
         "cluster_representative": cluster["representative"],
         "cluster_variantes": cluster["variants"],
         "volumen_query_count": cluster["query_count"],
+        "tier1_kw": tier1_kw, "ancla": ancla, "keyword_principal": keyword_principal,
         "errores_validacion": errores,
     }
 
@@ -223,3 +225,18 @@ def ficha_faltante(ficha_attrs: dict, atributos_requeridos: list) -> list:
         if nombre.strip().lower() not in presentes:
             faltan.append(nombre)
     return faltan
+
+
+def revalidar_titulo(titulo: str, descripcion: str, product_type: str, tier1_kw: str,
+                     ancla: str, keyword_principal: str) -> list:
+    """Vuelve a correr validar_sintesis() sobre el titulo/descripcion que van
+    a crearse — pedido explicito de Guille (2026-09-18): "no quiero perder
+    calidad, quiero que los titulos esten bien". La vista previa ya mostraba
+    los errores en rojo, pero nada impedia crear igual si el usuario tocaba
+    "Crear" de todas formas; ahora /api/pricing/trio/crear vuelve a validar
+    (por si edito el texto a mano en la vista previa, este chequeo es sobre
+    lo que realmente se va a mandar a ML, no sobre lo que genero Claude) y
+    bloquea la creacion si sigue habiendo errores.
+    """
+    parsed = {"titulo_recomendado": titulo, "descripcion_nueva": descripcion}
+    return validar_sintesis(parsed, product_type, [tier1_kw], ancla, keyword_principal)

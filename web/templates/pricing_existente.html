@@ -964,6 +964,9 @@ function renderTrioPreview(d) {
       html += `<div class="pc-faltante">Ficha técnica incompleta: ${t.ficha_faltante.join(', ')} — no se puede crear hasta completarla.</div>`;
     }
     html += `<input type="hidden" id="peTrioFichaAttrs${i}" value='${JSON.stringify(t.ficha_attrs || {}).replace(/'/g, "&#39;")}'>`;
+    html += `<input type="hidden" id="peTrioTier1${i}" value="${(t.tier1_kw || '').replace(/"/g, '&quot;')}">`;
+    html += `<input type="hidden" id="peTrioAncla${i}" value="${(t.ancla || '').replace(/"/g, '&quot;')}">`;
+    html += `<input type="hidden" id="peTrioKwPrincipal${i}" value="${(t.keyword_principal || '').replace(/"/g, '&quot;')}">`;
     html += '</div></div>';
   });
 
@@ -983,6 +986,9 @@ function crearTrio() {
     titulo: document.getElementById('peTrioTitulo' + i).value,
     descripcion: document.getElementById('peTrioDesc' + i).value,
     ficha_attrs: JSON.parse(document.getElementById('peTrioFichaAttrs' + i).value || '{}'),
+    tier1_kw: document.getElementById('peTrioTier1' + i).value,
+    ancla: document.getElementById('peTrioAncla' + i).value,
+    keyword_principal: document.getElementById('peTrioKwPrincipal' + i).value,
     stock: PE_CONTEXTO.item.stock || 1,
   }));
 
@@ -1006,6 +1012,7 @@ function crearTrio() {
       category_id: PE_TRIO_PREVIEW.category_id,
       ficha_requerida: PE_TRIO_PREVIEW.ficha_requerida,
       pictures: PE_TRIO_PREVIEW.pictures,
+      product_type: PE_TRIO_PREVIEW.product_type,
       publicaciones,
     }),
   })

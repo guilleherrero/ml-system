@@ -10327,6 +10327,17 @@ def api_pricing_trio_crear():
             errores.append(f"{pub.get('nombre')}: sin título.")
             continue
 
+        # Revalida el titulo/descripcion que REALMENTE se va a mandar a ML
+        # (por si se edito a mano en la vista previa) — bloquea si sigue sin
+        # cumplir las 7 restricciones. Pedido explicito de Guille: "no
+        # quiero perder calidad, quiero que los titulos esten bien".
+        errores_val = tg.revalidar_titulo(
+            pub['titulo'], pub.get('descripcion', ''), body.get('product_type', 'INTERMEDIO'),
+            pub.get('tier1_kw', ''), pub.get('ancla', ''), pub.get('keyword_principal', ''))
+        if errores_val:
+            errores.append(f"{pub.get('nombre')}: no cumple las reglas de calidad — {'; '.join(errores_val)}")
+            continue
+
         payload = {
             'title': pub['titulo'][:60],
             'category_id': category_id,
