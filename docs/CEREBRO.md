@@ -1469,14 +1469,44 @@ en vez de la tabla de la spec, hay que investigar mas a fondo la respuesta de
 `/sites/MLA/listing_prices` para `gold_pro` con distintos parametros, o pedirlo
 directo a soporte de ML.
 
+### Sprint 3 — hecho (2026-09-18)
+
+- Tablas nuevas `precio_experimentos` y `snapshots_diarios` (`web/models_pricing.py`).
+- `POST /api/pricing/aplicar`: escribe el precio nuevo en ML
+  (`client.update_item`) y abre el experimento. Exige `confirmado: true`
+  explicito en el body — nada se aplica como efecto secundario de un calculo.
+  **Por ahora solo edita la publicacion existente** (precio); crear las dos
+  publicaciones nuevas del trio queda para el sprint 5, `item_ids` del
+  experimento tiene una sola entrada hasta entonces.
+- `GET /api/pricing/experimentos`: lista los experimentos de una cuenta/producto.
+- Job `pricing_snapshots_diarios` (06:05 ART, registrado en `_start_scheduler`):
+  para cada publicacion con un experimento abierto, captura precio, stock,
+  `ventas_dia` (delta de `sold_quantity` vs el snapshot de ayer — `None` el
+  primer dia, no se inventa), `fee_rate` real (reusa
+  `stock_rentabilidad._compute_item_stats`, una sola llamada a ordenes por
+  cuenta, no por publicacion) y competidor_min. No manda nada por Telegram.
+  No recalcula veredicto todavia — es sprint 4.
+- **Probado sin tocar el precio real de nada**: se creo un experimento de
+  prueba directo por ORM (sin pasar por `/aplicar`, para no escribir en ML) y
+  se corrio la funcion del job contra el item real MLA1932975847 — trajo
+  precio, stock, fee_rate real y `sold_quantity` real correctamente. El path
+  de escritura de `/aplicar` (`client.update_item`) se reviso pero
+  **no se probo en vivo**: cambiar el precio de una publicacion real de la
+  cuenta de Guille no es algo para probar como efecto colateral, solo con
+  autorizacion explicita para un producto puntual.
+- De paso: el log `[scheduler] Activo — N jobs registrados` tenia el numero
+  de jobs hardcodeado en 12 (quedo desactualizado apenas se agrego el job 13).
+  Ahora sale de `len(scheduler.get_jobs())`.
+
 ### Pendiente
 
-Sprints 3-5 de la spec (`/aplicar` + medicion diaria, evolucion + curva de
-demanda, generador de trio). Las incognitas del §10 de la spec (escalon de
+Sprints 4-5 de la spec (evolucion a 7/14 dias + curva de demanda + "ganar el
+doble", generador de trio). Las incognitas del §10 de la spec (escalon de
 cuotas por API, categorias con catalogo obligatorio) siguen sin probar. La
-del "fee_rate real" quedo parcialmente resuelta este sprint (ver arriba) pero
-no del todo: falta decidir que hacer con el costo de cuotas real por escalon
-para publicaciones Premium.
+del "fee_rate real" quedo parcialmente resuelta en el sprint 2 (ver arriba)
+pero no del todo: falta decidir que hacer con el costo de cuotas real por
+escalon para publicaciones Premium. `/aplicar` esta implementado pero sin
+probar en vivo (ver arriba) — probarlo con Guille antes de confiar en el.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba

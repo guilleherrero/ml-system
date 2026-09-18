@@ -9851,6 +9851,97 @@ def api_pricing_contexto():
         'faltantes': faltantes})
 
 
+@app.route('/api/pricing/aplicar', methods=['POST'])
+def api_pricing_aplicar():
+    """Aplica un precio nuevo en ML y abre el experimento que lo va a medir.
+
+    Escribe en ML — exige `confirmado: true` explicito (regla de trabajo del
+    parrafo 0 de la spec: nada se aplica en ML como efecto secundario de un
+    calculo). Por ahora solo edita la publicacion EXISTENTE (precio); crear
+    las dos publicaciones nuevas del trio es sprint 5 — item_ids del
+    experimento queda con una sola hasta entonces.
+    """
+    from core.account_manager import AccountManager
+    from web.db import session_scope
+    from web.models_pricing import PrecioExperimento
+
+    body = request.get_json() or {}
+    if body.get('confirmado') is not True:
+        return jsonify({'ok': False, 'error': 'Falta la confirmación explícita (confirmado: true).'}), 400
+
+    alias        = body.get('alias', '')
+    item_id      = body.get('item_id', '')
+    precio_nuevo = body.get('precio_nuevo')
+    producto_key = body.get('producto_key') or item_id
+    estrategia   = body.get('estrategia', '')
+    situacion    = body.get('situacion_hoy') or {}
+
+    if not alias or not item_id or not precio_nuevo:
+        return jsonify({'ok': False, 'error': 'Faltan alias, item_id o precio_nuevo.'}), 400
+    if estrategia not in ('rent', 'comp', 'vel', 'meta'):
+        return jsonify({'ok': False, 'error': 'estrategia tiene que ser rent, comp, vel o meta.'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+        item_antes = client.get_item(item_id)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo conectar con ML: {e}'}), 400
+
+    precio_antes = float(item_antes.get('price') or 0)
+
+    try:
+        client.update_item(item_id, {'price': float(precio_nuevo)})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'ML rechazó el cambio de precio: {e}'}), 400
+
+    with session_scope() as s:
+        exp = PrecioExperimento(
+            alias=alias, producto_key=producto_key, item_ids=[item_id],
+            estrategia=estrategia, modo=body.get('modo', ''),
+            objetivo=float(body.get('objetivo') or 0), piso=float(body.get('piso') or 0),
+            costo=float(body.get('costo') or 0),
+            precios_antes={item_id: precio_antes}, precios_despues={item_id: float(precio_nuevo)},
+            ganancia_venta={item_id: float(body.get('ganancia_venta') or 0)},
+            ventas_dia_previas=float(situacion.get('ventas_dia') or 0),
+            ganancia_dia_previa=float(situacion.get('ganancia_dia') or 0),
+            meta_ventas_dia=float(body.get('meta_ventas_dia') or 0),
+            publicidad_dia=float(body.get('publicidad_dia') or 0),
+            competidor_min=body.get('competidor_min'), competidor_max=body.get('competidor_max'),
+        )
+        s.add(exp)
+        s.flush()
+        experimento_id = exp.id
+
+    return jsonify({'ok': True, 'experimento_id': experimento_id,
+                    'precio_antes': precio_antes, 'precio_despues': float(precio_nuevo)})
+
+
+@app.route('/api/pricing/experimentos')
+def api_pricing_experimentos():
+    from web.db import session_scope
+    from web.models_pricing import PrecioExperimento
+
+    alias = request.args.get('alias', '')
+    producto_key = request.args.get('producto_key')
+    if not alias:
+        return jsonify({'ok': False, 'error': 'Falta alias'}), 400
+
+    with session_scope() as s:
+        q = s.query(PrecioExperimento).filter_by(alias=alias)
+        if producto_key:
+            q = q.filter_by(producto_key=producto_key)
+        filas = q.order_by(PrecioExperimento.iniciado_en.desc()).limit(50).all()
+        out = [{
+            'id': f.id, 'producto_key': f.producto_key, 'item_ids': f.item_ids,
+            'estrategia': f.estrategia, 'veredicto': f.veredicto,
+            'precios_antes': f.precios_antes, 'precios_despues': f.precios_despues,
+            'iniciado_en': f.iniciado_en.isoformat() if f.iniciado_en else None,
+            'cerrado_en': f.cerrado_en.isoformat() if f.cerrado_en else None,
+        } for f in filas]
+
+    return jsonify({'ok': True, 'experimentos': out})
+
+
 @app.route('/api/evaluar-producto', methods=['POST'])
 def api_evaluar_producto():
     from modules.lanzador_productos import _gather_market_data
@@ -17563,6 +17654,90 @@ def _job_purga_cuentas_pausadas():
     print(f'[job_purga] terminado — {eliminadas}/{len(candidatas)} cuentas purgadas')
 
 
+def _job_pricing_snapshots_diarios():
+    """Calculadora de Estrategia de Precios (sprint 3) — 06:05 ART.
+
+    Para cada publicacion con un experimento de precio abierto
+    (precio_experimentos.cerrado_en IS NULL), captura la foto del dia en
+    snapshots_diarios: precio, listing_type, ventas_dia (delta de
+    sold_quantity vs el snapshot de ayer), visitas del dia, stock,
+    competidor_min y fee_rate real. Esta funcion NO manda nada por Telegram
+    (regla de trabajo del parrafo 0 de la spec) y no recalcula ningun
+    veredicto todavia — eso es sprint 4 (evolucion a 7/14 dias).
+    """
+    from datetime import datetime as _dtn
+    from core.account_manager import AccountManager
+    from web.db import session_scope
+    from web.models_pricing import PrecioExperimento, SnapshotDiario
+    from modules.cerebro import competidores_para_precio
+    from modules.stock_rentabilidad import _get_all_orders_30d, _compute_item_stats
+
+    hoy = _dtn.now().strftime('%Y-%m-%d')
+
+    with session_scope() as s:
+        abiertos = s.query(PrecioExperimento).filter(PrecioExperimento.cerrado_en.is_(None)).all()
+        por_alias: dict[str, set] = {}
+        for exp in abiertos:
+            por_alias.setdefault(exp.alias, set()).update(exp.item_ids or [])
+
+    if not por_alias:
+        print('[pricing_snapshots] sin experimentos abiertos — skip')
+        return
+
+    mgr = AccountManager()
+    capturados = 0
+    for alias, item_ids in por_alias.items():
+        try:
+            client = mgr.get_client(alias)
+        except Exception as e:
+            print(f'[pricing_snapshots] {alias} — no se pudo conectar: {e}')
+            continue
+
+        try:
+            stats = _compute_item_stats(_get_all_orders_30d(client))
+        except Exception as e:
+            print(f'[pricing_snapshots] {alias} — error trayendo ordenes: {e}')
+            stats = {}
+
+        for item_id in item_ids:
+            try:
+                item = client.get_item(item_id)
+                sold_acum = item.get('sold_quantity', 0)
+
+                competidor_min = None
+                try:
+                    comps = competidores_para_precio(alias, item_id)
+                    precios_comp = [c['price'] for c in comps if (c.get('price') or 0) > 0]
+                    competidor_min = min(precios_comp) if precios_comp else None
+                except Exception:
+                    pass
+
+                with session_scope() as s:
+                    ayer = (s.query(SnapshotDiario)
+                           .filter(SnapshotDiario.alias == alias, SnapshotDiario.item_id == item_id,
+                                   SnapshotDiario.fecha < hoy)
+                           .order_by(SnapshotDiario.fecha.desc()).first())
+                    ventas_dia = (sold_acum - ayer.sold_quantity_acum
+                                 if (ayer and ayer.sold_quantity_acum is not None) else None)
+
+                    row = s.query(SnapshotDiario).filter_by(alias=alias, item_id=item_id, fecha=hoy).first()
+                    if row is None:
+                        row = SnapshotDiario(alias=alias, item_id=item_id, fecha=hoy)
+                        s.add(row)
+                    row.precio             = item.get('price')
+                    row.listing_type       = item.get('listing_type_id')
+                    row.ventas_dia         = ventas_dia
+                    row.sold_quantity_acum = sold_acum
+                    row.stock              = item.get('available_quantity', 0)
+                    row.competidor_min     = competidor_min
+                    row.fee_rate           = (stats.get(item_id) or {}).get('fee_rate')
+                capturados += 1
+            except Exception as e:
+                print(f'[pricing_snapshots] {alias}/{item_id} — ERROR: {e}')
+
+    print(f'[pricing_snapshots] {capturados} snapshots capturados sobre {sum(len(v) for v in por_alias.values())} publicaciones con experimento abierto')
+
+
 def _job_top_acciones_daily():
     """Job 6 — Sprint 4.1: precomputa el Top 3 acciones del día para cada cuenta.
 
@@ -18171,6 +18346,18 @@ def _start_scheduler():
             description='Precomputa Top 3 oportunidades por cuenta antes del refresh diario. Cache 24h.',
         )
 
+        # Job — Calculadora de Precios: snapshot diario de experimentos abiertos
+        # — 06:05 ART (un minuto despues de top_acciones_daily por el mismo
+        # motivo que weekly_veredictos corre a las 06:15: no competir por CPU).
+        jm.register_job(
+            'pricing_snapshots_diarios', _job_pricing_snapshots_diarios,
+            CronTrigger(hour=6, minute=5, timezone='America/Argentina/Buenos_Aires'),
+            name='Calculadora de Precios — snapshot diario',
+            description=('Captura precio, ventas/dia, stock, competidor y fee_rate '
+                         'real de cada publicacion con un experimento de precio '
+                         'abierto. Sin notificaciones (esta funcion no usa Telegram).'),
+        )
+
         # Job 7 — Veredicto IA semanal (Sprint 3.2) — Lunes 06:15 ART
         # Ejecuta DESPUÉS del top_acciones_daily para no competir por CPU.
         # Hard cap $30/mes con auto-pausa si se excede.
@@ -18267,7 +18454,7 @@ def _start_scheduler():
         global _job_manager
         _job_manager = jm
 
-        print(f'[scheduler] Activo — 12 jobs registrados (1 reservado para activación manual)')
+        print(f'[scheduler] Activo — {len(scheduler.get_jobs())} jobs registrados (1 reservado para activación manual)')
         return scheduler
     except Exception as e:
         print(f'[scheduler] No se pudo iniciar: {e}')
