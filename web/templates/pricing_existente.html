@@ -273,9 +273,6 @@
         <button type="submit" class="btn btn-primary w-100 mb-2" id="peBtn">
           <i class="bi bi-calculator me-1"></i>Calcular las 3 estrategias
         </button>
-        <button type="button" class="btn btn-outline-primary w-100" id="peBtnIA">
-          <i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una
-        </button>
       </form>
 
 
@@ -316,60 +313,9 @@
 
     <div class="col-lg-7">
       <div id="peResultados"></div>
-      <div id="peRecomendacion"></div>
     </div>
   </div>
 
-  <div class="pc-card">
-    <div class="pc-card-header">Generador de trío</div>
-    <div class="pc-card-body">
-      <p class="pc-sub-metric">Genera hasta 3 títulos (uno por cluster de búsqueda real), descripción y ficha técnica para las publicaciones nuevas. No crea nada en ML todavía — esto es la vista previa.</p>
-      <div class="pc-perfil-row-4 mb-2">
-        <div class="pc-etiqueta">Publicación</div><div class="pc-etiqueta">Precio</div><div class="pc-etiqueta">Cuotas</div><div></div>
-      </div>
-      <div class="pc-perfil-row-4">
-        <div id="peTrioNombre0" class="pc-etiqueta" style="text-transform:none;font-size:.82rem;color:var(--color-neutral-900,#111)">Batalla</div>
-        <input type="number" step="0.01" class="form-control form-control-sm" id="peTrioPrecio0">
-        <select class="form-select form-select-sm" id="peTrioCuotas0">
-          <option value="0" selected>Sin cuotas</option>
-          <option value="4">Interés bajo (4%)</option>
-        </select>
-        <div></div>
-      </div>
-      <div class="pc-perfil-row-4">
-        <div id="peTrioNombre1" class="pc-etiqueta" style="text-transform:none;font-size:.82rem;color:var(--color-neutral-900,#111)">Medio</div>
-        <input type="number" step="0.01" class="form-control form-control-sm" id="peTrioPrecio1">
-        <select class="form-select form-select-sm" id="peTrioCuotas1">
-          <option value="3">3 cuotas</option>
-          <option value="6" selected>6 cuotas</option>
-          <option value="9">9 cuotas</option>
-          <option value="12">12 cuotas</option>
-        </select>
-        <div></div>
-      </div>
-      <div class="pc-perfil-row-4 mb-2">
-        <div id="peTrioNombre2" class="pc-etiqueta" style="text-transform:none;font-size:.82rem;color:var(--color-neutral-900,#111)">Compensa</div>
-        <input type="number" step="0.01" class="form-control form-control-sm" id="peTrioPrecio2">
-        <select class="form-select form-select-sm" id="peTrioCuotas2">
-          <option value="3">3 cuotas</option>
-          <option value="6">6 cuotas</option>
-          <option value="9" selected>9 cuotas</option>
-          <option value="12">12 cuotas</option>
-        </select>
-        <div></div>
-      </div>
-      <div class="form-check mb-2">
-        <input class="form-check-input" type="checkbox" id="peTrioModeloEconomico">
-        <label class="form-check-label pc-etiqueta" for="peTrioModeloEconomico">
-          Usar modelo económico (Haiku) — más barato y rápido, pero el pipeline lo reserva para análisis, no para escribir. Probalo y juzgá vos la calidad.
-        </label>
-      </div>
-      <button type="button" class="btn btn-outline-primary btn-sm" id="peBtnTrioPreview">
-        <i class="bi bi-eye me-1"></i>Generar vista previa del trío
-      </button>
-      <div id="peTrioResultado"></div>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -497,7 +443,6 @@ document.getElementById('peItem').addEventListener('change', function () {
     document.getElementById('peFaltantes').innerHTML = html;
     document.getElementById('peBtn').disabled = ctx.faltantes.some(f => f.bloqueante);
     document.getElementById('peResultados').innerHTML = '';
-    document.getElementById('peRecomendacion').innerHTML = '';
     document.getElementById('peEscaleraResultado').innerHTML = '';
     cargarExperimentos();
   });
@@ -594,13 +539,6 @@ function renderResultados(d) {
   PE_ULTIMO_RESULTADO = d;
 
   const nombres = [0, 1, 2].map(i => document.getElementById('peNombre' + i).value);
-  nombres.forEach((n, i) => {
-    document.getElementById('peTrioNombre' + i).textContent = n;
-    const precioBatalla = d.estrategias.rent.publicaciones[i] && d.estrategias.rent.publicaciones[i].precio;
-    if (precioBatalla && !document.getElementById('peTrioPrecio' + i).value) {
-      document.getElementById('peTrioPrecio' + i).value = precioBatalla;
-    }
-  });
   let html = '';
   (d.faltantes || []).forEach(f => {
     html += `<div class="pc-faltante"><i class="bi bi-exclamation-triangle me-1"></i><strong>${f.dato}:</strong> ${f.consecuencia}</div>`;
@@ -750,45 +688,6 @@ document.getElementById('peForm').addEventListener('submit', function (e) {
       document.getElementById('peResultados').innerHTML = `<div class="pc-faltante bloq">Error: ${err}</div>`;
     });
 });
-
-document.getElementById('peBtnIA').addEventListener('click', function () {
-  const btn = this;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Pensando...';
-  fetch('/api/pricing/recomendar', {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(buildPayload()),
-  })
-    .then(r => r.json())
-    .then(d => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una';
-      if (!d.ok) { document.getElementById('peRecomendacion').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`; return; }
-      renderResultados(d);
-      renderRecomendacion(d.recomendacion);
-    })
-    .catch(err => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-stars me-1"></i>Pedirle a Claude que recomiende una';
-    });
-});
-
-
-function renderRecomendacion(r) {
-  if (!r || !r.estrategia_sugerida) {
-    document.getElementById('peRecomendacion').innerHTML =
-      `<div class="pc-faltante">No se pudo obtener la recomendación de Claude${r && r.datos_que_faltan && r.datos_que_faltan[0] ? ': ' + r.datos_que_faltan[0] : ''}.</div>`;
-    return;
-  }
-  let html = `<div class="pc-card"><div class="pc-card-header"><i class="bi bi-stars me-1"></i>Recomendación de Claude — confianza ${r.confianza}</div><div class="pc-card-body">`;
-  html += `<p><strong>Estrategia sugerida:</strong> ${GOALS[r.estrategia_sugerida] ? GOALS[r.estrategia_sugerida].label : r.estrategia_sugerida}</p>`;
-  html += `<p><strong>Precio a probar:</strong> ${fmtMoney(r.precio_a_probar)} <span class="pc-motivo">(${r.regla_aplicada})</span></p>`;
-  html += `<p>${r.por_que || ''}</p>`;
-  if (r.riesgos && r.riesgos.length) html += `<p><strong>Riesgos:</strong></p><ul>${r.riesgos.map(x => `<li>${x}</li>`).join('')}</ul>`;
-  if (r.que_mirar_en_la_prueba && r.que_mirar_en_la_prueba.length) html += `<p><strong>Qué mirar en la prueba (${r.dias_sugeridos} días):</strong></p><ul>${r.que_mirar_en_la_prueba.map(x => `<li>${x}</li>`).join('')}</ul>`;
-  if (r.datos_que_faltan && r.datos_que_faltan.length) html += `<div class="pc-faltante">Datos que le faltaron a Claude: ${r.datos_que_faltan.join(', ')}</div>`;
-  html += '</div></div>';
-  document.getElementById('peRecomendacion').innerHTML = html;
-}
 
 // ── Aplicar precio en ML (escribe de verdad — exige confirmación del usuario) ──
 
@@ -989,170 +888,5 @@ function verEvolucion(experimentoId) {
     });
 }
 
-// ── Generador de trío (sprint 5) ──
-
-let PE_TRIO_PREVIEW = null;
-
-function trioPerfiles() {
-  return [0, 1, 2].map(i => ({
-    nombre: document.getElementById('peTrioNombre' + i).textContent,
-    precio: document.getElementById('peTrioPrecio' + i).value,
-    cuotas: parseInt(document.getElementById('peTrioCuotas' + i).value),
-  }));
-}
-
-const CUOTAS_LABEL = {0: 'Sin cuotas', 4: 'Interés bajo', 3: '3 cuotas', 6: '6 cuotas', 9: '9 cuotas', 12: '12 cuotas'};
-
-document.getElementById('peBtnTrioPreview').addEventListener('click', function () {
-  if (!PE_CONTEXTO) return;
-  const economico = document.getElementById('peTrioModeloEconomico').checked;
-  if (!confirm(`Esto llama a Claude hasta 3 veces (una por título, sin reintento) con el modelo ${economico ? 'económico (Haiku)' : 'de calidad (Opus)'} — tiene costo real de API y puede tardar 1-3 minutos. ¿Generar igual?`)) return;
-  const btn = this;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Arrancando...';
-  document.getElementById('peTrioResultado').innerHTML = '';
-
-  fetch('/api/pricing/trio/preview/start', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      alias: document.getElementById('peAlias').value,
-      item_id: PE_CONTEXTO.item.id,
-      modelo_economico: economico,
-      perfiles: trioPerfiles(),
-    }),
-  })
-    .then(r => r.json())
-    .then(d => {
-      if (!d.ok) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
-        document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`;
-        return;
-      }
-      pollTrioJob(d.job_id, btn, 0);
-    })
-    .catch(err => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
-      document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">Error: ${err}</div>`;
-    });
-});
-
-function pollTrioJob(jobId, btn, segundos) {
-  // Corre en background en el servidor — este pedido siempre vuelve rapido,
-  // nunca puede haber timeout a mitad de la generacion (ver docs/CEREBRO.md
-  // seccion 12: el pedido bloqueado era la causa real del "Unexpected token '<'").
-  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Generando... (${segundos}s, puede tardar 1-3 min)`;
-  fetch(`/api/pricing/trio/preview/status?job_id=${encodeURIComponent(jobId)}`)
-    .then(r => r.json())
-    .then(d => {
-      if (!d.ok) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
-        document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`;
-        return;
-      }
-      if (d.status === 'running') {
-        setTimeout(() => pollTrioJob(jobId, btn, segundos + 3), 3000);
-        return;
-      }
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
-      if (d.status === 'error') {
-        document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">Error generando: ${d.error}</div>`;
-        return;
-      }
-      if (!d.ok || d.ok === false) { document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`; return; }
-      PE_TRIO_PREVIEW = d;
-      renderTrioPreview(d);
-    })
-    .catch(err => {
-      // Un status intermedio que falla por red no significa que el job murio —
-      // reintenta la CONSULTA (no la generacion) en vez de abortar.
-      setTimeout(() => pollTrioJob(jobId, btn, segundos + 3), 3000);
-    });
-}
-
-function renderTrioPreview(d) {
-  const perfiles = trioPerfiles();
-  let html = '<div class="mt-2">';
-  if (d.aviso) html += `<div class="pc-faltante"><i class="bi bi-exclamation-triangle me-1"></i>${d.aviso}</div>`;
-
-  d.titulos.forEach((t, i) => {
-    const perfil = perfiles[i] || {};
-    html += `<div class="pc-card"><div class="pc-card-header">${perfil.nombre || ('Publicación ' + (i + 1))} — ${CUOTAS_LABEL[perfil.cuotas]} — ${fmtMoney(perfil.precio)}</div><div class="pc-card-body">`;
-    html += `<div class="pc-etiqueta mb-1">Apunta a: <strong>${t.cluster_representative}</strong> (${t.volumen_query_count} query${t.volumen_query_count === 1 ? '' : 's'} de volumen${t.cluster_variantes.length ? ', variantes: ' + t.cluster_variantes.slice(0, 4).join(', ') : ''})</div>`;
-    html += `<label class="pc-etiqueta d-block">Título</label><input class="form-control form-control-sm mb-2" id="peTrioTitulo${i}" value="${(t.titulo || '').replace(/"/g, '&quot;')}">`;
-    html += `<label class="pc-etiqueta d-block">Descripción</label><textarea class="form-control form-control-sm mb-2" rows="3" id="peTrioDesc${i}">${t.descripcion || ''}</textarea>`;
-    if (t.errores_validacion && t.errores_validacion.length) {
-      html += `<div class="pc-faltante bloq">${t.errores_validacion.join('<br>')}</div>`;
-    }
-    if (t.ficha_faltante && t.ficha_faltante.length) {
-      html += `<div class="pc-faltante">Ficha técnica incompleta: ${t.ficha_faltante.join(', ')} — no se puede crear hasta completarla.</div>`;
-    }
-    html += `<input type="hidden" id="peTrioFichaAttrs${i}" value='${JSON.stringify(t.ficha_attrs || {}).replace(/'/g, "&#39;")}'>`;
-    html += `<input type="hidden" id="peTrioTier1${i}" value="${(t.tier1_kw || '').replace(/"/g, '&quot;')}">`;
-    html += `<input type="hidden" id="peTrioAncla${i}" value="${(t.ancla || '').replace(/"/g, '&quot;')}">`;
-    html += `<input type="hidden" id="peTrioKwPrincipal${i}" value="${(t.keyword_principal || '').replace(/"/g, '&quot;')}">`;
-    html += '</div></div>';
-  });
-
-  html += `<button type="button" class="btn btn-success btn-sm" id="peBtnTrioCrear">` +
-    `<i class="bi bi-plus-circle me-1"></i>Crear ${d.titulos.length === 1 ? 'la publicación nueva' : 'las publicaciones nuevas'} (pausadas)</button>`;
-  html += '</div>';
-  document.getElementById('peTrioResultado').innerHTML = html;
-
-  document.getElementById('peBtnTrioCrear').addEventListener('click', crearTrio);
-}
-
-function crearTrio() {
-  if (!PE_TRIO_PREVIEW || !PE_CONTEXTO) return;
-  const perfiles = trioPerfiles();
-  const publicaciones = PE_TRIO_PREVIEW.titulos.map((t, i) => ({
-    nombre: perfiles[i].nombre, precio: perfiles[i].precio, cuotas: perfiles[i].cuotas,
-    titulo: document.getElementById('peTrioTitulo' + i).value,
-    descripcion: document.getElementById('peTrioDesc' + i).value,
-    ficha_attrs: JSON.parse(document.getElementById('peTrioFichaAttrs' + i).value || '{}'),
-    tier1_kw: document.getElementById('peTrioTier1' + i).value,
-    ancla: document.getElementById('peTrioAncla' + i).value,
-    keyword_principal: document.getElementById('peTrioKwPrincipal' + i).value,
-    stock: PE_CONTEXTO.item.stock || 1,
-  }));
-
-  const resumen = publicaciones.map(p => `• ${p.nombre}: "${p.titulo}" — $${p.precio} — ${CUOTAS_LABEL[p.cuotas]}`).join('\n');
-  const ok = confirm(
-    `Vas a crear ${publicaciones.length} publicación(es) NUEVA(S) y REAL(ES) en MercadoLibre, pausadas:\n\n${resumen}\n\n` +
-    `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
-  );
-  if (!ok) return;
-
-  const btn = document.getElementById('peBtnTrioCrear');
-  btn.disabled = true;
-  btn.textContent = 'Creando...';
-
-  fetch('/api/pricing/trio/crear', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      confirmado: true,
-      alias: document.getElementById('peAlias').value,
-      item_id: PE_CONTEXTO.item.id,
-      category_id: PE_TRIO_PREVIEW.category_id,
-      ficha_requerida: PE_TRIO_PREVIEW.ficha_requerida,
-      pictures: PE_TRIO_PREVIEW.pictures,
-      product_type: PE_TRIO_PREVIEW.product_type,
-      publicaciones,
-    }),
-  })
-    .then(r => r.json())
-    .then(v => {
-      if (!v.ok) { alert('Error: ' + v.error); btn.disabled = false; btn.textContent = 'Crear'; return; }
-      let msg = 'Creadas:\n' + v.creadas.map(c => `${c.nombre}: ${c.item_id}`).join('\n');
-      if (v.errores && v.errores.length) msg += '\n\nErrores:\n' + v.errores.join('\n');
-      msg += '\n\n' + v.recordatorio;
-      alert(msg);
-      btn.textContent = 'Creado ✓';
-    })
-    .catch(err => { alert('Error: ' + err); btn.disabled = false; btn.textContent = 'Crear'; });
-}
 </script>
 {% endblock %}

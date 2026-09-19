@@ -2035,6 +2035,51 @@ Verificado en vivo contra el experimento real id=1 de MLA1932975847:
 `ventas_dia_promedio: 4.69` — la cuenta se arma bien (necesitaba 3.77
 ventas/día más, promedió 4.69, por eso el veredicto da "conviene").
 
+### Se eliminan "Generador de trío" y "Pedirle a Claude" (2026-09-19)
+
+Guille: **"Generador de trío nunca funciono prefiero que lo quites de ahi
+como tambien la recomendacion de claude"**. Directo — no pidió otro
+arreglo, pidió sacarlas. El generador de trío (Sprint 5) venía de varias
+rondas de parches en esta misma sesión (paralelizado, sin reintento,
+vuelto async con jobs en background) y seguía sin convencer; la
+recomendación de Claude (parrafo 6 de la spec) tampoco aportaba valor real
+sobre lo que ya muestran las 3 tarjetas de estrategia calculadas por el
+motor. Se sacan las dos por completo en vez de seguir parchando.
+
+Eliminado:
+- **Frontend** (`pricing_existente.html`): la tarjeta completa "Generador
+  de trío" (selector de precio/cuotas por publicación, checkbox de modelo
+  económico, vista previa, creación) y el botón "Pedirle a Claude que
+  recomiende una" + su tarjeta de resultado. Limpiado todo el JS asociado:
+  `trioPerfiles()`, `CUOTAS_LABEL`, `pollTrioJob()`, `renderTrioPreview()`,
+  `crearTrio()`, el handler de `peBtnIA`, `renderRecomendacion()`, y las
+  referencias sueltas que quedaban en `renderResultados()` (pre-llenaba
+  los inputs del trío) y en el reset de la tarjeta de faltantes.
+- **Backend** (`web/app.py`): `/api/pricing/trio/preview/start`,
+  `/api/pricing/trio/preview/status`, `/api/pricing/trio/preview` (legacy
+  síncrono), `/api/pricing/trio/crear`, `/api/pricing/recomendar`, y los
+  helpers que solo ellos usaban (`_trio_generar_y_anotar`,
+  `_trio_job_worker`, `_TRIO_JOBS`/`_TRIO_JOBS_LOCK`).
+- **`modules/trio_generador.py`**: se reescribió dejando SOLO
+  `tasas_reales_por_escalon()` y `CUOTAS_A_TAGS` — lo único que sigue en
+  uso real, por `/api/pricing/contexto` para traer comisión/cuotas reales
+  (ver sección de arriba, "datos falsos"). Se borraron
+  `generar_titulos_trio`, `_titulo_para_cluster`, `clusters_de_busqueda`,
+  `perfiles_duplicados`, `ficha_faltante`, `revalidar_titulo` — sin
+  ningún caller después de sacar las rutas.
+- Regla #1 respetada: nada de esto tocó `modules/seo_optimizer.py` — el
+  generador de trío solo importaba sus funciones internas, nunca las
+  modificó, así que eliminar el import no le afecta nada al resto del
+  sistema (SEO, optimización de títulos existente) que sigue llamando a
+  `seo_optimizer.py` directo.
+
+Verificado: 56 tests siguen pasando (sin cambios, no tocaban estas
+funciones), `py_compile` limpio en `app.py`/`trio_generador.py`,
+`/pricing/existente` carga 200 y `/api/pricing/calcular` sigue
+funcionando en vivo. Las rutas eliminadas devuelven 404 (el
+errorhandler scoped a `/api/pricing/*` las envuelve en 500 genérico, pero
+nada las llama más — no es un problema real).
+
 ## Sprints
 
 | Sprint | Contenido | Estado |
