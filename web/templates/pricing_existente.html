@@ -866,7 +866,8 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
         ? `Título nuevo para "${nombre}" (perfil "${escalon == 0 ? 'Sin cuotas' : escalon == 4 ? 'Interés bajo' : escalon + ' cuotas'}"), reordenado alrededor de "${d.keyword_usada}" — la keyword mejor rankeada del autosuggest real de ML. Podés editarlo.`
         : 'No se encontró una keyword distinta para reordenar — quedó el título original. Podés editarlo.';
       if (d.keywords_rankeadas && d.keywords_rankeadas.length) {
-        let html = '<table class="table table-sm mb-0"><thead><tr><th>Keyword</th><th class="text-end">Relevancia</th><th class="text-end">Posición</th><th class="text-end">En queries</th></tr></thead><tbody>';
+        let html = '<table class="table table-sm mb-0"><thead><tr><th>Keyword</th><th class="text-end">Relevancia</th><th class="text-end">Posición</th>' +
+          '<th class="text-end" title="El título se parte en hasta 4 búsquedas cortas (primeras 3 palabras, primeras 2, palabras del medio, últimas 3) y se consulta el autosuggest real de ML para cada una. Este número dice en cuántas de esas búsquedas apareció esta keyword — más alto = validado desde más ángulos del título, no una sola vez de casualidad.">En queries <i class="bi bi-question-circle"></i></th></tr></thead><tbody>';
         d.keywords_rankeadas.forEach(k => {
           html += `<tr><td>${k.keyword}</td><td class="text-end">${k.relevancia_pct}%</td>` +
             `<td class="text-end">${k.posicion}/${k.de}</td><td class="text-end">${k.query_count}</td></tr>`;
