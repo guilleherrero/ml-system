@@ -96,20 +96,27 @@
   <div class="pc-card">
     <div class="pc-card-header">Tu situación hoy</div>
     <div class="pc-card-body">
-      <p class="pc-sub-metric mb-2">Es el punto de comparación de todo lo demás.</p>
+      <p class="pc-sub-metric mb-2">Es el punto de comparación de todo lo demás: cada estrategia de abajo dice cuántas ventas/día necesita contra estas mismas unidades.</p>
       <div class="row g-2 mb-2">
-        <div class="col-md-6">
+        <div class="col-md-4">
+          <div class="pc-stat-tile">
+            <div class="pc-etiqueta">Vendés hoy (unidades)</div>
+            <div class="pc-stat-valor" id="peStatVentasDia">-</div>
+            <div class="pc-sub-metric" id="peVentasReales"></div>
+          </div>
+        </div>
+        <div class="col-md-4">
           <div class="pc-stat-tile">
             <div class="pc-etiqueta">Ganás por venta hoy</div>
             <div class="pc-stat-valor" id="peStatGananciaVenta">-</div>
             <div class="pc-sub-metric" id="peStatRoiMargen"></div>
           </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
           <div class="pc-stat-tile">
             <div class="pc-etiqueta">Ganás por día hoy</div>
             <div class="pc-stat-valor" id="peStatGananciaDia">-</div>
-            <div class="pc-sub-metric" id="peVentasReales"></div>
+            <div class="pc-sub-metric">Unidades × ganancia por venta</div>
           </div>
         </div>
       </div>
@@ -450,9 +457,13 @@ document.getElementById('peItem').addEventListener('change', function () {
     document.getElementById('peCompEtq').innerHTML = etqBadge(ctx.competidor_etiqueta);
     document.getElementById('peComisionEtq').textContent = ctx.comision_etiqueta || '';
     const sh = ctx.situacion_hoy || {};
-    document.getElementById('peVentasReales').innerHTML =
-      `<i class="bi bi-graph-up-arrow me-1"></i>${(sh.ventas_dia_7d ?? 0).toFixed(2)}/día última semana ` +
-      `(≈${((sh.ventas_dia_7d ?? 0) * 7).toFixed(1)}/semana) · ${(sh.ventas_dia ?? 0).toFixed(2)}/día promedio 30 días`;
+    const v7 = sh.ventas_dia_7d ?? 0;
+    const v30 = sh.ventas_dia ?? 0;
+    const sinVentas = !sh.ventas_dia_7d && !sh.ventas_dia;
+    document.getElementById('peStatVentasDia').textContent = sinVentas ? '0/día' : `${v7.toFixed(2)}/día`;
+    document.getElementById('peVentasReales').innerHTML = sinVentas
+      ? '<i class="bi bi-exclamation-triangle me-1"></i>Sin ventas registradas en los últimos 30 días — no hay con qué comparar todavía.'
+      : `<i class="bi bi-graph-up-arrow me-1"></i>últimos 7 días (≈${(v7 * 7).toFixed(1)}/semana) · ${v30.toFixed(2)}/día promedio 30 días`;
     if (sh.ganancia_venta !== null && sh.ganancia_venta !== undefined) {
       document.getElementById('peStatGananciaVenta').textContent = fmtMoney(sh.ganancia_venta);
       const roiHoy = (costoActualParaHoy => costoActualParaHoy > 0 ? (sh.ganancia_venta / costoActualParaHoy * 100) : null)(parseFloat(ctx.costo) || 0);
