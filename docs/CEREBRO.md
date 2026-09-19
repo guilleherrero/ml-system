@@ -1699,6 +1699,54 @@ quedaba bloqueada para cualquiera mientras corría el trío; con la
 generación en un hilo aparte, el worker principal queda libre para
 atender otros pedidos mientras tanto.
 
+### Auditoría completa de la sección (2026-09-19, pedida explícitamente)
+
+Después de arreglar el trío, Guille pidió auditar toda la calculadora, no
+solo esa parte. Revisión línea por línea de los 15 endpoints de
+`/api/pricing/*` buscando el mismo tipo de problema (excepción sin
+capturar, supuesto silencioso con un número engañoso). Hallazgos, de más a
+menos grave:
+
+1. **El más serio de toda la auditoría**: en `/api/pricing/trio/crear`,
+   `float(pub.get('precio') or 0)` creaba la publicación REAL en ML con
+   **precio $0** en silencio si el campo llegaba vacío. Corregido: bloquea
+   esa publicación puntual con error claro en vez de crear a $0.
+2. En `/api/pricing/aplicar` (el que escribe el precio real en ML): el
+   registro del experimento se armaba DESPUÉS de escribir en ML — si
+   cualquier campo fallaba al parsear, el precio ya había cambiado pero
+   quedaba sin registrar, y el usuario veía un error genérico sin saber que
+   el cambio real sí había pasado. Corregido: ahora se valida y arma todo
+   ANTES de tocar ML; si algo falla después de escribir (el registro en sí),
+   el mensaje dice explícitamente "el precio SÍ se cambió, anotalo a mano".
+3. En `_pricing_calcular_core` (el motor de `/calcular` y `/recomendar`):
+   la comisión de una publicación, si llegaba vacía, calculaba en silencio
+   con **0% de comisión** — un número materialmente engañoso (infla la
+   ganancia mostrada), no un error. Corregido: comisión vacía bloquea con
+   mensaje claro, no se inventa un valor. Los demás campos (cuotas,
+   publicidad, cargos de IIBB/envío/etc.) sí tienen un default razonable
+   (0, o el default del motor) porque para esos sí existe un valor
+   "neutro" honesto — no es el caso de la comisión.
+4. Varios endpoints (`/calcular`, `/config` PUT, `/escalera`) construían
+   `Cargos`/`Publicacion` con `float(x.get(campo, default))` sin
+   try/except — un campo vacío en el formulario (no ausente: `.get()` con
+   default solo aplica si falta la clave, no si está vacía) rompía con una
+   excepción sin capturar → Flask devolvía su página de error HTML por
+   defecto → el frontend esperaba JSON y explotaba con
+   `SyntaxError: Unexpected token '<'` — el mismo síntoma que venía del
+   timeout del trío, pero por una causa totalmente distinta. Corregido en
+   los tres.
+5. **Red de seguridad agregada**: `@app.errorhandler(Exception)` scopeado a
+   `/api/pricing/*` (no toca el resto de la app) — cualquier excepción no
+   capturada que aparezca en el futuro en estos endpoints devuelve JSON
+   limpio con el error en vez de la página HTML de Flask. No reemplaza
+   arreglar la causa real cuando se encuentra, pero asegura que un bug
+   nuevo nunca vuelva a manifestarse como el mismo `SyntaxError` confuso.
+
+Probado en vivo tras los arreglos: `/calcular` normal sigue funcionando
+igual, comisión vacía bloquea con mensaje claro (no rompe), y el flujo de
+`/trio/crear` sigue bloqueando correctamente por ficha/calidad antes de
+llegar al chequeo de precio nuevo.
+
 ### Ajustes pedidos por Guille probando la pantalla en vivo (2026-09-18)
 
 - El botón "Pedirle a Claude que recomiende una" fallaba en producción por

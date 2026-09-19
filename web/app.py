@@ -9474,6 +9474,29 @@ def evaluar_producto():
     return render_template('evaluar_producto.html', historial=historial, accounts=get_accounts())
 
 
+@app.errorhandler(Exception)
+def _pricing_error_handler(e):
+    """Red de seguridad para toda /api/pricing/* — auditoria del 2026-09-19.
+
+    Sin esto, cualquier excepcion no capturada en un endpoint de pricing
+    (un float() sobre un campo vacio, un KeyError, lo que sea) hace que
+    Flask devuelva su pagina de error HTML por defecto — el frontend espera
+    JSON, intenta parsearla, y explota con el mismo "SyntaxError: Unexpected
+    token '<'" que ya aparecio por otra causa (timeout del trio). Encontrado
+    en la auditoria: la construccion de Publicacion en
+    _pricing_calcular_core no tenia try/except alrededor del float() de
+    comision/costo_cuotas — un campo vacio en el formulario ya alcanzaba
+    para romperlo. En vez de blindar cada punto uno por uno, esto asegura
+    que CUALQUIER falla en /api/pricing/* devuelva JSON limpio con el
+    error, nunca HTML. El resto de la app sigue con el manejo de errores
+    que ya tenia (se re-lanza la excepcion si el path no es de pricing).
+    """
+    if request.path.startswith('/api/pricing/'):
+        app.logger.error(f'[pricing] Error no capturado en {request.path}: {e}', exc_info=True)
+        return jsonify({'ok': False, 'error': f'Error interno: {e}'}), 500
+    raise e
+
+
 @app.route('/pricing/nuevo')
 def pricing_nuevo():
     """Calculadora de Estrategia de Precios — Modo B (producto nuevo).
@@ -9507,27 +9530,51 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
         return None, 'Falta el costo del producto — no se puede calcular sin eso.'
 
     cargos_in = body.get('cargos') or {}
-    c = pm.Cargos(
-        iibb=float(cargos_in.get('iibb', pm.Cargos.iibb)),
-        percepcion_iva=float(cargos_in.get('percepcion_iva', pm.Cargos.percepcion_iva)),
-        envio=float(cargos_in.get('envio', pm.Cargos.envio)),
-        umbral_envio=float(cargos_in.get('umbral_envio', pm.Cargos.umbral_envio)),
-        envio_bajo_umbral=bool(cargos_in.get('envio_bajo_umbral', False)),
-        fijo_menos_15k=float(cargos_in.get('fijo_menos_15k', pm.Cargos.fijo_menos_15k)),
-        fijo_15k_25k=float(cargos_in.get('fijo_15k_25k', pm.Cargos.fijo_15k_25k)),
-        fijo_25k_umbral=float(cargos_in.get('fijo_25k_umbral', pm.Cargos.fijo_25k_umbral)),
-        redondeo=bool(cargos_in.get('redondeo', True)),
-    )
+
+    def _num_o_default(clave, default):
+        # .get(clave, default) solo usa el default si falta la clave — si
+        # llega vacia (input limpiado a mano en el formulario) devuelve ''
+        # y float('') explota. Acá se trata vacío igual que ausente.
+        val = cargos_in.get(clave)
+        return float(val) if val not in (None, '') else default
+
+    try:
+        c = pm.Cargos(
+            iibb=_num_o_default('iibb', pm.Cargos.iibb),
+            percepcion_iva=_num_o_default('percepcion_iva', pm.Cargos.percepcion_iva),
+            envio=_num_o_default('envio', pm.Cargos.envio),
+            umbral_envio=_num_o_default('umbral_envio', pm.Cargos.umbral_envio),
+            envio_bajo_umbral=bool(cargos_in.get('envio_bajo_umbral', False)),
+            fijo_menos_15k=_num_o_default('fijo_menos_15k', pm.Cargos.fijo_menos_15k),
+            fijo_15k_25k=_num_o_default('fijo_15k_25k', pm.Cargos.fijo_15k_25k),
+            fijo_25k_umbral=_num_o_default('fijo_25k_umbral', pm.Cargos.fijo_25k_umbral),
+            redondeo=bool(cargos_in.get('redondeo', True)),
+        )
+    except (TypeError, ValueError):
+        return None, 'Uno de los cargos (IIBB, percepción, envío, umbral o fijos) tiene un valor inválido.'
 
     perfiles_in = body.get('perfiles') or []
     if len(perfiles_in) != 3:
         return None, 'Hacen falta exactamente 3 perfiles (Batalla, Medio, Compensa).'
-    pubs = [pm.Publicacion(
-        nombre=p.get('nombre', ''),
-        comision=float(p.get('comision', 0)),
-        costo_cuotas=float(p.get('costo_cuotas', 0)),
-        publicidad_dia=float(p.get('publicidad_dia', 0) or 0),
-    ) for p in perfiles_in]
+    pubs = []
+    for p in perfiles_in:
+        nombre_pub = p.get('nombre') or 'sin nombre'
+        # comision NO tiene default silencioso: 0% seria un numero
+        # engañoso (no existe un "comisión típica" universal como sí pasa
+        # con IIBB/envío), así que un campo vacío bloquea con mensaje claro
+        # en vez de calcular con una comisión inventada — regla de la spec
+        # (parrafo 7): nunca completar con un supuesto silencioso.
+        if p.get('comision') in (None, ''):
+            return None, f'Falta la comisión de la publicación "{nombre_pub}" — no se completa con un valor por defecto.'
+        try:
+            pubs.append(pm.Publicacion(
+                nombre=p.get('nombre', ''),
+                comision=float(p.get('comision')),
+                costo_cuotas=float(p.get('costo_cuotas') or 0),
+                publicidad_dia=float(p.get('publicidad_dia') or 0),
+            ))
+        except (TypeError, ValueError):
+            return None, f'La publicación "{nombre_pub}" tiene un campo numérico inválido (comisión, cuotas o publicidad).'
     # La publicidad no se descuenta por venta (nunca de ganancia_publicacion),
     # solo de la ganancia por dia — se suma acá una sola vez, no se pide
     # aparte, para que no se pueda cargar un total que no coincida con los 3
@@ -9822,21 +9869,28 @@ def api_pricing_config_put():
     if len(perfiles) != 3:
         return jsonify({'ok': False, 'error': 'Hacen falta exactamente 3 perfiles.'}), 400
 
-    with session_scope() as s:
-        row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id).first()
-        if row is None:
-            row = PricingConfig(alias=alias, item_id=item_id)
-            s.add(row)
-        row.iibb              = float(cargos.get('iibb', 3.0))
-        row.percepcion_iva    = float(cargos.get('percepcion_iva', 7.0))
-        row.envio             = float(cargos.get('envio', 5000))
-        row.umbral_envio      = float(cargos.get('umbral_envio', 33000))
-        row.envio_bajo_umbral = bool(cargos.get('envio_bajo_umbral', False))
-        row.fijo_menos_15k    = float(cargos.get('fijo_menos_15k', 1115))
-        row.fijo_15k_25k      = float(cargos.get('fijo_15k_25k', 2300))
-        row.fijo_25k_umbral   = float(cargos.get('fijo_25k_umbral', 2810))
-        row.redondeo          = bool(cargos.get('redondeo', True))
-        row.perfiles          = perfiles
+    def _num(clave, default):
+        val = cargos.get(clave)
+        return float(val) if val not in (None, '') else default
+
+    try:
+        with session_scope() as s:
+            row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id).first()
+            if row is None:
+                row = PricingConfig(alias=alias, item_id=item_id)
+                s.add(row)
+            row.iibb              = _num('iibb', 3.0)
+            row.percepcion_iva    = _num('percepcion_iva', 7.0)
+            row.envio             = _num('envio', 5000)
+            row.umbral_envio      = _num('umbral_envio', 33000)
+            row.envio_bajo_umbral = bool(cargos.get('envio_bajo_umbral', False))
+            row.fijo_menos_15k    = _num('fijo_menos_15k', 1115)
+            row.fijo_15k_25k      = _num('fijo_15k_25k', 2300)
+            row.fijo_25k_umbral   = _num('fijo_25k_umbral', 2810)
+            row.redondeo          = bool(cargos.get('redondeo', True))
+            row.perfiles          = perfiles
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Uno de los cargos tiene un valor inválido.'}), 400
 
     return jsonify({'ok': True})
 
@@ -9988,6 +10042,28 @@ def api_pricing_aplicar():
     if estrategia not in ('rent', 'comp', 'vel', 'meta'):
         return jsonify({'ok': False, 'error': 'estrategia tiene que ser rent, comp, vel o meta.'}), 400
 
+    # Auditoria 2026-09-19: antes esto armaba el registro del experimento
+    # DESPUES de escribir en ML — si algun campo fallaba al parsear, el
+    # precio real YA habia cambiado pero quedaba sin registrar, sin que el
+    # usuario se enterara (veia un error generico). Ahora se valida y
+    # arma todo ANTES de tocar ML: si algo esta mal, no se escribe nada.
+    try:
+        precio_nuevo_f = float(precio_nuevo)
+        campos_experimento = dict(
+            alias=alias, producto_key=producto_key, item_ids=[item_id],
+            estrategia=estrategia, modo=body.get('modo', ''),
+            objetivo=float(body.get('objetivo') or 0), piso=float(body.get('piso') or 0),
+            costo=float(body.get('costo') or 0),
+            ganancia_venta={item_id: float(body.get('ganancia_venta') or 0)},
+            ventas_dia_previas=float(situacion.get('ventas_dia') or 0),
+            ganancia_dia_previa=float(situacion.get('ganancia_dia') or 0),
+            meta_ventas_dia=float(body.get('meta_ventas_dia') or 0),
+            publicidad_dia=float(body.get('publicidad_dia') or 0),
+            competidor_min=body.get('competidor_min'), competidor_max=body.get('competidor_max'),
+        )
+    except (TypeError, ValueError) as e:
+        return jsonify({'ok': False, 'error': f'Datos del experimento inválidos, no se tocó ML: {e}'}), 400
+
     try:
         client = AccountManager().get_client(alias)
         item_antes = client.get_item(item_id)
@@ -9997,30 +10073,29 @@ def api_pricing_aplicar():
     precio_antes = float(item_antes.get('price') or 0)
 
     try:
-        client.update_item(item_id, {'price': float(precio_nuevo)})
+        client.update_item(item_id, {'price': precio_nuevo_f})
     except Exception as e:
         return jsonify({'ok': False, 'error': f'ML rechazó el cambio de precio: {e}'}), 400
 
-    with session_scope() as s:
-        exp = PrecioExperimento(
-            alias=alias, producto_key=producto_key, item_ids=[item_id],
-            estrategia=estrategia, modo=body.get('modo', ''),
-            objetivo=float(body.get('objetivo') or 0), piso=float(body.get('piso') or 0),
-            costo=float(body.get('costo') or 0),
-            precios_antes={item_id: precio_antes}, precios_despues={item_id: float(precio_nuevo)},
-            ganancia_venta={item_id: float(body.get('ganancia_venta') or 0)},
-            ventas_dia_previas=float(situacion.get('ventas_dia') or 0),
-            ganancia_dia_previa=float(situacion.get('ganancia_dia') or 0),
-            meta_ventas_dia=float(body.get('meta_ventas_dia') or 0),
-            publicidad_dia=float(body.get('publicidad_dia') or 0),
-            competidor_min=body.get('competidor_min'), competidor_max=body.get('competidor_max'),
-        )
-        s.add(exp)
-        s.flush()
-        experimento_id = exp.id
+    # El precio YA cambió en ML en este punto. Si el registro del experimento
+    # falla de acá para abajo, hay que decirlo explícitamente — no puede
+    # devolver un error genérico como si nada hubiera pasado.
+    try:
+        with session_scope() as s:
+            exp = PrecioExperimento(
+                precios_antes={item_id: precio_antes}, precios_despues={item_id: precio_nuevo_f},
+                **campos_experimento,
+            )
+            s.add(exp)
+            s.flush()
+            experimento_id = exp.id
+    except Exception as e:
+        app.logger.error(f'[pricing/aplicar] Precio cambiado en ML ({item_id} -> {precio_nuevo_f}) pero el experimento NO se pudo guardar: {e}')
+        return jsonify({'ok': False,
+            'error': f'El precio SÍ se cambió en ML (de ${precio_antes:,.0f} a ${precio_nuevo_f:,.0f}) pero no se pudo registrar el experimento para medirlo: {e}. Anotalo a mano.'}), 500
 
     return jsonify({'ok': True, 'experimento_id': experimento_id,
-                    'precio_antes': precio_antes, 'precio_despues': float(precio_nuevo)})
+                    'precio_antes': precio_antes, 'precio_despues': precio_nuevo_f})
 
 
 @app.route('/api/pricing/experimentos')
@@ -10250,15 +10325,23 @@ def api_pricing_escalera():
         return jsonify({'ok': False, 'error': 'Faltan parámetros (g_dia_hoy, comisión, costo, precio_base).'}), 400
 
     cargos_in = request.args
-    c = pm.Cargos(
-        iibb=float(cargos_in.get('iibb', pm.Cargos.iibb)),
-        percepcion_iva=float(cargos_in.get('percepcion_iva', pm.Cargos.percepcion_iva)),
-        envio=float(cargos_in.get('envio', pm.Cargos.envio)),
-        umbral_envio=float(cargos_in.get('umbral_envio', pm.Cargos.umbral_envio)),
-        fijo_menos_15k=float(cargos_in.get('fijo_menos_15k', pm.Cargos.fijo_menos_15k)),
-        fijo_15k_25k=float(cargos_in.get('fijo_15k_25k', pm.Cargos.fijo_15k_25k)),
-        fijo_25k_umbral=float(cargos_in.get('fijo_25k_umbral', pm.Cargos.fijo_25k_umbral)),
-    )
+
+    def _num(clave, default):
+        val = cargos_in.get(clave)
+        return float(val) if val not in (None, '') else default
+
+    try:
+        c = pm.Cargos(
+            iibb=_num('iibb', pm.Cargos.iibb),
+            percepcion_iva=_num('percepcion_iva', pm.Cargos.percepcion_iva),
+            envio=_num('envio', pm.Cargos.envio),
+            umbral_envio=_num('umbral_envio', pm.Cargos.umbral_envio),
+            fijo_menos_15k=_num('fijo_menos_15k', pm.Cargos.fijo_menos_15k),
+            fijo_15k_25k=_num('fijo_15k_25k', pm.Cargos.fijo_15k_25k),
+            fijo_25k_umbral=_num('fijo_25k_umbral', pm.Cargos.fijo_25k_umbral),
+        )
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Uno de los cargos tiene un valor inválido.'}), 400
     pub = pm.Publicacion('Batalla', comision, costo_cuotas)
 
     # Escalera de precios candidatos: desde precio_base bajando en escalones,
@@ -10482,10 +10565,22 @@ def api_pricing_trio_crear():
             errores.append(f"{pub.get('nombre')}: no cumple las reglas de calidad — {'; '.join(errores_val)}")
             continue
 
+        # Auditoria 2026-09-19 — encontrado el hallazgo mas serio de toda la
+        # revision: `float(pub.get('precio') or 0)` creaba la publicacion
+        # REAL en ML con precio $0 en silencio si el campo llegaba vacio.
+        # Bloquear, nunca crear con precio invalido.
+        try:
+            precio_pub = float(pub.get('precio') or 0)
+        except (TypeError, ValueError):
+            precio_pub = 0
+        if precio_pub <= 0:
+            errores.append(f"{pub.get('nombre')}: sin precio válido — NO se crea (evita publicar a $0).")
+            continue
+
         payload = {
             'title': pub['titulo'][:60],
             'category_id': category_id,
-            'price': float(pub.get('precio') or 0),
+            'price': precio_pub,
             'currency_id': 'ARS',
             'available_quantity': int(pub.get('stock') or 1),
             'buying_mode': 'buy_it_now',
