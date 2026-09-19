@@ -81,12 +81,17 @@ def titulo_variante(titulo_original: str, variante_idx: int) -> dict:
     Determinista, sin llamar a Claude (gratis, ~1-2s). Medio y Compensa
     reciben keywords lider distintas entre si (candidatas[0] vs [1]).
 
-    Devuelve {"titulo": str, "keyword_usada": str|None} — si el autosuggest
-    no trae nada util, devuelve el titulo original sin tocar.
+    Devuelve {"titulo": str, "keyword_usada": str|None, "keywords_rankeadas": list}
+    — si el autosuggest no trae nada util, devuelve el titulo original sin
+    tocar y `keywords_rankeadas` vacia. `keywords_rankeadas` es SIEMPRE dato
+    real: posicion y cantidad de queries en las que aparecio, tal cual las
+    devolvio el autosuggest de ML — nada inventado ni estimado.
     """
     autosuggest_raw, position_map = get_autosuggest_keywords(titulo_original)
     if not autosuggest_raw:
-        return {"titulo": titulo_original, "keyword_usada": None}
+        return {"titulo": titulo_original, "keyword_usada": None, "keywords_rankeadas": []}
+
+    keywords_rankeadas = _rankear_por_autosuggest(autosuggest_raw, position_map)
 
     ranked = score_and_classify_keywords(autosuggest_raw, titulo_original, [], [], position_map)
 
@@ -96,7 +101,7 @@ def titulo_variante(titulo_original: str, variante_idx: int) -> dict:
     candidatas = [r["keyword"] for r in ranked
                   if r["compatibilidad"] in ("alta", "media") and r["keyword"].lower() != lider_actual]
     if not candidatas:
-        return {"titulo": titulo_original, "keyword_usada": None}
+        return {"titulo": titulo_original, "keyword_usada": None, "keywords_rankeadas": keywords_rankeadas}
 
     idx = min(variante_idx - 1, len(candidatas) - 1)
     elegida = candidatas[idx]
@@ -110,4 +115,28 @@ def titulo_variante(titulo_original: str, variante_idx: int) -> dict:
     nuevo = f"{elegida.title()} {' '.join(resto)}".strip()
     if len(nuevo) > 60:  # limite de titulo de ML
         nuevo = nuevo[:60].rsplit(" ", 1)[0]
-    return {"titulo": nuevo, "keyword_usada": elegida}
+    return {"titulo": nuevo, "keyword_usada": elegida, "keywords_rankeadas": keywords_rankeadas}
+
+
+def _rankear_por_autosuggest(autosuggest_raw: list, position_map: dict, top_n: int = 10) -> list:
+    """Lista de keywords con su relevancia, calculada SOLO a partir de la
+    posicion real que devolvio el autosuggest de ML (`best_pos` sobre el
+    total de sugerencias) y en cuantas de las hasta 4 queries derivadas del
+    titulo aparecio (`query_count`). Nada estimado ni inventado: es la
+    misma posicion que ya uso `get_autosuggest_keywords` para armar
+    `position_map`. No es volumen de busqueda (ML no lo expone via
+    autosuggest) — es relevancia por posicion, aclarado en el label del
+    lado del frontend.
+    """
+    total = len(autosuggest_raw)
+    filas = []
+    for kw in autosuggest_raw:
+        pm = position_map.get(kw, {})
+        pos = pm.get("best_pos", total)
+        relevancia_pct = round(max(0.0, (1 - (pos - 1) / total)) * 100) if total else 0
+        filas.append({
+            "keyword": kw, "relevancia_pct": relevancia_pct,
+            "posicion": pos, "de": total, "query_count": pm.get("query_count", 1),
+        })
+    filas.sort(key=lambda f: -f["relevancia_pct"])
+    return filas[:top_n]

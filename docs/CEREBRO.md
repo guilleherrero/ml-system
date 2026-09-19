@@ -2197,6 +2197,39 @@ devuelve `20001.5`, verificado a mano contra la fórmula
 (`55000×(1−0.2727) − 5000 envío − 15000 costo`). 56 tests siguen pasando
 (no se tocó `precio_motor.py`, solo se expuso una función ya testeada).
 
+### Keywords rankeadas visibles en "Crear publicación nueva" (2026-09-19)
+
+Guille: "necesito que cuando Crear publicación nueva me coloques las
+mejores palabras ranqueadas debajo con su porcentaje segun el autossugets,
+real, nada inventado. toma dato real". Dado el historial de esta sesión
+(el enojo por los datos genéricos de cuotas/comisión), se priorizó dejar
+clarísimo de dónde sale cada número mostrado.
+
+`modules/trio_generador.titulo_variante()` ya llamaba a
+`get_autosuggest_keywords()` para armar el título — se agregó
+`_rankear_por_autosuggest()`, que arma la lista de keywords SOLO a partir
+de `position_map` (lo que ya devolvió el autosuggest real de ML): posición
+real (`best_pos`) sobre el total de sugerencias, y en cuántas de las hasta
+4 queries derivadas del título apareció (`query_count`). El "% de
+relevancia" mostrado es `(1 − (posición−1)/total) × 100` — una función
+determinística de la posición real, no un volumen de búsqueda inventado
+(ML no expone volumen vía autosuggest, así que no se simula uno). Se
+reutiliza el mismo `autosuggest_raw`/`position_map` ya obtenido para el
+título, sin pegarle una segunda vez a la API de ML.
+
+`titulo_variante()` ahora devuelve también `keywords_rankeadas` (top 10,
+ordenadas por relevancia), que pasa sin tocar por
+`/api/pricing/trio/titulo_sugerido`. En la tarjeta "Crear publicación
+nueva" se agregó una tabla debajo del título con keyword / relevancia % /
+posición (X/total) / en cuántas queries — con una aclaración explícita de
+que es relevancia por posición real, no volumen de búsqueda, para no dejar
+lugar a que se lea como un dato que no es.
+
+Verificado en vivo contra MLA1932975847 (variante 1): 10 keywords reales
+devueltas, topeadas en 100% cuando `posicion=1`, bajando gradualmente
+hasta 50% en posición 7 de 12 — coincide con la fórmula a mano. 56 tests
+siguen pasando (no se tocó `precio_motor.py` ni los tests existentes).
+
 ## Sprints
 
 | Sprint | Contenido | Estado |

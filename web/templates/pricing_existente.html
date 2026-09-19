@@ -326,6 +326,11 @@
             <label class="pc-etiqueta d-block">Precio</label>
             <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" id="peDuplicarPrecio">
           </div>
+          <div class="mb-2" id="peDuplicarKeywordsBox" style="display:none">
+            <label class="pc-etiqueta d-block">Palabras mejor rankeadas por el autosuggest real de ML</label>
+            <p class="pc-sub-metric mb-1">Relevancia por posición real en el autosuggest — no es volumen de búsqueda (ML no lo expone). Dato real, nada inventado.</p>
+            <div id="peDuplicarKeywords"></div>
+          </div>
           <div class="d-flex gap-2">
             <button type="button" class="btn btn-success btn-sm" id="peDuplicarBtnConfirmar">Crear y aplicar</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" id="peDuplicarBtnCancelar">Cancelar</button>
@@ -843,6 +848,8 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
     `Generando título con el autosuggest real de ML para "${nombre}"...`;
   document.getElementById('peDuplicarTitulo').value = '';
   document.getElementById('peDuplicarPrecio').value = pub.precio;
+  document.getElementById('peDuplicarKeywordsBox').style.display = 'none';
+  document.getElementById('peDuplicarKeywords').innerHTML = '';
   document.getElementById('peDuplicarBox').style.display = '';
   document.getElementById('peDuplicarBox').scrollIntoView({behavior: 'smooth', block: 'center'});
 
@@ -858,6 +865,16 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
       document.getElementById('peDuplicarInfo').textContent = d.keyword_usada
         ? `Título nuevo para "${nombre}" (perfil "${escalon == 0 ? 'Sin cuotas' : escalon == 4 ? 'Interés bajo' : escalon + ' cuotas'}"), reordenado alrededor de "${d.keyword_usada}" — la keyword mejor rankeada del autosuggest real de ML. Podés editarlo.`
         : 'No se encontró una keyword distinta para reordenar — quedó el título original. Podés editarlo.';
+      if (d.keywords_rankeadas && d.keywords_rankeadas.length) {
+        let html = '<table class="table table-sm mb-0"><thead><tr><th>Keyword</th><th class="text-end">Relevancia</th><th class="text-end">Posición</th><th class="text-end">En queries</th></tr></thead><tbody>';
+        d.keywords_rankeadas.forEach(k => {
+          html += `<tr><td>${k.keyword}</td><td class="text-end">${k.relevancia_pct}%</td>` +
+            `<td class="text-end">${k.posicion}/${k.de}</td><td class="text-end">${k.query_count}</td></tr>`;
+        });
+        html += '</tbody></table>';
+        document.getElementById('peDuplicarKeywords').innerHTML = html;
+        document.getElementById('peDuplicarKeywordsBox').style.display = '';
+      }
     })
     .catch(() => {
       document.getElementById('peDuplicarInfo').textContent = 'No se pudo generar un título automático. Escribilo a mano.';
