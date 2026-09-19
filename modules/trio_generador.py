@@ -92,18 +92,19 @@ def _titulo_para_cluster(item_data: dict, description: str, category_attrs: dict
         category_path=category_path, tier1_kw=tier1_kw,
     )
     try:
+        # SIN reintento automatico (a diferencia de run_full_optimization):
+        # cada reintento duplica tiempo Y costo de credito de Claude, y con
+        # productos que solo tienen 1 cluster de busqueda (comun) no hay
+        # nada que paralelizar entre clusters, asi que el reintento era el
+        # factor que mas empujaba el tiempo total por encima del timeout del
+        # servidor Y el gasto de credito por click. Pedido explicito de
+        # Guille (2026-09-18): "me consumio creditos muy caros". Si la
+        # validacion falla, se devuelve tal cual con los errores marcados —
+        # el usuario decide si generar de nuevo (con el costo de un nuevo
+        # click) o editar el texto a mano en la vista previa.
         raw = _call_claude(prompt, max_tokens=3500, console=console, fast=modelo_economico)
         parsed = _parse_synthesis(raw)
         errores = validar_sintesis(parsed, product_type, [tier1_kw], ancla, keyword_principal)
-
-        if errores:
-            # Mismo criterio que run_full_optimization: un solo reintento con
-            # los errores concretos, despues se manda igual con los errores anotados.
-            prompt_corr = prompt + "\n\nERRORES A CORREGIR (revisa y volve a escribir):\n" + \
-                "\n".join(f"- {e}" for e in errores)
-            raw = _call_claude(prompt_corr, max_tokens=3500, console=console, fast=modelo_economico)
-            parsed = _parse_synthesis(raw)
-            errores = validar_sintesis(parsed, product_type, [tier1_kw], ancla, keyword_principal)
     except Exception as e:
         return {
             "titulo": "", "descripcion": "", "ficha_attrs": {},

@@ -1744,6 +1744,17 @@ este bloque completo.
   "me descuenta crédito pero no funciona". Subido a 2000 tokens, y agregado
   logging de la respuesta cruda si vuelve a fallar el parseo (antes fallaba
   en silencio con el mismo mensaje genérico).
+- **El timeout del trío volvió a pasar** (mismo `SyntaxError: Unexpected
+  token '<'`) probando el mismo producto de siempre (MLA1932975847), que
+  solo tiene 1 cluster de búsqueda con volumen — la paralelización de la
+  corrección anterior no ayuda nada cuando hay un solo cluster, no hay nada
+  que paralelizar. Lo que sí duplicaba tiempo Y costo en ese único cluster
+  era el **reintento automático** cuando fallaba `validar_sintesis`
+  (llamaba a Claude una segunda vez sin preguntar). **Eliminado**: ahora es
+  una sola llamada por cluster, sin reintento — si la validación falla, se
+  devuelve igual con los errores marcados (ya bloqueados en la creación por
+  la corrección anterior), y el usuario decide si vuelve a generar. Pedido
+  explícito: "me consumió créditos muy caros".
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba

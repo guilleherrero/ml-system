@@ -937,7 +937,7 @@ const CUOTAS_LABEL = {0: 'Sin cuotas', 4: 'Interés bajo (4%)', 3: '3 cuotas', 6
 document.getElementById('peBtnTrioPreview').addEventListener('click', function () {
   if (!PE_CONTEXTO) return;
   const economico = document.getElementById('peTrioModeloEconomico').checked;
-  if (!confirm(`Esto llama a Claude hasta 6 veces (hasta 3 títulos, con reintento si hace falta) con el modelo ${economico ? 'económico (Haiku)' : 'de calidad (Opus)'} — tiene costo real de API. ¿Generar igual?`)) return;
+  if (!confirm(`Esto llama a Claude hasta 3 veces (una por título, sin reintento) con el modelo ${economico ? 'económico (Haiku)' : 'de calidad (Opus)'} — tiene costo real de API. ¿Generar igual?`)) return;
   const btn = this;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generando (llama a Claude, puede tardar)...';
