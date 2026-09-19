@@ -448,36 +448,6 @@ class TestVentasParaEmpatarParejo(unittest.TestCase):
         self.assertIsNone(pm.ventas_para_empatar_parejo(1000, [float('inf')] * 3, 0))
 
 
-class TestResultadoPrueba(unittest.TestCase):
-    """Veredicto manual simple (adelanto del sprint 4, pedido por Guille el
-    2026-09-18 al comparar contra el artifact original)."""
-
-    def test_conviene_cuando_gana_mas_que_hoy(self):
-        r = pm.resultado_prueba([9929.27, 18331.83, 18594.38], g_dia_hoy=53129.42,
-                                publicidad_total=0, ventas_dia_prueba=6, mix_batalla_pct=60)
-        self.assertTrue(r['viable'])
-        self.assertTrue(r['conviene'])
-        prom = pm._ganancia_promedio_ponderada([9929.27, 18331.83, 18594.38], 60, 50.0)
-        self.assertAlmostEqual(r['ganancia_dia_prueba'], 6 * prom, places=1)
-
-    def test_no_conviene_cuando_gana_menos_que_hoy(self):
-        r = pm.resultado_prueba([9929.27, 18331.83, 18594.38], g_dia_hoy=53129.42,
-                                publicidad_total=0, ventas_dia_prueba=2, mix_batalla_pct=90)
-        self.assertTrue(r['viable'])
-        self.assertFalse(r['conviene'])
-
-    def test_sin_mix_promedia_las_viables(self):
-        r = pm.resultado_prueba([18689.27, 18331.83, 18594.38], g_dia_hoy=0,
-                                publicidad_total=0, ventas_dia_prueba=1)
-        prom = (18689.27 + 18331.83 + 18594.38) / 3
-        self.assertAlmostEqual(r['ganancia_dia_prueba'], prom, places=1)
-
-    def test_todas_no_viables_no_es_viable(self):
-        r = pm.resultado_prueba([float('inf'), float('inf'), float('inf')], g_dia_hoy=0,
-                                publicidad_total=0, ventas_dia_prueba=5)
-        self.assertFalse(r['viable'])
-
-
 class TestVeredictoExperimento(unittest.TestCase):
     """Sprint 4: veredicto a 7/14 dias a partir de lo medido."""
 

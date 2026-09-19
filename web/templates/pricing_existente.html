@@ -278,39 +278,6 @@
         </button>
       </form>
 
-      <div class="pc-card" id="pePruebaCard" style="display:none">
-        <div class="pc-card-header">Resultado de la prueba</div>
-        <div class="pc-card-body">
-          <p class="pc-sub-metric">Chequeo rápido: cambiaste el precio hace unos días — ¿convino? Elegí qué estrategia probaste y desde cuándo, y calculamos las ventas reales de ML desde esa fecha (no hace falta que las cuentes vos). Es distinto de "Experimentos de este producto" más abajo: eso mide automáticamente día a día una vez que aplicás un precio desde acá; esto es para un chequeo puntual, incluso si cambiaste el precio a mano.</p>
-          <div class="mb-2">
-            <label class="pc-etiqueta d-block">¿Qué estrategia probaste?</label>
-            <select class="form-select form-select-sm" id="peEstrategiaProbada" disabled>
-              <option value="rent">Máxima rentabilidad</option>
-              <option value="comp" selected>Competir sin perder rentabilidad</option>
-              <option value="vel">Velocidad</option>
-            </select>
-            <div class="pc-sub-metric mt-1" id="pePruebaGate">Calculá las 3 estrategias arriba primero.</div>
-          </div>
-          <div class="row g-2 mb-2">
-            <div class="col-6">
-              <label class="pc-etiqueta d-block">¿Desde cuándo tenés este precio?</label>
-              <input type="date" class="form-control form-control-sm" id="peFechaPrueba">
-            </div>
-            <div class="col-6" id="pePruebaMixBox">
-              <label class="pc-etiqueta d-block">% de esas ventas que se las llevó la Batalla <i class="bi bi-question-circle" title="Solo importa acá porque en esta estrategia cada publicación del trío deja una ganancia distinta. Ej: si de 10 ventas 7 fueron de la publicación Batalla y 3 de las otras dos, poné 70."></i></label>
-              <input type="number" step="1" min="0" max="100" class="form-control form-control-sm" id="pePruebaMix" placeholder="Ej: 70">
-            </div>
-          </div>
-          <div class="mb-2" id="pePruebaManualBox" style="display:none">
-            <label class="pc-etiqueta d-block">No se pudieron traer ventas reales — cargalas a mano (ventas/día)</label>
-            <input type="number" step="0.1" min="0" class="form-control form-control-sm" id="peVentasPrueba">
-          </div>
-          <button type="button" class="btn btn-outline-primary btn-sm w-100" id="peBtnVerificar" disabled>
-            <i class="bi bi-check2-circle me-1"></i>Ver veredicto
-          </button>
-          <div id="pePruebaResultado"></div>
-        </div>
-      </div>
 
       <div class="pc-card">
         <div class="pc-card-header">Ganar el doble</div>
@@ -340,6 +307,7 @@
       <div class="pc-card" id="peExperimentosCard" style="display:none">
         <div class="pc-card-header">Experimentos de este producto</div>
         <div class="pc-card-body">
+          <p class="pc-sub-metric mb-2">Se arma solo: cuando aplicás un precio con el botón "Aplicar" de una estrategia, acá empieza a medirse día a día — cuánto necesitás vender para ganar más, y cuánto estás vendiendo de verdad.</p>
           <div id="peListaExperimentos"></div>
           <div id="peEvolucionExperimento"></div>
         </div>
@@ -624,15 +592,6 @@ let PE_ULTIMO_RESULTADO = null;
 
 function renderResultados(d) {
   PE_ULTIMO_RESULTADO = d;
-  document.getElementById('pePruebaCard').style.display = '';
-  document.getElementById('peEstrategiaProbada').disabled = false;
-  document.getElementById('peBtnVerificar').disabled = false;
-  document.getElementById('pePruebaGate').textContent = '';
-  const peFecha = document.getElementById('peFechaPrueba');
-  if (!peFecha.value) {
-    const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
-    peFecha.value = hace7.toISOString().slice(0, 10);
-  }
 
   const nombres = [0, 1, 2].map(i => document.getElementById('peNombre' + i).value);
   nombres.forEach((n, i) => {
@@ -813,73 +772,6 @@ document.getElementById('peBtnIA').addEventListener('click', function () {
     });
 });
 
-document.getElementById('peEstrategiaProbada').addEventListener('change', function () {
-  document.getElementById('pePruebaMixBox').style.display = this.value === 'comp' ? '' : 'none';
-});
-document.getElementById('pePruebaMixBox').style.display = 'none';
-
-document.getElementById('peBtnVerificar').addEventListener('click', function () {
-  if (!PE_ULTIMO_RESULTADO) { alert('Primero calculá las estrategias.'); return; }
-  const goal = document.getElementById('peEstrategiaProbada').value;
-  const r = PE_ULTIMO_RESULTADO.estrategias[goal];
-  const ganancias = r.ganancias;
-  const publicidadTotal = PE_ULTIMO_RESULTADO.publicidad_total || 0;
-  const gDiaHoy = PE_ULTIMO_RESULTADO.g_dia_hoy;
-  if (gDiaHoy === null || gDiaHoy === undefined) {
-    document.getElementById('pePruebaResultado').innerHTML =
-      '<div class="pc-faltante bloq"><i class="bi bi-exclamation-triangle me-1"></i>No hay ganancia de hoy calculada para esta publicación (falta costo o ventas históricas) — no se puede comparar.</div>';
-    return;
-  }
-  const fechaDesde = document.getElementById('peFechaPrueba').value;
-  const ventasManual = parseFloat(document.getElementById('peVentasPrueba').value);
-  const manualVisible = document.getElementById('pePruebaManualBox').style.display !== 'none';
-  if (!fechaDesde && !(manualVisible && ventasManual)) {
-    alert('Elegí desde cuándo tenés este precio puesto (o cargá las ventas/día a mano).');
-    return;
-  }
-
-  const payload = {
-    ganancias, g_dia_hoy: gDiaHoy, publicidad_total: publicidadTotal,
-    alias: document.getElementById('peAlias').value,
-    item_id: PE_CONTEXTO ? PE_CONTEXTO.item.id : '',
-    fecha_desde: fechaDesde || null,
-    ventas_dia_prueba: manualVisible ? (ventasManual || null) : null,
-    mix_batalla_pct: goal === 'comp' ? (parseFloat(document.getElementById('pePruebaMix').value) || null) : null,
-  };
-
-  const btn = this;
-  btn.disabled = true;
-  fetch('/api/pricing/verificar_prueba', {
-    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
-  })
-    .then(r2 => r2.json())
-    .then(v => {
-      btn.disabled = false;
-      if (!v.ok) {
-        document.getElementById('pePruebaManualBox').style.display = '';
-        document.getElementById('pePruebaResultado').innerHTML = `<div class="pc-faltante bloq">${v.error}</div>`;
-        return;
-      }
-      const dias = v.dias_medidos;
-      const fuenteTexto = v.fuente_ventas === 'medido'
-        ? `<i class="bi bi-check2-circle me-1"></i>Calculado con ventas reales de ML desde el ${fechaDesde} (${v.unidades_medidas ?? '?'} unidades en ${dias} días).`
-        : '<i class="bi bi-pencil me-1"></i>Calculado con las ventas/día que cargaste a mano.';
-      let confianza = '';
-      if (dias !== null && dias !== undefined) {
-        if (dias < 7) confianza = ` <span class="text-warning">Con ${dias} día${dias === 1 ? '' : 's'} es poco para confiar del todo — conviene llegar a 7.</span>`;
-        else if (dias < 14 && Math.abs(v.delta_vs_hoy) < Math.abs(gDiaHoy) * 0.05) confianza = ' <span class="text-warning">La diferencia es chica — con tan poco margen, esperá unos días más para estar seguro.</span>';
-      }
-      document.getElementById('pePruebaResultado').innerHTML =
-        `<div class="pc-sub-metric mb-2">${fuenteTexto}</div>` +
-        (v.conviene
-          ? `<div class="pc-verdict pc-verdict-ok"><strong>Conviene seguir.</strong> Con la prueba ganás ${fmtMoney(v.ganancia_dia_prueba)} por día, ${fmtMoney(v.delta_vs_hoy)} más que antes.${confianza}</div>`
-          : `<div class="pc-verdict pc-verdict-bad"><strong>Conviene volver al precio anterior.</strong> Con la prueba ganás ${fmtMoney(v.ganancia_dia_prueba)} por día, ${fmtMoney(-v.delta_vs_hoy)} menos que antes.${confianza}</div>`);
-    })
-    .catch(err => {
-      btn.disabled = false;
-      document.getElementById('pePruebaResultado').innerHTML = `<div class="pc-faltante bloq">Error: ${err}</div>`;
-    });
-});
 
 function renderRecomendacion(r) {
   if (!r || !r.estrategia_sugerida) {
@@ -1043,6 +935,7 @@ function cargarExperimentos() {
       });
       html += '</tbody></table>';
       document.getElementById('peListaExperimentos').innerHTML = html;
+      verEvolucion(d.experimentos[0].id);
     });
 }
 
@@ -1057,12 +950,23 @@ function verEvolucion(experimentoId) {
     .then(r => r.json())
     .then(d => {
       if (!d.ok) { document.getElementById('peEvolucionExperimento').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`; return; }
-      let html = `<div class="mt-2 mb-2"><span class="pc-veredicto-badge pc-veredicto-${d.veredicto}">${VEREDICTO_LABEL[d.veredicto] || d.veredicto}</span> ` +
-        `<span class="pc-sub-metric">${d.dias_medidos} días medidos${d.ganancia_dia_promedio !== null ? ' · ganancia/día promedio ' + fmtMoney(d.ganancia_dia_promedio) + ' (antes: ' + fmtMoney(d.experimento.ganancia_dia_previa) + ')' : ''}</span></div>`;
+      const e = d.experimento;
+      const metaExtra = e.meta_ventas_dia - e.ventas_dia_previas;
+      let html = `<div class="pc-empate mt-2 mb-2"><i class="bi bi-graph-up me-1"></i>` +
+        (metaExtra > 0
+          ? `Para ganar más que antes necesitás vender <strong>${metaExtra.toFixed(2)} más por día</strong> (tenías ${e.ventas_dia_previas.toFixed(2)}/día, necesitás ${e.meta_ventas_dia.toFixed(2)}/día).`
+          : `Este precio gana más aunque vendas lo mismo que antes (${e.ventas_dia_previas.toFixed(2)}/día).`) +
+        `</div>`;
+      html += `<div class="mb-2"><span class="pc-veredicto-badge pc-veredicto-${d.veredicto}">${VEREDICTO_LABEL[d.veredicto] || d.veredicto}</span> ` +
+        `<span class="pc-sub-metric">${d.dias_medidos} día${d.dias_medidos === 1 ? '' : 's'} medido${d.dias_medidos === 1 ? '' : 's'}` +
+        (d.ventas_dia_promedio !== null ? ` · vendiste en promedio ${d.ventas_dia_promedio.toFixed(2)}/día (necesitabas ${e.meta_ventas_dia.toFixed(2)}/día)` : '') +
+        (d.ganancia_dia_promedio !== null ? ' · ganancia/día promedio ' + fmtMoney(d.ganancia_dia_promedio) + ' (antes: ' + fmtMoney(e.ganancia_dia_previa) + ')' : ' · todavía sin datos del snapshot de hoy (corre 06:05 ART)') +
+        `</span></div>`;
       html += '<div class="table-responsive" style="max-height:220px;overflow-y:auto"><table class="table table-sm mb-2"><thead><tr><th>Fecha</th><th class="text-end">Precio</th><th class="text-end">Ventas/día</th><th class="text-end">Ganancia/día</th></tr></thead><tbody>';
       d.serie.forEach(s => {
         html += `<tr><td>${s.fecha}</td><td class="text-end">${fmtMoney(s.precio)}</td><td class="text-end">${s.ventas_dia}</td><td class="text-end">${s.ganancia_dia !== null ? fmtMoney(s.ganancia_dia) : '-'}</td></tr>`;
       });
+      if (!d.serie.length) html += '<tr><td colspan="4" class="text-center pc-sub-metric">Todavía no corrió ningún snapshot diario — vuelve mañana después de las 06:05 ART.</td></tr>';
       html += '</tbody></table></div>';
       if (!d.experimento.cerrado_en) {
         html += `<button type="button" class="btn btn-outline-danger btn-sm" id="peBtnCerrar" data-exp="${experimentoId}">Cerrar experimento</button>`;
@@ -1097,7 +1001,7 @@ function trioPerfiles() {
   }));
 }
 
-const CUOTAS_LABEL = {0: 'Sin cuotas', 4: 'Interés bajo (4%)', 3: '3 cuotas', 6: '6 cuotas', 9: '9 cuotas', 12: '12 cuotas'};
+const CUOTAS_LABEL = {0: 'Sin cuotas', 4: 'Interés bajo', 3: '3 cuotas', 6: '6 cuotas', 9: '9 cuotas', 12: '12 cuotas'};
 
 document.getElementById('peBtnTrioPreview').addEventListener('click', function () {
   if (!PE_CONTEXTO) return;

@@ -10139,83 +10139,6 @@ def api_pricing_experimentos():
     return jsonify({'ok': True, 'experimentos': out})
 
 
-@app.route('/api/pricing/verificar_prueba', methods=['POST'])
-def api_pricing_verificar_prueba():
-    """Veredicto manual rápido: chequeo puntual sin esperar el experimento
-    trackeado (que arma /aplicar y mide solo via snapshots_diarios, sprint 4).
-
-    Pedido explicito de Guille (2026-09-19): "no se entiende bien". El
-    problema no era el calculo sino que pedia escribir a mano las ventas/dia
-    de la prueba — un numero que el usuario tiene que ir a calcular por su
-    cuenta. Si se manda `alias`+`item_id`+`fecha_desde`, ahora se calculan
-    las ventas/dia REALES desde esa fecha con las mismas ordenes de ML que
-    usa /contexto (no hace falta contarlas a mano). `ventas_dia_prueba`
-    manual sigue andando como fallback (ej. si el precio se probo hace mas
-    de 30 dias, fuera de la ventana de ordenes que trae la API).
-    """
-    from modules import precio_motor as pm
-
-    body = request.get_json() or {}
-    ganancias = body.get('ganancias')
-    if not isinstance(ganancias, list) or len(ganancias) != 3:
-        return jsonify({'ok': False, 'error': 'Faltan las 3 ganancias de la estrategia aplicada.'}), 400
-    ganancias = [float('inf') if g is None else float(g) for g in ganancias]
-
-    try:
-        g_dia_hoy = float(body.get('g_dia_hoy'))
-    except (TypeError, ValueError):
-        return jsonify({'ok': False, 'error': 'Falta la ganancia de hoy (recalculá las 3 estrategias arriba).'}), 400
-
-    ventas_dia_prueba = None
-    dias_medidos = None
-    unidades_medidas = None
-    fuente_ventas = 'manual'
-
-    alias = body.get('alias', '')
-    item_id = body.get('item_id', '')
-    fecha_desde = (body.get('fecha_desde') or '').strip()
-    if alias and item_id and fecha_desde:
-        try:
-            from core.account_manager import AccountManager
-            from modules.stock_rentabilidad import _get_all_orders_30d, _compute_item_stats
-            desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d')
-            dias_transcurridos = max(1, (datetime.now() - desde_dt).days)
-            client = AccountManager().get_client(alias)
-            orders = _get_all_orders_30d(client)
-            desde_iso = desde_dt.strftime('%Y-%m-%dT00:00:00')
-            orders_prueba = [o for o in orders if (o.get('date_created') or '') >= desde_iso]
-            stats_prueba = _compute_item_stats(orders_prueba).get(item_id, {})
-            unidades_medidas = stats_prueba.get('units') or 0
-            dias_medidos = min(dias_transcurridos, 30)
-            ventas_dia_prueba = round(unidades_medidas / dias_medidos, 2)
-            fuente_ventas = 'medido'
-        except Exception:
-            ventas_dia_prueba = None
-
-    if ventas_dia_prueba is None:
-        try:
-            ventas_dia_prueba = float(body.get('ventas_dia_prueba'))
-            dias_medidos = int(body.get('dias_prueba') or 0) or None
-        except (TypeError, ValueError):
-            return jsonify({'ok': False, 'error':
-                'No se pudieron traer ventas reales de ML para esa fecha — cargá las ventas/día a mano.'}), 400
-
-    mix = body.get('mix_batalla_pct')
-    resultado = pm.resultado_prueba(
-        ganancias, g_dia_hoy, float(body.get('publicidad_total') or 0), ventas_dia_prueba,
-        mix_batalla_pct=float(mix) if mix not in (None, '') else None,
-        split_medio=float(body.get('split_medio', 50)))
-
-    if not resultado.get('viable'):
-        return jsonify({'ok': False, 'error': 'Ninguna publicación de esta estrategia es viable.'}), 400
-
-    resultado['ventas_dia_prueba'] = ventas_dia_prueba
-    resultado['dias_medidos'] = dias_medidos
-    resultado['unidades_medidas'] = unidades_medidas
-    resultado['fuente_ventas'] = fuente_ventas
-    return jsonify({'ok': True, **resultado})
-
-
 @app.route('/api/pricing/evolucion')
 def api_pricing_evolucion():
     """Sprint 4: serie diaria de un experimento + veredicto a 7/14 dias.
@@ -10267,6 +10190,8 @@ def api_pricing_evolucion():
 
         dias_medidos = len(medibles)
         ganancia_dia_promedio = round(sum(medibles) / len(medibles), 2) if medibles else None
+        ventas_medidas = [d['ventas_dia'] for d in serie if d['ventas_dia'] is not None]
+        ventas_dia_promedio = round(sum(ventas_medidas) / len(ventas_medidas), 2) if ventas_medidas else None
         veredicto = pm.veredicto_experimento(dias_medidos, ganancia_dia_promedio, float(exp.ganancia_dia_previa))
 
         return jsonify({'ok': True,
@@ -10274,12 +10199,14 @@ def api_pricing_evolucion():
                 'id': exp.id, 'producto_key': exp.producto_key, 'item_ids': exp.item_ids,
                 'estrategia': exp.estrategia, 'precios_antes': exp.precios_antes, 'precios_despues': exp.precios_despues,
                 'ganancia_dia_previa': float(exp.ganancia_dia_previa), 'meta_ventas_dia': float(exp.meta_ventas_dia),
+                'ventas_dia_previas': float(exp.ventas_dia_previas),
                 'iniciado_en': exp.iniciado_en.isoformat() if exp.iniciado_en else None,
                 'cerrado_en': exp.cerrado_en.isoformat() if exp.cerrado_en else None,
                 'veredicto_guardado': exp.veredicto,
             },
             'serie': serie, 'dias_medidos': dias_medidos,
-            'ganancia_dia_promedio': ganancia_dia_promedio, 'veredicto': veredicto})
+            'ganancia_dia_promedio': ganancia_dia_promedio, 'ventas_dia_promedio': ventas_dia_promedio,
+            'veredicto': veredicto})
 
 
 @app.route('/api/pricing/cerrar', methods=['POST'])

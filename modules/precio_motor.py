@@ -722,36 +722,6 @@ def mapa_decision(g_dia_hoy: float, ganancias: list[float], split_medio: float,
     }
 
 
-def resultado_prueba(ganancias: list[float], g_dia_hoy: float, publicidad_total: float,
-                     ventas_dia_prueba: float, mix_batalla_pct: float | None = None,
-                     split_medio: float = 50.0) -> dict:
-    """Evalua a mano lo que paso en una prueba real contra la ganancia de hoy.
-
-    Version simple del veredicto (spec sprint 4) que no necesita el snapshot
-    diario automatico: se carga lo medido y da un numero. `mix_batalla_pct` es
-    el % de las ventas de la prueba que se llevo la Batalla — solo importa
-    cuando las tres publicaciones dejan ganancias distintas (estrategia
-    'comp'); si no se pasa, se promedia entre las publicaciones viables.
-    """
-    finitas = [g for g in ganancias if g is not None and math.isfinite(g)]
-    if not finitas:
-        return {"viable": False}
-
-    if mix_batalla_pct is not None and len(ganancias) == 3 and all(math.isfinite(g) for g in ganancias):
-        ganancia_prom = _ganancia_promedio_ponderada(ganancias, mix_batalla_pct, split_medio)
-    else:
-        ganancia_prom = sum(finitas) / len(finitas)
-
-    ganancia_dia_prueba = ventas_dia_prueba * ganancia_prom - publicidad_total
-    delta = ganancia_dia_prueba - g_dia_hoy
-    return {
-        "viable": True,
-        "ganancia_dia_prueba": round(ganancia_dia_prueba, 2),
-        "delta_vs_hoy": round(delta, 2),
-        "conviene": delta >= 0,
-    }
-
-
 def veredicto_experimento(dias_medidos: int, ganancia_dia_promedio: float | None,
                           ganancia_dia_previa: float) -> str:
     """Veredicto de un experimento a partir de lo medido en snapshots_diarios.

@@ -1984,6 +1984,57 @@ Verificado en vivo contra MLA1932975847 (10 días atrás): 22 unidades reales
 detectadas automáticamente, `ventas_dia_prueba: 2.2`. Fallback manual
 también probado sin alias/item_id.
 
+### "Resultado de la prueba" eliminado — Guille: "no sirve de nada" (2026-09-19)
+
+El arreglo anterior (mismo día) no alcanzó. Guille fue tajante: la tarjeta
+manual "no sirve de nada", no se entiende qué lógica usa, y lo que
+realmente necesita ya existe en otro lado: **"la idea es que cuando yo
+finalmente ejecuto un precio automáticamente comience la prueba y las
+mediciones"**. Eso es exactamente lo que ya hace `/api/pricing/aplicar` +
+`PrecioExperimento` + el cron `pricing_snapshots_diarios` (06:05 ART) — el
+botón "Aplicar" de cada publicación en las tarjetas de estrategia ya
+escribe el precio real en ML y abre el experimento que se mide solo, día a
+día, sin ningún dato manual. El problema no era que faltara la función:
+es que había DOS herramientas con lógicas distintas conviviendo en la
+misma pantalla sin que se explicara la diferencia, y la manual (la que se
+había estado parchando) generaba la confusión.
+
+Decisión: **se elimina la tarjeta "Resultado de la prueba"** (HTML, JS y
+el endpoint `/api/pricing/verificar_prueba` — no queda nada llamándolo).
+`resultado_prueba()` en `precio_motor.py` y sus tests (`TestResultadoPrueba`,
+4 casos) también se borran — no queda ningún caller. 56 tests activos
+(eran 60).
+
+En su lugar, se reforzó "Experimentos de este producto" (la herramienta
+automática que YA respondía lo que Guille pide) para que conteste directo
+la pregunta que hizo el 2026-09-18 ("cuánto más necesito vender para ganar
+más"):
+- `/api/pricing/evolucion` ahora también devuelve `ventas_dia_previas` del
+  experimento (ya vivía en el modelo `PrecioExperimento`, nunca se
+  exponía) y `ventas_dia_promedio` (promedio medido de la serie de
+  snapshots, no solo la ganancia).
+- La vista de un experimento abre un cartel arriba de todo con la cuenta
+  que Guille pidió, en una frase: "Para ganar más que antes necesitás
+  vender X más por día (tenías Y/día, necesitás Z/día)" — o, si el precio
+  ya gana más sin vender más, lo dice directo.
+- Debajo, el resumen de días medidos ahora suma "vendiste en promedio
+  A/día (necesitabas B/día)" al lado del veredicto y la ganancia/día.
+- Al entrar a la pantalla con experimentos existentes, se abre solo el más
+  reciente (antes había que clickear la fila a mano para verlo).
+- Se agregó una frase a la tarjeta explicando que se arma sola: "cuando
+  aplicás un precio con el botón Aplicar... acá empieza a medirse día a
+  día".
+- De paso, se corrigió `CUOTAS_LABEL` en el generador de trío, que todavía
+  decía "Interés bajo (4%)" — ese 4% era el ejemplo genérico ya
+  desmentido en la sección anterior (el real es 5% para este dominio); se
+  saca el porcentaje del label ya que varía por producto y el dato real ya
+  se muestra en la tarjeta de comisión/cuotas.
+
+Verificado en vivo contra el experimento real id=1 de MLA1932975847:
+`/evolucion` devuelve `ventas_dia_previas: 1.23`, `meta_ventas_dia: 5.0`,
+`ventas_dia_promedio: 4.69` — la cuenta se arma bien (necesitaba 3.77
+ventas/día más, promedió 4.69, por eso el veredicto da "conviene").
+
 ## Sprints
 
 | Sprint | Contenido | Estado |
