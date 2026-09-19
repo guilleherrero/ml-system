@@ -215,11 +215,21 @@ def perfiles_duplicados(perfiles: list) -> list:
     return choques
 
 
-def ficha_faltante(ficha_attrs: dict, atributos_requeridos: list) -> list:
+def ficha_faltante(ficha_attrs, atributos_requeridos: list) -> list:
     """Compara la ficha generada contra los atributos obligatorios reales de
     la categoria (`_get_category_attributes`). Devuelve los que faltan — la
-    vista previa no deja crear hasta que esta lista este vacia (spec 9.3)."""
-    presentes = {str(k).strip().lower() for k in (ficha_attrs or {}).keys()}
+    vista previa no deja crear hasta que esta lista este vacia (spec 9.3).
+
+    `ficha_attrs` viene de `seo_optimizer._parse_ficha_structured()`, que
+    SIEMPRE devuelve una lista de {name, value, tipo, strategy, needs_check}
+    — nunca un dict. Bug real encontrado en vivo el 2026-09-19 (AttributeError
+    'list' object has no attribute 'keys'): esta funcion asumia mal la forma.
+    Se banca las dos formas por las dudas (lista real, o un dict legado).
+    """
+    if isinstance(ficha_attrs, dict):
+        presentes = {str(k).strip().lower() for k in ficha_attrs.keys()}
+    else:
+        presentes = {str(row.get("name", "")).strip().lower() for row in (ficha_attrs or [])}
     faltan = []
     for attr in atributos_requeridos or []:
         nombre = attr.get("name") or attr.get("id") or ""

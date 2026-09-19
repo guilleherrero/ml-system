@@ -10288,6 +10288,104 @@ def api_pricing_escalera():
     return jsonify({'ok': True, 'escalera': pasos, 'precio_a_probar': precio_a_probar, 'regla': regla})
 
 
+def _trio_generar_y_anotar(tg, item_id, client, perfiles, modelo_economico):
+    """Genera los titulos del trio y les suma ficha_faltante/puede_crear.
+    Compartido por el endpoint sincronico (compat) y el job en background.
+    """
+    resultado = tg.generar_titulos_trio(item_id, client, modelo_economico=modelo_economico)
+    if not resultado.get('ok'):
+        return resultado
+
+    titulos = resultado['titulos']
+    if len(titulos) < len(perfiles):
+        resultado['aviso'] = (
+            f'Solo se encontraron {len(titulos)} cluster(s) de búsqueda con volumen — '
+            f'no se inventa un tercero. Se genera {"un título" if len(titulos)==1 else f"{len(titulos)} títulos"} en vez de {len(perfiles)}.'
+        )
+    for t in titulos:
+        t['ficha_faltante'] = tg.ficha_faltante(t.get('ficha_attrs') or {}, resultado['ficha_requerida'])
+        t['puede_crear'] = not t['ficha_faltante'] and bool(t.get('titulo')) and not t['errores_validacion']
+    return resultado
+
+
+# Jobs del generador de trio en background — evita el timeout del servidor
+# (gunicorn y/o el proxy de Render) contra una generacion que legitimamente
+# tarda 1-3 minutos con Opus. En memoria del proceso: alcanza con --workers 1
+# y no justifica sumar Redis/Celery para esto. Se limpian solos despues de
+# leidos o tras 30 min sin consultar.
+_TRIO_JOBS: dict = {}
+_TRIO_JOBS_LOCK = _threading.Lock()
+
+
+def _trio_job_worker(job_id, alias, item_id, perfiles, modelo_economico):
+    from core.account_manager import AccountManager
+    from modules import trio_generador as tg
+    try:
+        client = AccountManager().get_client(alias)
+        resultado = _trio_generar_y_anotar(tg, item_id, client, perfiles, modelo_economico)
+        with _TRIO_JOBS_LOCK:
+            _TRIO_JOBS[job_id] = {'status': 'done', 'resultado': resultado, 'ts': _time_module.time()}
+    except Exception as e:
+        with _TRIO_JOBS_LOCK:
+            _TRIO_JOBS[job_id] = {'status': 'error', 'error': str(e), 'ts': _time_module.time()}
+
+
+@app.route('/api/pricing/trio/preview/start', methods=['POST'])
+def api_pricing_trio_preview_start():
+    """Arranca la generacion del trio en background y devuelve un job_id al
+    toque — el pedido HTTP nunca queda esperando los 1-3 minutos que tarda
+    Claude, asi que no hay timeout posible (ni de gunicorn ni del proxy de
+    Render) a mitad de la generacion. La pantalla consulta el progreso con
+    /api/pricing/trio/preview/status.
+    """
+    import uuid
+    from modules import trio_generador as tg
+
+    body = request.get_json() or {}
+    alias = body.get('alias', '')
+    item_id = body.get('item_id', '')
+    perfiles = body.get('perfiles') or []
+    if not alias or not item_id:
+        return jsonify({'ok': False, 'error': 'Faltan alias e item_id.'}), 400
+    if len(perfiles) not in (2, 3):
+        return jsonify({'ok': False, 'error': 'Hacen falta 2 o 3 perfiles.'}), 400
+
+    duplicados = tg.perfiles_duplicados(perfiles)
+    if duplicados:
+        pares = '; '.join(f'{a} y {b}' for a, b in duplicados)
+        return jsonify({'ok': False,
+            'error': f'Hay publicaciones con el mismo tipo y escalón de cuotas ({pares}). Cada publicación del trío tiene que diferenciarse.'}), 400
+
+    job_id = uuid.uuid4().hex
+    with _TRIO_JOBS_LOCK:
+        _TRIO_JOBS[job_id] = {'status': 'running', 'ts': _time_module.time()}
+    _threading.Thread(
+        target=_trio_job_worker,
+        args=(job_id, alias, item_id, perfiles, bool(body.get('modelo_economico'))),
+        daemon=True,
+    ).start()
+    return jsonify({'ok': True, 'job_id': job_id})
+
+
+@app.route('/api/pricing/trio/preview/status')
+def api_pricing_trio_preview_status():
+    job_id = request.args.get('job_id', '')
+    with _TRIO_JOBS_LOCK:
+        job = _TRIO_JOBS.get(job_id)
+        # Limpieza perezosa de jobs viejos (>30 min) para no crecer sin limite.
+        vencidos = [jid for jid, j in _TRIO_JOBS.items() if _time_module.time() - j.get('ts', 0) > 1800]
+        for jid in vencidos:
+            _TRIO_JOBS.pop(jid, None)
+
+    if not job:
+        return jsonify({'ok': False, 'error': 'Job no encontrado (puede haber expirado).'}), 404
+    if job['status'] == 'running':
+        return jsonify({'ok': True, 'status': 'running'})
+    if job['status'] == 'error':
+        return jsonify({'ok': True, 'status': 'error', 'error': job['error']})
+    return jsonify({'ok': True, 'status': 'done', **job['resultado']})
+
+
 @app.route('/api/pricing/trio/preview', methods=['POST'])
 def api_pricing_trio_preview():
     """Sprint 5 — vista previa del trio: titulos por cluster + ficha + fotos.
@@ -10320,20 +10418,9 @@ def api_pricing_trio_preview():
     except Exception as e:
         return jsonify({'ok': False, 'error': f'No se pudo conectar la cuenta {alias}: {e}'}), 400
 
-    resultado = tg.generar_titulos_trio(item_id, client, modelo_economico=bool(body.get('modelo_economico')))
+    resultado = _trio_generar_y_anotar(tg, item_id, client, perfiles, bool(body.get('modelo_economico')))
     if not resultado.get('ok'):
         return jsonify(resultado), 400
-
-    titulos = resultado['titulos']
-    if len(titulos) < len(perfiles):
-        resultado['aviso'] = (
-            f'Solo se encontraron {len(titulos)} cluster(s) de búsqueda con volumen — '
-            f'no se inventa un tercero. Se genera {"un título" if len(titulos)==1 else f"{len(titulos)} títulos"} en vez de {len(perfiles)}.'
-        )
-
-    for t in titulos:
-        t['ficha_faltante'] = tg.ficha_faltante(t.get('ficha_attrs') or {}, resultado['ficha_requerida'])
-        t['puede_crear'] = not t['ficha_faltante'] and bool(t.get('titulo')) and not t['errores_validacion']
 
     return jsonify(resultado)
 

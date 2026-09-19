@@ -1662,6 +1662,43 @@ Generador de Trío. Recordarle a Guille los bugs diferidos del §11
 (items 51-54 de la checklist) — quedó pactado avisar cuando se terminara
 este bloque completo.
 
+### Auditoría del generador de trío pedida por Guille (2026-09-19)
+
+Tras dos correcciones puntuales (paralelizar, sacar el reintento) el mismo
+error seguía apareciendo — "SyntaxError: Unexpected token '<'" — y Guille
+gastó cerca de USD 2 en un par de pruebas. Pidió explícitamente una
+auditoría de toda la sección en vez de otro parche puntual.
+
+**Causa raíz real, no encontrada antes**: la generación del trío llama a
+Claude Opus con prompts grandes y legítimamente tarda 1-3 minutos (con 1
+solo cluster, que es lo más común para sus productos). Cualquier pedido
+HTTP que se queda esperando eso corre riesgo de timeout — el de gunicorn
+(ya se había subido a 180s), pero también el del proxy de Render, que no
+se puede configurar desde este repo. Cuando cualquiera de los dos corta el
+pedido a mitad de camino, el navegador recibe una pagina de error HTML en
+vez del JSON esperado (de ahí el "Unexpected token '<'") — pero el llamado
+a Claude ya se había facturado. Ajustar timeouts era tratar el síntoma:
+mientras la generación siga siendo un pedido HTTP bloqueado, siempre hay
+algún límite de tiempo en algún punto de la cadena (servidor propio o
+infraestructura de Render) contra el que se puede chocar.
+
+**Arreglo estructural**: se volvió asíncrono. `POST
+/api/pricing/trio/preview/start` valida y arranca la generación en un
+hilo de background (`_threading.Thread`), devolviendo un `job_id` al
+instante (probado en vivo: 28ms) — el pedido HTTP nunca queda esperando,
+así que no hay timeout posible en ningún punto. `GET
+/api/pricing/trio/preview/status?job_id=` consulta el progreso; la
+pantalla hace polling cada 3s hasta que termina. Estado en memoria del
+proceso (`_TRIO_JOBS`, con lock) — alcanza con `--workers 1`, no se
+justifica sumar Redis/Celery para esto. Se limpian solos los jobs de más
+de 30 minutos. El endpoint sincrónico viejo (`/api/pricing/trio/preview`)
+queda para compatibilidad, pero la pantalla ya no lo usa.
+
+Efecto secundario bueno: con `--workers 1`, antes el resto de la app
+quedaba bloqueada para cualquiera mientras corría el trío; con la
+generación en un hilo aparte, el worker principal queda libre para
+atender otros pedidos mientras tanto.
+
 ### Ajustes pedidos por Guille probando la pantalla en vivo (2026-09-18)
 
 - El botón "Pedirle a Claude que recomiende una" fallaba en producción por

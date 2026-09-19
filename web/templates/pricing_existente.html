@@ -1009,12 +1009,13 @@ const CUOTAS_LABEL = {0: 'Sin cuotas', 4: 'Interés bajo (4%)', 3: '3 cuotas', 6
 document.getElementById('peBtnTrioPreview').addEventListener('click', function () {
   if (!PE_CONTEXTO) return;
   const economico = document.getElementById('peTrioModeloEconomico').checked;
-  if (!confirm(`Esto llama a Claude hasta 3 veces (una por título, sin reintento) con el modelo ${economico ? 'económico (Haiku)' : 'de calidad (Opus)'} — tiene costo real de API. ¿Generar igual?`)) return;
+  if (!confirm(`Esto llama a Claude hasta 3 veces (una por título, sin reintento) con el modelo ${economico ? 'económico (Haiku)' : 'de calidad (Opus)'} — tiene costo real de API y puede tardar 1-3 minutos. ¿Generar igual?`)) return;
   const btn = this;
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generando (llama a Claude, puede tardar)...';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Arrancando...';
+  document.getElementById('peTrioResultado').innerHTML = '';
 
-  fetch('/api/pricing/trio/preview', {
+  fetch('/api/pricing/trio/preview/start', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       alias: document.getElementById('peAlias').value,
@@ -1025,11 +1026,13 @@ document.getElementById('peBtnTrioPreview').addEventListener('click', function (
   })
     .then(r => r.json())
     .then(d => {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
-      if (!d.ok) { document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`; return; }
-      PE_TRIO_PREVIEW = d;
-      renderTrioPreview(d);
+      if (!d.ok) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
+        document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`;
+        return;
+      }
+      pollTrioJob(d.job_id, btn, 0);
     })
     .catch(err => {
       btn.disabled = false;
@@ -1037,6 +1040,41 @@ document.getElementById('peBtnTrioPreview').addEventListener('click', function (
       document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">Error: ${err}</div>`;
     });
 });
+
+function pollTrioJob(jobId, btn, segundos) {
+  // Corre en background en el servidor — este pedido siempre vuelve rapido,
+  // nunca puede haber timeout a mitad de la generacion (ver docs/CEREBRO.md
+  // seccion 12: el pedido bloqueado era la causa real del "Unexpected token '<'").
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Generando... (${segundos}s, puede tardar 1-3 min)`;
+  fetch(`/api/pricing/trio/preview/status?job_id=${encodeURIComponent(jobId)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
+        document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`;
+        return;
+      }
+      if (d.status === 'running') {
+        setTimeout(() => pollTrioJob(jobId, btn, segundos + 3), 3000);
+        return;
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-eye me-1"></i>Generar vista previa del trío';
+      if (d.status === 'error') {
+        document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">Error generando: ${d.error}</div>`;
+        return;
+      }
+      if (!d.ok || d.ok === false) { document.getElementById('peTrioResultado').innerHTML = `<div class="pc-faltante bloq">${d.error}</div>`; return; }
+      PE_TRIO_PREVIEW = d;
+      renderTrioPreview(d);
+    })
+    .catch(err => {
+      // Un status intermedio que falla por red no significa que el job murio —
+      // reintenta la CONSULTA (no la generacion) en vez de abortar.
+      setTimeout(() => pollTrioJob(jobId, btn, segundos + 3), 3000);
+    });
+}
 
 function renderTrioPreview(d) {
   const perfiles = trioPerfiles();
