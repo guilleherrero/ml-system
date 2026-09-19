@@ -9699,16 +9699,26 @@ Respondé SOLO con este JSON, sin texto adicional:
     }
     try:
         ai = anthropic.Anthropic()
-        resp = ai.messages.create(model='claude-opus-4-7', max_tokens=700,
+        # 700 tokens se quedaba corto: si Opus escribe algo de preambulo antes
+        # del JSON (pasa seguido aunque el prompt pida "solo JSON"), el JSON
+        # queda cortado a mitad y json.loads() explota — pero el llamado ya
+        # se facturo igual. Con mas margen el JSON siempre cierra.
+        resp = ai.messages.create(model='claude-opus-4-7', max_tokens=2000,
                                   messages=[{'role': 'user', 'content': prompt}])
         _log_token_usage('Pricing — Recomendación', 'claude-opus-4-7',
                          resp.usage.input_tokens, resp.usage.output_tokens)
         raw = next((b.text for b in resp.content if hasattr(b, 'text')), '')
         m = re.search(r'\{[\s\S]+\}', raw)
         if m:
-            parsed = json.loads(m.group(0))
+            try:
+                parsed = json.loads(m.group(0))
+            except json.JSONDecodeError as je:
+                app.logger.warning(f'[pricing/recomendar] JSON invalido de Claude ({je}). Respuesta cruda: {raw[:1000]!r}')
+                parsed = {}
             if isinstance(parsed.get('estrategia_sugerida'), str) and isinstance(parsed.get('riesgos'), list):
                 ai_recomendacion = parsed
+        else:
+            app.logger.warning(f'[pricing/recomendar] No se encontro JSON en la respuesta. Respuesta cruda: {raw[:1000]!r}')
     except Exception as e:
         app.logger.warning(f'[pricing/recomendar] Error con Claude: {e}')
 
@@ -9828,9 +9838,16 @@ def api_pricing_contexto():
     try:
         orders = _get_all_orders_30d(client)
         stats  = _compute_item_stats(orders).get(item_id, {})
+        # Ventana de 7 dias sobre las mismas ordenes ya traidas — sin pedirlas
+        # de nuevo. Pedido explicito del usuario: la venta reciente pesa mas
+        # que el promedio de 30 dias para decidir si conviene bajar el precio.
+        hace_7_dias = (datetime.now() - timedelta(days=7)).isoformat()
+        orders_7d = [o for o in orders if (o.get('date_created') or '') >= hace_7_dias]
+        stats_7d  = _compute_item_stats(orders_7d).get(item_id, {})
     except Exception:
-        stats = {}
+        stats, stats_7d = {}, {}
     ventas_dia        = round((stats.get('units') or 0) / 30, 2)
+    ventas_dia_7d      = round((stats_7d.get('units') or 0) / 7, 2)
     fee_rate_real      = stats.get('fee_rate')  # blended real: comision+IVA+envio (ver nota abajo)
     cuotas_breakdown   = stats.get('cuotas_breakdown')
     cuotas_promedio    = stats.get('cuotas_promedio')
@@ -9888,7 +9905,7 @@ def api_pricing_contexto():
     return jsonify({'ok': True,
         'item': {'id': item_id, 'titulo': item.get('title', ''), 'precio': precio,
                  'listing_type_id': listing_type, 'stock': stock},
-        'situacion_hoy': {'precio': precio, 'ventas_dia': ventas_dia,
+        'situacion_hoy': {'precio': precio, 'ventas_dia': ventas_dia, 'ventas_dia_7d': ventas_dia_7d,
                            'ganancia_dia': ganancia_dia_hoy, 'ganancia_venta': ganancia_venta_hoy,
                            'fee_rate_real': fee_rate_real,
                            'etiqueta': 'Medido' if fee_rate_real else 'Sin datos (sin ventas en 30 días)'},

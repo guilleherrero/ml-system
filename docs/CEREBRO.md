@@ -1727,6 +1727,23 @@ este bloque completo.
   revalida en el momento de crear (sobre el texto final, por si se editó a
   mano en la vista previa) y se bloquea esa publicación puntual si sigue sin
   cumplir.
+- Mapa de decisión con etiquetas dentro de la tabla (antes solo en una frase
+  arriba) y celdas con signo + $ explícito en vez de solo color.
+- Equivalente mensual ("≈X por mes") al lado de todos los números de
+  ventas/día — la fracción diaria no era intuitiva.
+- **`ventas_dia_7d`** agregado a `/api/pricing/contexto`: promedio real de
+  los últimos 7 días (filtra las mismas órdenes que ya trae `_get_all_orders_30d`,
+  sin pedir nada de más a ML) además del de 30 días que ya existía. Se
+  muestra en pantalla y se usa para calcular "cuántas ventas MÁS por día
+  hacen falta" respecto al ritmo real de la última semana, no un número
+  absoluto — pedido explícito de Guille.
+- **Bug real en `/api/pricing/recomendar`**: `max_tokens=700` se quedaba
+  corto — si Opus escribe algo de preámbulo antes del JSON (pasa aunque el
+  prompt pida "solo JSON"), el JSON queda cortado a mitad y `json.loads()`
+  explota, pero el llamado ya se facturó igual. Guille reportó justo eso:
+  "me descuenta crédito pero no funciona". Subido a 2000 tokens, y agregado
+  logging de la respuesta cruda si vuelve a fallar el parseo (antes fallaba
+  en silencio con el mismo mensaje genérico).
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba
