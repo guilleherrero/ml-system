@@ -2080,6 +2080,94 @@ funcionando en vivo. Las rutas eliminadas devuelven 404 (el
 errorhandler scoped a `/api/pricing/*` las envuelve en 500 genérico, pero
 nada las llama más — no es un problema real).
 
+### Medio y Compensa son publicaciones DISTINTAS — bug real de "Aplicar" (2026-09-19)
+
+Mismo día, pocas horas después de sacar el generador de trío: Guille
+probó "Aplicar" en Medio y Compensa y notó que **siempre escribía sobre
+la MISMA publicación que Batalla** — nunca creaba ni apuntaba a una
+publicación separada. Tenía toda la razón: `PE_CONTEXTO.item.id` (el
+item_id de la publicación existente) era el único item_id que el frontend
+conocía, así que "Aplicar" en cualquiera de las 3 filas terminaba
+pisando el precio de la misma publicación tres veces con tres nombres
+distintos — Medio y Compensa nunca tuvieron una publicación propia desde
+que se sacó el generador de trío (y, mirado con más cuidado, tampoco
+antes: el generador de trío viejo generaba títulos pero el botón
+"Aplicar" de las tarjetas de estrategia JAMÁS los usaba para crear nada,
+solo el flujo separado "Generar vista previa → Crear" lo hacía).
+
+Guille explicó el diseño correcto: para que Medio/Compensa tengan sentido
+tienen que ser publicaciones DUPLICADAS reales (mismo producto, categoría,
+fotos y descripción; precio y escalón de cuotas propios), y el título de
+cada una tiene que salir de reordenar las keywords del autosuggest real de
+ML por relevancia — "utilizando las palabras mas relevantes en
+importancia" — sin necesariamente generar contenido nuevo con Claude
+(evita repetir el costo/tiempo que hizo fallar al generador de trío
+viejo). Se confirmó con 2 preguntas (AskUserQuestion): un solo click
+crea-y-aplica (no un paso separado de "Duplicar" primero), pero mostrando
+el título generado y dejando editar título y precio antes de escribir en
+ML — no un `confirm()` ciego.
+
+**Lo que se construyó:**
+
+- `modules/trio_generador.titulo_variante(titulo_original, variante_idx)`:
+  determinista, sin Claude. Llama `get_autosuggest_keywords` +
+  `score_and_classify_keywords` (mismo cálculo de relevancia que ya usa
+  "Optimizar IA", solo autosuggest real de ML — gratis, ~1-2s) y arma el
+  título nuevo con la keyword mejor rankeada (compatibilidad alta/media)
+  que todavía no lidera el título, seguida de las palabras del título
+  original que aporten algo (se filtran stopwords y palabras de largo ≤3
+  para no dejar conectores sueltos tipo "De ... Para" colgando). Medio
+  (variante_idx=1) y Compensa (variante_idx=2) reciben keywords líder
+  distintas entre sí. Recorta a 60 caracteres (límite de ML) en borde de
+  palabra.
+- `PricingConfig.item_ids_trio` (columna nueva, `{"1": item_id, "2":
+  item_id}`): linkea qué publicación real corresponde a Medio/Compensa de
+  este producto. Como `create_all()` no agrega columnas a una tabla que ya
+  existe en el Postgres de prod, se agregó `_ensure_columns()` en
+  `web/db.py` — `ALTER TABLE` idempotente vía introspección
+  (`inspect(engine).get_columns(...)`), corrido una vez al boot dentro de
+  `init_db()`. Verificado en local: la columna aparece en
+  `pricing_config` después de reiniciar sin tocar nada a mano.
+- `/api/pricing/trio/titulo_sugerido` (GET, no escribe nada): dado
+  alias+item_id+variante_idx, devuelve el título sugerido. Verificado en
+  vivo contra MLA1932975847 (~1.2s, sin costo).
+- `/api/pricing/trio/duplicar` (POST, exige `confirmado: true`): valida
+  TODO antes de tocar ML (mismo criterio que `/aplicar` y el `/trio/crear`
+  viejo — auditoría 2026-09-19: título, precio > 0, escalón válido,
+  estrategia válida, que no exista ya una publicación linkeada para ese
+  perfil), después trae categoría/fotos/descripción de la publicación
+  original, crea la nueva PAUSADA (mismo motivo que el generador viejo:
+  falta darla de alta en AppSeller para que sincronice stock), y si el
+  linkeo o el registro del experimento fallan DESPUÉS de que ML ya la creó,
+  lo dice explícito en vez de un error genérico. Abre un
+  `PrecioExperimento` igual que `/aplicar`, así el tracking automático
+  (snapshots_diarios) arranca apenas se activa.
+- `/api/pricing/contexto` ahora también devuelve `item_ids_trio` leído de
+  `PricingConfig`.
+- En `pricing_existente.html`, el botón "Aplicar" de cada fila ahora
+  distingue: idx 0 (Batalla) → siempre la publicación existente, igual que
+  antes. idx 1/2 (Medio/Compensa) → si `item_ids_trio` ya tiene un item_id
+  linkeado, aplica el precio ahí (mismo `confirm()` que Batalla, pero
+  `situacion_hoy: null` porque los datos de ventas de Batalla no
+  corresponden a esa otra publicación — no se manda un dato falso). Si
+  todavía no existe, dispara `/titulo_sugerido`, muestra la tarjeta
+  "Crear publicación nueva" (`#peDuplicarBox`) con el título y precio
+  editables, y solo al confirmar ahí llama a `/trio/duplicar`.
+
+Pendiente/limitación conocida: al reaplicar precio en una publicación
+Medio/Compensa ya linkeada, no se le manda `situacion_hoy` real (no se
+trae su propio historial de ventas todavía) — el experimento se abre igual
+y mide desde cero vía snapshots_diarios, pero el primer día no tiene un
+"antes" propio de esa publicación. Aceptable por ahora; si hace falta más
+precisión, habría que repetir la consulta de `/contexto` para el item_id
+de la duplicada en vez de reusar la de Batalla.
+
+Verificado en vivo: `titulo_sugerido` con variante 1 y 2 dan títulos
+distintos y coherentes; `/trio/duplicar` rechaza correctamente sin
+`confirmado`, con escalón inválido, con `variante_idx` fuera de 1/2 y con
+precio ≤0, sin tocar ML en ningún caso. Columna `item_ids_trio` confirmada
+en la tabla local tras el migrate automático. 56 tests siguen pasando.
+
 ## Sprints
 
 | Sprint | Contenido | Estado |

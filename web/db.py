@@ -63,6 +63,25 @@ def session_scope():
         s.close()
 
 
+def _ensure_columns():
+    """Migracion minima sin Alembic: `create_all()` solo crea tablas que
+    faltan, nunca agrega columnas nuevas a una tabla que ya existe en el
+    Postgres de prod. Sin esto, una columna agregada al modelo despues de
+    que la tabla ya se creo queda invisible para el codigo aunque el
+    modelo la declare. Idempotente: no hace nada si la columna ya esta."""
+    from sqlalchemy import inspect, text
+    from web.models_pricing import PricingConfig
+
+    insp = inspect(engine)
+    if 'pricing_config' not in insp.get_table_names():
+        return
+    cols = {c['name'] for c in insp.get_columns('pricing_config')}
+    if 'item_ids_trio' not in cols:
+        ddl_type = PricingConfig.__table__.c.item_ids_trio.type.compile(dialect=engine.dialect)
+        with engine.begin() as conn:
+            conn.execute(text(f'ALTER TABLE pricing_config ADD COLUMN item_ids_trio {ddl_type}'))
+
+
 def init_db():
     """Crea las tablas si no existen. Idempotente."""
     # Import diferido para evitar ciclos — los modelos se registran en Base.metadata
@@ -71,3 +90,4 @@ def init_db():
     from web import models_contabilidad  # noqa: F401
     from web import models_pricing       # noqa: F401
     Base.metadata.create_all(engine)
+    _ensure_columns()

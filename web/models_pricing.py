@@ -47,6 +47,13 @@ class PricingConfig(Base):
     # Lista de 3 perfiles: [{"nombre","comision","costo_cuotas",...}, ...]
     perfiles          = Column(JSON, nullable=False)
 
+    # {"1": item_id, "2": item_id} — publicaciones duplicadas (Medio/Compensa)
+    # linkeadas a este producto. "0" (Batalla) no aparece: siempre es el
+    # item_id de esta misma fila, la publicacion existente. Se completa la
+    # primera vez que se aplica un precio en Medio o Compensa (ver
+    # docs/CEREBRO.md seccion 12, "3 publicaciones distintas").
+    item_ids_trio     = Column(JSON, nullable=True, default=dict)
+
     actualizado_en    = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
     def __repr__(self):

@@ -9783,6 +9783,8 @@ def api_pricing_contexto():
     from modules.stock_rentabilidad import _get_all_orders_30d, _compute_item_stats, _load_costos
     from modules.cerebro import competidores_para_precio
     from core.fees import get_fee_rates, get_rate
+    from web.db import session_scope
+    from web.models_pricing import PricingConfig
 
     alias = request.args.get('alias', '')
     item_id = request.args.get('item_id', '')
@@ -9884,6 +9886,17 @@ def api_pricing_contexto():
         faltantes.append({'dato': 'Precio de competidor', 'bloqueante': False,
             'consecuencia': 'Se puede calcular "Máxima rentabilidad", no "Competir" ni el precio a probar.'})
 
+    # Medio y Compensa son publicaciones DISTINTAS de Batalla (item_id de
+    # arriba) — cada una con su propio item_id si ya se creo la duplicada
+    # (ver /api/pricing/trio/duplicar). Sin esto "Aplicar" en Medio/Compensa
+    # terminaba cambiando el precio de la MISMA publicacion que Batalla, tres
+    # veces con tres nombres — bug real reportado por Guille 2026-09-19.
+    item_ids_trio = {}
+    with session_scope() as s:
+        row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id).first()
+        if row and row.item_ids_trio:
+            item_ids_trio = row.item_ids_trio
+
     return jsonify({'ok': True,
         'item': {'id': item_id, 'titulo': item.get('title', ''), 'precio': precio,
                  'listing_type_id': listing_type, 'stock': stock},
@@ -9900,6 +9913,7 @@ def api_pricing_contexto():
         'domain_id': domain_id,
         'cuotas_reales': cuotas_reales,
         'cuotas_reales_etiqueta': f'Dato (API de ML, dominio {domain_id})' if cuotas_reales else 'Sin datos — se usa un ejemplo genérico, no la tasa real',
+        'item_ids_trio': item_ids_trio,
         'faltantes': faltantes})
 
 
@@ -9909,9 +9923,10 @@ def api_pricing_aplicar():
 
     Escribe en ML — exige `confirmado: true` explicito (regla de trabajo del
     parrafo 0 de la spec: nada se aplica en ML como efecto secundario de un
-    calculo). Por ahora solo edita la publicacion EXISTENTE (precio); crear
-    las dos publicaciones nuevas del trio es sprint 5 — item_ids del
-    experimento queda con una sola hasta entonces.
+    calculo). Edita la publicacion cuyo item_id se le pasa — para Batalla es
+    siempre la existente; para Medio/Compensa el frontend manda el item_id
+    de la publicacion duplicada (ver /api/pricing/trio/duplicar) una vez que
+    existe, nunca el de Batalla.
     """
     from core.account_manager import AccountManager
     from web.db import session_scope
@@ -9987,6 +10002,181 @@ def api_pricing_aplicar():
 
     return jsonify({'ok': True, 'experimento_id': experimento_id,
                     'precio_antes': precio_antes, 'precio_despues': precio_nuevo_f})
+
+
+@app.route('/api/pricing/trio/titulo_sugerido')
+def api_pricing_trio_titulo_sugerido():
+    """Titulo sugerido para la publicacion duplicada de Medio/Compensa —
+    determinista, solo el autosuggest real de ML, sin Claude (ver
+    modules/trio_generador.titulo_variante). No escribe nada.
+    """
+    from core.account_manager import AccountManager
+    from modules import trio_generador as tg
+
+    alias = request.args.get('alias', '')
+    item_id = request.args.get('item_id', '')
+    try:
+        variante_idx = int(request.args.get('variante_idx', ''))
+    except (TypeError, ValueError):
+        variante_idx = 0
+    if not alias or not item_id or variante_idx not in (1, 2):
+        return jsonify({'ok': False, 'error': 'Faltan alias, item_id o variante_idx (1 o 2).'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+        item = client.get_item(item_id)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo traer la publicación: {e}'}), 400
+    if not item or not item.get('title'):
+        return jsonify({'ok': False, 'error': 'Publicación no encontrada.'}), 404
+
+    resultado = tg.titulo_variante(item['title'], variante_idx)
+    return jsonify({'ok': True, **resultado})
+
+
+@app.route('/api/pricing/trio/duplicar', methods=['POST'])
+def api_pricing_trio_duplicar():
+    """Crea la publicacion NUEVA de Medio o Compensa: duplica categoria,
+    fotos y descripcion de la existente, con precio/escalon de cuotas/
+    titulo propios, y linkea el item_id nuevo a este producto (PricingConfig
+    .item_ids_trio) para que las proximas veces que se aplique un precio en
+    ese perfil vaya a esta publicacion y no a la de Batalla — antes de esto,
+    "Aplicar" en Medio o Compensa terminaba cambiando el precio de la MISMA
+    publicacion que Batalla, bug real reportado por Guille 2026-09-19.
+
+    Escribe en ML — exige `confirmado: true`. Se crea PAUSADA (mismo criterio
+    que el generador de trio viejo: hay que darla de alta en AppSeller para
+    que sincronice stock antes de vender de verdad). Abre el experimento
+    igual que /aplicar para que el tracking automatico empiece apenas se
+    activa. Valida todo ANTES de escribir en ML — mismo criterio que
+    /aplicar y /trio/crear (auditoria 2026-09-19): nunca dejar un cambio
+    real a mitad de hacer sin que el usuario se entere.
+    """
+    from core.account_manager import AccountManager
+    from modules import trio_generador as tg
+    from modules.seo_optimizer import _get_description
+    from web.db import session_scope
+    from web.models_pricing import PricingConfig, PrecioExperimento
+
+    body = request.get_json() or {}
+    if body.get('confirmado') is not True:
+        return jsonify({'ok': False, 'error': 'Falta la confirmación explícita (confirmado: true).'}), 400
+
+    alias             = body.get('alias', '')
+    item_id_original  = body.get('item_id', '')
+    producto_key      = body.get('producto_key') or item_id_original
+    titulo            = (body.get('titulo') or '').strip()
+    estrategia        = body.get('estrategia', '')
+    situacion         = body.get('situacion_hoy') or {}
+    try:
+        variante_idx = int(body.get('variante_idx', ''))
+    except (TypeError, ValueError):
+        variante_idx = 0
+    try:
+        precio_nuevo_f = float(body.get('precio_nuevo'))
+    except (TypeError, ValueError):
+        precio_nuevo_f = 0
+    try:
+        escalon = int(body.get('escalon'))
+    except (TypeError, ValueError):
+        escalon = None
+
+    if not alias or not item_id_original or variante_idx not in (1, 2):
+        return jsonify({'ok': False, 'error': 'Faltan alias, item_id o variante_idx (1 o 2).'}), 400
+    if not titulo:
+        return jsonify({'ok': False, 'error': 'Falta el título de la publicación nueva.'}), 400
+    if precio_nuevo_f <= 0:
+        return jsonify({'ok': False, 'error': 'Precio inválido — no se crea una publicación a $0.'}), 400
+    if escalon not in tg.CUOTAS_A_TAGS:
+        return jsonify({'ok': False, 'error': 'Escalón de cuotas inválido.'}), 400
+    if estrategia not in ('rent', 'comp', 'vel', 'meta'):
+        return jsonify({'ok': False, 'error': 'estrategia tiene que ser rent, comp, vel o meta.'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+        item_original = client.get_item(item_id_original)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo conectar con ML: {e}'}), 400
+    if not item_original or 'category_id' not in item_original:
+        return jsonify({'ok': False, 'error': f'No se pudo traer la publicación original {item_id_original}.'}), 400
+
+    # Ya existe una publicacion duplicada linkeada a este perfil? No crear
+    # una segunda — /aplicar es lo que corresponde una vez que ya hay item_id.
+    with session_scope() as s:
+        row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id_original).first()
+        ya_linkeado = (row.item_ids_trio or {}).get(str(variante_idx)) if row else None
+    if ya_linkeado:
+        return jsonify({'ok': False,
+            'error': f'Este perfil ya tiene una publicación creada ({ya_linkeado}) — usá "Aplicar" para cambiarle el precio, no se crea una segunda.'}), 400
+
+    listing_type, tags = tg.CUOTAS_A_TAGS[escalon]
+    try:
+        token = client.account.access_token
+        descripcion = _get_description(item_id_original, token)
+    except Exception:
+        descripcion = ''
+
+    payload = {
+        'title': titulo[:60],
+        'category_id': item_original['category_id'],
+        'price': precio_nuevo_f,
+        'currency_id': item_original.get('currency_id', 'ARS'),
+        'available_quantity': item_original.get('available_quantity') or 1,
+        'buying_mode': 'buy_it_now',
+        'condition': item_original.get('condition', 'new'),
+        'listing_type_id': listing_type,
+        'tags': tags,
+        'pictures': [{'id': p['id']} for p in item_original.get('pictures', []) if p.get('id')],
+        'status': 'paused',
+    }
+    if descripcion:
+        payload['description'] = {'plain_text': descripcion}
+
+    try:
+        creado = client.create_item(payload)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'ML rechazó la creación de la publicación: {e}'}), 400
+    if not creado or 'id' not in creado:
+        return jsonify({'ok': False, 'error': f'ML no devolvió un item_id. Respuesta: {creado}'}), 400
+    item_id_nuevo = creado['id']
+
+    # La publicacion YA se creo en ML en este punto. Si el linkeo o el
+    # registro del experimento fallan de aca para abajo, hay que decirlo
+    # explicito — no puede devolver un error generico como si nada hubiera
+    # pasado (mismo criterio que /aplicar, auditoria 2026-09-19).
+    try:
+        with session_scope() as s:
+            row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id_original).first()
+            if row is None:
+                row = PricingConfig(alias=alias, item_id=item_id_original, perfiles=[])
+                s.add(row)
+            item_ids_trio = dict(row.item_ids_trio or {})
+            item_ids_trio[str(variante_idx)] = item_id_nuevo
+            row.item_ids_trio = item_ids_trio
+
+            exp = PrecioExperimento(
+                alias=alias, producto_key=producto_key, item_ids=[item_id_nuevo],
+                estrategia=estrategia, modo=body.get('modo', ''),
+                objetivo=float(body.get('objetivo') or 0), piso=float(body.get('piso') or 0),
+                costo=float(body.get('costo') or 0),
+                precios_antes={item_id_nuevo: 0}, precios_despues={item_id_nuevo: precio_nuevo_f},
+                ganancia_venta={item_id_nuevo: float(body.get('ganancia_venta') or 0)},
+                ventas_dia_previas=float(situacion.get('ventas_dia') or 0),
+                ganancia_dia_previa=float(situacion.get('ganancia_dia') or 0),
+                meta_ventas_dia=float(body.get('meta_ventas_dia') or 0),
+                publicidad_dia=float(body.get('publicidad_dia') or 0),
+                competidor_min=body.get('competidor_min'), competidor_max=body.get('competidor_max'),
+            )
+            s.add(exp)
+            s.flush()
+            experimento_id = exp.id
+    except Exception as e:
+        app.logger.error(f'[pricing/trio_duplicar] Publicación creada en ML ({item_id_nuevo}) pero no se pudo linkear/registrar: {e}')
+        return jsonify({'ok': False,
+            'error': f'La publicación SÍ se creó en ML (item_id {item_id_nuevo}, pausada) pero no se pudo registrar acá: {e}. Anotalo a mano.'}), 500
+
+    return jsonify({'ok': True, 'item_id': item_id_nuevo, 'experimento_id': experimento_id,
+                    'recordatorio': 'Se creó PAUSADA. Dala de alta en AppSeller para sincronizar stock antes de que empiece a vender.'})
 
 
 @app.route('/api/pricing/experimentos')

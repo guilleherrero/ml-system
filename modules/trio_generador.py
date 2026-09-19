@@ -1,12 +1,20 @@
 """
-Tasas reales de ML por escalon de cuotas — Calculadora de Estrategia de Precios.
+Tasas reales de ML por escalon de cuotas + titulo de la publicacion
+duplicada del trio — Calculadora de Estrategia de Precios.
 
-El generador de titulos del trio (que vivia en este archivo) se eliminó el
-2026-09-19 a pedido de Guille: "Generador de trío nunca funciono... prefiero
-que lo quites de ahi" — ver docs/CEREBRO.md seccion 12. Queda solo
-`tasas_reales_por_escalon`, que sigue en uso por `/api/pricing/contexto`
-para mostrar comisión/cuotas reales por producto (no el ejemplo genérico).
+El generador de titulos "creativo" (con Claude, uno por cluster de
+busqueda) que vivia en este archivo se eliminó el 2026-09-19 a pedido de
+Guille: "Generador de trío nunca funciono... prefiero que lo quites de
+ahi" — ver docs/CEREBRO.md seccion 12. Lo que quedó fue un pedido más
+puntual, el mismo dia: "Medio y Compensa" son publicaciones DISTINTAS de
+Batalla (necesitan su propio item_id, no se le puede cambiar el precio a
+la misma publicacion tres veces con tres nombres) y para duplicar hace
+falta un titulo distinto — pero determinista, reordenando las keywords
+reales del autosuggest de ML por relevancia, SIN llamar a Claude
+("utilizando autossugets como la informacion mas valiosa... las palabras
+mas relevantes en importancia").
 """
+from modules.seo_optimizer import _STOPWORDS, get_autosuggest_keywords, score_and_classify_keywords
 
 # ── Escalon de cuotas -> (listing_type_id, tags) — ver docs/CEREBRO.md seccion 12 ──
 # Confirmado contra documentacion oficial de ML (2026-09-18): el escalon SI se
@@ -63,3 +71,43 @@ def tasas_reales_por_escalon(client, domain_id: str, precio_referencia: float) -
         except Exception:
             pass
     return tasas
+
+
+def titulo_variante(titulo_original: str, variante_idx: int) -> dict:
+    """Titulo para la publicacion duplicada de Medio (variante_idx=1) o
+    Compensa (variante_idx=2): reordena el titulo original alrededor de la
+    keyword mejor rankeada por el autosuggest REAL de ML que todavia no lo
+    lidera — no genera contenido nuevo, solo reacomoda lo que ya existe.
+    Determinista, sin llamar a Claude (gratis, ~1-2s). Medio y Compensa
+    reciben keywords lider distintas entre si (candidatas[0] vs [1]).
+
+    Devuelve {"titulo": str, "keyword_usada": str|None} — si el autosuggest
+    no trae nada util, devuelve el titulo original sin tocar.
+    """
+    autosuggest_raw, position_map = get_autosuggest_keywords(titulo_original)
+    if not autosuggest_raw:
+        return {"titulo": titulo_original, "keyword_usada": None}
+
+    ranked = score_and_classify_keywords(autosuggest_raw, titulo_original, [], [], position_map)
+
+    palabras_originales = titulo_original.split()
+    lider_actual = " ".join(palabras_originales[:3]).lower()
+
+    candidatas = [r["keyword"] for r in ranked
+                  if r["compatibilidad"] in ("alta", "media") and r["keyword"].lower() != lider_actual]
+    if not candidatas:
+        return {"titulo": titulo_original, "keyword_usada": None}
+
+    idx = min(variante_idx - 1, len(candidatas) - 1)
+    elegida = candidatas[idx]
+
+    # Solo se agregan palabras del resto del titulo que aporten algo — sin
+    # esto quedaban conectores sueltos al final ("De ... Para") cuando la
+    # keyword elegida ya cubria las palabras con contenido real.
+    palabras_elegida = set(elegida.lower().split())
+    resto = [w for w in palabras_originales
+             if w.lower() not in palabras_elegida and w.lower() not in _STOPWORDS and len(w) > 3]
+    nuevo = f"{elegida.title()} {' '.join(resto)}".strip()
+    if len(nuevo) > 60:  # limite de titulo de ML
+        nuevo = nuevo[:60].rsplit(" ", 1)[0]
+    return {"titulo": nuevo, "keyword_usada": elegida}

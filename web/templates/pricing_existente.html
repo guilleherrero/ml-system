@@ -313,6 +313,25 @@
 
     <div class="col-lg-7">
       <div id="peResultados"></div>
+
+      <div class="pc-card" id="peDuplicarBox" style="display:none">
+        <div class="pc-card-header">Crear publicación nueva</div>
+        <div class="pc-card-body">
+          <p class="pc-sub-metric" id="peDuplicarInfo"></p>
+          <div class="mb-2">
+            <label class="pc-etiqueta d-block">Título</label>
+            <input class="form-control form-control-sm" id="peDuplicarTitulo">
+          </div>
+          <div class="mb-2">
+            <label class="pc-etiqueta d-block">Precio</label>
+            <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" id="peDuplicarPrecio">
+          </div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-success btn-sm" id="peDuplicarBtnConfirmar">Crear y aplicar</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="peDuplicarBtnCancelar">Cancelar</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -691,6 +710,48 @@ document.getElementById('peForm').addEventListener('submit', function (e) {
 
 // ── Aplicar precio en ML (escribe de verdad — exige confirmación del usuario) ──
 
+function camposExperimentoComunes(goal, r) {
+  return {
+    estrategia: goal,
+    modo: document.getElementById('peModo').value,
+    objetivo: document.getElementById('peObjetivo').value,
+    piso: document.getElementById('pePiso').value,
+    costo: document.getElementById('peCosto').value,
+    meta_ventas_dia: (r.empate && r.empate.minimo) || 0,
+    publicidad_dia: PE_ULTIMO_RESULTADO.publicidad_total || 0,
+    competidor_min: document.getElementById('peCompetidor').value || null,
+    competidor_max: document.getElementById('peCompetidorMax').value || null,
+  };
+}
+
+function aplicarPrecioExistente(btn, itemId, precioNuevo, pub, goal, r, situacionHoy) {
+  btn.disabled = true;
+  btn.textContent = 'Aplicando...';
+  fetch('/api/pricing/aplicar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      confirmado: true,
+      alias: document.getElementById('peAlias').value,
+      item_id: itemId,
+      precio_nuevo: precioNuevo,
+      producto_key: PE_CONTEXTO.item.id,
+      ganancia_venta: pub.ganancia_venta,
+      situacion_hoy: situacionHoy,
+      ...camposExperimentoComunes(goal, r),
+    }),
+  })
+    .then(res => res.json())
+    .then(v => {
+      if (!v.ok) { alert('Error: ' + v.error); btn.disabled = false; btn.textContent = 'Aplicar'; return; }
+      alert(`Listo. Precio cambiado de $${v.precio_antes.toLocaleString('es-AR')} a $${v.precio_despues.toLocaleString('es-AR')}. Se empieza a medir mañana (job 06:05 ART).`);
+      btn.textContent = 'Aplicado ✓';
+      cargarExperimentos();
+    })
+    .catch(err => { alert('Error: ' + err); btn.disabled = false; btn.textContent = 'Aplicar'; });
+}
+
+let PE_DUPLICAR_CTX = null;
+
 document.getElementById('peResultados').addEventListener('click', function (e) {
   const toggleBtn = e.target.closest('.pc-toggle-desglose');
   if (toggleBtn) {
@@ -707,44 +768,115 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
   const pub = r.publicaciones[idx];
   const nombre = document.getElementById('peNombre' + idx).value;
 
+  if (idx === 0) {
+    // Batalla siempre es la publicación existente — nunca se duplica.
+    const ok = confirm(
+      `Vas a cambiar el precio REAL de ${PE_CONTEXTO.item.id} en MercadoLibre:\n\n` +
+      `De $${PE_CONTEXTO.item.precio.toLocaleString('es-AR')} a $${pub.precio.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}").\n\n` +
+      `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
+    );
+    if (!ok) return;
+    aplicarPrecioExistente(btn, PE_CONTEXTO.item.id, pub.precio, pub, goal, r, PE_CONTEXTO.situacion_hoy);
+    return;
+  }
+
+  // Medio y Compensa son publicaciones DISTINTAS de Batalla — cada una con
+  // su propio item_id. Si ya se creó (item_ids_trio), aplicar ahí. Si no,
+  // primero hay que crearla (ver peDuplicarBox más abajo).
+  const linkeado = (PE_CONTEXTO.item_ids_trio || {})[String(idx)];
+  if (linkeado) {
+    const ok = confirm(
+      `Vas a cambiar el precio REAL de ${linkeado} en MercadoLibre (perfil "${nombre}"):\n\n` +
+      `A $${pub.precio.toLocaleString('es-AR')} (estrategia "${GOALS[goal].label}").\n\n` +
+      `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
+    );
+    if (!ok) return;
+    // situacion_hoy es la de la publicación EXISTENTE (Batalla) — no la de
+    // esta duplicada, así que no se manda (sería un dato falso para este
+    // item_id). El experimento igual se abre y mide desde cero.
+    aplicarPrecioExistente(btn, linkeado, pub.precio, pub, goal, r, null);
+    return;
+  }
+
+  PE_DUPLICAR_CTX = {goal, idx, r, pub, nombre};
+  const escalon = document.getElementById('peEscalon' + idx).value;
+  document.getElementById('peDuplicarInfo').textContent =
+    `Generando título con el autosuggest real de ML para "${nombre}"...`;
+  document.getElementById('peDuplicarTitulo').value = '';
+  document.getElementById('peDuplicarPrecio').value = pub.precio;
+  document.getElementById('peDuplicarBox').style.display = '';
+  document.getElementById('peDuplicarBox').scrollIntoView({behavior: 'smooth', block: 'center'});
+
+  fetch(`/api/pricing/trio/titulo_sugerido?alias=${encodeURIComponent(document.getElementById('peAlias').value)}&item_id=${encodeURIComponent(PE_CONTEXTO.item.id)}&variante_idx=${idx}`)
+    .then(r2 => r2.json())
+    .then(d => {
+      if (!d.ok) {
+        document.getElementById('peDuplicarInfo').textContent = `No se pudo generar un título automático: ${d.error}. Escribilo a mano.`;
+        document.getElementById('peDuplicarTitulo').value = PE_CONTEXTO.item.titulo || '';
+        return;
+      }
+      document.getElementById('peDuplicarTitulo').value = d.titulo;
+      document.getElementById('peDuplicarInfo').textContent = d.keyword_usada
+        ? `Título nuevo para "${nombre}" (perfil "${escalon == 0 ? 'Sin cuotas' : escalon == 4 ? 'Interés bajo' : escalon + ' cuotas'}"), reordenado alrededor de "${d.keyword_usada}" — la keyword mejor rankeada del autosuggest real de ML. Podés editarlo.`
+        : 'No se encontró una keyword distinta para reordenar — quedó el título original. Podés editarlo.';
+    })
+    .catch(() => {
+      document.getElementById('peDuplicarInfo').textContent = 'No se pudo generar un título automático. Escribilo a mano.';
+      document.getElementById('peDuplicarTitulo').value = PE_CONTEXTO.item.titulo || '';
+    });
+});
+
+document.getElementById('peDuplicarBtnCancelar').addEventListener('click', function () {
+  document.getElementById('peDuplicarBox').style.display = 'none';
+  PE_DUPLICAR_CTX = null;
+});
+
+document.getElementById('peDuplicarBtnConfirmar').addEventListener('click', function () {
+  if (!PE_DUPLICAR_CTX || !PE_CONTEXTO) return;
+  const {goal, idx, r, pub, nombre} = PE_DUPLICAR_CTX;
+  const titulo = document.getElementById('peDuplicarTitulo').value.trim();
+  const precio = parseFloat(document.getElementById('peDuplicarPrecio').value);
+  const escalon = document.getElementById('peEscalon' + idx).value;
+  if (!titulo) { alert('Falta el título.'); return; }
+  if (!precio || precio <= 0) { alert('Precio inválido.'); return; }
+
   const ok = confirm(
-    `Vas a cambiar el precio REAL de ${PE_CONTEXTO.item.id} en MercadoLibre:\n\n` +
-    `De $${PE_CONTEXTO.item.precio.toLocaleString('es-AR')} a $${pub.precio.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}").\n\n` +
+    `Vas a crear una publicación NUEVA y REAL en MercadoLibre (pausada), duplicando "${PE_CONTEXTO.item.titulo}":\n\n` +
+    `Título: "${titulo}"\nPrecio: $${precio.toLocaleString('es-AR')} (perfil "${nombre}")\n\n` +
     `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
   );
   if (!ok) return;
 
+  const btn = this;
   btn.disabled = true;
-  btn.textContent = 'Aplicando...';
-  fetch('/api/pricing/aplicar', {
+  btn.textContent = 'Creando...';
+  fetch('/api/pricing/trio/duplicar', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       confirmado: true,
       alias: document.getElementById('peAlias').value,
       item_id: PE_CONTEXTO.item.id,
-      precio_nuevo: pub.precio,
       producto_key: PE_CONTEXTO.item.id,
-      estrategia: goal,
-      modo: document.getElementById('peModo').value,
-      objetivo: document.getElementById('peObjetivo').value,
-      piso: document.getElementById('pePiso').value,
-      costo: document.getElementById('peCosto').value,
+      variante_idx: idx,
+      titulo, precio_nuevo: precio, escalon,
       ganancia_venta: pub.ganancia_venta,
-      situacion_hoy: PE_CONTEXTO.situacion_hoy,
-      meta_ventas_dia: (r.empate && r.empate.minimo) || 0,
-      publicidad_dia: PE_ULTIMO_RESULTADO.publicidad_total || 0,
-      competidor_min: document.getElementById('peCompetidor').value || null,
-      competidor_max: document.getElementById('peCompetidorMax').value || null,
+      situacion_hoy: null,
+      ...camposExperimentoComunes(goal, r),
     }),
   })
     .then(res => res.json())
     .then(v => {
-      if (!v.ok) { alert('Error: ' + v.error); btn.disabled = false; btn.textContent = 'Aplicar'; return; }
-      alert(`Listo. Precio cambiado de $${v.precio_antes.toLocaleString('es-AR')} a $${v.precio_despues.toLocaleString('es-AR')}. Se empieza a medir mañana (job 06:05 ART).`);
-      btn.textContent = 'Aplicado ✓';
+      btn.disabled = false;
+      btn.textContent = 'Crear y aplicar';
+      if (!v.ok) { alert('Error: ' + v.error); return; }
+      alert(`Listo. Publicación nueva creada: ${v.item_id} a $${precio.toLocaleString('es-AR')}.\n\n${v.recordatorio}`);
+      document.getElementById('peDuplicarBox').style.display = 'none';
+      PE_DUPLICAR_CTX = null;
+      PE_CONTEXTO.item_ids_trio = PE_CONTEXTO.item_ids_trio || {};
+      PE_CONTEXTO.item_ids_trio[String(idx)] = v.item_id;
       cargarExperimentos();
     })
-    .catch(err => { alert('Error: ' + err); btn.disabled = false; btn.textContent = 'Aplicar'; });
+    .catch(err => { btn.disabled = false; btn.textContent = 'Crear y aplicar'; alert('Error: ' + err); });
 });
 
 // ── Ganar el doble (escalera) ──
