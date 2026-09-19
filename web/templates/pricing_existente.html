@@ -752,6 +752,33 @@ function aplicarPrecioExistente(btn, itemId, precioNuevo, pub, goal, r, situacio
 
 let PE_DUPLICAR_CTX = null;
 
+function pedirPrecioEditable(precioSugerido, nombre) {
+  const input = prompt(`Precio a aplicar para "${nombre}" — podés dejar el calculado o editarlo:`, precioSugerido);
+  if (input === null) return null; // canceló
+  const precio = parseFloat(input);
+  if (!precio || precio <= 0) { alert('Precio inválido.'); return null; }
+  return precio;
+}
+
+// Si el precio se editó, recalcula la ganancia/venta con el motor real
+// (pm.ganancia_publicacion via /api/pricing/ganancia_a_precio) en vez de
+// aplicar con la ganancia del precio VIEJO — sino el experimento queda con
+// un dato que no corresponde al precio que realmente se aplicó.
+function gananciaParaPrecio(precioEditado, pub, idx) {
+  if (precioEditado === pub.precio) return Promise.resolve(pub.ganancia_venta);
+  const params = new URLSearchParams({
+    precio: precioEditado,
+    comision: document.getElementById('peComision' + idx).value,
+    costo_cuotas: document.getElementById('peCuotas' + idx).value,
+    costo: document.getElementById('peCosto').value,
+    ...cargosPayload(),
+  });
+  return fetch('/api/pricing/ganancia_a_precio?' + params.toString())
+    .then(r => r.json())
+    .then(d => d.ok ? d.ganancia_venta : pub.ganancia_venta)
+    .catch(() => pub.ganancia_venta);
+}
+
 document.getElementById('peResultados').addEventListener('click', function (e) {
   const toggleBtn = e.target.closest('.pc-toggle-desglose');
   if (toggleBtn) {
@@ -769,14 +796,21 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
   const nombre = document.getElementById('peNombre' + idx).value;
 
   if (idx === 0) {
-    // Batalla siempre es la publicación existente — nunca se duplica.
-    const ok = confirm(
-      `Vas a cambiar el precio REAL de ${PE_CONTEXTO.item.id} en MercadoLibre:\n\n` +
-      `De $${PE_CONTEXTO.item.precio.toLocaleString('es-AR')} a $${pub.precio.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}").\n\n` +
-      `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
-    );
-    if (!ok) return;
-    aplicarPrecioExistente(btn, PE_CONTEXTO.item.id, pub.precio, pub, goal, r, PE_CONTEXTO.situacion_hoy);
+    // Batalla siempre es la publicación existente — nunca se duplica. El
+    // precio calculado se puede editar antes de aplicar (pedido explícito
+    // de Guille: "a veces lo necesito").
+    const precioEditado = pedirPrecioEditable(pub.precio, nombre);
+    if (precioEditado === null) return;
+    gananciaParaPrecio(precioEditado, pub, idx).then(ganancia => {
+      const pubAjustado = {...pub, ganancia_venta: ganancia};
+      const ok = confirm(
+        `Vas a cambiar el precio REAL de ${PE_CONTEXTO.item.id} en MercadoLibre:\n\n` +
+        `De $${PE_CONTEXTO.item.precio.toLocaleString('es-AR')} a $${precioEditado.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}").\n\n` +
+        `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
+      );
+      if (!ok) return;
+      aplicarPrecioExistente(btn, PE_CONTEXTO.item.id, precioEditado, pubAjustado, goal, r, PE_CONTEXTO.situacion_hoy);
+    });
     return;
   }
 
@@ -785,16 +819,21 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
   // primero hay que crearla (ver peDuplicarBox más abajo).
   const linkeado = (PE_CONTEXTO.item_ids_trio || {})[String(idx)];
   if (linkeado) {
-    const ok = confirm(
-      `Vas a cambiar el precio REAL de ${linkeado} en MercadoLibre (perfil "${nombre}"):\n\n` +
-      `A $${pub.precio.toLocaleString('es-AR')} (estrategia "${GOALS[goal].label}").\n\n` +
-      `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
-    );
-    if (!ok) return;
-    // situacion_hoy es la de la publicación EXISTENTE (Batalla) — no la de
-    // esta duplicada, así que no se manda (sería un dato falso para este
-    // item_id). El experimento igual se abre y mide desde cero.
-    aplicarPrecioExistente(btn, linkeado, pub.precio, pub, goal, r, null);
+    const precioEditado = pedirPrecioEditable(pub.precio, nombre);
+    if (precioEditado === null) return;
+    gananciaParaPrecio(precioEditado, pub, idx).then(ganancia => {
+      const pubAjustado = {...pub, ganancia_venta: ganancia};
+      const ok = confirm(
+        `Vas a cambiar el precio REAL de ${linkeado} en MercadoLibre (perfil "${nombre}"):\n\n` +
+        `A $${precioEditado.toLocaleString('es-AR')} (estrategia "${GOALS[goal].label}").\n\n` +
+        `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
+      );
+      if (!ok) return;
+      // situacion_hoy es la de la publicación EXISTENTE (Batalla) — no la de
+      // esta duplicada, así que no se manda (sería un dato falso para este
+      // item_id). El experimento igual se abre y mide desde cero.
+      aplicarPrecioExistente(btn, linkeado, precioEditado, pubAjustado, goal, r, null);
+    });
     return;
   }
 
@@ -850,7 +889,7 @@ document.getElementById('peDuplicarBtnConfirmar').addEventListener('click', func
   const btn = this;
   btn.disabled = true;
   btn.textContent = 'Creando...';
-  fetch('/api/pricing/trio/duplicar', {
+  gananciaParaPrecio(precio, pub, idx).then(ganancia => fetch('/api/pricing/trio/duplicar', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       confirmado: true,
@@ -859,11 +898,11 @@ document.getElementById('peDuplicarBtnConfirmar').addEventListener('click', func
       producto_key: PE_CONTEXTO.item.id,
       variante_idx: idx,
       titulo, precio_nuevo: precio, escalon,
-      ganancia_venta: pub.ganancia_venta,
+      ganancia_venta: ganancia,
       situacion_hoy: null,
       ...camposExperimentoComunes(goal, r),
     }),
-  })
+  }))
     .then(res => res.json())
     .then(v => {
       btn.disabled = false;

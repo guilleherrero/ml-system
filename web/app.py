@@ -10351,6 +10351,43 @@ def api_pricing_curva_demanda():
     return jsonify({'ok': True, 'puntos': puntos})
 
 
+@app.route('/api/pricing/ganancia_a_precio')
+def api_pricing_ganancia_a_precio():
+    """Ganancia por venta a un precio puntual — usado cuando el usuario
+    edita a mano el precio calculado antes de aplicarlo (pedido de Guille:
+    "a veces lo necesito"). Reusa pm.ganancia_publicacion() en vez de
+    reimplementar el calculo en JS (un solo motor, ver docs/CEREBRO.md
+    seccion 12.2) para que la ganancia mostrada/guardada en el experimento
+    siempre corresponda al precio real que se va a aplicar.
+    """
+    from modules import precio_motor as pm
+
+    try:
+        precio = float(request.args.get('precio', ''))
+        comision = float(request.args.get('comision', ''))
+        costo = float(request.args.get('costo', ''))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Faltan precio, comisión o costo.'}), 400
+
+    def _num(clave, default):
+        val = request.args.get(clave)
+        try:
+            return float(val) if val not in (None, '') else default
+        except (TypeError, ValueError):
+            return default
+
+    pub = pm.Publicacion(nombre='', comision=comision, costo_cuotas=_num('costo_cuotas', 0))
+    c = pm.Cargos(
+        iibb=_num('iibb', 3.0), percepcion_iva=_num('percepcion_iva', 7.0),
+        envio=_num('envio', 5000), umbral_envio=_num('umbral_envio', 33000),
+        envio_bajo_umbral=request.args.get('envio_bajo_umbral') == 'true',
+        fijo_menos_15k=_num('fijo_menos_15k', 1115), fijo_15k_25k=_num('fijo_15k_25k', 2300),
+        fijo_25k_umbral=_num('fijo_25k_umbral', 2810),
+    )
+    ganancia = pm.ganancia_publicacion(precio, pub, c, costo)
+    return jsonify({'ok': True, 'ganancia_venta': round(ganancia, 2)})
+
+
 @app.route('/api/pricing/escalera')
 def api_pricing_escalera():
     """Seccion "ganar el doble": escalera de precios candidatos con ventas

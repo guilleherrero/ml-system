@@ -2168,6 +2168,35 @@ distintos y coherentes; `/trio/duplicar` rechaza correctamente sin
 precio ≤0, sin tocar ML en ningún caso. Columna `item_ids_trio` confirmada
 en la tabla local tras el migrate automático. 56 tests siguen pasando.
 
+### Precio editable también en Batalla (2026-09-19)
+
+Guille, un rato después: "en batalla tambien me gustaria poder editar el
+precio a veces lo necesito" — Medio/Compensa ya tenían el precio editable
+(porque son publicaciones nuevas, con la tarjeta de creación), pero
+Batalla seguía con un `confirm()` fijo mostrando el precio calculado sin
+poder tocarlo antes de aplicar.
+
+Se agregó `pedirPrecioEditable()` (un `prompt()` precargado con el precio
+calculado, editable) antes del `confirm()` final, tanto para Batalla como
+para el caso de Medio/Compensa ya linkeados (mismo patrón, misma
+necesidad — no tenía sentido arreglarlo en un solo lugar). El punto
+importante: si el precio se edita, la `ganancia_venta` que se manda a
+`/api/pricing/aplicar` (y que queda guardada como baseline del
+experimento) tiene que corresponder al precio REAL que se va a aplicar,
+no a la ganancia del precio original calculado — sino el experimento
+arranca con un dato falso. Se agregó `/api/pricing/ganancia_a_precio`
+(GET, no escribe nada), que reusa `pm.ganancia_publicacion()` directo —
+un solo motor, nunca reimplementar el cálculo en JS (bloque 12.2) — y el
+frontend lo llama solo cuando el precio efectivamente cambió (si no se
+tocó, reusa la ganancia ya calculada, sin round-trip de más). Mismo
+arreglo aplicado también al precio editable de la tarjeta de creación de
+Medio/Compensa, que tenía el mismo problema.
+
+Verificado en vivo: `/ganancia_a_precio?precio=55000&comision=16&costo_cuotas=0&costo=15000&iibb=4.19&percepcion_iva=7.08&...`
+devuelve `20001.5`, verificado a mano contra la fórmula
+(`55000×(1−0.2727) − 5000 envío − 15000 costo`). 56 tests siguen pasando
+(no se tocó `precio_motor.py`, solo se expuso una función ya testeada).
+
 ## Sprints
 
 | Sprint | Contenido | Estado |
