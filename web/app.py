@@ -9948,23 +9948,35 @@ def api_pricing_contexto():
 
     costo = (_load_costos().get(item_id) or {}).get('costo')
 
-    # La comision publicada de gold_pro (Premium) viene MEZCLADA con el costo
-    # de cuotas (no hay forma de separarlos en /sites/MLA/listing_prices —
-    # incognita abierta, ver docs/CEREBRO.md seccion 12). Para no duplicar el
-    # costo de cuotas al sumar Publicacion.costo_cuotas por separado, siempre
-    # se pide la comision de gold_special (Clasica, sin cuotas propias) como
-    # base "pura". Se consulta a un precio por encima del umbral de envio
-    # gratis para que el cargo fijo no infle el porcentaje (por eso NO se usa
-    # el cache de config/fees.json, calculado a $10.000 de referencia).
+    # Incognita del §10.4 resuelta en vivo el 2026-09-19 (ver
+    # docs/CEREBRO.md seccion 12): `percentage_fee` de /listing_prices NO es
+    # la comision pura, ya trae sumado el costo de cuotas — el campo puro es
+    # `meli_percentage_fee`, y se mantiene CONSTANTE entre escalones para un
+    # mismo dominio. Se consulta con el domain_id REAL del producto (no
+    # category_id, que daba un numero generico) y a un precio por encima del
+    # umbral de envio gratis para que el cargo fijo no infle el porcentaje.
+    from modules import trio_generador as tg
+    domain_id = item.get('domain_id', '')
+    cuotas_reales = {}
+    if domain_id:
+        try:
+            cuotas_reales = tg.tasas_reales_por_escalon(client, domain_id, precio)
+        except Exception:
+            pass
+
     comision_pct = None
     comision_etiqueta = 'Sin datos'
-    try:
-        rate = client.get_listing_fee_rate('gold_special', price=max(precio, 100000))
-        if rate:
-            comision_pct = round(rate * 100, 2)
-            comision_etiqueta = 'Dato (API de ML, gold_special — sin category_id, puede no calzar exacto con esta categoria)'
-    except Exception:
-        pass
+    if cuotas_reales.get(0, {}).get('comision') is not None:
+        comision_pct = cuotas_reales[0]['comision']
+        comision_etiqueta = f'Dato (API de ML, dominio {domain_id})'
+    if comision_pct is None:
+        try:
+            rate = client.get_listing_fee_rate('gold_special', price=max(precio, 100000))
+            if rate:
+                comision_pct = round(rate * 100, 2)
+                comision_etiqueta = 'Dato (API de ML, gold_special — sin domain_id, puede no calzar exacto con esta categoria)'
+        except Exception:
+            pass
     if comision_pct is None:
         comision_pct = round(get_rate(listing_type, get_fee_rates()) * 100, 2)
         comision_etiqueta = 'Supuesto (cache local desactualizado, ver faltantes)'
@@ -10009,6 +10021,9 @@ def api_pricing_contexto():
         'costo_etiqueta': 'Dato' if costo not in (None, '', 0) else 'Faltante',
         'competidor_min': competidor_min, 'competidores': competidores[:10],
         'competidor_etiqueta': 'Medido' if competidor_min > 0 else 'Faltante',
+        'domain_id': domain_id,
+        'cuotas_reales': cuotas_reales,
+        'cuotas_reales_etiqueta': f'Dato (API de ML, dominio {domain_id})' if cuotas_reales else 'Sin datos — se usa un ejemplo genérico, no la tasa real',
         'faltantes': faltantes})
 
 

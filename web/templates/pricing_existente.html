@@ -28,6 +28,7 @@
 .pc-mapa-pos { color:#065f46; background:#ecfdf5; }
 .pc-mapa-neg { color:#991b1b; background:#fef2f2; }
 .pc-perfil-row-4 { display:grid; grid-template-columns:1.1fr .6fr .6fr .7fr; gap:.5rem; margin-bottom:.4rem; }
+.pc-perfil-row-5 { display:grid; grid-template-columns:1fr 1fr .6fr .6fr .7fr; gap:.5rem; margin-bottom:.4rem; }
 .pc-bandera { display:inline-block; font-size:.7rem; border-radius:6px; padding:.15rem .45rem; margin:.15rem .25rem 0 0; }
 .pc-bandera-ok   { background:#d1fae5; color:#065f46; }
 .pc-bandera-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
@@ -164,27 +165,45 @@
         <div class="pc-card">
           <div class="pc-card-header">Las 3 publicaciones <span class="pc-etiqueta" id="peComisionEtq"></span></div>
           <div class="pc-card-body">
-            <div class="pc-perfil-row-4">
-              <div class="pc-etiqueta">Nombre</div><div class="pc-etiqueta">Comisión %</div><div class="pc-etiqueta">Cuotas %</div><div class="pc-etiqueta">Ads $/día</div>
+            <p class="pc-sub-metric mb-2" id="peCuotasRealesEtq"></p>
+            <div class="pc-perfil-row-5">
+              <div class="pc-etiqueta">Nombre</div><div class="pc-etiqueta">Escalón real</div><div class="pc-etiqueta">Comisión %</div><div class="pc-etiqueta">Cuotas %</div><div class="pc-etiqueta">Ads $/día</div>
             </div>
-            <div class="pc-perfil-row-4">
+            <div class="pc-perfil-row-5">
               <input class="form-control form-control-sm" value="Batalla" id="peNombre0">
+              <select class="form-select form-select-sm pc-escalon-select" id="peEscalon0" data-idx="0">
+                <option value="0" selected>Sin cuotas</option>
+                <option value="4">Interés bajo</option>
+              </select>
               <input type="number" step="0.01" class="form-control form-control-sm" id="peComision0">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas0">
               <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds0" value="0">
             </div>
-            <div class="pc-perfil-row-4">
+            <div class="pc-perfil-row-5">
               <input class="form-control form-control-sm" value="Medio" id="peNombre1">
+              <select class="form-select form-select-sm pc-escalon-select" id="peEscalon1" data-idx="1">
+                <option value="3">3 cuotas</option>
+                <option value="6" selected>6 cuotas</option>
+                <option value="9">9 cuotas</option>
+                <option value="12">12 cuotas</option>
+              </select>
               <input type="number" step="0.01" class="form-control form-control-sm" id="peComision1">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas1">
               <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds1" value="0">
             </div>
-            <div class="pc-perfil-row-4 mb-0">
+            <div class="pc-perfil-row-5 mb-0">
               <input class="form-control form-control-sm" value="Compensa" id="peNombre2">
+              <select class="form-select form-select-sm pc-escalon-select" id="peEscalon2" data-idx="2">
+                <option value="3">3 cuotas</option>
+                <option value="6">6 cuotas</option>
+                <option value="9" selected>9 cuotas</option>
+                <option value="12">12 cuotas</option>
+              </select>
               <input type="number" step="0.01" class="form-control form-control-sm" id="peComision2">
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas2">
               <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds2" value="0">
             </div>
+            <p class="pc-sub-metric mt-2 mb-0">Elegir un escalón completa comisión y cuotas con la tasa real de ML para este producto. Podés editarlas a mano después si sabés que son distintas.</p>
           </div>
         </div>
 
@@ -381,6 +400,18 @@
 
 <script>
 let PE_CONTEXTO = null;
+let PE_CUOTAS_REALES = {};
+
+document.querySelectorAll('.pc-escalon-select').forEach(sel => {
+  sel.addEventListener('change', () => {
+    const i = sel.dataset.idx;
+    const real = PE_CUOTAS_REALES[sel.value] || PE_CUOTAS_REALES[Number(sel.value)];
+    if (real) {
+      if (real.comision !== null && real.comision !== undefined) document.getElementById('peComision' + i).value = real.comision;
+      if (real.costo_cuotas !== null && real.costo_cuotas !== undefined) document.getElementById('peCuotas' + i).value = real.costo_cuotas;
+    }
+  });
+});
 
 document.getElementById('peAlias').addEventListener('change', function () {
   const alias = this.value;
@@ -435,16 +466,35 @@ document.getElementById('peItem').addEventListener('change', function () {
     }
     document.getElementById('peStatGananciaDia').textContent = sh.ganancia_dia !== null && sh.ganancia_dia !== undefined ? fmtMoney(sh.ganancia_dia) : 'Sin datos';
 
-    const perfiles = (cfg.perfiles && cfg.perfiles.length === 3) ? cfg.perfiles : [
-      {nombre: 'Batalla', comision: ctx.comision_pct || 17, costo_cuotas: 0},
-      {nombre: 'Medio', comision: ctx.comision_pct || 17, costo_cuotas: 5.75},
-      {nombre: 'Compensa', comision: ctx.comision_pct || 17, costo_cuotas: 10.75},
-    ];
+    // Defaults con la tasa REAL de ML para el dominio de este producto
+    // (/sites/MLA/listing_prices con domain_id real) — no un ejemplo
+    // generico. Si por algun motivo no se pudo traer, cae al ejemplo viejo
+    // y lo marca bien claro para que no se confunda con un dato real.
+    const cr = ctx.cuotas_reales || {};
+    PE_CUOTAS_REALES = cr;
+    const escalonesDefault = [0, 6, 9];
+    const perfiles = (cfg.perfiles && cfg.perfiles.length === 3) ? cfg.perfiles : escalonesDefault.map((esc, i) => {
+      const real = cr[esc] || cr[String(esc)];
+      const fallback = [{comision: ctx.comision_pct || 17, costo_cuotas: 0}, {comision: ctx.comision_pct || 17, costo_cuotas: 5.75}, {comision: ctx.comision_pct || 17, costo_cuotas: 10.75}][i];
+      return {
+        nombre: ['Batalla', 'Medio', 'Compensa'][i],
+        escalon: esc,
+        comision: real ? real.comision : fallback.comision,
+        costo_cuotas: real ? real.costo_cuotas : fallback.costo_cuotas,
+      };
+    });
     perfiles.forEach((p, i) => {
       document.getElementById('peNombre' + i).value = p.nombre;
       document.getElementById('peComision' + i).value = p.comision;
       document.getElementById('peCuotas' + i).value = p.costo_cuotas;
+      const sel = document.getElementById('peEscalon' + i);
+      if (sel && p.escalon !== undefined && [...sel.options].some(o => o.value == p.escalon)) {
+        sel.value = p.escalon;
+      }
     });
+    document.getElementById('peCuotasRealesEtq').textContent =
+      Object.keys(cr).length ? `Tasas reales de ML para este producto (dominio ${ctx.domain_id}) — elegí el escalón de cuotas y se completa solo` : 'Sin datos reales de ML para este producto — quedó un ejemplo genérico, cargalo a mano o revisá el costo de cuotas real en tu publicación';
+    document.getElementById('peCuotasRealesEtq').className = Object.keys(cr).length ? 'pc-sub-metric text-success' : 'pc-sub-metric text-warning';
 
     // Cargos guardados en /api/pricing/config (defaults del motor si no hay nada guardado).
     const c = cfg.cargos || {};

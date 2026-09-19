@@ -1872,6 +1872,58 @@ de `search_competitors` con `price:0`/`no_active_listings` ya estaba
 registrado como correccion 27. Todos **diferidos a pedido de Guille** hasta
 terminar los 5 sprints de este bloque — recordarle entonces.
 
+### Cuotas y comisión REALES por producto, no el ejemplo genérico de la spec (2026-09-19)
+
+Guille preguntó de dónde salían los porcentajes de cuotas de la calculadora
+y, al enterarse de que eran el ejemplo ilustrativo de la spec original
+(comisión 17%, cuotas 0/5,75/10,75%) y no un dato real por producto/rubro,
+lo marcó como un problema serio: **"de que me sirve tener una calculadora
+que arroje datos falsos... creo que estoy haciendo todo mal"**. Con razón —
+esos números nunca fueron reales, eran el placeholder de §10.1 antes de
+resolverse la incógnita.
+
+Se verificó en vivo contra la cuenta real (dominio
+`MLA-HAIR_CLIPPERS_ELECTRIC_SHAVERS_AND_HAIR_TRIMMERS`, vía
+`/sites/MLA/listing_prices` con `domain_id` real) algo que también corrige
+un supuesto propio de sprints anteriores: **`percentage_fee` NO es la
+comisión pura** — ya viene sumada con el costo de financiar las cuotas.
+`sale_fee_details` trae tres campos distintos:
+
+- `meli_percentage_fee`: comisión pura, **constante** en los 6 escalones
+  para un mismo `domain_id` (16% para este dominio). Este es el dato
+  correcto para "comisión".
+- `financing_add_on_fee`: costo real de cuotas por escalón — para este
+  dominio: 0% (sin cuotas), 5% (interés bajo — el 4% de la spec/docs
+  genéricos de ML NO aplica a este rubro, es 5%), 8,9% (3 cuotas), 13,4%
+  (6 cuotas), 17,8% (9 cuotas), 21,6% (12 cuotas).
+- `percentage_fee`: la suma de los dos anteriores — sirve para mostrar el
+  costo total, no para desglosar comisión vs. cuotas.
+
+Se agregó `tasas_reales_por_escalon(client, domain_id, precio_referencia)`
+en `modules/trio_generador.py`, que consulta los 6 escalones de
+`CUOTAS_A_TAGS` contra `/sites/MLA/listing_prices` para el `domain_id` real
+del producto y devuelve `{escalon: {comision, costo_cuotas}}`.
+`/api/pricing/contexto` ahora llama esa función con el `domain_id` del
+item, usa el escalón 0 (`meli_percentage_fee`) como `comision_pct` (con
+fallback a `get_listing_fee_rate` y por último al caché local si la
+llamada falla), y devuelve `domain_id`, `cuotas_reales` y
+`cuotas_reales_etiqueta` en la respuesta.
+
+En `/pricing/existente`, la tarjeta "Las 3 publicaciones" ahora tiene un
+selector de escalón real (Sin cuotas / Interés bajo / 3/6/9/12 cuotas) por
+cada publicación del trío — al elegirlo, completa comisión y cuotas con el
+dato real de ML para ese producto en vez del ejemplo genérico. Si no hay
+`domain_id` o falla la consulta, se avisa explícitamente con la etiqueta en
+amarillo ("Sin datos reales de ML... cargalo a mano") en vez de mostrar el
+ejemplo genérico sin aclarar que es un placeholder. Verificado en vivo
+contra MLA1932975847: `comision_pct: 16`, los 6 escalones completos y
+coincidiendo con la verificación manual previa.
+
+Pendiente: el mismo dato real no está conectado en `pricing_nuevo.html`
+(Modo B) porque ahí no hay un item existente del cual sacar `domain_id`
+todavía — cuando el usuario elige categoría/dominio en Modo B habría que
+repetir esta misma consulta.
+
 ## Sprints
 
 | Sprint | Contenido | Estado |
