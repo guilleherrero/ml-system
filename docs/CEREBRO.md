@@ -1924,6 +1924,66 @@ Pendiente: el mismo dato real no está conectado en `pricing_nuevo.html`
 todavía — cuando el usuario elige categoría/dominio en Modo B habría que
 repetir esta misma consulta.
 
+### "Vendés hoy (unidades)" como tile propio (2026-09-19)
+
+Guille preguntó por qué no aparecía en ningún lado cuánto vendía por
+día/semana, ni contra qué comparaba la calculadora. El dato ya se traía
+(`situacion_hoy.ventas_dia_7d`) pero se mostraba como texto chico gris
+debajo de "Ganás por día" — fácil de pasar por alto, y si faltaba el costo
+esa tarjeta quedaba en "-" y el dato de ventas se perdía ahí abajo. Ahora
+es un tile propio en "Tu situación hoy", con el número de ventas/día como
+valor principal; si no hubo ventas en 30 días lo dice explícitamente en vez
+de mostrar "0.00/día" sin contexto.
+
+### "Resultado de la prueba" rehecho: ventas reales, no a mano (2026-09-19)
+
+Guille: "no se entiende bien... quiero que sea realmente útil para hacer
+pruebas". El problema real no era el cálculo (`resultado_prueba()`, ya
+testeado) sino la UX: pedía escribir a mano "ventas/día en la prueba", un
+número que el usuario tendría que ir a calcular por su cuenta contando
+ventas en ML; el botón fallaba con un `alert()` silencioso si todavía no
+se habían calculado las 3 estrategias en esta misma carga de página (el
+resultado vive en la variable JS `PE_ULTIMO_RESULTADO`, se pierde al
+recargar); y el campo "% que se llevó la Batalla" no tenía ninguna
+explicación de qué significaba ni cuándo importaba.
+
+Cambios:
+- `/api/pricing/verificar_prueba` ahora acepta `alias`+`item_id`+
+  `fecha_desde` opcionales: si vienen, trae las órdenes reales de ML
+  (mismo `_get_all_orders_30d`/`_compute_item_stats` que usa `/contexto`),
+  las filtra desde esa fecha, y calcula `ventas_dia_prueba` real — el
+  usuario ya no cuenta nada a mano. Si falla o no se manda fecha, cae al
+  campo manual como antes (`fuente_ventas: "manual"` en la respuesta para
+  que la UI lo aclare). Ventana de 30 días (mismo límite que
+  `_get_all_orders_30d`) — si el precio se probó hace más de 30 días no
+  hay con qué medir vía este camino y hay que cargarlo a mano.
+- La UI reemplaza "Ventas/día en la prueba" + "Días medidos" (dos campos a
+  calcular a mano) por un único selector de fecha "¿Desde cuándo tenés
+  este precio?"; el campo manual queda oculto y solo aparece si el cálculo
+  automático falla.
+- El botón "Ver veredicto" y el selector de estrategia arrancan
+  deshabilitados con el texto "Calculá las 3 estrategias arriba primero"
+  en vez de fallar con un `alert()` al clickear sin datos.
+- El campo de mix ahora tiene un tooltip explicando cuándo y por qué
+  importa (solo en "Competir", porque ahí cada publicación del trío deja
+  una ganancia distinta).
+- El resultado ahora aclara la fuente del dato ("Calculado con ventas
+  reales de ML desde el DD/MM (N unidades en M días)" vs. "cargaste a
+  mano"), y agrega una nota de confianza si hay menos de 7 días medidos o
+  si la diferencia es chica (<5% de la ganancia de hoy) con menos de 14
+  días — mismo criterio de cautela que ya usa `veredicto_experimento()`
+  para el experimento trackeado automático, aplicado acá al chequeo
+  puntual.
+- Se aclaró en el texto de la tarjeta la diferencia con "Experimentos de
+  este producto" (el tracking automático vía `/aplicar` + snapshots
+  diarios, sprint 3/4): esta tarjeta es para un chequeo rápido puntual,
+  incluso si el precio se cambió a mano fuera de la app; el otro es el
+  seguimiento medido día a día una vez que se aplica un precio desde acá.
+
+Verificado en vivo contra MLA1932975847 (10 días atrás): 22 unidades reales
+detectadas automáticamente, `ventas_dia_prueba: 2.2`. Fallback manual
+también probado sin alias/item_id.
+
 ## Sprints
 
 | Sprint | Contenido | Estado |
