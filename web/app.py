@@ -9656,17 +9656,57 @@ def api_pricing_recomendar():
         return jsonify({'ok': False, 'error': error}), 400
 
     contexto_extra = body.get('contexto_extra') or {}
-    prompt = f"""Sos un asesor de pricing para un vendedor de MercadoLibre Argentina. El motor de precios YA calculo las 3 estrategias — vos no calculas nada, opinas sobre lo que ya esta calculado.
+    situacion_hoy = body.get('situacion_hoy') or {}
+
+    # Resumen legible de cada estrategia — NO se manda el JSON interno
+    # (traia campos como "motivo_batalla" pensados solo para "comp"/"vel"
+    # que Claude terminaba citando fuera de contexto para "rent", donde no
+    # aplican, y se contradecia solo. Encontrado en vivo el 2026-09-19.
+    MOTIVOS_TXT = {
+        'sin_competidor': 'sin dato de competidor, se uso el precio objetivo',
+        'objetivo_ya_gana': 'el precio objetivo ya le gana al competidor, no hizo falta bajar mas',
+        'debajo_del_competidor': 'se bajo hasta 1% debajo del competidor',
+        'piso_no_permite_ganar': 'el piso no permite ganarle al competidor sin romper el margen minimo',
+    }
+    GOAL_TXT = {'rent': 'Máxima rentabilidad (las 3 al objetivo, ninguna compite por precio)',
+                'comp': 'Competir sin perder rentabilidad (solo Batalla baja a pelear precio)',
+                'vel':  'Velocidad (las 3 bajan igualando la ganancia en pesos de la Batalla)'}
+    nombres_pub = [p.get('nombre', f'Pub {i+1}') for i, p in enumerate(resultado['perfiles'])]
+    estrategias_txt = []
+    for goal in ('rent', 'comp', 'vel'):
+        e = resultado['estrategias'][goal]
+        filas = '\n'.join(
+            f"  - {nombres_pub[i]}: ${p:,.0f}" + (f" (ganancia ${g:,.0f})" if g is not None else " (no viable)")
+            for i, (p, g) in enumerate(zip(e['precios'], e['ganancias']))
+        )
+        nota_batalla = ''
+        if goal in ('comp', 'vel'):
+            nota_batalla = f"\n  Por qué la Batalla quedó en ese precio: {MOTIVOS_TXT.get(e['motivo_batalla'], e['motivo_batalla'])}."
+        estrategias_txt.append(f"{GOAL_TXT[goal]}:\n{filas}{nota_batalla}")
+    estrategias_resumen = '\n\n'.join(estrategias_txt)
+
+    situacion_txt = '(sin datos reales de esta publicación — no la trates como si existiera)'
+    if situacion_hoy.get('ganancia_dia') is not None:
+        situacion_txt = (
+            f"Precio actual: ${situacion_hoy.get('precio', 0):,.0f} · "
+            f"Ventas reales última semana: {situacion_hoy.get('ventas_dia_7d', 0):.2f}/día · "
+            f"Ventas reales últimos 30 días: {situacion_hoy.get('ventas_dia', 0):.2f}/día · "
+            f"Ganancia por venta hoy: ${situacion_hoy.get('ganancia_venta', 0):,.0f} · "
+            f"Ganancia por día hoy: ${situacion_hoy.get('ganancia_dia', 0):,.0f}"
+        )
+
+    prompt = f"""Sos un asesor de pricing para un vendedor de MercadoLibre Argentina. El motor de precios YA calculo las 3 estrategias — vos no calculas nada, opinas sobre lo que ya esta calculado. No repitas ni cites campos internos del motor (nombres de variables, códigos de motivo) — explicá todo en lenguaje llano.
 
 Producto: {contexto_extra.get('titulo', '(sin nombre)')}
 Costo: ${resultado['costo']:,.0f}
 Competidor mas barato conocido: {f"${resultado['competidor_min']:,.0f}" if resultado['competidor_min'] else '(sin dato)'}
+Competidor mas caro conocido: {f"${resultado['competidor_max']:,.0f}" if resultado.get('competidor_max') else '(sin dato)'}
 Objetivo: {resultado['objetivo'].get('modo')} {resultado['objetivo'].get('objetivo')}% (piso {resultado['objetivo'].get('piso')}%)
 
-Publicaciones: {json.dumps(resultado['perfiles'], ensure_ascii=False)}
+Situación real hoy de esta publicación: {situacion_txt}
 
-Las 3 estrategias ya calculadas (precios y ganancia por venta de cada publicacion, en el mismo orden que "Publicaciones" arriba):
-{json.dumps(resultado['estrategias'], ensure_ascii=False, indent=2)}
+Las 3 estrategias ya calculadas:
+{estrategias_resumen}
 
 Faltantes detectados: {json.dumps(resultado['faltantes'], ensure_ascii=False) or '(ninguno)'}
 

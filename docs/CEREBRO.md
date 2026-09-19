@@ -1755,6 +1755,23 @@ este bloque completo.
   devuelve igual con los errores marcados (ya bloqueados en la creación por
   la corrección anterior), y el usuario decide si vuelve a generar. Pedido
   explícito: "me consumió créditos muy caros".
+- **Bug real en el prompt de `/api/pricing/recomendar`**: se le mandaba a
+  Claude el JSON interno crudo de `resultado['estrategias']`, con campos
+  como `motivo_batalla` que solo tienen sentido para "comp"/"vel" (describen
+  por qué bajó la Batalla para pelear precio). Para "rent" ese campo se
+  computa igual (por como está hecho `estrategia()`, siempre corre
+  `precio_batalla()`) pero describe un precio HIPOTÉTICO que "rent" ni
+  siquiera usa — Claude lo leyó como si describiera el precio real de
+  "rent" y se contradijo solo en la respuesta ("queda muy por debajo del
+  competidor... en realidad arriba, pero el motor marca 'debajo_del_competidor'
+  por lógica interna"). Reportado por Guille: "esto no es serio". Reescrito
+  el armado del prompt: ahora manda un resumen legible en español (sin
+  nombres de campos internos) y la nota de "por qué la Batalla quedó en ese
+  precio" solo aparece para comp/vel, donde sí aplica.
+- De paso: la `situacion_hoy` (ventas reales de 7 y 30 días, ganancia
+  actual) nunca se mandaba al prompt aunque el backend ya la tenía — por
+  eso Claude decía "sin dato de ventas reales" cuando sí había dato. Ahora
+  se incluye explícitamente.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba
