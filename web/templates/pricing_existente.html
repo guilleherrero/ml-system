@@ -48,6 +48,17 @@
 .pc-desglose-table { font-size:.76rem; background:var(--color-neutral-50); }
 .pc-desglose-table td { padding:.2rem .5rem; border:none; }
 .pc-btn-aplicar { font-size:.68rem; padding:.15rem .5rem; }
+.pc-stat-tile { background:var(--color-neutral-50); border-radius:10px; padding:.75rem 1rem; height:100%; }
+.pc-stat-valor { font-size:1.5rem; font-weight:700; letter-spacing:-.02em; margin:.15rem 0; }
+/* Medidor de precios (linea numerica) — adaptado del prototipo original */
+.pc-ladder { position:relative; height:78px; margin:1.6rem 0 .5rem; }
+.pc-ladder-track { position:absolute; left:0; right:0; top:38px; height:5px; background:var(--color-neutral-200); border-radius:3px; }
+.pc-ladder-band { position:absolute; top:32px; height:17px; background:var(--color-warning-100); border-radius:5px; }
+.pc-ladder-bandlbl { position:absolute; top:53px; font-size:.62rem; color:var(--color-neutral-500); white-space:nowrap; transform:translateX(-50%); }
+.pc-ladder-mk { position:absolute; top:0; transform:translateX(-50%); text-align:center; white-space:nowrap; }
+.pc-ladder-mk .pc-ladder-pin { width:11px; height:11px; border-radius:50%; background:var(--color-info-700,#1e40af); border:2px solid var(--color-neutral-0); margin:29px auto 0; box-shadow:0 0 0 1px var(--color-info-700,#1e40af); }
+.pc-ladder-mk.hoy .pc-ladder-pin { background:var(--color-warning-700); box-shadow:0 0 0 1px var(--color-warning-700); }
+.pc-ladder-mk .pc-ladder-t { font-size:.62rem; font-weight:600; position:absolute; left:50%; transform:translateX(-50%); top:0; color:var(--color-neutral-700); }
 </style>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
@@ -81,10 +92,32 @@
 </div>
 
 <div id="peContenido" style="display:none">
+  <div class="pc-card">
+    <div class="pc-card-header">Tu situación hoy</div>
+    <div class="pc-card-body">
+      <p class="pc-sub-metric mb-2">Es el punto de comparación de todo lo demás.</p>
+      <div class="row g-2 mb-2">
+        <div class="col-md-6">
+          <div class="pc-stat-tile">
+            <div class="pc-etiqueta">Ganás por venta hoy</div>
+            <div class="pc-stat-valor" id="peStatGananciaVenta">-</div>
+            <div class="pc-sub-metric" id="peStatRoiMargen"></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="pc-stat-tile">
+            <div class="pc-etiqueta">Ganás por día hoy</div>
+            <div class="pc-stat-valor" id="peStatGananciaDia">-</div>
+            <div class="pc-sub-metric" id="peVentasReales"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row">
     <div class="col-lg-5">
       <div id="peFaltantes"></div>
-      <div id="peVentasReales" class="pc-sub-metric mb-2"></div>
 
       <form id="peForm">
         <div class="pc-card">
@@ -387,8 +420,20 @@ document.getElementById('peItem').addEventListener('change', function () {
     document.getElementById('peComisionEtq').textContent = ctx.comision_etiqueta || '';
     const sh = ctx.situacion_hoy || {};
     document.getElementById('peVentasReales').innerHTML =
-      `<i class="bi bi-graph-up-arrow me-1"></i>Vendés hoy: <strong>${(sh.ventas_dia_7d ?? 0).toFixed(2)}/día</strong> promedio última semana ` +
-      `(≈${((sh.ventas_dia_7d ?? 0) * 7).toFixed(1)}/semana) · ${(sh.ventas_dia ?? 0).toFixed(2)}/día promedio últimos 30 días.`;
+      `<i class="bi bi-graph-up-arrow me-1"></i>${(sh.ventas_dia_7d ?? 0).toFixed(2)}/día última semana ` +
+      `(≈${((sh.ventas_dia_7d ?? 0) * 7).toFixed(1)}/semana) · ${(sh.ventas_dia ?? 0).toFixed(2)}/día promedio 30 días`;
+    if (sh.ganancia_venta !== null && sh.ganancia_venta !== undefined) {
+      document.getElementById('peStatGananciaVenta').textContent = fmtMoney(sh.ganancia_venta);
+      const roiHoy = (costoActualParaHoy => costoActualParaHoy > 0 ? (sh.ganancia_venta / costoActualParaHoy * 100) : null)(parseFloat(ctx.costo) || 0);
+      const margenHoy = sh.precio > 0 ? (sh.ganancia_venta / sh.precio * 100) : null;
+      document.getElementById('peStatRoiMargen').textContent =
+        (roiHoy !== null ? `ROI ${roiHoy.toFixed(0)}%` : '') + (roiHoy !== null && margenHoy !== null ? ', ' : '') +
+        (margenHoy !== null ? `rentabilidad ${margenHoy.toFixed(0)}%` : '');
+    } else {
+      document.getElementById('peStatGananciaVenta').textContent = 'Sin datos';
+      document.getElementById('peStatRoiMargen').textContent = 'Falta costo o ventas reales para calcularlo';
+    }
+    document.getElementById('peStatGananciaDia').textContent = sh.ganancia_dia !== null && sh.ganancia_dia !== undefined ? fmtMoney(sh.ganancia_dia) : 'Sin datos';
 
     const perfiles = (cfg.perfiles && cfg.perfiles.length === 3) ? cfg.perfiles : [
       {nombre: 'Batalla', comision: ctx.comision_pct || 17, costo_cuotas: 0},
@@ -539,6 +584,11 @@ function renderResultados(d) {
     const r = d.estrategias[goal];
     html += `<div class="pc-card"><div class="pc-card-header d-flex align-items-center justify-content-between">` +
       `<span class="pc-goal-badge ${g.cls}">${g.label}</span><span class="pc-motivo">${g.desc}</span></div><div class="pc-card-body">`;
+    if (PE_CONTEXTO) {
+      html += renderLadder(r.precios, nombres, PE_CONTEXTO.item.precio,
+        parseFloat(document.getElementById('peCompetidor').value) || 0,
+        parseFloat(document.getElementById('peCompetidorMax').value) || 0);
+    }
     html += '<table class="table table-sm pc-result-table mb-1"><thead><tr><th>Publicación</th><th class="text-end">Precio</th>' +
       '<th class="text-end">Ganancia/venta</th><th class="text-end">ROI</th><th class="text-end">Margen</th>' +
       (d.g_dia_hoy !== null && d.g_dia_hoy !== undefined ? '<th class="text-end">Contra hoy</th>' : '') +
@@ -611,6 +661,28 @@ function renderResultados(d) {
     html += '</div></div>';
   });
   document.getElementById('peResultados').innerHTML = html;
+}
+
+function renderLadder(precios, nombres, hoy, competidorMin, competidorMax) {
+  const marcas = precios.map((p, i) => ({ p, n: nombres[i] })).filter(m => m.p !== null && isFinite(m.p));
+  if (hoy > 0) marcas.push({ p: hoy, n: 'Hoy', hoy: true });
+  if (!marcas.length) return '';
+
+  const vals = marcas.map(m => m.p).concat([competidorMin, competidorMax].filter(v => v > 0));
+  const lo = Math.min(...vals) * 0.9, hi = Math.max(...vals) * 1.06;
+  const x = v => Math.min(97, Math.max(3, (v - lo) / (hi - lo) * 100));
+
+  let html = '<div class="pc-ladder"><div class="pc-ladder-track"></div>';
+  if (competidorMin > 0 && competidorMax > competidorMin) {
+    html += `<div class="pc-ladder-band" style="left:${x(competidorMin)}%;width:${x(competidorMax) - x(competidorMin)}%"></div>` +
+      `<div class="pc-ladder-bandlbl" style="left:${(x(competidorMin) + x(competidorMax)) / 2}%">Competencia ${fmtMoney(competidorMin)} a ${fmtMoney(competidorMax)}</div>`;
+  }
+  marcas.sort((a, b) => a.p - b.p).forEach((m, i) => {
+    html += `<div class="pc-ladder-mk ${m.hoy ? 'hoy' : ''}" style="left:${x(m.p)}%">` +
+      `<span class="pc-ladder-t" style="top:${i % 2 ? 22 : 0}px">${m.n} ${fmtMoney(m.p)}</span><div class="pc-ladder-pin"></div></div>`;
+  });
+  html += '</div>';
+  return html;
 }
 
 function renderMapa(mapa) {

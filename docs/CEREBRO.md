@@ -1772,6 +1772,15 @@ este bloque completo.
   actual) nunca se mandaba al prompt aunque el backend ya la tenía — por
   eso Claude decía "sin dato de ventas reales" cuando sí había dato. Ahora
   se incluye explícitamente.
+- **Guille prefería la claridad del artifact/prototipo original** por
+  sobre lo construido — específicamente: una tarjeta "Tu situación hoy"
+  prominente arriba de todo (ganás por venta / ganás por día, en grande),
+  y el "medidor" — una línea numérica mostrando dónde cae cada precio de
+  la estrategia contra hoy y contra la banda de competencia. Se portó esa
+  parte del artifact a `/pricing/existente` (manteniendo Bootstrap, no el
+  CSS propio del artifact — esa decisión de estilo ya estaba tomada antes):
+  tarjeta "Tu situación hoy" full-width con las dos métricas grandes, y un
+  medidor dentro de cada una de las 3 tarjetas de estrategia.
 
 Bugs del §11 de la spec ya sumados a la checklist de arriba (items 51-54); el
 de `search_competitors` con `price:0`/`no_active_listings` ya estaba
