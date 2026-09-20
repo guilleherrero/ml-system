@@ -739,7 +739,7 @@ function camposExperimentoComunes(goal, r) {
   };
 }
 
-function aplicarPrecioExistente(btn, itemId, precioNuevo, pub, goal, r, situacionHoy) {
+function aplicarPrecioExistente(btn, itemId, precioNuevo, pub, goal, r, situacionHoy, escalon) {
   btn.disabled = true;
   btn.textContent = 'Aplicando...';
   fetch('/api/pricing/aplicar', {
@@ -752,6 +752,7 @@ function aplicarPrecioExistente(btn, itemId, precioNuevo, pub, goal, r, situacio
       producto_key: PE_CONTEXTO.item.id,
       ganancia_venta: pub.ganancia_venta,
       situacion_hoy: situacionHoy,
+      escalon,
       ...camposExperimentoComunes(goal, r),
     }),
   })
@@ -858,18 +859,24 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
   if (idx === 0) {
     // Batalla siempre es la publicación existente — nunca se duplica. El
     // precio calculado se puede editar antes de aplicar (pedido explícito
-    // de Guille: "a veces lo necesito").
+    // de Guille: "a veces lo necesito"). El escalón elegido arriba también
+    // se aplica de verdad a la publicación (tipo + tag de cuotas), no solo
+    // se usa para calcular el precio — bug reportado por Guille 2026-09-20.
     const precioEditado = pedirPrecioEditable(pub.precio, nombre);
     if (precioEditado === null) return;
+    const selEscalon = document.getElementById('peEscalon' + idx);
+    const escalon = selEscalon.value;
+    const escalonLabel = selEscalon.selectedOptions[0].textContent;
     gananciaParaPrecio(precioEditado, pub, idx).then(ganancia => {
       const pubAjustado = {...pub, ganancia_venta: ganancia};
       const ok = confirm(
         `Vas a cambiar el precio REAL de ${PE_CONTEXTO.item.id} en MercadoLibre:\n\n` +
-        `De $${PE_CONTEXTO.item.precio.toLocaleString('es-AR')} a $${precioEditado.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}").\n\n` +
+        `De $${PE_CONTEXTO.item.precio.toLocaleString('es-AR')} a $${precioEditado.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}").\n` +
+        `Escalón de cuotas: ${escalonLabel}.\n\n` +
         `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
       );
       if (!ok) return;
-      aplicarPrecioExistente(btn, PE_CONTEXTO.item.id, precioEditado, pubAjustado, goal, r, PE_CONTEXTO.situacion_hoy);
+      aplicarPrecioExistente(btn, PE_CONTEXTO.item.id, precioEditado, pubAjustado, goal, r, PE_CONTEXTO.situacion_hoy, escalon);
     });
     return;
   }
@@ -881,18 +888,22 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
   if (linkeado) {
     const precioEditado = pedirPrecioEditable(pub.precio, nombre);
     if (precioEditado === null) return;
+    const selEscalon = document.getElementById('peEscalon' + idx);
+    const escalon = selEscalon.value;
+    const escalonLabel = selEscalon.selectedOptions[0].textContent;
     gananciaParaPrecio(precioEditado, pub, idx).then(ganancia => {
       const pubAjustado = {...pub, ganancia_venta: ganancia};
       const ok = confirm(
         `Vas a cambiar el precio REAL de ${linkeado} en MercadoLibre (perfil "${nombre}"):\n\n` +
-        `A $${precioEditado.toLocaleString('es-AR')} (estrategia "${GOALS[goal].label}").\n\n` +
+        `A $${precioEditado.toLocaleString('es-AR')} (estrategia "${GOALS[goal].label}").\n` +
+        `Escalón de cuotas: ${escalonLabel}.\n\n` +
         `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
       );
       if (!ok) return;
       // situacion_hoy es la de la publicación EXISTENTE (Batalla) — no la de
       // esta duplicada, así que no se manda (sería un dato falso para este
       // item_id). El experimento igual se abre y mide desde cero.
-      aplicarPrecioExistente(btn, linkeado, precioEditado, pubAjustado, goal, r, null);
+      aplicarPrecioExistente(btn, linkeado, precioEditado, pubAjustado, goal, r, null, escalon);
     });
     return;
   }

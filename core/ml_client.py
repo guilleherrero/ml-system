@@ -124,6 +124,16 @@ class MLClient:
     def create_item(self, payload: dict) -> dict:
         return self._post("/items", payload)
 
+    def update_listing_type(self, item_id: str, listing_type_id: str) -> dict:
+        """Cambia gold_special <-> gold_pro en una publicacion YA existente.
+
+        Endpoint dedicado (no el PUT generico de update_item) — confirmado
+        en la documentacion oficial de ML (2026-09-20, "Tipos de
+        publicacion"): POST /items/{id}/listing_type con {"id": ...}. Sin
+        cargo, permitido en cualquier momento entre estos dos tipos.
+        """
+        return self._post(f"/items/{item_id}/listing_type", {"id": listing_type_id})
+
     # ── Questions ─────────────────────────────────────────────────────────────
 
     def get_unanswered_questions(self) -> dict:

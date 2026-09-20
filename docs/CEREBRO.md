@@ -2267,6 +2267,69 @@ Verificado en vivo: `/ganancia_a_precio` con comisión 16%/cuotas 13,4%
 (escalón "6 cuotas" real de MLA1932975847) da `$15.597,41` de ganancia a
 $59.999 — consistente con la fórmula. 56 tests siguen pasando.
 
+### "Aplicar" en Batalla ahora cambia el escalón REAL, no solo lo usa para calcular (2026-09-20)
+
+Guille: "ok pero si el batalla tiene cuotas tambien tomaria la cuota que
+yo cargo en este cuadro" — pregunta sobre el selector de escalón de "Las 3
+publicaciones". Respuesta honesta: no, hasta este momento "Aplicar" en
+Batalla solo cambiaba el `price` de la publicación real — el escalón
+elegido solo se usaba para calcular con qué comisión/cuotas convenía el
+precio, nunca se aplicaba de verdad al `listing_type_id`/`tags` de la
+publicación en ML. Si elegías "Interés bajo" para calcular pero la
+publicación seguía en otro escalón, el margen real terminaba siendo
+distinto del calculado.
+
+Antes de tocar esto se preguntó explícitamente si el arreglo debía
+extenderse a modificar la publicación real (cambiar `listing_type_id` en
+una publicación YA ACTIVA es una escritura nunca antes probada en este
+sistema — hasta ahora `CUOTAS_A_TAGS` solo se usaba para *crear*
+publicaciones nuevas en `/trio/duplicar`, donde el tipo se define una sola
+vez al crear). Guille confirmó que sí. Se consultó la documentación
+oficial de ML antes de escribir código (paginas "Tipos de publicación" y
+"Campañas con cuotas para Marketplace", 2026-09-20) porque la forma
+correcta NO es intuitiva:
+
+- **`listing_type_id`** (gold_special ↔ gold_pro) en una publicación
+  existente NO se cambia con el PUT genérico de `/items` — hace falta un
+  endpoint dedicado: `POST /items/{id}/listing_type` con `{"id": "gold_pro"}`.
+  Sin cargo, permitido en cualquier momento entre estos dos tipos.
+- El **tag de cuotas** (`pcj-co-funded`, `3x_campaign`, `9x_campaign`,
+  `12x_campaign` — 6 cuotas de gold_pro no lleva tag) SÍ se cambia con el
+  PUT genérico de `/items`, pero **reemplaza la lista completa de tags**
+  — si se manda solo el tag de cuotas nuevo, se pierden todos los tags que
+  ML ya le había puesto a la publicación (`extended_warranty_eligible`,
+  `catalog_boost`, etc., confirmado en vivo). Hay que preservar los tags
+  no relacionados con cuotas y solo reemplazar el de cuotas.
+- El `listing_type_id` tiene que coincidir con el tag ANTES de mandarlo
+  (ML devuelve 400 si no corresponden) — por eso el tipo se cambia
+  primero (si hace falta) y recién después se manda precio + tags juntos
+  en un solo PUT.
+
+Se agregó `MLClient.update_listing_type()` (usa el endpoint dedicado) y
+`/api/pricing/aplicar` ahora acepta `escalon` opcional: si viene, alinea
+el tipo primero (con manejo de error honesto si falla ahí — "no se tocó
+el precio ni las cuotas"), arma los tags preservando los que no son de
+cuotas, y manda todo junto. Si el PUT final falla DESPUÉS de haber
+cambiado el tipo, el error lo dice explícito (mismo criterio que el resto
+de los "aplicar"/"crear" de esta sección: nunca un error genérico cuando
+ya se escribió algo real). El frontend manda `escalon` tanto para Batalla
+como para Medio/Compensa ya linkeados (mismo código compartido,
+mismo problema), y el `confirm()` ahora muestra el escalón elegido en
+texto legible además del precio.
+
+**Probado en vivo contra MLA1932975847 con autorización explícita de
+Guille** (el ítem real, ya usado como caso de prueba en toda esta sesión):
+aplicar con `escalon=6` (mismo estado que ya tenía: gold_pro, sin tag de
+cuotas) confirmó que los 4 tags existentes (`extended_warranty_eligible`,
+`catalog_boost`, `immediate_payment`, `cart_eligible`) quedaron intactos.
+Después se probó el camino de más riesgo — nunca antes ejercitado —
+cambiando realmente el tipo: `escalon=0` pasó la publicación de gold_pro a
+gold_special (confirmado con una lectura después), y `escalon=6` la
+volvió a gold_pro. Precio, tags y status quedaron exactamente como
+estaban antes de la prueba. Los experimentos de prueba quedaron solo en
+la base local de desarrollo (`data/biobella.db`), no en producción. 56
+tests siguen pasando (no se tocó `precio_motor.py`).
+
 ## Sprints
 
 | Sprint | Contenido | Estado |

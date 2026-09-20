@@ -9927,8 +9927,26 @@ def api_pricing_aplicar():
     siempre la existente; para Medio/Compensa el frontend manda el item_id
     de la publicacion duplicada (ver /api/pricing/trio/duplicar) una vez que
     existe, nunca el de Batalla.
+
+    Si se manda `escalon`, tambien deja el escalon de cuotas REAL de la
+    publicacion igual al que se eligio para calcular el precio — antes solo
+    cambiaba el precio, y el escalon del selector quedaba como un dato de
+    referencia para el calculo que nunca se aplicaba de verdad (bug
+    reportado por Guille 2026-09-20: "si el batalla tiene cuotas tambien
+    tomaria la cuota que yo cargo en este cuadro"). Verificado contra la
+    documentacion oficial de ML (2026-09-20, "Tipos de publicacion" +
+    "Campanas con cuotas para Marketplace"):
+    - El listing_type_id (gold_special <-> gold_pro) NO se cambia con el
+      PUT generico de /items — hace falta el endpoint dedicado POST
+      /items/{id}/listing_type (sin cargo).
+    - El tag de cuotas SI se cambia con el PUT generico, pero hay que
+      mandar la lista COMPLETA de tags (los reemplaza, no los suma) y el
+      listing_type tiene que coincidir con el tag antes de mandarlo — por
+      eso el listing_type se cambia primero, y recien despues se manda el
+      precio + los tags ya armados en un solo PUT.
     """
     from core.account_manager import AccountManager
+    from modules.trio_generador import CUOTAS_A_TAGS
     from web.db import session_scope
     from web.models_pricing import PrecioExperimento
 
@@ -9942,6 +9960,12 @@ def api_pricing_aplicar():
     producto_key = body.get('producto_key') or item_id
     estrategia   = body.get('estrategia', '')
     situacion    = body.get('situacion_hoy') or {}
+    try:
+        escalon = int(body.get('escalon')) if body.get('escalon') not in (None, '') else None
+    except (TypeError, ValueError):
+        escalon = None
+    if escalon is not None and escalon not in CUOTAS_A_TAGS:
+        return jsonify({'ok': False, 'error': 'Escalón de cuotas inválido.'}), 400
 
     if not alias or not item_id or not precio_nuevo:
         return jsonify({'ok': False, 'error': 'Faltan alias, item_id o precio_nuevo.'}), 400
@@ -9978,10 +10002,32 @@ def api_pricing_aplicar():
 
     precio_antes = float(item_antes.get('price') or 0)
 
+    # Si se pidio un escalon, primero alinear listing_type_id (gratis, via
+    # endpoint dedicado) y armar los tags nuevos — SIN pisar tags que no son
+    # de cuotas (regla oficial de ML: el PUT reemplaza la lista completa).
+    TAGS_DE_CUOTAS_CONOCIDOS = {'pcj-co-funded', '3x_campaign', '9x_campaign', '12x_campaign'}
+    payload_update = {'price': precio_nuevo_f}
+    listing_type_cambiado = None
+    if escalon is not None:
+        listing_type_obj, tags_cuota_obj = CUOTAS_A_TAGS[escalon]
+        tag_cuota_obj = tags_cuota_obj[0] if tags_cuota_obj else None
+        listing_type_actual = item_antes.get('listing_type_id')
+        if listing_type_actual != listing_type_obj:
+            try:
+                client.update_listing_type(item_id, listing_type_obj)
+                listing_type_cambiado = listing_type_obj
+            except Exception as e:
+                return jsonify({'ok': False,
+                    'error': f'No se pudo cambiar el tipo de publicación a {listing_type_obj}: {e}. No se tocó el precio ni las cuotas.'}), 400
+        tags_actuales = list(item_antes.get('tags') or [])
+        tags_sin_cuotas = [t for t in tags_actuales if t not in TAGS_DE_CUOTAS_CONOCIDOS]
+        payload_update['tags'] = tags_sin_cuotas + ([tag_cuota_obj] if tag_cuota_obj else [])
+
     try:
-        client.update_item(item_id, {'price': precio_nuevo_f})
+        client.update_item(item_id, payload_update)
     except Exception as e:
-        return jsonify({'ok': False, 'error': f'ML rechazó el cambio de precio: {e}'}), 400
+        aviso_tipo = f' (el tipo de publicación SÍ se cambió a {listing_type_cambiado} antes de este error)' if listing_type_cambiado else ''
+        return jsonify({'ok': False, 'error': f'ML rechazó el cambio de precio/cuotas{aviso_tipo}: {e}'}), 400
 
     # El precio YA cambió en ML en este punto. Si el registro del experimento
     # falla de acá para abajo, hay que decirlo explícitamente — no puede
