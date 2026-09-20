@@ -68,18 +68,28 @@ def _ensure_columns():
     faltan, nunca agrega columnas nuevas a una tabla que ya existe en el
     Postgres de prod. Sin esto, una columna agregada al modelo despues de
     que la tabla ya se creo queda invisible para el codigo aunque el
-    modelo la declare. Idempotente: no hace nada si la columna ya esta."""
+    modelo la declare. Idempotente: no hace nada si la columna ya esta.
+
+    Nunca debe poder tirar abajo el boot del server — si el ALTER falla
+    por lo que sea (permisos, timeout, lo que sea) se loguea y se sigue.
+    El caller de init_db() ya envuelve todo en try/except, pero un error
+    ACA especificamente dejaria item_ids_trio sin poder usarse — mejor
+    que eso pase con un log claro y no en silencio."""
     from sqlalchemy import inspect, text
     from web.models_pricing import PricingConfig
 
-    insp = inspect(engine)
-    if 'pricing_config' not in insp.get_table_names():
-        return
-    cols = {c['name'] for c in insp.get_columns('pricing_config')}
-    if 'item_ids_trio' not in cols:
-        ddl_type = PricingConfig.__table__.c.item_ids_trio.type.compile(dialect=engine.dialect)
-        with engine.begin() as conn:
-            conn.execute(text(f'ALTER TABLE pricing_config ADD COLUMN item_ids_trio {ddl_type}'))
+    try:
+        insp = inspect(engine)
+        if 'pricing_config' not in insp.get_table_names():
+            return
+        cols = {c['name'] for c in insp.get_columns('pricing_config')}
+        if 'item_ids_trio' not in cols:
+            ddl_type = PricingConfig.__table__.c.item_ids_trio.type.compile(dialect=engine.dialect)
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE pricing_config ADD COLUMN item_ids_trio {ddl_type}'))
+            print('[db] Columna item_ids_trio agregada a pricing_config.')
+    except Exception as e:
+        print(f'[db] ERROR agregando columna item_ids_trio (no bloquea el boot): {e}')
 
 
 def init_db():
