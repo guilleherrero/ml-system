@@ -2330,6 +2330,55 @@ estaban antes de la prueba. Los experimentos de prueba quedaron solo en
 la base local de desarrollo (`data/biobella.db`), no en producción. 56
 tests siguen pasando (no se tocó `precio_motor.py`).
 
+### Vincular una publicación ya existente como Medio/Compensa (2026-09-20)
+
+Guille planteó un caso que el diseño no cubría: "supongamos que yo tengo 3
+publicaciones distintas... como hariamos eso?? en ese caso seria por
+asociacion o como podriamos hacerlo??" — pidió comentario, no código
+("comentame no hagas nada aun"). Hasta ahora Medio/Compensa solo podían
+nacer duplicando la publicación desde `/trio/duplicar`; no había forma de
+decirle al sistema "esta publicación que ya tengo hace de Medio". Se
+propuso una versión simple (asociar sin traer historial real por
+publicación) y una completa (con `situacion_hoy` propia de cada una).
+Guille eligió la simple: "no es tan importante el historia actual en
+medio y compensa... ahora si necesito que cada una que yo le realice el
+ajuste que luego comience a medirse" — y esa parte (medición automática al
+aplicar) ya estaba resuelta desde el sprint anterior, sin cambios.
+
+Se agregan dos endpoints:
+- `/api/pricing/trio/asociar` (POST): linkea un item_id que YA EXISTE al
+  perfil Medio/Compensa de un producto — no crea ni escribe nada en ML,
+  solo lee para validar (por eso no exige `confirmado`, a diferencia de
+  `/trio/duplicar` y `/aplicar`). Valida: que no sea la propia Batalla, que
+  el item exista, y — chequeo importante porque `/items/{id}` es PÚBLICO
+  en ML, cualquiera puede consultar cualquier item_id de cualquier vendedor
+  — que `seller_id` del item coincida con `client.account.user_id` de la
+  cuenta conectada, para no vincular por error una publicación ajena. Bloquea
+  también reasociar un perfil ya linkeado (pide desvincular primero) y
+  asociar la misma publicación a dos perfiles del mismo producto.
+- `/api/pricing/trio/desvincular` (POST): saca el link — no toca ni borra
+  nada en ML, solo dejar de asociarla en `PricingConfig.item_ids_trio`.
+
+Una vez vinculada, el camino es el mismo que para una publicación creada
+por `/trio/duplicar`: "Aplicar" en esa fila usa el `item_id` linkeado
+(ya lo hacía así desde el arreglo de "Medio y Compensa son publicaciones
+DISTINTAS" — sección de arriba), cambia precio y escalón real, y abre su
+propio `PrecioExperimento` medido automáticamente vía `snapshots_diarios`
+— sin código nuevo para esa parte, ya funcionaba.
+
+En `pricing_existente.html`, cada fila de Medio/Compensa en "Las 3
+publicaciones" muestra su estado: "Vincular una publicación que ya tenés"
+(si no hay link) o "Vinculada a MLA... — [Desvincular]" (si ya hay una),
+justo debajo de la fila del perfil.
+
+Verificado en vivo contra la cuenta real: se vinculó `MLA1487381139`
+(publicación real y distinta, traída de `get_my_listings`) como Medio de
+`MLA1932975847`, confirmado en `/contexto` (`item_ids_trio: {"1":
+"MLA1487381139"}`), se probaron los 3 rechazos (asociarse a sí misma, slot
+ya ocupado, misma publicación en dos slots) y se desvinculó limpio al
+final — no quedó nada real tocado en ML, era puro link en la base. 56
+tests siguen pasando.
+
 ## Sprints
 
 | Sprint | Contenido | Estado |

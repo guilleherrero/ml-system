@@ -198,6 +198,7 @@
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas1">
               <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds1" value="0">
             </div>
+            <p class="pc-sub-metric mb-2" id="peVinculoInfo1"></p>
             <div class="pc-perfil-row-5 mb-0">
               <input class="form-control form-control-sm" value="Compensa" id="peNombre2">
               <select class="form-select form-select-sm pc-escalon-select" id="peEscalon2" data-idx="2">
@@ -210,6 +211,7 @@
               <input type="number" step="0.01" class="form-control form-control-sm" id="peCuotas2">
               <input type="number" step="100" min="0" class="form-control form-control-sm" id="peAds2" value="0">
             </div>
+            <p class="pc-sub-metric mb-0" id="peVinculoInfo2"></p>
             <p class="pc-sub-metric mt-2 mb-0">Elegir un escalón completa comisión y cuotas con la tasa real de ML para este producto. Podés editarlas a mano después si sabés que son distintas.</p>
           </div>
         </div>
@@ -453,6 +455,9 @@ document.getElementById('peItem').addEventListener('change', function () {
     document.getElementById('peCuotasRealesEtq').textContent =
       Object.keys(cr).length ? `Tasas reales de ML para este producto (dominio ${ctx.domain_id}) — elegí el escalón de cuotas y se completa solo` : 'Sin datos reales de ML para este producto — quedó un ejemplo genérico, cargalo a mano o revisá el costo de cuotas real en tu publicación';
     document.getElementById('peCuotasRealesEtq').className = Object.keys(cr).length ? 'pc-sub-metric text-success' : 'pc-sub-metric text-warning';
+
+    renderVinculoInfo(1);
+    renderVinculoInfo(2);
 
     // Cargos guardados en /api/pricing/config (defaults del motor si no hay nada guardado).
     const c = cfg.cargos || {};
@@ -793,6 +798,76 @@ function gananciaParaPrecio(precioEditado, pub, idx) {
     .then(r => r.json())
     .then(d => d.ok ? d.ganancia_venta : pub.ganancia_venta)
     .catch(() => pub.ganancia_venta);
+}
+
+// ── Vincular una publicación YA EXISTENTE como Medio/Compensa ──────────────
+// Caso real de Guille (2026-09-20): "yo tengo 3 publicaciones distintas...
+// asociaria en estas la que actualmente tengo en cuotas". No crea nada en
+// ML — solo linkea el item_id en PricingConfig.item_ids_trio, igual que
+// hace /trio/duplicar después de crear. Una vez vinculada, "Aplicar" en esa
+// fila cambia precio y escalón real de esa publicación y abre su propio
+// experimento medido automáticamente (mismo mecanismo ya existente).
+
+function renderVinculoInfo(idx) {
+  if (!PE_CONTEXTO) return;
+  const el = document.getElementById('peVinculoInfo' + idx);
+  const linkeado = (PE_CONTEXTO.item_ids_trio || {})[String(idx)];
+  if (linkeado) {
+    el.innerHTML = `<i class="bi bi-link-45deg me-1"></i>Vinculada a <strong>${linkeado}</strong> — "Aplicar" en esta fila le cambia precio y escalón a esa publicación. ` +
+      `<button type="button" class="btn btn-link btn-sm p-0 pc-btn-desvincular" data-idx="${idx}">Desvincular</button>`;
+  } else {
+    el.innerHTML = `<button type="button" class="btn btn-link btn-sm p-0 pc-btn-vincular" data-idx="${idx}">Vincular una publicación que ya tenés</button> en vez de crear una nueva al aplicar.`;
+  }
+}
+
+document.getElementById('peVinculoInfo1').addEventListener('click', manejarClickVinculo);
+document.getElementById('peVinculoInfo2').addEventListener('click', manejarClickVinculo);
+
+function manejarClickVinculo(e) {
+  const btnVincular = e.target.closest('.pc-btn-vincular');
+  const btnDesvincular = e.target.closest('.pc-btn-desvincular');
+  if (btnVincular) {
+    const idx = btnVincular.dataset.idx;
+    const nombre = document.getElementById('peNombre' + idx).value;
+    const itemIdAsociar = prompt(`Item ID de la publicación que ya tenés y querés usar como "${nombre}" (ej: MLA123456789):`);
+    if (!itemIdAsociar) return;
+    fetch('/api/pricing/trio/asociar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        alias: document.getElementById('peAlias').value,
+        item_id: PE_CONTEXTO.item.id,
+        variante_idx: parseInt(idx),
+        item_id_asociar: itemIdAsociar,
+      }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok) { alert('Error: ' + d.error); return; }
+        PE_CONTEXTO.item_ids_trio = PE_CONTEXTO.item_ids_trio || {};
+        PE_CONTEXTO.item_ids_trio[idx] = d.item_id;
+        renderVinculoInfo(parseInt(idx));
+        alert(`Vinculada: "${d.titulo}" (${d.item_id}, $${d.precio.toLocaleString('es-AR')}).`);
+      })
+      .catch(err => alert('Error: ' + err));
+  } else if (btnDesvincular) {
+    const idx = btnDesvincular.dataset.idx;
+    if (!confirm('¿Desvincular esta publicación? No se toca ni se borra en ML, solo deja de asociarse a este producto acá.')) return;
+    fetch('/api/pricing/trio/desvincular', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        alias: document.getElementById('peAlias').value,
+        item_id: PE_CONTEXTO.item.id,
+        variante_idx: parseInt(idx),
+      }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok) { alert('Error: ' + d.error); return; }
+        if (PE_CONTEXTO.item_ids_trio) delete PE_CONTEXTO.item_ids_trio[idx];
+        renderVinculoInfo(parseInt(idx));
+      })
+      .catch(err => alert('Error: ' + err));
+  }
 }
 
 // Comisión/cuotas reales de ML para un escalón (mismo dato que ya trae

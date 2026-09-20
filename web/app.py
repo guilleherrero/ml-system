@@ -10225,6 +10225,99 @@ def api_pricing_trio_duplicar():
                     'recordatorio': 'Se creó PAUSADA. Dala de alta en AppSeller para sincronizar stock antes de que empiece a vender.'})
 
 
+@app.route('/api/pricing/trio/asociar', methods=['POST'])
+def api_pricing_trio_asociar():
+    """Vincula una publicacion que YA EXISTE (no se crea nada) como Medio o
+    Compensa de un producto — caso real de Guille 2026-09-20: "yo tengo 3
+    publicaciones distintas... asociaria en estas la que actualmente tengo
+    en cuotas". No escribe nada en ML (solo lee para validar que la
+    publicacion es realmente de esta cuenta) — por eso no exige
+    `confirmado`, a diferencia de /trio/duplicar y /aplicar que si tocan ML.
+
+    Una vez vinculada, /api/pricing/aplicar funciona igual que con una
+    creada por /trio/duplicar: le cambia precio y escalon real, y abre su
+    propio experimento medido automaticamente.
+    """
+    from core.account_manager import AccountManager
+    from web.db import session_scope
+    from web.models_pricing import PricingConfig
+
+    body = request.get_json() or {}
+    alias            = body.get('alias', '')
+    item_id_original = body.get('item_id', '')
+    item_id_asociar  = (body.get('item_id_asociar') or '').strip().upper()
+    try:
+        variante_idx = int(body.get('variante_idx', ''))
+    except (TypeError, ValueError):
+        variante_idx = 0
+
+    if not alias or not item_id_original or variante_idx not in (1, 2) or not item_id_asociar:
+        return jsonify({'ok': False, 'error': 'Faltan alias, item_id, variante_idx (1 o 2) o item_id_asociar.'}), 400
+    if item_id_asociar == item_id_original:
+        return jsonify({'ok': False, 'error': 'Esa es la publicación de Batalla — no se puede asociar a sí misma.'}), 400
+
+    try:
+        client = AccountManager().get_client(alias)
+        item = client.get_item(item_id_asociar)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo traer la publicación {item_id_asociar}: {e}'}), 400
+    if not item or 'id' not in item:
+        return jsonify({'ok': False, 'error': f'Publicación {item_id_asociar} no encontrada.'}), 404
+    # /items/{id} es publico en ML — cualquiera puede consultar cualquier
+    # item_id. Sin este chequeo se podria vincular por error (o mala
+    # intencion) una publicacion de OTRA cuenta, y despues /aplicar
+    # fallaria al intentar cambiarle el precio (o peor, si algun dia se
+    # relaja ese chequeo del lado de ML).
+    if str(item.get('seller_id')) != str(client.account.user_id):
+        return jsonify({'ok': False, 'error': f'La publicación {item_id_asociar} no es de esta cuenta — no se puede vincular.'}), 400
+
+    with session_scope() as s:
+        row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id_original).first()
+        item_ids_trio = dict(row.item_ids_trio or {}) if row else {}
+        ya_linkeado = item_ids_trio.get(str(variante_idx))
+        if ya_linkeado:
+            return jsonify({'ok': False,
+                'error': f'Este perfil ya tiene una publicación vinculada ({ya_linkeado}) — desvinculala primero si querés cambiarla.'}), 400
+        if item_id_asociar in item_ids_trio.values():
+            return jsonify({'ok': False, 'error': 'Esa publicación ya está vinculada a otro perfil de este producto.'}), 400
+        if row is None:
+            row = PricingConfig(alias=alias, item_id=item_id_original, perfiles=[])
+            s.add(row)
+        item_ids_trio[str(variante_idx)] = item_id_asociar
+        row.item_ids_trio = item_ids_trio
+
+    return jsonify({'ok': True, 'item_id': item_id_asociar,
+                    'titulo': item.get('title', ''), 'precio': float(item.get('price') or 0),
+                    'listing_type_id': item.get('listing_type_id', '')})
+
+
+@app.route('/api/pricing/trio/desvincular', methods=['POST'])
+def api_pricing_trio_desvincular():
+    """Saca el link de Medio/Compensa a una publicacion — no la borra ni la
+    toca en ML, solo deja de asociarla a este producto en la calculadora."""
+    from web.db import session_scope
+    from web.models_pricing import PricingConfig
+
+    body = request.get_json() or {}
+    alias            = body.get('alias', '')
+    item_id_original = body.get('item_id', '')
+    try:
+        variante_idx = int(body.get('variante_idx', ''))
+    except (TypeError, ValueError):
+        variante_idx = 0
+    if not alias or not item_id_original or variante_idx not in (1, 2):
+        return jsonify({'ok': False, 'error': 'Faltan alias, item_id o variante_idx (1 o 2).'}), 400
+
+    with session_scope() as s:
+        row = s.query(PricingConfig).filter_by(alias=alias, item_id=item_id_original).first()
+        if row and row.item_ids_trio and str(variante_idx) in row.item_ids_trio:
+            item_ids_trio = dict(row.item_ids_trio)
+            item_ids_trio.pop(str(variante_idx))
+            row.item_ids_trio = item_ids_trio
+
+    return jsonify({'ok': True})
+
+
 @app.route('/api/pricing/experimentos')
 def api_pricing_experimentos():
     from web.db import session_scope
