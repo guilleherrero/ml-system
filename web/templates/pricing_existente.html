@@ -318,6 +318,16 @@
         <div class="pc-card-header">Crear publicación nueva</div>
         <div class="pc-card-body">
           <p class="pc-sub-metric" id="peDuplicarInfo"></p>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="pc-etiqueta d-block">Escalón de cuotas</label>
+              <select class="form-select form-select-sm" id="peDuplicarEscalon"></select>
+            </div>
+            <div class="col-6">
+              <label class="pc-etiqueta d-block">Con ese escalón</label>
+              <p class="pc-sub-metric mb-0" id="peDuplicarEscalonInfo"></p>
+            </div>
+          </div>
           <div class="mb-2">
             <label class="pc-etiqueta d-block">Título</label>
             <input class="form-control form-control-sm" id="peDuplicarTitulo">
@@ -784,6 +794,51 @@ function gananciaParaPrecio(precioEditado, pub, idx) {
     .catch(() => pub.ganancia_venta);
 }
 
+// Comisión/cuotas reales de ML para un escalón (mismo dato que ya trae
+// /contexto en PE_CUOTAS_REALES) — si no hay dato real para ese escalón,
+// cae a lo que ya esté cargado en el formulario de arriba para ese perfil.
+function comisionCuotasParaEscalon(escalon, idx) {
+  const real = PE_CUOTAS_REALES[escalon] || PE_CUOTAS_REALES[Number(escalon)];
+  if (real && real.comision !== null && real.comision !== undefined) {
+    return {comision: real.comision, costo_cuotas: real.costo_cuotas ?? 0};
+  }
+  return {
+    comision: parseFloat(document.getElementById('peComision' + idx).value) || 0,
+    costo_cuotas: parseFloat(document.getElementById('peCuotas' + idx).value) || 0,
+  };
+}
+
+// Recalcula comisión/cuotas/ganancia cuando se cambia el escalón o el
+// precio en la tarjeta "Crear publicación nueva" — así se ve el efecto al
+// toque, en vez de tener que confirmar a ciegas.
+function actualizarGananciaDuplicar() {
+  if (!PE_DUPLICAR_CTX) return;
+  const {idx} = PE_DUPLICAR_CTX;
+  const escalon = document.getElementById('peDuplicarEscalon').value;
+  const {comision, costo_cuotas} = comisionCuotasParaEscalon(escalon, idx);
+  const precio = parseFloat(document.getElementById('peDuplicarPrecio').value) || 0;
+  document.getElementById('peDuplicarEscalonInfo').textContent = `Comisión ${comision}% · Cuotas ${costo_cuotas}% — calculando ganancia...`;
+  const params = new URLSearchParams({
+    precio, comision, costo_cuotas,
+    costo: document.getElementById('peCosto').value,
+    ...cargosPayload(),
+  });
+  fetch('/api/pricing/ganancia_a_precio?' + params.toString())
+    .then(r => r.json())
+    .then(d => {
+      const ganancia = d.ok ? d.ganancia_venta : null;
+      if (PE_DUPLICAR_CTX) PE_DUPLICAR_CTX.pub.ganancia_venta = ganancia;
+      document.getElementById('peDuplicarEscalonInfo').textContent = `Comisión ${comision}% · Cuotas ${costo_cuotas}%` +
+        (ganancia !== null ? ` · Ganás ${fmtMoney(ganancia)} por venta` : ' · No se pudo calcular la ganancia.');
+    })
+    .catch(() => {
+      document.getElementById('peDuplicarEscalonInfo').textContent = `Comisión ${comision}% · Cuotas ${costo_cuotas}% — no se pudo calcular la ganancia.`;
+    });
+}
+
+document.getElementById('peDuplicarEscalon').addEventListener('change', actualizarGananciaDuplicar);
+document.getElementById('peDuplicarPrecio').addEventListener('input', actualizarGananciaDuplicar);
+
 document.getElementById('peResultados').addEventListener('click', function (e) {
   const toggleBtn = e.target.closest('.pc-toggle-desglose');
   if (toggleBtn) {
@@ -842,12 +897,19 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
     return;
   }
 
-  PE_DUPLICAR_CTX = {goal, idx, r, pub, nombre};
-  const escalon = document.getElementById('peEscalon' + idx).value;
+  PE_DUPLICAR_CTX = {goal, idx, r, pub: {...pub}, nombre};
+  // Mismas opciones de escalón que "Las 3 publicaciones" arriba, empezando
+  // en lo que ya estaba elegido ahí — pero acá se puede cambiar sin tener
+  // que volver a subir, y recalcula la ganancia con el escalón nuevo.
+  const selArriba = document.getElementById('peEscalon' + idx);
+  const selDuplicar = document.getElementById('peDuplicarEscalon');
+  selDuplicar.innerHTML = selArriba.innerHTML;
+  selDuplicar.value = selArriba.value;
   document.getElementById('peDuplicarInfo').textContent =
     `Generando título con el autosuggest real de ML para "${nombre}"...`;
   document.getElementById('peDuplicarTitulo').value = '';
   document.getElementById('peDuplicarPrecio').value = pub.precio;
+  actualizarGananciaDuplicar();
   document.getElementById('peDuplicarKeywordsBox').style.display = 'none';
   document.getElementById('peDuplicarKeywords').innerHTML = '';
   document.getElementById('peDuplicarBox').style.display = '';
@@ -863,7 +925,7 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
       }
       document.getElementById('peDuplicarTitulo').value = d.titulo;
       document.getElementById('peDuplicarInfo').textContent = d.keyword_usada
-        ? `Título nuevo para "${nombre}" (perfil "${escalon == 0 ? 'Sin cuotas' : escalon == 4 ? 'Interés bajo' : escalon + ' cuotas'}"), reordenado alrededor de "${d.keyword_usada}" — la keyword mejor rankeada del autosuggest real de ML. Podés editarlo.`
+        ? `Título nuevo para "${nombre}", reordenado alrededor de "${d.keyword_usada}" — la keyword mejor rankeada del autosuggest real de ML. Podés editarlo.`
         : 'No se encontró una keyword distinta para reordenar — quedó el título original. Podés editarlo.';
       if (d.keywords_rankeadas && d.keywords_rankeadas.length) {
         let html = '<table class="table table-sm mb-0"><thead><tr><th>Keyword</th><th class="text-end">Relevancia</th><th class="text-end">Posición</th>' +
@@ -893,13 +955,14 @@ document.getElementById('peDuplicarBtnConfirmar').addEventListener('click', func
   const {goal, idx, r, pub, nombre} = PE_DUPLICAR_CTX;
   const titulo = document.getElementById('peDuplicarTitulo').value.trim();
   const precio = parseFloat(document.getElementById('peDuplicarPrecio').value);
-  const escalon = document.getElementById('peEscalon' + idx).value;
+  const escalon = document.getElementById('peDuplicarEscalon').value;
+  const escalonLabel = document.getElementById('peDuplicarEscalon').selectedOptions[0].textContent;
   if (!titulo) { alert('Falta el título.'); return; }
   if (!precio || precio <= 0) { alert('Precio inválido.'); return; }
 
   const ok = confirm(
     `Vas a crear una publicación NUEVA y REAL en MercadoLibre (pausada), duplicando "${PE_CONTEXTO.item.titulo}":\n\n` +
-    `Título: "${titulo}"\nPrecio: $${precio.toLocaleString('es-AR')} (perfil "${nombre}")\n\n` +
+    `Título: "${titulo}"\nPrecio: $${precio.toLocaleString('es-AR')}\nEscalón de cuotas: ${escalonLabel} (perfil "${nombre}")\n\n` +
     `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
   );
   if (!ok) return;
@@ -907,7 +970,9 @@ document.getElementById('peDuplicarBtnConfirmar').addEventListener('click', func
   const btn = this;
   btn.disabled = true;
   btn.textContent = 'Creando...';
-  gananciaParaPrecio(precio, pub, idx).then(ganancia => fetch('/api/pricing/trio/duplicar', {
+  // La ganancia ya se recalculó al vuelo con el escalón/precio elegidos acá
+  // (actualizarGananciaDuplicar) — no hace falta pedirla de nuevo.
+  fetch('/api/pricing/trio/duplicar', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       confirmado: true,
@@ -916,11 +981,11 @@ document.getElementById('peDuplicarBtnConfirmar').addEventListener('click', func
       producto_key: PE_CONTEXTO.item.id,
       variante_idx: idx,
       titulo, precio_nuevo: precio, escalon,
-      ganancia_venta: ganancia,
+      ganancia_venta: pub.ganancia_venta,
       situacion_hoy: null,
       ...camposExperimentoComunes(goal, r),
     }),
-  }))
+  })
     .then(res => res.json())
     .then(v => {
       btn.disabled = false;

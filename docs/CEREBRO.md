@@ -2230,6 +2230,43 @@ devueltas, topeadas en 100% cuando `posicion=1`, bajando gradualmente
 hasta 50% en posición 7 de 12 — coincide con la fórmula a mano. 56 tests
 siguen pasando (no se tocó `precio_motor.py` ni los tests existentes).
 
+### Escalón de cuotas visible (y editable) al crear la publicación (2026-09-20)
+
+Guille: "cuando crea una nueva publicacion en medio y compensa donde veo
+las opciones de cuotas para elegir". El selector de escalón YA existía
+(agregado antes en "Las 3 publicaciones", arriba del todo) y `/trio/duplicar`
+ya lo usaba para decidir `listing_type_id`/`tags` — pero la tarjeta "Crear
+publicación nueva" no lo mostraba para nada, solo lo mencionaba de pasada
+en una frase larga. Si el usuario no se acordaba de haberlo elegido arriba
+antes de calcular, no tenía forma de verlo ni cambiarlo en el momento de
+crear.
+
+Se agrega un `<select>` de escalón propio dentro de "Crear publicación
+nueva" (mismas opciones que el de arriba, clonadas al abrir la tarjeta,
+empezando en lo que ya estaba elegido). Cambiarlo ahí:
+- Busca comisión/cuotas reales para ese escalón en `PE_CUOTAS_REALES` (el
+  mismo dato de `/contexto`, sin inventar nada) — si no hay dato real para
+  ese escalón puntual, cae a lo que ya esté cargado arriba para ese perfil.
+- Llama a `/api/pricing/ganancia_a_precio` (la misma que se agregó para el
+  precio editable de Batalla) para recalcular la ganancia por venta al
+  vuelo, y la muestra ahí mismo — sin esto, cambiar el escalón sin recargar
+  la página hubiera dejado la ganancia vieja, un dato que ya no
+  correspondería a lo que se está por crear. El precio también dispara el
+  mismo recálculo si se edita.
+- Al confirmar, usa directamente la ganancia ya recalculada en pantalla
+  (`PE_DUPLICAR_CTX.pub.ganancia_venta`) en vez de pedirla de nuevo — ya
+  está actualizada por el listener de cambio.
+- El `confirm()` final ahora también muestra el escalón elegido en texto
+  legible (ej. "9 cuotas"), no solo precio y título.
+
+`PE_DUPLICAR_CTX.pub` pasó a guardarse como copia (`{...pub}`) en vez de
+la referencia original, para que actualizar la ganancia ahí no pise por
+accidente el `pub` que todavía usa la tabla de resultados de arriba.
+
+Verificado en vivo: `/ganancia_a_precio` con comisión 16%/cuotas 13,4%
+(escalón "6 cuotas" real de MLA1932975847) da `$15.597,41` de ganancia a
+$59.999 — consistente con la fórmula. 56 tests siguen pasando.
+
 ## Sprints
 
 | Sprint | Contenido | Estado |
