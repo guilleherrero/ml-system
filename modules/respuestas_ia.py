@@ -16,8 +16,11 @@ from __future__ import annotations
 import logging
 import os
 import re
+from datetime import datetime, timedelta
 
 import requests
+
+from core.db_storage import db_load, db_save
 
 _logger = logging.getLogger(__name__)
 
@@ -27,6 +30,18 @@ MODELO = 'claude-sonnet-4-6'
 # Tope de preguntas que se mandan a generar por corrida. Cada una es una llamada
 # a la IA: sin tope, una avalancha de preguntas se traduce en una factura.
 MAX_POR_CORRIDA = 5
+
+# Tope de llamadas a la IA por dia para el job automatico de preguntas. Pasado
+# el tope, la pregunta igual llega al celular, solo que sin sugerencias.
+# ~150 llamadas de Sonnet son del orden de US$2.
+MAX_LLAMADAS_POR_DIA = 150
+
+# Opciones ya generadas, por question_id. El job corre cada 15 minutos y solo
+# marca una pregunta como avisada si Telegram acepto el mensaje: sin este cache,
+# un envio que falla regeneraba las respuestas con la IA en cada corrida.
+CACHE_PATH = os.path.join(os.path.dirname(__file__), '..', 'data',
+                          'respuestas_ia_cache.json')
+CACHE_DIAS = 8
 
 _PROMPT = """Sos vendedor experto de MercadoLibre Argentina. Generás 3 respuestas distintas para la misma pregunta de comprador.
 
@@ -97,6 +112,53 @@ def generar_opciones(pregunta: str, item_titulo: str = '',
         cuerpo = (m.group(1).strip() if m else '')
         if cuerpo:
             opciones.append({'key': key, 'label': label, 'text': cuerpo})
+    return opciones
+
+
+def _cache() -> dict:
+    d = db_load(CACHE_PATH) or {}
+    limite = (datetime.now() - timedelta(days=CACHE_DIAS)).isoformat(timespec='seconds')
+    d['preguntas'] = {qid: v for qid, v in (d.get('preguntas') or {}).items()
+                      if (v.get('ts') or '') >= limite}
+    return d
+
+
+def opciones_para_pregunta(question_id, pregunta: str, item_titulo: str = '',
+                           item_descripcion: str = '',
+                           on_tokens=None) -> list[dict]:
+    """Como generar_opciones, pero para el job automatico: una sola llamada a la
+    IA por pregunta y como mucho MAX_LLAMADAS_POR_DIA por dia.
+
+    Si la pregunta ya tiene opciones generadas, las devuelve sin llamar a la IA.
+    Si se paso el tope diario, devuelve [] y la pregunta sale sin sugerencias.
+    """
+    qid = str(question_id)
+    d = _cache()
+    previas = d['preguntas'].get(qid)
+    if previas and previas.get('opciones'):
+        return previas['opciones']
+
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    uso = d.get('uso') or {}
+    if uso.get('fecha') != hoy:
+        uso = {'fecha': hoy, 'llamadas': 0}
+    if uso['llamadas'] >= MAX_LLAMADAS_POR_DIA:
+        _logger.warning('[respuestas_ia] tope diario de %s llamadas alcanzado, '
+                        'pregunta %s sin sugerencias', MAX_LLAMADAS_POR_DIA, qid)
+        return []
+
+    # Se cuenta el intento aunque falle: si la IA falla en cada corrida, el tope
+    # tambien corta ese reintento.
+    uso['llamadas'] += 1
+    d['uso'] = uso
+    opciones = generar_opciones(pregunta, item_titulo, item_descripcion, on_tokens)
+    if opciones:
+        d['preguntas'][qid] = {'opciones': opciones,
+                               'ts': datetime.now().isoformat(timespec='seconds')}
+    try:
+        db_save(CACHE_PATH, d)
+    except Exception as e:
+        _logger.error('[respuestas_ia] no se pudo guardar el cache: %s', e)
     return opciones
 
 

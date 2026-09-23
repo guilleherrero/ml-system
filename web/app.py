@@ -18020,9 +18020,9 @@ def _enviar_preguntas_a_telegram(alias, preguntas, client):
             continue
         titulo = respuestas_ia.titulo_item(item_id, token) if item_id else ''
         desc   = respuestas_ia.descripcion_item(item_id, token) if item_id else ''
-        opciones = respuestas_ia.generar_opciones(
-            texto, titulo, desc,
-            on_tokens=lambda m, i, o: _log_token_usage('Preguntas — 3 opciones', m, i, o))
+        opciones = respuestas_ia.opciones_para_pregunta(
+            q.get('id'), texto, titulo, desc,
+            on_tokens=lambda m, i, o: _log_token_usage('Preguntas — 3 opciones (auto)', m, i, o))
         if telegram_bot.notificar_pregunta(alias, q.get('id'), texto,
                                            item_id=item_id, item_titulo=titulo,
                                            opciones=opciones,
