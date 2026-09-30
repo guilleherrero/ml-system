@@ -22,6 +22,11 @@ def _resolve_database_url() -> str:
         # SQLAlchemy 2.x exige el scheme postgresql:// en lugar del legacy postgres://
         if url.startswith('postgres://'):
             url = 'postgresql://' + url[len('postgres://'):]
+        # Driver explicito: desde SQLAlchemy 2.1 el default de postgresql:// es
+        # psycopg (v3), que no esta instalado — solo psycopg2-binary. Sin esto,
+        # un rebuild que trae 2.1 rompe todo lo que usa este engine.
+        if url.startswith('postgresql://'):
+            url = 'postgresql+psycopg2://' + url[len('postgresql://'):]
         if 'sslmode' not in url:
             url += ('&' if '?' in url else '?') + 'sslmode=require'
         return url
