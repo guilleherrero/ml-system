@@ -123,6 +123,7 @@
     </div>
   </div>
 
+  {% include '_pricing_guia.html' %}
   <div class="row">
     <div class="col-lg-5">
       <div id="peFaltantes"></div>
@@ -146,28 +147,7 @@
           </div>
         </div>
 
-        <div class="pc-card">
-          <div class="pc-card-header">Objetivo</div>
-          <div class="pc-card-body">
-            <div class="row g-2">
-              <div class="col-5">
-                <label class="pc-etiqueta d-block">Modo</label>
-                <select class="form-select form-select-sm" id="peModo">
-                  <option value="roi">ROI</option>
-                  <option value="margen">Margen</option>
-                </select>
-              </div>
-              <div class="col-3">
-                <label class="pc-etiqueta d-block">Objetivo %</label>
-                <input type="number" step="0.1" class="form-control form-control-sm" id="peObjetivo" value="120">
-              </div>
-              <div class="col-4">
-                <label class="pc-etiqueta d-block">Piso %</label>
-                <input type="number" step="0.1" class="form-control form-control-sm" id="pePiso" value="60">
-              </div>
-            </div>
-          </div>
-        </div>
+        {% with p='pe' %}{% include '_pricing_objetivo.html' %}{% endwith %}
 
         <div class="pc-card">
           <div class="pc-card-header">Las 3 publicaciones <span class="pc-etiqueta" id="peComisionEtq"></span></div>
@@ -578,6 +558,7 @@ function renderResultados(d) {
   PE_ULTIMO_RESULTADO = d;
 
   const nombres = [0, 1, 2].map(i => document.getElementById('peNombre' + i).value);
+  if (window.pcRenderReferencias) pcRenderReferencias(d, nombres);
   let html = '';
   (d.faltantes || []).forEach(f => {
     html += `<div class="pc-faltante"><i class="bi bi-exclamation-triangle me-1"></i><strong>${f.dato}:</strong> ${f.consecuencia}</div>`;

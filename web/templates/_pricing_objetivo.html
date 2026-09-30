@@ -1,0 +1,109 @@
+{# Tarjeta "Cuánto querés ganar" — compartida por /pricing/nuevo y /pricing/existente.
+   Uso: {% with p='pe' %}{% include '_pricing_objetivo.html' %}{% endwith %}
+   Mantiene los ids {p}Modo / {p}Objetivo / {p}Piso que ya lee el JS de cada pantalla,
+   y lee {p}Costo para traducir los % a pesos. #}
+<div class="pc-card">
+  <div class="pc-card-header d-flex justify-content-between align-items-center">
+    <span>Cuánto querés ganar</span>
+    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" style="font-size:.7rem;text-transform:none;letter-spacing:0"
+            data-bs-toggle="collapse" data-bs-target="#pcGuia"><i class="bi bi-question-circle me-1"></i>¿Cómo se usa?</button>
+  </div>
+  <div class="pc-card-body">
+    <div class="mb-2">
+      <label class="pc-etiqueta d-block">Medir la ganancia como</label>
+      <select class="form-select form-select-sm" id="{{ p }}Modo">
+        <option value="roi">ROI — % sobre lo que te cuesta el producto</option>
+        <option value="margen">Margen — % sobre el precio de venta</option>
+      </select>
+    </div>
+    <div class="row g-2">
+      <div class="col-6">
+        <label class="pc-etiqueta d-block">Objetivo % <span class="text-muted">(lo que querés ganar)</span></label>
+        <input type="number" step="0.1" min="0" class="form-control form-control-sm" id="{{ p }}Objetivo" value="120">
+      </div>
+      <div class="col-6">
+        <label class="pc-etiqueta d-block">Piso % <span class="text-muted">(lo mínimo que aceptás)</span></label>
+        <input type="number" step="0.1" min="0" class="form-control form-control-sm" id="{{ p }}Piso" value="60">
+      </div>
+    </div>
+    <div class="pc-sub-metric mt-2" id="{{ p }}ObjetivoAyuda"></div>
+    <div class="mt-1" id="{{ p }}ObjetivoAviso"></div>
+    <div class="mt-2" id="{{ p }}Referencias"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const P = '{{ p }}';
+  const $ = id => document.getElementById(P + id);
+  // Puntos de partida por modo. Al cambiar de modo NO se conserva el número:
+  // 120 de ROI es razonable, 120 de margen es imposible (más que el precio).
+  const DEFAULTS = {roi: {objetivo: 120, piso: 60}, margen: {objetivo: 30, piso: 15}};
+  let modoAnterior = $('Modo').value;
+
+  const plata = v => '$' + Math.round(v).toLocaleString('es-AR');
+
+  function actualizarAyuda() {
+    const modo = $('Modo').value;
+    const obj = parseFloat($('Objetivo').value);
+    const piso = parseFloat($('Piso').value);
+    const costoEl = $('Costo');
+    const costo = costoEl ? parseFloat(costoEl.value) : NaN;
+    const ayuda = $('ObjetivoAyuda');
+    const aviso = $('ObjetivoAviso');
+
+    if (modo === 'roi') {
+      ayuda.innerHTML = (costo > 0 && obj >= 0 && piso >= 0)
+        ? `Con un costo de <strong>${plata(costo)}</strong>: el objetivo es ganar <strong>${plata(costo * obj / 100)}</strong> por venta y el piso <strong>${plata(costo * piso / 100)}</strong> (limpio, después de comisión, cuotas, envío e impuestos).`
+        : 'ROI = ganancia ÷ costo. Ej.: 100% es ganar por venta lo mismo que te costó el producto.';
+    } else {
+      ayuda.innerHTML = (obj >= 0 && piso >= 0)
+        ? `El objetivo es quedarte con el <strong>${obj}%</strong> de cada precio y el piso con el <strong>${piso}%</strong>, limpio. Ej.: vendiendo a $50.000 serían ${plata(50000 * obj / 100)} y ${plata(50000 * piso / 100)}.`
+        : 'Margen = ganancia ÷ precio de venta.';
+    }
+
+    const avisos = [];
+    if (piso > obj) avisos.push('El piso es mayor que el objetivo: el piso tiene que ser lo mínimo, no más que lo que querés ganar.');
+    if (modo === 'margen' && obj >= 60) avisos.push('Un margen de 60% o más casi nunca es posible en ML: entre comisión, cuotas e impuestos ya se va un 25–45% del precio.');
+    if (modo === 'margen' && piso < 15) avisos.push('Tu regla general es no bajar de 15% de margen; este piso la rompe.');
+    if (modo === 'roi' && piso < 20) avisos.push('Un piso de ROI menor a 20% deja muy poco colchón para devoluciones y reclamos.');
+    aviso.innerHTML = avisos.map(a => `<div class="pc-bandera pc-bandera-warn d-block mb-1">${a}</div>`).join('');
+  }
+
+  $('Modo').addEventListener('change', function () {
+    const nuevo = this.value;
+    const ant = DEFAULTS[modoAnterior];
+    // Solo se reemplazan los valores si venían de los defaults del otro modo
+    // o si no tienen sentido en el nuevo; si el usuario ya puso números para
+    // este modo, se respetan.
+    const obj = parseFloat($('Objetivo').value);
+    if (nuevo !== modoAnterior && (obj === ant.objetivo || (nuevo === 'margen' && obj >= 100))) {
+      $('Objetivo').value = DEFAULTS[nuevo].objetivo;
+      $('Piso').value = DEFAULTS[nuevo].piso;
+    }
+    modoAnterior = nuevo;
+    actualizarAyuda();
+  });
+  ['Objetivo', 'Piso', 'Costo'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('input', actualizarAyuda);
+  });
+  document.addEventListener('DOMContentLoaded', actualizarAyuda);
+  actualizarAyuda();
+
+  // Llamada por cada pantalla después de calcular, con la respuesta de /api/pricing/calcular.
+  window.pcRenderReferencias = function (d, nombres) {
+    const cont = $('Referencias');
+    if (!cont || !d.referencias) return;
+    let html = '<div class="pc-etiqueta mb-1">Tus precios de referencia</div>' +
+      '<table class="table table-sm pc-result-table mb-1"><thead><tr><th>Publicación</th>' +
+      '<th class="text-end">Precio objetivo</th><th class="text-end">Precio piso</th></tr></thead><tbody>';
+    d.referencias.forEach((r, i) => {
+      const celda = x => x ? `${plata(x.precio)}<div class="pc-sub-metric">ganás ${plata(x.ganancia)}</div>` : '<span class="text-danger">no viable</span>';
+      html += `<tr><td>${nombres[i] || ''}</td><td class="text-end">${celda(r.objetivo)}</td><td class="text-end">${celda(r.piso)}</td></tr>`;
+    });
+    html += '</tbody></table><div class="pc-sub-metric">Cada publicación tiene su propio precio porque paga distinta comisión y cuotas. Ninguna estrategia pone un precio debajo del piso.</div>';
+    cont.innerHTML = html;
+  };
+})();
+</script>

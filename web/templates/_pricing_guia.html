@@ -1,0 +1,89 @@
+{# Guía de Objetivo, Piso y Modo — compartida por /pricing/nuevo y /pricing/existente.
+   Los números del ejemplo salen de modules/precio_motor.py (costo $20.000, comisión 14%,
+   IIBB 3%, percepción IVA 7%, envío $5.000, redondeo a 999, competidor $52.000).
+   Si cambia el motor, recalcularlos con pm.estrategia() antes de tocar el texto. #}
+<div class="collapse mb-3" id="pcGuia">
+  <div class="pc-card">
+    <div class="pc-card-header d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-book me-1"></i>Guía: Objetivo, Piso y Modo</span>
+      <button type="button" class="btn-close" style="font-size:.6rem" data-bs-toggle="collapse" data-bs-target="#pcGuia" aria-label="Cerrar"></button>
+    </div>
+    <div class="pc-card-body pc-guia">
+
+      <h6>1. Qué es cada cosa</h6>
+      <table class="table table-sm mb-3">
+        <tbody>
+          <tr><th style="width:26%">Modo</th><td>Con qué vara medís la ganancia. <strong>ROI</strong> la compara con lo que te costó el producto. <strong>Margen</strong> la compara con el precio al que lo vendés. Es la misma plata, contada de dos formas.</td></tr>
+          <tr><th>Objetivo %</th><td>Lo que querés ganar en cada venta cuando no hay apuro. Es el precio "normal" de tus publicaciones.</td></tr>
+          <tr><th>Piso %</th><td>Lo mínimo que aceptás ganar para salir a pelear precio. Ninguna estrategia pone un precio por debajo del piso, aunque eso signifique no ganarle al competidor.</td></tr>
+        </tbody>
+      </table>
+      <p class="mb-3">Siempre es ganancia <strong>limpia</strong>: ya descontados comisión, costo de cuotas, IIBB, percepción de IVA, envío o cargo fijo, y el costo del producto.</p>
+
+      <h6>2. Cómo se calcula</h6>
+      <div class="pc-guia-formula mb-2">
+        <div><strong>ROI</strong> = ganancia ÷ costo del producto</div>
+        <div><strong>Margen</strong> = ganancia ÷ precio de venta</div>
+        <div class="mt-1"><strong>Precio</strong> = (costo + ganancia buscada + envío o cargo fijo) ÷ (1 − % de cargos)</div>
+      </div>
+      <p class="mb-1">Ejemplo con un producto que te cuesta <strong>$20.000</strong>, en la publicación Batalla (comisión 14% + IIBB 3% + percepción 7% = <strong>24% de cargos</strong>, más $5.000 de envío porque queda arriba de $33.000):</p>
+      <table class="table table-sm mb-2">
+        <thead><tr><th></th><th>Buscás ganar</th><th class="text-end">Precio exacto</th><th class="text-end">Precio final (…999)</th><th class="text-end">Ganás</th></tr></thead>
+        <tbody>
+          <tr><td>ROI 120% (objetivo)</td><td>$20.000 × 120% = $24.000</td><td class="text-end">(20.000 + 24.000 + 5.000) ÷ 0,76 = $64.474</td><td class="text-end">$64.999</td><td class="text-end">$24.399</td></tr>
+          <tr><td>ROI 60% (piso)</td><td>$20.000 × 60% = $12.000</td><td class="text-end">(20.000 + 12.000 + 5.000) ÷ 0,76 = $48.684</td><td class="text-end">$48.999</td><td class="text-end">$12.239</td></tr>
+          <tr><td>Margen 30% (objetivo)</td><td>30% del precio</td><td class="text-end">(20.000 + 5.000) ÷ (1 − 0,24 − 0,30) = $54.348</td><td class="text-end">$54.999</td><td class="text-end">$16.799</td></tr>
+          <tr><td>Margen 15% (piso)</td><td>15% del precio</td><td class="text-end">(20.000 + 5.000) ÷ (1 − 0,24 − 0,15) = $40.984</td><td class="text-end">$40.999</td><td class="text-end">$6.159</td></tr>
+        </tbody>
+      </table>
+      <p class="mb-3">El precio final se redondea hacia arriba a …999, por eso la ganancia real queda un poco arriba de la buscada. Medio y Compensa dan precios más altos con el mismo % porque pagan costo de cuotas: cada publicación tiene su propio precio objetivo y piso (los ves en "Tus precios de referencia" después de calcular).</p>
+
+      <h6>3. Cómo los usa cada estrategia</h6>
+      <table class="table table-sm mb-2">
+        <thead><tr><th>Estrategia</th><th>Batalla</th><th>Medio y Compensa</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pc-goal-badge pc-goal-rent">Máxima rentabilidad</span></td><td>Objetivo</td><td>Objetivo</td></tr>
+          <tr><td><span class="pc-goal-badge pc-goal-comp">Competir</span></td><td>Baja a 1% debajo del competidor más barato, nunca debajo del piso. Si tu objetivo ya es más barato que el competidor, se queda en el objetivo</td><td>Objetivo</td></tr>
+          <tr><td><span class="pc-goal-badge pc-goal-vel">Velocidad</span></td><td>Igual que en Competir</td><td>Bajan hasta ganar los mismos pesos que la Batalla, sin romper su piso</td></tr>
+        </tbody>
+      </table>
+      <p class="mb-3">Con el ejemplo de ROI 120/60 y un competidor a <strong>$52.000</strong>, la Batalla queda en <strong>$50.999</strong> en Competir y en Velocidad, porque está arriba del piso de $48.999. Si el competidor estuviera a $45.000, la Batalla se queda en el piso ($48.999) y la pantalla avisa que tu piso no te deja ganarle.</p>
+
+      <h6>4. ¿ROI o Margen?</h6>
+      <table class="table table-sm mb-3">
+        <tbody>
+          <tr><th style="width:26%">Usá ROI</th><td>Cuando pensás en <strong>cuánto rinde la plata que pusiste en mercadería</strong>. Es lo natural para productos importados: invertís $X en el lote y querés saber cuánto te devuelve. Sirve para comparar productos con costos muy distintos.</td></tr>
+          <tr><th>Usá Margen</th><td>Cuando pensás en <strong>qué parte de cada venta te queda</strong>. Es más fácil de comparar con la competencia y con tus gastos fijos (sueldos, alquiler), que se miran como % de lo que facturás. Tu regla general es no bajar de <strong>15% de margen</strong>.</td></tr>
+        </tbody>
+      </table>
+      <p class="mb-3">Equivalencia rápida: con costo $20.000, un ROI de 120% a $64.999 es un margen de 37,5%; un margen de 30% a $54.999 es un ROI de 84%. No cambies de modo a mitad de una prueba de precio: compará siempre con la misma vara.</p>
+
+      <h6>5. En qué escenario usar cada combinación</h6>
+      <table class="table table-sm mb-2">
+        <thead><tr><th>Situación</th><th>Estrategia</th><th>ROI obj. / piso</th><th>Margen obj. / piso</th></tr></thead>
+        <tbody>
+          <tr><td>Producto que ya vende bien, sin competencia fuerte</td><td>Máxima rentabilidad</td><td>120–150% / 60%</td><td>30–35% / 20%</td></tr>
+          <tr><td>Un competidor te está sacando ventas con precio</td><td>Competir</td><td>100–120% / 50–60%</td><td>25–30% / 15–20%</td></tr>
+          <tr><td>Lanzamiento: necesitás ventas y opiniones rápido</td><td>Velocidad</td><td>80–100% / 40%</td><td>20–25% / 15%</td></tr>
+          <tr><td>Stock parado o fin de temporada</td><td>Velocidad</td><td>60–80% / 20–30%</td><td>15–20% / 10–15%</td></tr>
+          <tr><td>Producto caro, poca rotación, mucho capital inmovilizado</td><td>Máxima rentabilidad</td><td>80–100% / 50%</td><td>25–30% / 15–20%</td></tr>
+          <tr><td>Temporada alta (Hot Sale, Día de la Madre, Navidad)</td><td>Máxima rentabilidad o Competir</td><td>subí el objetivo 10–20 puntos</td><td>subí el objetivo 3–5 puntos</td></tr>
+        </tbody>
+      </table>
+      <p class="pc-sub-metric mb-3">Son puntos de partida, no reglas: ajustalos con los resultados. El seguimiento de experimentos te dice a los 7 y 14 días si el cambio convino.</p>
+
+      <h6>6. Errores comunes</h6>
+      <ul class="mb-0">
+        <li><strong>Pasar de ROI a Margen dejando el mismo número.</strong> 120% de ROI es normal; 120% de margen es imposible. Al cambiar de modo, la pantalla pone valores típicos del nuevo modo.</li>
+        <li><strong>Piso igual al objetivo.</strong> Competir y Velocidad no tienen margen para bajar: las tres estrategias dan casi lo mismo.</li>
+        <li><strong>Piso demasiado bajo.</strong> Te deja sin colchón para devoluciones, reclamos y el costo de reponer el stock más caro.</li>
+        <li><strong>Olvidar el umbral de envío.</strong> Bajar de $33.000 cambia el envío por el cargo fijo, y la ganancia se mueve de golpe. La pantalla avisa cuando un precio queda justo debajo.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<style>
+.pc-guia h6 { font-size:.8rem; font-weight:700; margin-bottom:.4rem; color:var(--color-neutral-800); }
+.pc-guia, .pc-guia .table { font-size:.8rem; }
+.pc-guia-formula { background:var(--color-neutral-50); border:1px solid var(--color-neutral-100); border-radius:8px; padding:.5rem .75rem; font-family:ui-monospace,Menlo,monospace; font-size:.78rem; }
+</style>

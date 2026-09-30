@@ -9587,6 +9587,24 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
         obj = pm.Objetivo(modo=modo, objetivo=float(obj_in.get('objetivo')), piso=float(obj_in.get('piso')))
     except (TypeError, ValueError):
         return None, 'Faltan objetivo o piso.'
+    if obj.piso > obj.objetivo:
+        return None, ('El piso no puede ser mayor que el objetivo: el piso es lo mínimo '
+                      'que aceptás ganar y el objetivo lo que querés ganar.')
+
+    # Precio al que llega cada publicación con la ganancia objetivo y con la
+    # del piso, para que la pantalla muestre qué significa cada % en pesos.
+    referencias = []
+    for pub in pubs:
+        ref = {}
+        for clave, p in (('objetivo', pm.precio_objetivo(pub, c, costo, obj)),
+                         ('piso', pm.precio_piso_objetivo(pub, c, costo, obj))):
+            if math.isfinite(p):
+                p = pm.redondear_arriba(p, c)
+                g = pm.ganancia_publicacion(p, pub, c, costo)
+                ref[clave] = {'precio': round(p, 2), 'ganancia': round(g, 2)}
+            else:
+                ref[clave] = None
+        referencias.append(ref)
 
     try:
         competidor_min = float(body.get('competidor_min') or 0)
@@ -9677,7 +9695,7 @@ def _pricing_calcular_core(body: dict) -> tuple[dict | None, str | None]:
     return {'estrategias': resultado, 'faltantes': faltantes, 'costo': costo,
             'competidor_min': competidor_min, 'competidor_max': competidor_max,
             'publicidad_total': publicidad_total, 'perfiles': perfiles_in, 'objetivo': obj_in,
-            'g_dia_hoy': g_dia_hoy}, None
+            'referencias': referencias, 'g_dia_hoy': g_dia_hoy}, None
 
 
 @app.route('/api/pricing/calcular', methods=['POST'])

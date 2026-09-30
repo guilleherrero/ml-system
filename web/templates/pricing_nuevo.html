@@ -38,6 +38,7 @@
   </div>
 </div>
 
+{% include '_pricing_guia.html' %}
 <div class="row">
   <div class="col-lg-5">
     <form id="pcForm">
@@ -60,28 +61,7 @@
         </div>
       </div>
 
-      <div class="pc-card">
-        <div class="pc-card-header">Objetivo</div>
-        <div class="pc-card-body">
-          <div class="row g-2">
-            <div class="col-5">
-              <label class="pc-etiqueta d-block">Modo</label>
-              <select class="form-select form-select-sm" id="pcModo">
-                <option value="roi">ROI</option>
-                <option value="margen">Margen</option>
-              </select>
-            </div>
-            <div class="col-3">
-              <label class="pc-etiqueta d-block">Objetivo %</label>
-              <input type="number" step="0.1" class="form-control form-control-sm" id="pcObjetivo" value="120">
-            </div>
-            <div class="col-4">
-              <label class="pc-etiqueta d-block">Piso %</label>
-              <input type="number" step="0.1" class="form-control form-control-sm" id="pcPiso" value="60">
-            </div>
-          </div>
-        </div>
-      </div>
+      {% with p='pc' %}{% include '_pricing_objetivo.html' %}{% endwith %}
 
       <div class="pc-card">
         <div class="pc-card-header">Las 3 publicaciones</div>
@@ -252,6 +232,7 @@ document.getElementById('pcForm').addEventListener('submit', function (e) {
 
 function render(d) {
   const nombres = [0, 1, 2].map(i => document.getElementById('pcNombre' + i).value);
+  if (window.pcRenderReferencias) pcRenderReferencias(d, nombres);
   let html = '';
 
   (d.faltantes || []).forEach(f => {
