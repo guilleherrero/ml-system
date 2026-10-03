@@ -11,10 +11,18 @@
         "source": "github",
         "repo": "addyosmani/agent-skills"
       }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
     }
   },
   "enabledPlugins": {
     "ponytail@ponytail": true,
-    "agent-skills@addy-agent-skills": true
+    "agent-skills@addy-agent-skills": true,
+    "security-guidance@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
   }
 }
