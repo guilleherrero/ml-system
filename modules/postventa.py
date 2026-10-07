@@ -516,4 +516,4 @@ def proyeccion_reclamos(client, alias: str) -> dict:
     return {**proyeccion(reclamos, m['permitidos'], m['base'], hoy),
             'reclamos': reclamos, 'ml_informa': m['valor'],
             'protegido_hasta': (rep.get('protegido_hasta') or '')[:10] or None,
-            'limite_pct': m['limite_pct']}
+            'limite_pct': m['limite_pct'], 'base': m['base'], 'hoy_fecha': hoy}

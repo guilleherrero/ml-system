@@ -144,32 +144,89 @@ async function cargarReputacion() {
 
 // ── Proyección: cuándo dejan de contar los reclamos ────────────
 const fechaDia = s => s ? new Date(s + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit'}) : '';
+let PROY = null;
 async function cargarProyeccion() {
   $('rep-proy').innerHTML = '<div class="rp-cargando">Calculando cuándo dejan de contar tus reclamos… (la primera vez tarda)</div>';
   const j = await api(`/api/postventa/${A}/proyeccion`);
   if (!j.ok) { $('rep-proy').innerHTML = `<div class="small text-danger">No se pudo calcular la proyección: ${esc(j.error)}</div>`; return; }
-  const p = j.data;
+  PROY = j.data;
+  PROY.ritmo = Math.round(PROY.base / 60);
+  pintarProyeccion(PROY.ritmo);
+}
+
+// La tasa es reclamos / ventas de los últimos 60 días. Si a partir de hoy
+// vendés 'vd' por día, cada día sale de la ventana un día de ventas viejas
+// (base/60) y entra uno nuevo (vd): la base cambia y con ella cuántos
+// reclamos tolera ML.
+function simular(vd) {
+  const p = PROY, lim = p.limite_pct / 100, diaViejo = p.base / 60;
+  const dias = f => Math.round((new Date(f + 'T12:00:00') - new Date(p.hoy_fecha + 'T12:00:00')) / 864e5);
+  const baseEn = f => p.base + (vd - diaViejo) * Math.min(Math.max(dias(f), 0), 60);
+  const permitidosEn = f => Math.floor(lim * baseEn(f) + 1e-9);
+  const fechas = [...new Set(p.reclamos.map(r => r.deja_de_contar).filter(f => f && f >= p.hoy_fecha))].sort();
+  let cuentan = p.reclamos.length;
+  const pasos = fechas.map(f => {
+    cuentan -= p.reclamos.filter(r => r.deja_de_contar === f).length;
+    const base = baseEn(f), perm = permitidosEn(f);
+    return {fecha: f, cuentan, base: Math.round(base), permitidos: perm,
+            tasa: base ? 100 * cuentan / base : 0, dentro: cuentan <= perm};
+  });
+  const yaDentro = p.reclamos.length <= permitidosEn(p.hoy_fecha);
+  // Día por día: con más ventas la tolerancia puede alcanzar antes de que
+  // venza el próximo reclamo.
+  let recupera = null;
+  for (let d = 1; !yaDentro && d <= 60; d++) {
+    const f = new Date(new Date(p.hoy_fecha + 'T12:00:00').getTime() + d * 864e5).toLocaleDateString('en-CA');
+    const c = p.reclamos.filter(r => !r.deja_de_contar || r.deja_de_contar > f).length;
+    if (c <= permitidosEn(f)) { recupera = f; break; }
+  }
   const prot = p.protegido_hasta;
-  const enProt = prot ? p.reclamos.filter(r => r.deja_de_contar > prot).length : null;
+  // Ventas por día que harían falta desde hoy para llegar a la fecha de fin
+  // de la protección ya dentro del límite.
+  let ritmoProt = null;
+  if (prot && prot > p.hoy_fecha) {
+    const t = Math.min(dias(prot), 60);
+    const cuentanProt = p.reclamos.filter(r => !r.deja_de_contar || r.deja_de_contar > prot).length;
+    const baseNecesaria = Math.ceil(cuentanProt / lim - 1e-9);
+    ritmoProt = Math.max(0, Math.ceil(diaViejo + (baseNecesaria - p.base) / t));
+  }
+  return {pasos, yaDentro, recupera, ritmoProt,
+          enProt: prot ? p.reclamos.filter(r => r.deja_de_contar > prot).length : null,
+          permProt: prot ? permitidosEn(prot) : null};
+}
+
+function pintarProyeccion(vd) {
+  const p = PROY, s = simular(vd);
+  const necesarias = Math.ceil(p.hoy / (p.limite_pct / 100));
   let titular;
-  if (p.ya_dentro) titular = `<b class="text-success">Estás dentro del límite:</b> cuentan ${p.hoy} reclamos y el máximo es ${p.permitidos}.`;
-  else if (p.recupera_el) titular = `Hoy cuentan <b>${p.hoy}</b> reclamos y el máximo es <b>${p.permitidos}</b> (${p.limite_pct}%). ` +
-    `Si no entra ningún reclamo nuevo que afecte, <b class="text-success">volvés a estar dentro el ${fechaDia(p.recupera_el)}</b>.`;
-  else titular = `Hoy cuentan <b>${p.hoy}</b> reclamos y el máximo es <b>${p.permitidos}</b>. Con los que vencen en los próximos 60 días no alcanza para volver al límite: hacen falta más ventas sin reclamos.`;
-  const filas = p.pasos.map(x => {
+  if (s.yaDentro) titular = `<b class="text-success">Estás dentro del límite:</b> cuentan ${p.hoy} reclamos y con tus ventas ML tolera ${p.permitidos}.`;
+  else if (s.recupera) titular = `Hoy cuentan <b>${p.hoy}</b> reclamos sobre <b>${p.base}</b> ventas: ML tolera <b>${p.permitidos}</b> (${p.limite_pct}%). ` +
+    `Vendiendo <b>${vd} por día</b> y sin reclamos nuevos que afecten, <b class="text-success">volvés a estar dentro el ${fechaDia(s.recupera)}</b>.`;
+  else titular = `Hoy cuentan <b>${p.hoy}</b> reclamos. A ${vd} ventas por día no alcanza para volver al límite en los próximos 60 días.`;
+  const filas = s.pasos.map(x => {
     const vencen = p.reclamos.filter(r => r.deja_de_contar === x.fecha);
     return `<tr class="${x.dentro ? 'table-success' : ''}"><td class="text-nowrap"><b>${fechaDia(x.fecha)}</b></td>
       <td>${vencen.map(r => `${esc(r.motivo || 'Reclamo')} <span class="text-muted">· abierto el ${fechaDia(r.abierto.slice(0, 10))}${r.estado === 'opened' ? ' · todavía abierto' : ''}</span>`).join('<br>')}</td>
-      <td class="text-end">${x.cuentan}</td><td class="text-end">${x.tasa_pct}%</td><td>${x.dentro ? '✓ dentro' : ''}</td></tr>`;
+      <td class="text-end">${x.cuentan}</td><td class="text-end">${x.base}</td><td class="text-end">${x.permitidos}</td>
+      <td class="text-end">${x.tasa.toFixed(2)}%</td><td>${x.dentro ? '✓ dentro' : ''}</td></tr>`;
   }).join('');
   $('rep-proy').innerHTML = `<div class="border rounded p-3" style="background:var(--color-neutral-50)">
     <div class="fw-bold mb-1"><i class="bi bi-calendar-check me-1"></i>¿Cuándo te recuperás en reclamos?</div>
     <div class="small">${titular}</div>
-    ${prot && enProt !== null && !p.ya_dentro ? `<div class="small mt-1">Tu protección termina el <b>${fechaDia(prot)}</b>: ese día van a contar ${enProt} reclamo${enProt === 1 ? '' : 's'}${enProt <= p.permitidos ? ' — <b class="text-success">ya dentro del límite</b>' : ' — <b class="text-danger">todavía por encima del límite</b>'}.</div>` : ''}
+    <div class="small mt-1">El porcentaje es reclamos ÷ ventas de los últimos 60 días: <b>cada ${Math.round(100 / p.limite_pct)} ventas te dan 1 reclamo más de tolerancia</b>.
+      ${s.yaDentro ? '' : `Para estar dentro hoy con ${p.hoy} reclamos harían falta ${necesarias} ventas en 60 días (tenés ${p.base}).`}</div>
+    <div class="d-flex align-items-center gap-2 mt-2 small flex-wrap">
+      <label for="ritmo">Si vendés por día:</label>
+      <input id="ritmo" type="number" min="0" step="1" value="${vd}" class="form-control form-control-sm" style="width:90px"
+             onchange="pintarProyeccion(Math.max(0, +this.value || 0))">
+      <span class="text-muted">tu ritmo de los últimos 60 días es ${p.ritmo} por día</span>
+      ${[p.ritmo, Math.round(p.ritmo * 1.25), Math.round(p.ritmo * 1.5)].map((v, i) => `<button class="btn btn-sm ${v === vd ? 'btn-dark' : 'btn-outline-secondary'}" onclick="pintarProyeccion(${v})">${['Igual que ahora', '+25%', '+50%'][i]} (${v})</button>`).join('')}
+    </div>
+    ${p.protegido_hasta && !s.yaDentro ? `<div class="small mt-2">Tu protección termina el <b>${fechaDia(p.protegido_hasta)}</b>: ese día van a contar ${s.enProt} reclamo${s.enProt === 1 ? '' : 's'} y ML va a tolerar ${s.permProt}${s.enProt <= s.permProt ? ' — <b class="text-success">ya dentro del límite</b>' : ' — <b class="text-danger">todavía por encima del límite</b>'}${s.enProt > s.permProt && s.ritmoProt ? `. Para llegar a esa fecha dentro del límite necesitás vender unas <b>${s.ritmoProt} por día</b> desde hoy` : ''}.</div>` : ''}
     ${p.ml_informa !== p.hoy ? `<div class="small text-muted mt-1">ML informa ${p.ml_informa} reclamos; acá se cuentan ${p.hoy} (ML puede excluir alguno por su cuenta).</div>` : ''}
-    ${filas ? `<details class="mt-2"${p.ya_dentro ? '' : ' open'}><summary class="small">Qué reclamo deja de contar cada día (cada uno cuenta 60 días desde que se abrió)</summary>
-      <table class="table table-sm small mt-2 mb-0"><thead><tr><th>Fecha</th><th>Deja de contar</th><th class="text-end">Cuentan</th><th class="text-end">Tasa</th><th></th></tr></thead><tbody>${filas}</tbody></table>
-      <div class="small text-muted mt-1">Supone que tu volumen de ventas se mantiene. Si vendés más, bajás antes; cada reclamo nuevo que afecte suma 60 días más.</div></details>` : ''}
+    ${filas ? `<details class="mt-2"${s.yaDentro ? '' : ' open'}><summary class="small">Qué reclamo deja de contar cada día (cada uno cuenta 60 días desde que se abrió)</summary>
+      <table class="table table-sm small mt-2 mb-0"><thead><tr><th>Fecha</th><th>Deja de contar</th><th class="text-end">Cuentan</th><th class="text-end">Ventas 60 d</th><th class="text-end">Tolera</th><th class="text-end">Tasa</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+      <div class="small text-muted mt-1">Cada reclamo nuevo que afecte suma 60 días más.</div></details>` : ''}
   </div>`;
 }
 
