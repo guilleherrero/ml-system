@@ -209,7 +209,14 @@ def _get_o_vacio(client, path, params=None):
 
 def detalle_reclamo(client, claim_id) -> dict:
     cid = _num(claim_id, 'Reclamo')
-    claim = client._get(f'{CLAIMS}/{cid}')
+    try:
+        claim = client._get(f'{CLAIMS}/{cid}')
+    except MLApiError as e:
+        if e.status_code in (403, 404):
+            # Pasa, por ejemplo, con compras hechas desde la propia cuenta
+            raise ValueError('Mercado Libre no deja ver el detalle de este reclamo por la API. '
+                             'Abrilo directamente en Mercado Libre.')
+        raise
     acciones = {a.get('action') for a in _mis_acciones(claim)}
     out = {
         'claim': claim,

@@ -84,8 +84,10 @@
 <div id="lista-ahora"><div class="rp-vacio">Buscando reclamos, mensajes, preguntas y envíos…</div></div>
 <div class="rp-sec">En curso — esperando al comprador o a Mercado Libre</div>
 <div id="lista-curso"><div class="rp-vacio rp-cargando">…</div></div>
-<div class="rp-sec" id="sec-viejos" style="display:none">Viejos sin responder — más de 7 días</div>
-<div id="lista-viejos"></div>
+<details id="sec-viejos" class="mt-4" style="display:none">
+  <summary class="small text-muted">Ver <span id="n-viejos"></span> mensajes y preguntas de hace más de 7 días — ya no cuentan, el comprador no está esperando</summary>
+  <div id="lista-viejos" class="mt-2"></div>
+</details>
 <div id="errores" class="small text-danger mt-2"></div>
 {% endblock %}
 
@@ -200,7 +202,7 @@ function pintar() {
   const urg = ahora.filter(x => color(x._h, x) === 'rojo').length;
   const cargando = SECCIONES.filter(s => !(s in DATOS));
   $('kpis').innerHTML = [['', `<b>${ahora.length}</b> para resolver` + (urg ? ` · <b class="text-danger">${urg} urgentes</b>` : '')],
-    ['reclamo', `<b>${n('reclamo')}</b> reclamos`], ['envio', `<b>${n('envio')}</b> envíos`],
+    ['reclamo', `<b>${n('reclamo')}</b> reclamos` + (curso.length ? ` <span class="text-muted">(+${curso.length} en curso)</span>` : '')], ['envio', `<b>${n('envio')}</b> envíos`],
     ['mensaje', `<b>${n('mensaje')}</b> mensajes`], ['pregunta', `<b>${n('pregunta')}</b> preguntas`]]
     .map(([t, h]) => `<span class="rp-kpi ${FILTRO === t ? 'on' : ''}" role="button" tabindex="0" onclick="filtrar('${t}')">${h}</span>`).join('') +
     (cargando.length ? `<span class="rp-cargando align-self-center">cargando ${cargando.join(', ')}…</span>` : '');
@@ -208,9 +210,11 @@ function pintar() {
   const vis = ahora.filter(x => !FILTRO || x.tipo === FILTRO);
   $('lista-ahora').innerHTML = vis.length ? vis.map(tarjeta).join('')
     : `<div class="rp-vacio">${cargando.length ? 'Buscando…' : '✓ No hay nada pendiente acá.'}</div>`;
-  $('lista-curso').innerHTML = curso.length ? curso.map(tarjeta).join('')
+  const cursoVis = curso.filter(x => !FILTRO || x.tipo === FILTRO);
+  $('lista-curso').innerHTML = cursoVis.length ? cursoVis.map(tarjeta).join('')
     : `<div class="rp-vacio">${'reclamos' in DATOS ? 'Ningún reclamo esperando a otros.' : 'Buscando…'}</div>`;
   $('sec-viejos').style.display = viejos.length ? '' : 'none';
+  $('n-viejos').textContent = viejos.length;
   $('lista-viejos').innerHTML = viejos.map(tarjeta).join('');
   if (ABIERTO) { const p = $('panel-' + ABIERTO); if (p) abrir(ABIERTO, true); }
 }
@@ -271,7 +275,7 @@ const ESTADO_RES = {pending:'pendiente', accepted:'aceptada', rejected:'rechazad
 
 async function panelReclamo(p, x) {
   const j = await api(`/api/postventa/${A}/reclamo/${encodeURIComponent(x.id)}`);
-  if (!j.ok) { p.innerHTML = `<div class="text-danger small">${esc(j.error)}</div>`; return; }
+  if (!j.ok) { p.innerHTML = `<div class="small">${esc(j.error)} ${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">Abrir la venta en Mercado Libre</a>` : ''}</div>`; return; }
   const d = j.data;
   const quien = {complainant:'Comprador', respondent:'Vos', mediator:'Mercado Libre'};
   const chat = (d.mensajes || []).slice().reverse().map(m => `<div class="rp-msg ${m.sender_role === 'respondent' ? 'yo' : ''}">

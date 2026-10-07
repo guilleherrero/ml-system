@@ -225,3 +225,14 @@ def test_envios_ya_entregados_al_correo_no_figuran_por_despachar():
                     }.get(path, {})
     out = pv.envios_por_despachar(C())
     assert [e['id'] for e in out] == ['20']
+
+
+def test_reclamo_sin_acceso_da_mensaje_claro():
+    # Caso real (2026-10-07): ML responde 403 "User does not have access to claim"
+    from core.ml_client import MLApiError
+
+    class C(FakeClient):
+        def _get(self, path, params=None):
+            raise MLApiError('GET failed: {"code":403}', 403)
+    with pytest.raises(ValueError, match='Abrilo directamente en Mercado Libre'):
+        pv.detalle_reclamo(C(), '5589689450')
