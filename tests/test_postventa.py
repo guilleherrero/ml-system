@@ -207,3 +207,21 @@ def test_un_caso_mas_y_se_pasa_es_amarillo_aunque_la_tasa_sea_baja():
     m = pv.resumen_reputacion({'metrics': {'sales': {'completed': 180},
                                            'claims': {'rate': 0.0111, 'value': 2}}})['metricas'][0]
     assert m['quedan'] == 0 and m['estado'] == 'justo'
+
+
+def test_envios_ya_entregados_al_correo_no_figuran_por_despachar():
+    # Caso real de produccion (2026-10-07): ready_to_ship/in_hub = ya lo dejaste
+    class C(FakeClient):
+        def _get(self, path, params=None):
+            if path == '/orders/search':
+                return {'results': [{'id': 1, 'shipping': {'id': 10}, 'order_items': []},
+                                    {'id': 2, 'shipping': {'id': 20}, 'order_items': []},
+                                    {'id': 3, 'shipping': {'id': 30}, 'order_items': []}]}
+            return {'/shipments/10': {'status': 'ready_to_ship', 'substatus': 'in_hub'},
+                    '/shipments/20': {'status': 'ready_to_ship', 'substatus': 'ready_to_print'},
+                    '/shipments/30': {'status': 'ready_to_ship', 'substatus': 'printed',
+                                      'logistic_type': 'fulfillment'},
+                    '/shipments/20/sla': {'status': 'on_time', 'expected_date': '2026-10-08T16:00:00-03:00'},
+                    }.get(path, {})
+    out = pv.envios_por_despachar(C())
+    assert [e['id'] for e in out] == ['20']

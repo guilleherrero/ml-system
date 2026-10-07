@@ -4849,7 +4849,10 @@ def api_reclamos():
             params={
                 'players.user_id': user_id,
                 'players.role':    'respondent',
-                'sort':            'date_created:desc',
+                # ML acepta el orden solo combinado con status; sin status
+                # responde 400 (verificado en produccion 2026-10-07)
+                **({'status': request.args['status'], 'sort': 'date_created:desc'}
+                   if request.args.get('status') in ('opened', 'closed') else {}),
                 'limit':       request.args.get('limit',  50),
                 'offset':      request.args.get('offset',  0),
             },

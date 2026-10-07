@@ -348,6 +348,12 @@ def preguntas_sin_responder(client) -> list[dict]:
 
 # ── Envíos ───────────────────────────────────────────────────────────────────
 
+# Sub-estados de ready_to_ship en los que el paquete ya salió de tus manos
+# (lo retiró el correo o lo dejaste en un punto/hub): ya no hay que despachar.
+YA_DESPACHADO = {'picked_up', 'dropped_off', 'in_hub', 'in_warehouse', 'in_transit',
+                 'authorized_by_carrier', 'on_route'}
+
+
 def envios_por_despachar(client, dias: int = 10) -> list[dict]:
     """Ventas pagas que todavía no despachaste, con la fecha límite de ML.
 
@@ -365,7 +371,9 @@ def envios_por_despachar(client, dias: int = 10) -> list[dict]:
             continue
         vistos.add(sid)
         sh = _get_o_vacio(client, f'/shipments/{sid}')
-        if sh.get('status') not in ('ready_to_ship', 'handling') or sh.get('logistic_type') == 'fulfillment':
+        if (sh.get('status') not in ('ready_to_ship', 'handling')
+                or sh.get('logistic_type') == 'fulfillment'
+                or sh.get('substatus') in YA_DESPACHADO):
             continue
         sla = _get_o_vacio(client, f'/shipments/{sid}/sla')
         it = ((o.get('order_items') or [{}])[0].get('item') or {})

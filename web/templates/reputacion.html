@@ -84,6 +84,8 @@
 <div id="lista-ahora"><div class="rp-vacio">Buscando reclamos, mensajes, preguntas y envíos…</div></div>
 <div class="rp-sec">En curso — esperando al comprador o a Mercado Libre</div>
 <div id="lista-curso"><div class="rp-vacio rp-cargando">…</div></div>
+<div class="rp-sec" id="sec-viejos" style="display:none">Viejos sin responder — más de 7 días</div>
+<div id="lista-viejos"></div>
 <div id="errores" class="small text-danger mt-2"></div>
 {% endblock %}
 
@@ -95,6 +97,9 @@ const SECCIONES = ['reclamos', 'envios', 'mensajes', 'preguntas'];
 const NOMBRE = {reclamo: 'Reclamo', mensaje: 'Mensaje', pregunta: 'Pregunta', envio: 'Envío'};
 // Ventana de respuesta para lo que no trae fecha límite de ML: 24 h.
 const VENTANA_H = 24;
+// Más de 7 días sin responder: el comprador ya no está esperando. Se muestra
+// aparte para que no tape lo urgente (mismo criterio que Preguntas IA).
+const VIEJO_H = 7 * 24;
 let DATOS = {}, FILTRO = '', ABIERTO = null;
 
 const $ = id => document.getElementById(id);
@@ -154,6 +159,7 @@ function horasParaActuar(x) {
   return x.horas_esperando === null ? null : VENTANA_H - x.horas_esperando;
 }
 function color(h, x) {
+  if ((x.tipo === 'mensaje' || x.tipo === 'pregunta') && x.horas_esperando > VIEJO_H) return '';
   if (x.demorado || (h !== null && h < 12)) return 'rojo';
   if (h !== null && h < 48) return 'amarillo';
   return '';
@@ -162,7 +168,8 @@ function reloj(h, x) {
   if (x.demorado) return '<span class="rp-reloj rojo">Envío demorado</span>';
   if (x.tipo === 'mensaje' || x.tipo === 'pregunta') {
     const e = x.horas_esperando;
-    return e === null ? '' : `<span class="rp-reloj ${color(h, x) || 'gris'}">Esperando hace ${e < 1 ? Math.round(e * 60) + ' min' : Math.round(e) + ' h'}</span>`;
+    const t = e < 1 ? Math.round(e * 60) + ' min' : e < 48 ? Math.round(e) + ' h' : Math.round(e / 24) + ' días';
+    return e === null ? '' : `<span class="rp-reloj ${e > VIEJO_H ? 'gris' : (color(h, x) || 'gris')}">Esperando hace ${t}</span>`;
   }
   if (h === null) return '<span class="rp-reloj gris">Sin fecha límite</span>';
   if (h < 0) return `<span class="rp-reloj rojo">Venció hace ${Math.round(-h)} h</span>`;
@@ -182,8 +189,10 @@ function todos() {
 
 function pintar() {
   const xs = todos().map(x => ({...x, _h: horasParaActuar(x)}));
-  const ahora = xs.filter(x => x.tipo !== 'reclamo' || x.me_toca);
+  const viejo = x => (x.tipo === 'mensaje' || x.tipo === 'pregunta') && x.horas_esperando > VIEJO_H;
+  const ahora = xs.filter(x => (x.tipo !== 'reclamo' || x.me_toca) && !viejo(x));
   const curso = xs.filter(x => x.tipo === 'reclamo' && !x.me_toca);
+  const viejos = xs.filter(viejo).sort((a, b) => a.horas_esperando - b.horas_esperando);
   const peso = x => (x.afecta === 'si' || x.afecta === '48h' || x.tipo === 'envio') ? 0 : 1;
   ahora.sort((a, b) => (a._h ?? 1e9) - (b._h ?? 1e9) || peso(a) - peso(b));
 
@@ -201,6 +210,8 @@ function pintar() {
     : `<div class="rp-vacio">${cargando.length ? 'Buscando…' : '✓ No hay nada pendiente acá.'}</div>`;
   $('lista-curso').innerHTML = curso.length ? curso.map(tarjeta).join('')
     : `<div class="rp-vacio">${'reclamos' in DATOS ? 'Ningún reclamo esperando a otros.' : 'Buscando…'}</div>`;
+  $('sec-viejos').style.display = viejos.length ? '' : 'none';
+  $('lista-viejos').innerHTML = viejos.map(tarjeta).join('');
   if (ABIERTO) { const p = $('panel-' + ABIERTO); if (p) abrir(ABIERTO, true); }
 }
 
