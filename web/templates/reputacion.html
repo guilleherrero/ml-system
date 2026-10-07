@@ -76,6 +76,7 @@
     <span id="rep-nota" class="small text-muted"></span>
   </div>
   <div id="rep-metricas" class="rp-metrics"><div class="rp-cargando">Leyendo reputación…</div></div>
+  <div id="rep-proy" class="mt-3"></div>
 </div>
 
 <!-- ── Resolver ahora ───────────────────────────────────────── -->
@@ -141,10 +142,42 @@ async function cargarReputacion() {
   }).join('');
 }
 
+// ── Proyección: cuándo dejan de contar los reclamos ────────────
+const fechaDia = s => s ? new Date(s + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit'}) : '';
+async function cargarProyeccion() {
+  $('rep-proy').innerHTML = '<div class="rp-cargando">Calculando cuándo dejan de contar tus reclamos… (la primera vez tarda)</div>';
+  const j = await api(`/api/postventa/${A}/proyeccion`);
+  if (!j.ok) { $('rep-proy').innerHTML = `<div class="small text-danger">No se pudo calcular la proyección: ${esc(j.error)}</div>`; return; }
+  const p = j.data;
+  const prot = p.protegido_hasta;
+  const enProt = prot ? p.reclamos.filter(r => r.deja_de_contar > prot).length : null;
+  let titular;
+  if (p.ya_dentro) titular = `<b class="text-success">Estás dentro del límite:</b> cuentan ${p.hoy} reclamos y el máximo es ${p.permitidos}.`;
+  else if (p.recupera_el) titular = `Hoy cuentan <b>${p.hoy}</b> reclamos y el máximo es <b>${p.permitidos}</b> (${p.limite_pct}%). ` +
+    `Si no entra ningún reclamo nuevo que afecte, <b class="text-success">volvés a estar dentro el ${fechaDia(p.recupera_el)}</b>.`;
+  else titular = `Hoy cuentan <b>${p.hoy}</b> reclamos y el máximo es <b>${p.permitidos}</b>. Con los que vencen en los próximos 60 días no alcanza para volver al límite: hacen falta más ventas sin reclamos.`;
+  const filas = p.pasos.map(x => {
+    const vencen = p.reclamos.filter(r => r.deja_de_contar === x.fecha);
+    return `<tr class="${x.dentro ? 'table-success' : ''}"><td class="text-nowrap"><b>${fechaDia(x.fecha)}</b></td>
+      <td>${vencen.map(r => `${esc(r.motivo || 'Reclamo')} <span class="text-muted">· abierto el ${fechaDia(r.abierto.slice(0, 10))}${r.estado === 'opened' ? ' · todavía abierto' : ''}</span>`).join('<br>')}</td>
+      <td class="text-end">${x.cuentan}</td><td class="text-end">${x.tasa_pct}%</td><td>${x.dentro ? '✓ dentro' : ''}</td></tr>`;
+  }).join('');
+  $('rep-proy').innerHTML = `<div class="border rounded p-3" style="background:var(--color-neutral-50)">
+    <div class="fw-bold mb-1"><i class="bi bi-calendar-check me-1"></i>¿Cuándo te recuperás en reclamos?</div>
+    <div class="small">${titular}</div>
+    ${prot && enProt !== null && !p.ya_dentro ? `<div class="small mt-1">Tu protección termina el <b>${fechaDia(prot)}</b>: ese día van a contar ${enProt} reclamo${enProt === 1 ? '' : 's'}${enProt <= p.permitidos ? ' — <b class="text-success">ya dentro del límite</b>' : ' — <b class="text-danger">todavía por encima del límite</b>'}.</div>` : ''}
+    ${p.ml_informa !== p.hoy ? `<div class="small text-muted mt-1">ML informa ${p.ml_informa} reclamos; acá se cuentan ${p.hoy} (ML puede excluir alguno por su cuenta).</div>` : ''}
+    ${filas ? `<details class="mt-2"${p.ya_dentro ? '' : ' open'}><summary class="small">Qué reclamo deja de contar cada día (cada uno cuenta 60 días desde que se abrió)</summary>
+      <table class="table table-sm small mt-2 mb-0"><thead><tr><th>Fecha</th><th>Deja de contar</th><th class="text-end">Cuentan</th><th class="text-end">Tasa</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+      <div class="small text-muted mt-1">Supone que tu volumen de ventas se mantiene. Si vendés más, bajás antes; cada reclamo nuevo que afecte suma 60 días más.</div></details>` : ''}
+  </div>`;
+}
+
 // ── Lista unificada ────────────────────────────────────────────
 async function cargarTodo() {
   DATOS = {}; ABIERTO = null; $('errores').textContent = '';
   cargarReputacion();
+  cargarProyeccion();
   pintar();
   await Promise.all(SECCIONES.map(async s => {
     const j = await api(`/api/postventa/${A}/${s}`);

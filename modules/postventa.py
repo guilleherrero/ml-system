@@ -112,13 +112,16 @@ def resumen_reputacion(rep: dict) -> dict:
         valor = exc.get('real_value', d.get('value')) or 0
         tasa = exc.get('real_rate', d.get('rate')) or 0
         tope = lim[k]
-        permitidos = int(tope * ventas) if ventas else None
+        # ML no divide por 'sales.completed': la base real sale de valor/tasa
+        # (Novara 07/10: 9 reclamos al 1,25% → 720 ventas, no 673).
+        base = round(valor / tasa) if valor and tasa else ventas
+        permitidos = int(tope * base + 1e-9) if base else None
         out.append({
             'clave': k, 'nombre': NOMBRE_METRICA[k],
             'valor': valor, 'tasa_pct': round(tasa * 100, 2),
-            'limite_pct': round(tope * 100, 2),
+            'limite_pct': round(tope * 100, 2), 'base': base, 'permitidos': permitidos,
             'quedan': (permitidos - valor) if permitidos is not None else None,
-            'pp_por_caso': round(100 / ventas, 2) if ventas else None,
+            'pp_por_caso': round(100 / base, 2) if base else None,
             # 'justo': un caso más y se pasa, o ya va por el 75% del límite
             'estado': ('mal' if tasa > tope else
                        'justo' if (permitidos is not None and permitidos - valor <= 0) or tasa > tope * 0.75
@@ -425,3 +428,92 @@ def avisos_reclamos(reclamos: list[dict], estado: dict, ahora: datetime | None =
             st['vence24'] = True
         nuevo_estado[r['id']] = st
     return avisos, nuevo_estado
+
+
+# ── Proyección de reclamos ───────────────────────────────────────────────────
+
+VENTANA_DIAS = 60
+TIPOS_QUE_AFECTAN = ('mediations', 'returns', 'return')   # cancel_purchase no afecta
+
+
+def _afectacion_path(alias: str) -> str:
+    import os
+    return os.path.join(os.path.dirname(__file__), '..', 'data',
+                        f"reclamos_afectacion_{alias.replace(' ', '_').replace('/', '-')}.json")
+
+
+def reclamos_ventana(client, alias: str, ahora: datetime | None = None) -> list[dict]:
+    """Reclamos de los últimos 60 días que ML marca como 'afecta'.
+
+    Cada reclamo deja de contar a los 60 días de abierto (verificado con
+    Novara el 07/10: 9 'affected' en 60 días = los 9 que informa ML).
+    El 'afecta' de un reclamo cerrado no cambia, así que se guarda y no se
+    vuelve a pedir: la primera carga es lenta, las siguientes no.
+    """
+    from core.db_storage import db_load, db_save
+    ahora = ahora or datetime.now(timezone.utc)
+    desde = (ahora - timedelta(days=VENTANA_DIAS + 1)).strftime('%Y-%m-%dT%H:%M:%S.000+00:00')
+    uid = _uid(client)
+    claims, offset = [], 0
+    while True:
+        data = client._get(f'{CLAIMS}/search', {
+            'players.user_id': uid, 'players.role': 'respondent',
+            'range': f'date_created:after:{desde}', 'limit': 100, 'offset': offset})
+        lote = data.get('data') or []
+        claims += lote
+        offset += len(lote)
+        if not lote or offset >= ((data.get('paging') or {}).get('total') or 0) or offset >= 1000:
+            break
+    cache = db_load(_afectacion_path(alias)) or {}
+    out = []
+    for c in claims:
+        if c.get('type') not in TIPOS_QUE_AFECTAN:
+            continue
+        cid = str(c.get('id'))
+        af = cache.get(cid)
+        if af is None:
+            r = _get_o_vacio(client, f'{CLAIMS}/{cid}/affects-reputation')
+            af = r.get('affects_reputation')
+            if af and c.get('status') == 'closed':
+                cache[cid] = af
+            time.sleep(0.05)
+        if af != 'affected':
+            continue
+        abierto = _fecha(c.get('date_created'))
+        out.append({'id': cid, 'abierto': c.get('date_created'), 'estado': c.get('status'),
+                    'motivo': MOTIVO.get(re.sub(r'\d', '', c.get('reason_id') or ''), c.get('reason_id')),
+                    'orden': c.get('resource_id'),
+                    'deja_de_contar': (abierto + timedelta(days=VENTANA_DIAS)).date().isoformat()
+                    if abierto else None})
+    db_save(_afectacion_path(alias), cache)
+    return sorted(out, key=lambda x: x['deja_de_contar'] or '9999')
+
+
+def proyeccion(reclamos: list[dict], permitidos: int, base: int, hoy: str) -> dict:
+    """Cómo baja la tasa si no entra ningún reclamo nuevo. Puro: testeable.
+
+    Supone la base de ventas constante (si vendés más, bajás antes).
+    """
+    pasos, quedan = [], len(reclamos)
+    for fecha in sorted({r['deja_de_contar'] for r in reclamos if r['deja_de_contar']}):
+        if fecha < hoy:
+            continue
+        quedan -= sum(1 for r in reclamos if r['deja_de_contar'] == fecha)
+        pasos.append({'fecha': fecha, 'cuentan': quedan,
+                      'tasa_pct': round(100 * quedan / base, 2) if base else None,
+                      'dentro': permitidos is not None and quedan <= permitidos})
+    recupera = (None if permitidos is None or len(reclamos) <= permitidos
+                else next((p['fecha'] for p in pasos if p['dentro']), None))
+    return {'hoy': len(reclamos), 'permitidos': permitidos, 'pasos': pasos,
+            'recupera_el': recupera, 'ya_dentro': permitidos is not None and len(reclamos) <= permitidos}
+
+
+def proyeccion_reclamos(client, alias: str) -> dict:
+    rep = reputacion(client)
+    m = next(x for x in rep['metricas'] if x['clave'] == 'claims')
+    reclamos = reclamos_ventana(client, alias)
+    hoy = datetime.now(timezone(timedelta(hours=-3))).date().isoformat()
+    return {**proyeccion(reclamos, m['permitidos'], m['base'], hoy),
+            'reclamos': reclamos, 'ml_informa': m['valor'],
+            'protegido_hasta': (rep.get('protegido_hasta') or '')[:10] or None,
+            'limite_pct': m['limite_pct']}

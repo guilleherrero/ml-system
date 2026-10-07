@@ -236,3 +236,54 @@ def test_reclamo_sin_acceso_da_mensaje_claro():
             raise MLApiError('GET failed: {"code":403}', 403)
     with pytest.raises(ValueError, match='Abrilo directamente en Mercado Libre'):
         pv.detalle_reclamo(C(), '5589689450')
+
+
+# ── proyección (datos reales de Novara, 07/10/2026) ──────────────────────────
+
+NOVARA_AFECTAN = ['2026-08-14', '2026-08-20', '2026-08-26', '2026-08-26', '2026-09-03',
+                  '2026-09-17', '2026-09-29', '2026-10-01', '2026-10-06']
+
+
+def test_base_real_sale_de_valor_sobre_tasa():
+    # ML informa 9 reclamos al 1,25% con 673 'completed': la base es 720
+    m = pv.resumen_reputacion({'power_seller_status': 'platinum', 'metrics': {
+        'sales': {'completed': 673},
+        'claims': {'rate': 0, 'value': 0, 'excluded': {'real_value': 9, 'real_rate': 0.0125}}}})['metricas'][0]
+    assert m['base'] == 720 and m['permitidos'] == 7 and m['quedan'] == -2
+
+
+def test_proyeccion_novara_vuelve_al_limite_el_19_10():
+    from datetime import date, timedelta
+    recl = [{'deja_de_contar': (date.fromisoformat(d) + timedelta(days=60)).isoformat()}
+            for d in NOVARA_AFECTAN]
+    p = pv.proyeccion(recl, permitidos=7, base=720, hoy='2026-10-07')
+    assert p['hoy'] == 9 and not p['ya_dentro']
+    assert p['recupera_el'] == '2026-10-19'
+    assert [(x['fecha'], x['cuentan']) for x in p['pasos'][:3]] == [
+        ('2026-10-13', 8), ('2026-10-19', 7), ('2026-10-25', 5)]
+    assert p['pasos'][1]['tasa_pct'] == 0.97
+
+
+def test_reclamos_ventana_solo_afectados_y_cachea_cerrados(monkeypatch):
+    store = {}
+    monkeypatch.setattr('core.db_storage.db_load', lambda p: store.get(p))
+    monkeypatch.setattr('core.db_storage.db_save', lambda p, d: store.__setitem__(p, d))
+    pedidos = []
+
+    class C(FakeClient):
+        def _get(self, path, params=None):
+            if path.endswith('/search'):
+                return {'paging': {'total': 3}, 'data': [
+                    {'id': 1, 'type': 'mediations', 'status': 'closed', 'date_created': '2026-08-14T10:00:00.000-04:00', 'reason_id': 'PDD9949'},
+                    {'id': 2, 'type': 'cancel_purchase', 'status': 'closed', 'date_created': '2026-08-20T10:00:00.000-04:00'},
+                    {'id': 3, 'type': 'mediations', 'status': 'opened', 'date_created': '2026-10-06T10:00:00.000-04:00'}]}
+            pedidos.append(path)
+            return {'affects_reputation': 'affected' if '/1/' in path else 'not_affected'}
+
+    out = pv.reclamos_ventana(C(), 'Novara', AHORA)
+    assert [r['id'] for r in out] == ['1'] and out[0]['deja_de_contar'] == '2026-10-13'
+    assert out[0]['motivo'] == 'Producto diferente o defectuoso'
+    assert len(pedidos) == 2                      # cancel_purchase no se consulta
+    pedidos.clear()
+    pv.reclamos_ventana(C(), 'Novara', AHORA)
+    assert pedidos == ['/post-purchase/v1/claims/3/affects-reputation']   # el cerrado sale del cache

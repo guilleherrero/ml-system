@@ -3796,6 +3796,17 @@ def api_postventa_seccion(alias, seccion):
         return jsonify({'ok': False, 'error': str(e)[:300]}), 502
 
 
+@app.route('/api/postventa/<alias>/proyeccion')
+def api_postventa_proyeccion(alias):
+    from modules import postventa as pv
+    try:
+        alias = _resolve_alias(alias)
+        return jsonify({'ok': True, 'data': pv.proyeccion_reclamos(_pv_client(alias), alias)})
+    except Exception as e:
+        app.logger.warning('[postventa] proyeccion %s: %s', alias, e)
+        return jsonify({'ok': False, 'error': str(e)[:300]}), 502
+
+
 @app.route('/api/postventa/<alias>/reclamo/<claim_id>')
 def api_postventa_reclamo(alias, claim_id):
     from modules import postventa as pv
