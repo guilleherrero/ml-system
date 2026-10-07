@@ -452,18 +452,24 @@ def reclamos_ventana(client, alias: str, ahora: datetime | None = None) -> list[
     """
     from core.db_storage import db_load, db_save
     ahora = ahora or datetime.now(timezone.utc)
-    desde = (ahora - timedelta(days=VENTANA_DIAS + 1)).strftime('%Y-%m-%dT%H:%M:%S.000+00:00')
+    corte = ahora - timedelta(days=VENTANA_DIAS + 1)
     uid = _uid(client)
-    claims, offset = [], 0
-    while True:
-        data = client._get(f'{CLAIMS}/search', {
-            'players.user_id': uid, 'players.role': 'respondent',
-            'range': f'date_created:after:{desde}', 'limit': 100, 'offset': offset})
-        lote = data.get('data') or []
-        claims += lote
-        offset += len(lote)
-        if not lote or offset >= ((data.get('paging') or {}).get('total') or 0) or offset >= 1000:
-            break
+    # ML rechaza range con players.* ("at least one filter", 07/10/2026) y
+    # el orden solo funciona junto a status: se pide por estado, del más
+    # nuevo al más viejo, y se corta al pasar la ventana de 60 días.
+    claims = []
+    for estado in ('opened', 'closed'):
+        offset = 0
+        while offset < 1000:
+            data = client._get(f'{CLAIMS}/search', {
+                'players.user_id': uid, 'players.role': 'respondent', 'status': estado,
+                'sort': 'date_created:desc', 'limit': 100, 'offset': offset})
+            lote = data.get('data') or []
+            dentro = [c for c in lote if (_fecha(c.get('date_created')) or ahora) >= corte]
+            claims += dentro
+            offset += len(lote)
+            if len(dentro) < len(lote) or len(lote) < 100:
+                break
     cache = db_load(_afectacion_path(alias)) or {}
     out = []
     for c in claims:

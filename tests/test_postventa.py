@@ -273,10 +273,15 @@ def test_reclamos_ventana_solo_afectados_y_cachea_cerrados(monkeypatch):
     class C(FakeClient):
         def _get(self, path, params=None):
             if path.endswith('/search'):
-                return {'paging': {'total': 3}, 'data': [
-                    {'id': 1, 'type': 'mediations', 'status': 'closed', 'date_created': '2026-08-14T10:00:00.000-04:00', 'reason_id': 'PDD9949'},
+                # Sin status ML responde 400: el código tiene que mandarlo siempre
+                assert params.get('status') in ('opened', 'closed') and 'range' not in params
+                if params['status'] == 'opened':
+                    return {'data': [{'id': 3, 'type': 'mediations', 'status': 'opened',
+                                      'date_created': '2026-10-06T10:00:00.000-04:00'}]}
+                return {'data': [
                     {'id': 2, 'type': 'cancel_purchase', 'status': 'closed', 'date_created': '2026-08-20T10:00:00.000-04:00'},
-                    {'id': 3, 'type': 'mediations', 'status': 'opened', 'date_created': '2026-10-06T10:00:00.000-04:00'}]}
+                    {'id': 1, 'type': 'mediations', 'status': 'closed', 'date_created': '2026-08-14T10:00:00.000-04:00', 'reason_id': 'PDD9949'},
+                    {'id': 9, 'type': 'mediations', 'status': 'closed', 'date_created': '2026-07-01T10:00:00.000-04:00'}]}
             pedidos.append(path)
             return {'affects_reputation': 'affected' if '/1/' in path else 'not_affected'}
 
