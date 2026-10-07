@@ -20228,6 +20228,165 @@ def admin_restart():
 
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Promociones — campañas de ML, campaña propia, descuentos y plantillas
+# ══════════════════════════════════════════════════════════════════════════════
+
+_PROMO_LOTE_MAX = 25   # ítems por request: el front manda en tandas y muestra avance
+
+
+def _promo_client(alias):
+    from core.account_manager import AccountManager
+    return AccountManager().get_client(_resolve_alias(alias))
+
+
+@app.route('/promociones/<alias>')
+def promociones_page(alias):
+    from modules.precio_motor import MARGEN_MINIMO_ACEPTABLE
+    return render_template('promociones.html', alias=alias, accounts=get_accounts(),
+                           margen_min_pct=MARGEN_MINIMO_ACEPTABLE * 100)
+
+
+@app.route('/api/promociones/<alias>/lista')
+def api_promociones_lista(alias):
+    from modules import promociones as pm
+    try:
+        promos = pm.listar_promociones(_promo_client(alias))
+    except Exception as e:
+        return jsonify({'ok': False, 'error': pm.error_legible(e)}), 502
+    return jsonify({'ok': True, 'promociones': promos,
+                    'plantillas': pm.cargar_plantillas(alias)})
+
+
+@app.route('/api/promociones/<alias>/conteo')
+def api_promociones_conteo(alias):
+    from modules import promociones as pm
+    pid, tipo = request.args.get('id', ''), request.args.get('tipo', '')
+    try:
+        client = _promo_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    return jsonify({'ok': True,
+                    'candidatos': pm.contar_items(client, pid, tipo, 'candidate'),
+                    'adentro': pm.contar_items(client, pid, tipo, 'started')})
+
+
+@app.route('/api/promociones/<alias>/items')
+def api_promociones_items(alias):
+    """Ítems de una promoción (o todas las publicaciones activas si id='nueva')."""
+    from modules import promociones as pm
+    pid, tipo = request.args.get('id', ''), request.args.get('tipo', '')
+    try:
+        client = _promo_client(alias)
+        crudos = (pm.mis_items_activos(client) if pid == 'nueva'
+                  else pm.items_de_promocion(client, pid, tipo))
+        detalles = pm.detalles_items(client, [i['id'] for i in crudos if i.get('id')])
+    except Exception as e:
+        return jsonify({'ok': False, 'error': pm.error_legible(e)}), 502
+    costos = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
+    fees = get_fee_rates()
+    items = pm.enriquecer(crudos, detalles, costos, lambda lt: get_rate(lt, fees))
+    return jsonify({'ok': True, 'items': items, 'modo': pm.tipo_info(tipo)['modo']})
+
+
+@app.route('/api/promociones/sumar', methods=['POST'])
+def api_promociones_sumar():
+    """Suma una tanda de ítems. Cada uno se informa por separado: ML acepta
+    algunos y rechaza otros (precio no creíble, sin stock, etc.)."""
+    from modules import promociones as pm
+    data = request.get_json(silent=True) or {}
+    alias, pid, tipo = data.get('alias', ''), data.get('promo_id'), data.get('tipo', '')
+    items = (data.get('items') or [])[:_PROMO_LOTE_MAX]
+    desde, hasta = data.get('desde'), data.get('hasta')
+    if tipo == 'PRICE_DISCOUNT':
+        try:
+            pm.validar_fechas(desde, hasta)
+        except ValueError as e:
+            return jsonify({'ok': False, 'error': str(e)}), 400
+    try:
+        client = _promo_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    resultados = []
+    for it in items:
+        iid = str(it.get('id', ''))
+        try:
+            body = pm.body_para_sumar(tipo, pid, deal_price=it.get('deal_price'),
+                                      stock=it.get('stock'), offer_id=it.get('offer_id'),
+                                      desde=desde, hasta=hasta)
+            r = pm.sumar_item(client, iid, body)
+            resultados.append({'id': iid, 'ok': True, 'price': (r or {}).get('price')})
+            _audit('PROMO_SUMAR', alias=alias, item_id=iid, tipo=tipo, promo=pid,
+                   deal_price=body.get('deal_price'))
+        except Exception as e:
+            resultados.append({'id': iid, 'ok': False, 'error': pm.error_legible(e)})
+        _time_module.sleep(0.15)
+    return jsonify({'ok': True, 'resultados': resultados})
+
+
+@app.route('/api/promociones/quitar', methods=['POST'])
+def api_promociones_quitar():
+    from modules import promociones as pm
+    data = request.get_json(silent=True) or {}
+    alias, pid, tipo = data.get('alias', ''), data.get('promo_id'), data.get('tipo', '')
+    try:
+        client = _promo_client(alias)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    resultados = []
+    for it in (data.get('items') or [])[:_PROMO_LOTE_MAX]:
+        iid = str(it.get('id', ''))
+        try:
+            pm.quitar_item(client, iid, tipo, pid, it.get('offer_id'))
+            resultados.append({'id': iid, 'ok': True})
+            _audit('PROMO_QUITAR', alias=alias, item_id=iid, tipo=tipo, promo=pid)
+        except Exception as e:
+            resultados.append({'id': iid, 'ok': False, 'error': pm.error_legible(e)})
+        _time_module.sleep(0.15)
+    return jsonify({'ok': True, 'resultados': resultados})
+
+
+@app.route('/api/promociones/crear-campana', methods=['POST'])
+def api_promociones_crear_campana():
+    from modules import promociones as pm
+    data = request.get_json(silent=True) or {}
+    alias = data.get('alias', '')
+    try:
+        camp = pm.crear_campana_propia(_promo_client(alias), data.get('nombre'),
+                                       data.get('desde'), data.get('hasta'))
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': pm.error_legible(e)}), 502
+    _audit('PROMO_CREAR_CAMPANA', alias=alias, promo=camp.get('id'), nombre=camp.get('name'))
+    return jsonify({'ok': True, 'campana': camp})
+
+
+@app.route('/api/promociones/plantillas', methods=['POST'])
+def api_promociones_plantilla_guardar():
+    from modules import promociones as pm
+    data = request.get_json(silent=True) or {}
+    alias = data.get('alias', '')
+    try:
+        _resolve_alias(alias)
+        p = pm.guardar_plantilla(alias, data.get('nombre'), data.get('tipo_origen', ''),
+                                 data.get('items') or [], data.get('promo_origen'))
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    return jsonify({'ok': True, 'plantilla': p})
+
+
+@app.route('/api/promociones/plantillas/borrar', methods=['POST'])
+def api_promociones_plantilla_borrar():
+    from modules import promociones as pm
+    data = request.get_json(silent=True) or {}
+    try:
+        alias = _resolve_alias(data.get('alias', ''))
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    return jsonify({'ok': pm.borrar_plantilla(alias, data.get('id', ''))})
+
+
 if __name__ == '__main__':
     app.config['TEMPLATES_AUTO_RELOAD'] = True
     print('\n  Sistema ML — Interfaz web')

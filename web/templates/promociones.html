@@ -1,0 +1,542 @@
+{% extends "base.html" %}
+{% block title %} — Promociones {{ alias }}{% endblock %}
+
+{% block content %}
+<style>
+.pr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:.9rem}
+.pr-card{background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);
+  border-radius:12px;padding:.9rem 1rem;display:flex;flex-direction:column;gap:.45rem}
+.pr-card.terminada{opacity:.55}
+.pr-card .nombre{font-weight:700;color:#0f172a;font-size:.95rem;line-height:1.3}
+.pr-card .meta{font-size:.75rem;color:var(--color-neutral-600)}
+.pr-card .nums{display:flex;gap:1rem;font-size:.8rem}
+.pr-card .nums b{font-size:1.05rem}
+.pr-tag{font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:10px;
+  text-transform:uppercase;letter-spacing:.04em;background:#e0e7ff;color:#3730a3;
+  align-self:flex-start}
+.pr-tag.aceptar{background:var(--color-success-100);color:#166534}
+.pr-tag.propia{background:var(--color-warning-100);color:#b45309}
+.pr-tag.no_soportado{background:var(--color-neutral-100);color:var(--color-neutral-600)}
+.pr-toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-bottom:.75rem}
+.pr-toolbar .form-control,.pr-toolbar .form-select{width:auto;font-size:.82rem}
+.pr-table{font-size:.8rem}
+.pr-table td{vertical-align:middle}
+.pr-table img{width:40px;height:40px;object-fit:contain;border-radius:6px;background:#fff}
+.pr-table .tit{max-width:340px;font-weight:600;color:#0f172a}
+.pr-table .sub{font-size:.7rem;color:var(--color-neutral-600)}
+.pr-table input.precio{width:105px}
+.pr-table input.stockr{width:70px}
+.pr-m{font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;font-size:.75rem}
+.pr-m.ok{background:var(--color-success-100);color:#166534}
+.pr-m.bajo{background:var(--color-warning-100);color:#b45309}
+.pr-m.perdida{background:var(--color-critical-100);color:#b91c1c}
+.pr-m.sin_precio{background:var(--color-neutral-100);color:var(--color-neutral-600)}
+.pr-m.sin_costo{background:var(--color-neutral-100);color:var(--color-neutral-600)}
+.pr-fuera{color:#b91c1c;font-size:.68rem;font-weight:700}
+.pr-res-ok{color:#166534;font-weight:700}
+.pr-res-err{color:#b91c1c;font-size:.72rem}
+.pr-footer{position:sticky;bottom:0;background:var(--color-neutral-0);
+  border-top:1px solid var(--color-neutral-200);padding:.7rem 1rem;margin:0 -1rem;
+  display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;z-index:5}
+.pr-footer .resumen{flex:1;min-width:14rem;font-size:.82rem}
+.pr-vacio{padding:2rem;text-align:center;color:var(--color-neutral-600)}
+</style>
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-percent me-2 text-primary"></i>Promociones</h1>
+    <div class="sub">{{ alias }} — campañas en las que podés participar, tus campañas
+      propias y plantillas para repetirlas. Todo se aplica directo en Mercado Libre.</div>
+  </div>
+</div>
+
+<!-- ── Vista: pestañas ──────────────────────────────────────────── -->
+<div id="vista-lista">
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-disp" type="button">Disponibles</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-plant" type="button">Plantillas <span id="n-plant" class="badge bg-secondary"></span></button></li>
+    <li class="nav-item"><button class="nav-link" id="btn-tab-propia" data-bs-toggle="tab" data-bs-target="#tab-propia" type="button">Crear propia</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <div class="tab-pane fade show active" id="tab-disp">
+      <div class="pr-toolbar">
+        <label class="visually-hidden" for="f-tipo">Tipo</label>
+        <select id="f-tipo" class="form-select"><option value="">Todos los tipos</option></select>
+        <div class="form-check ms-2">
+          <input class="form-check-input" type="checkbox" id="f-terminadas">
+          <label class="form-check-label small" for="f-terminadas">Mostrar terminadas</label>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="cargarLista()"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
+      </div>
+      <div id="lista-promos" class="pr-grid"><div class="pr-vacio">Cargando campañas…</div></div>
+    </div>
+
+    <div class="tab-pane fade" id="tab-plant">
+      <p class="small text-muted">Cada vez que sumás productos desde acá se guarda una plantilla con
+        los productos y el % de descuento. El % se aplica sobre el precio que tenga el producto
+        el día que la repetís.</p>
+      <div id="lista-plant" class="pr-grid"></div>
+    </div>
+
+    <div class="tab-pane fade" id="tab-propia">
+      <div class="app-card" style="max-width:560px">
+        <div class="mb-3">
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="np-tipo" id="np-camp" value="SELLER_CAMPAIGN" checked>
+            <label class="form-check-label" for="np-camp"><b>Campaña del vendedor</b> — agrupa productos bajo un nombre, cada uno con su %.</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="np-tipo" id="np-desc" value="PRICE_DISCOUNT">
+            <label class="form-check-label" for="np-desc"><b>Descuento individual</b> — descuentos sueltos por producto (5% a 80%).</label>
+          </div>
+        </div>
+        <div class="mb-3" id="np-nombre-wrap">
+          <label class="form-label small" for="np-nombre">Nombre de la campaña</label>
+          <input id="np-nombre" class="form-control" maxlength="60" placeholder="Ej: Semana de la faja">
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col"><label class="form-label small" for="np-desde">Desde</label><input id="np-desde" type="date" class="form-control"></div>
+          <div class="col"><label class="form-label small" for="np-hasta">Hasta</label><input id="np-hasta" type="date" class="form-control"></div>
+        </div>
+        <div class="small text-muted mb-3">Mercado Libre permite como máximo 14 días y pide reputación verde.</div>
+        <div id="np-plantilla" class="alert alert-info small py-2" style="display:none"></div>
+        <button class="btn btn-primary" onclick="elegirProductosPropia()">Elegir productos <i class="bi bi-arrow-right"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Vista: productos de una promo ────────────────────────────── -->
+<div id="vista-panel" style="display:none">
+  <button class="btn btn-sm btn-link px-0 mb-2" onclick="volver()"><i class="bi bi-arrow-left"></i> Volver</button>
+  <div class="app-card mb-3">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <span id="p-tag" class="pr-tag"></span>
+      <h2 id="p-nombre" class="h5 m-0"></h2>
+    </div>
+    <div id="p-meta" class="small text-muted mt-1"></div>
+    <div id="p-aviso" class="small mt-2"></div>
+  </div>
+
+  <div class="pr-toolbar">
+    <label class="visually-hidden" for="q">Buscar</label>
+    <input id="q" class="form-control" placeholder="Buscar título, SKU o MLA…" style="min-width:16rem" oninput="pintar()">
+    <label class="visually-hidden" for="f-estado">Estado</label>
+    <select id="f-estado" class="form-select" onchange="pintar()">
+      <option value="">Todos</option><option value="candidate">Para sumar</option><option value="adentro">Ya adentro</option>
+    </select>
+    <label class="visually-hidden" for="f-margen">Margen</label>
+    <select id="f-margen" class="form-select" onchange="pintar()">
+      <option value="">Cualquier margen</option><option value="ok">Margen sano</option>
+      <option value="bajo">Margen bajo</option><option value="perdida">En pérdida</option><option value="sin_costo">Sin costo cargado</option>
+    </select>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="f-stock" onchange="pintar()">
+      <label class="form-check-label small" for="f-stock">Con stock</label>
+    </div>
+    <div class="input-group input-group-sm ms-auto" style="width:auto" id="masivo-wrap">
+      <label class="input-group-text" for="pct-masivo">% desc.</label>
+      <input id="pct-masivo" type="number" min="1" max="80" step="0.5" class="form-control" style="width:80px" value="10">
+      <button class="btn btn-outline-primary" onclick="aplicarPctMasivo()">Aplicar a seleccionados</button>
+    </div>
+  </div>
+
+  <div class="app-card p-0" style="overflow-x:auto">
+    <table class="table table-hover pr-table mb-0">
+      <thead><tr>
+        <th><input type="checkbox" class="form-check-input" id="sel-todos" aria-label="Seleccionar todos los visibles" onchange="selTodos(this.checked)"></th>
+        <th></th><th>Producto</th><th class="text-end">Stock</th><th class="text-end">Precio hoy</th>
+        <th>Precio promo</th><th class="text-end">Desc.</th><th>Margen</th><th>Estado</th>
+      </tr></thead>
+      <tbody id="tbody"><tr><td colspan="9" class="pr-vacio">Cargando productos…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="pr-footer">
+    <div class="resumen" id="resumen"></div>
+    <button class="btn btn-sm btn-outline-secondary" onclick="guardarSeleccionComoPlantilla()"><i class="bi bi-bookmark"></i> Guardar como plantilla</button>
+    <button class="btn btn-sm btn-outline-danger" id="btn-quitar" onclick="quitarSeleccionados()"><i class="bi bi-x-circle"></i> Quitar</button>
+    <button class="btn btn-sm btn-primary" id="btn-sumar" onclick="sumarSeleccionados()"><i class="bi bi-check2-circle"></i> Sumar</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS = {{ alias|tojson }};
+const MARGEN_MIN = {{ margen_min_pct|tojson }};
+const LOTE = 25;
+const ADENTRO = ['started', 'pending'];
+const ESTADOS = {candidate:'Para sumar', started:'Activa', pending:'Programada', finished:'Terminada'};
+let PROMOS = [], PLANTILLAS = [];
+let P = null;   // panel abierto: {tipo, modo, promo, propia, items, sel, prefill}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => (n || n === 0) ? '$' + Math.round(n).toLocaleString('es-AR') : '—';
+const fecha = s => s ? new Date(s).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit'}) : '';
+const hoyISO = (d = 0) => { const x = new Date(); x.setDate(x.getDate() + d); return x.toLocaleDateString('en-CA'); };
+
+async function api(url, body) {
+  const r = await fetch(url, body ? {method:'POST', headers:{'Content-Type':'application/json'},
+                                     body: JSON.stringify({alias: ALIAS, ...body})} : {});
+  let j; try { j = await r.json(); } catch { j = {ok:false, error:'Respuesta inválida del servidor (' + r.status + ')'}; }
+  return j;
+}
+
+// ── Lista de campañas ───────────────────────────────────────────
+async function cargarLista() {
+  $('lista-promos').innerHTML = '<div class="pr-vacio">Cargando campañas…</div>';
+  const j = await api(`/api/promociones/${encodeURIComponent(ALIAS)}/lista`);
+  if (!j.ok) { $('lista-promos').innerHTML = `<div class="pr-vacio text-danger">No se pudieron leer las promociones: ${esc(j.error)}</div>`; return; }
+  PROMOS = j.promociones; PLANTILLAS = j.plantillas;
+  const tipos = [...new Map(PROMOS.map(p => [p.type, p.tipo_nombre])).entries()];
+  $('f-tipo').innerHTML = '<option value="">Todos los tipos</option>' +
+    tipos.map(([t, n]) => `<option value="${esc(t)}">${esc(n)}</option>`).join('');
+  pintarLista(); pintarPlantillas(); contarTodo();
+}
+
+function pintarLista() {
+  const t = $('f-tipo').value, term = $('f-terminadas').checked;
+  const ps = PROMOS.filter(p => (!t || p.type === t) && (term || p.status !== 'finished'));
+  if (!ps.length) { $('lista-promos').innerHTML = '<div class="pr-vacio">No hay campañas disponibles con ese filtro.</div>'; return; }
+  $('lista-promos').innerHTML = ps.map(p => {
+    const i = PROMOS.indexOf(p);
+    const b = p.benefits || {};
+    const ben = b.meli_percent != null ? `ML pone ${b.meli_percent}% · vos ${b.seller_percent}%` : '';
+    const sop = p.modo !== 'no_soportado';
+    return `<div class="pr-card ${p.status === 'finished' ? 'terminada' : ''}">
+      <span class="pr-tag ${esc(p.modo)} ${p.type === 'SELLER_CAMPAIGN' ? 'propia' : ''}">${esc(p.tipo_nombre)}</span>
+      <div class="nombre">${esc(p.name || p.id)}</div>
+      <div class="meta">${fecha(p.start_date)} → ${fecha(p.finish_date)}
+        ${p.deadline_date ? ' · sumarse hasta ' + fecha(p.deadline_date) : ''} · ${esc(ESTADOS[p.status] || p.status)}</div>
+      ${ben ? `<div class="meta">${esc(ben)}</div>` : ''}
+      <div class="nums"><span><b id="cand-${i}">…</b> para sumar</span><span><b id="adent-${i}">…</b> adentro</span></div>
+      <div class="d-flex gap-2 mt-1">
+        ${sop ? `<button class="btn btn-sm btn-primary" onclick="abrirPromo(${i})">Ver productos</button>`
+              : '<span class="small text-muted">Este tipo se gestiona desde Mercado Libre.</span>'}
+        ${p.type === 'SELLER_CAMPAIGN' && sop ? `<button class="btn btn-sm btn-outline-secondary" onclick="clonarPropia(${i})"><i class="bi bi-copy"></i> Clonar</button>` : ''}
+      </div></div>`;
+  }).join('');
+}
+
+async function contarTodo() {
+  const cola = PROMOS.map((p, i) => [p, i]).filter(([p]) => p.status !== 'finished' && p.modo !== 'no_soportado');
+  const worker = async () => {
+    while (cola.length) {
+      const [p, i] = cola.shift();
+      const j = await api(`/api/promociones/${encodeURIComponent(ALIAS)}/conteo?id=${encodeURIComponent(p.id)}&tipo=${p.type}`);
+      p._cand = j.candidatos; p._adent = j.adentro;
+      if ($('cand-' + i)) { $('cand-' + i).textContent = j.candidatos ?? '?'; $('adent-' + i).textContent = j.adentro ?? '?'; }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+}
+
+// ── Plantillas ──────────────────────────────────────────────────
+function pintarPlantillas() {
+  $('n-plant').textContent = PLANTILLAS.length || '';
+  if (!PLANTILLAS.length) { $('lista-plant').innerHTML = '<div class="pr-vacio">Todavía no hay plantillas. Se crean solas cuando sumás productos a una campaña.</div>'; return; }
+  const destinos = PROMOS.filter(p => p.status !== 'finished' && ['precio', 'aceptar', 'precio_stock'].includes(p.modo));
+  $('lista-plant').innerHTML = PLANTILLAS.map((pl, i) => {
+    const prom = pl.items.reduce((a, x) => a + x.descuento_pct, 0) / pl.items.length;
+    return `<div class="pr-card">
+      <span class="pr-tag">${esc(pl.tipo_origen || 'plantilla')}</span>
+      <div class="nombre">${esc(pl.nombre)}</div>
+      <div class="meta">${pl.items.length} productos · descuento promedio ${prom.toFixed(1)}% · ${esc(pl.creada)}</div>
+      <div class="d-flex flex-wrap gap-2 mt-1">
+        <button class="btn btn-sm btn-primary" onclick="repetirPlantilla(${i}, 'SELLER_CAMPAIGN')"><i class="bi bi-copy"></i> Repetir como campaña propia</button>
+        <button class="btn btn-sm btn-outline-primary" onclick="repetirPlantilla(${i}, 'PRICE_DISCOUNT')">Como descuento individual</button>
+      </div>
+      ${destinos.length ? `<div class="input-group input-group-sm mt-1">
+        <label class="visually-hidden" for="dest-${i}">Campaña de ML</label>
+        <select class="form-select" id="dest-${i}">${destinos.map(p => `<option value="${PROMOS.indexOf(p)}">${esc(p.name || p.id)} (${esc(p.tipo_nombre)})</option>`).join('')}</select>
+        <button class="btn btn-outline-secondary" onclick="aplicarPlantillaEnML(${i})">Aplicar a esta campaña</button></div>` : ''}
+      <button class="btn btn-sm btn-link text-danger px-0 align-self-start" onclick="borrarPlantilla(${i})">Borrar</button>
+    </div>`;
+  }).join('');
+}
+
+function prefillDe(pl) { return Object.fromEntries(pl.items.map(x => [x.id, x.descuento_pct])); }
+
+function repetirPlantilla(i, tipo) {
+  const pl = PLANTILLAS[i];
+  irACrearPropia(tipo, pl.nombre + ' (repetida)', prefillDe(pl), `Plantilla “${pl.nombre}”: ${pl.items.length} productos con sus descuentos. Elegí la fecha nueva y seguí.`);
+}
+
+function aplicarPlantillaEnML(i) {
+  abrirPromo(+$('dest-' + i).value, prefillDe(PLANTILLAS[i]));
+}
+
+async function borrarPlantilla(i) {
+  if (!confirm(`¿Borrar la plantilla “${PLANTILLAS[i].nombre}”?`)) return;
+  await api('/api/promociones/plantillas/borrar', {id: PLANTILLAS[i].id});
+  PLANTILLAS.splice(i, 1); pintarPlantillas();
+}
+
+async function clonarPropia(i) {
+  // Clonar = mismos productos y descuentos, fecha nueva. Se leen los ítems
+  // que hoy están en la campaña y se arma el prefill.
+  const p = PROMOS[i];
+  const j = await api(`/api/promociones/${encodeURIComponent(ALIAS)}/items?id=${encodeURIComponent(p.id)}&tipo=${p.type}`);
+  if (!j.ok) return alert('No se pudieron leer los productos: ' + j.error);
+  const adentro = j.items.filter(x => [...ADENTRO, 'finished'].includes(x.status) && x.price && x.original_price);
+  if (!adentro.length) return alert('Mercado Libre no devolvió productos con precio para esta campaña. Si la armaste desde acá, usá su plantilla.');
+  const pre = Object.fromEntries(adentro.map(x => [x.id, +(100 * (1 - x.price / x.original_price)).toFixed(2)]));
+  irACrearPropia('SELLER_CAMPAIGN', (p.name || 'Campaña') + ' (repetida)', pre, `Clonando “${p.name}”: ${adentro.length} productos con sus descuentos.`);
+}
+
+// ── Crear propia ────────────────────────────────────────────────
+let PREFILL_PROPIA = null;
+function irACrearPropia(tipo, nombre, prefill, aviso) {
+  document.querySelector(`input[name=np-tipo][value=${tipo}]`).checked = true;
+  $('np-nombre').value = nombre || '';
+  PREFILL_PROPIA = prefill;
+  $('np-plantilla').style.display = aviso ? '' : 'none';
+  $('np-plantilla').textContent = aviso || '';
+  toggleNombre();
+  bootstrap.Tab.getOrCreateInstance($('btn-tab-propia')).show();
+}
+function toggleNombre() {
+  $('np-nombre-wrap').style.display = document.querySelector('input[name=np-tipo]:checked').value === 'SELLER_CAMPAIGN' ? '' : 'none';
+}
+document.querySelectorAll('input[name=np-tipo]').forEach(r => r.addEventListener('change', toggleNombre));
+
+function elegirProductosPropia() {
+  const tipo = document.querySelector('input[name=np-tipo]:checked').value;
+  const nombre = $('np-nombre').value.trim(), desde = $('np-desde').value, hasta = $('np-hasta').value;
+  if (tipo === 'SELLER_CAMPAIGN' && !nombre) return alert('Poné un nombre para la campaña.');
+  if (!desde || !hasta) return alert('Elegí las fechas.');
+  if (desde < hoyISO()) return alert('La fecha de inicio no puede ser anterior a hoy.');
+  const dias = (new Date(hasta) - new Date(desde)) / 864e5 + 1;
+  if (dias < 1) return alert('La fecha de fin es anterior a la de inicio.');
+  if (dias > 14) return alert('Mercado Libre permite como máximo 14 días.');
+  abrirPanel({tipo, modo: 'precio', propia: {nombre, desde, hasta}, promo: null}, PREFILL_PROPIA);
+}
+
+// ── Panel de productos ──────────────────────────────────────────
+function abrirPromo(i, prefill = null) {
+  const p = PROMOS[i];
+  abrirPanel({tipo: p.type, modo: p.modo, promo: p, propia: null}, prefill);
+}
+
+async function abrirPanel(cfg, prefill) {
+  P = {...cfg, items: [], sel: new Set(), prefill: prefill || null};
+  $('vista-lista').style.display = 'none'; $('vista-panel').style.display = '';
+  $('q').value = ''; $('f-estado').value = ''; $('f-margen').value = ''; $('f-stock').checked = false;
+  $('tbody').innerHTML = '<tr><td colspan="9" class="pr-vacio">Cargando productos…</td></tr>';
+  pintarCabecera();
+  const id = P.promo ? P.promo.id : 'nueva';
+  const j = await api(`/api/promociones/${encodeURIComponent(ALIAS)}/items?id=${encodeURIComponent(id)}&tipo=${P.tipo}`);
+  if (!j.ok) { $('tbody').innerHTML = `<tr><td colspan="9" class="pr-vacio text-danger">${esc(j.error)}</td></tr>`; return; }
+  P.items = j.items;
+  for (const it of P.items) {
+    it._stock = it.stock_min || '';
+    const pct = P.prefill ? P.prefill[it.id] : undefined;
+    if (ADENTRO.includes(it.status)) it._precio = it.price || null;
+    else if (pct !== undefined && P.modo !== 'aceptar') it._precio = Math.round(it.original_price * (1 - pct / 100));
+    else if (P.modo === 'aceptar') it._precio = it.price || it.sugerido || null;
+    else it._precio = it.sugerido || null;
+    if (pct !== undefined && !ADENTRO.includes(it.status)) P.sel.add(it.id);
+  }
+  if (P.prefill) {
+    const faltan = Object.keys(P.prefill).filter(id => !P.items.some(x => x.id === id)).length;
+    $('p-aviso').innerHTML = `<span class="text-success">Plantilla aplicada: ${P.sel.size} productos preseleccionados.</span>` +
+      (faltan ? ` <span class="text-warning">${faltan} no están disponibles acá (pausados o no invitados).</span>` : '');
+  }
+  pintar();
+}
+
+function pintarCabecera() {
+  const t = P.propia ? (P.tipo === 'SELLER_CAMPAIGN' ? 'Campaña propia nueva' : 'Descuento individual nuevo') : P.promo.tipo_nombre;
+  $('p-tag').textContent = t;
+  $('p-tag').className = 'pr-tag ' + (P.modo || '');
+  $('p-nombre').textContent = P.propia ? (P.propia.nombre || 'Descuentos individuales') : (P.promo.name || P.promo.id);
+  const d = P.propia || {desde: P.promo.start_date, hasta: P.promo.finish_date};
+  const b = (P.promo && P.promo.benefits) || {};
+  $('p-meta').textContent = `${fecha(d.desde)} → ${fecha(d.hasta)}` +
+    (b.meli_percent != null ? ` · ML pone ${b.meli_percent}% y vos ${b.seller_percent}%` : '');
+  $('p-aviso').innerHTML = P.modo === 'aceptar'
+    ? 'En este tipo el descuento lo define Mercado Libre: solo elegís qué productos entran.'
+    : (P.tipo === 'DOD' || P.tipo === 'LIGHTNING')
+      ? '<span class="text-warning">Ojo: una vez activa, la oferta no se puede quitar.</span>' : '';
+  $('masivo-wrap').style.display = P.modo === 'aceptar' ? 'none' : '';
+  $('btn-quitar').style.display = P.propia ? 'none' : '';
+}
+
+// En las co-fondeadas ML pone su parte del descuento: el vendedor cobra el
+// precio de lista menos SU porcentaje, no el precio que ve el comprador.
+const cobra = (it, p) => it.seller_pct != null && it.original_price ? it.original_price * (1 - it.seller_pct / 100) : p;
+const margen = (it, p) => { const c = cobra(it, p); return (it.costo && p > 0) ? (c * (1 - (it.fee_rate || 0)) - it.costo) / c * 100 : null; };
+const semaforo = (it, m) => !it.costo ? 'sin_costo' : m === null ? 'sin_precio' : m < 0 ? 'perdida' : m < MARGEN_MIN ? 'bajo' : 'ok';
+const fueraDeRango = it => it._precio && ((it.min_price && it._precio < it.min_price) || (it.max_price && it._precio > it.max_price));
+const descPct = it => (it._precio && it.original_price) ? 100 * (1 - it._precio / it.original_price) : null;
+
+function visibles() {
+  const q = $('q').value.trim().toLowerCase(), est = $('f-estado').value, mg = $('f-margen').value, st = $('f-stock').checked;
+  return P.items.filter(it =>
+    (!q || [it.titulo, it.sku, it.id].some(v => String(v || '').toLowerCase().includes(q))) &&
+    (!est || (est === 'adentro' ? ADENTRO.includes(it.status) : it.status === est)) &&
+    (!mg || semaforo(it, margen(it, it._precio)) === mg) &&
+    (!st || (it.stock || 0) > 0));
+}
+
+function pintar() {
+  const vs = visibles();
+  const editable = it => P.modo !== 'aceptar' && !ADENTRO.includes(it.status);
+  $('tbody').innerHTML = vs.length ? vs.map(it => {
+    const m = margen(it, it._precio), s = semaforo(it, m), d = descPct(it);
+    const rango = (it.min_price || it.max_price) ? `<div class="sub">permitido ${money(it.min_price)} – ${money(it.max_price)}</div>` : '';
+    const precioCell = editable(it)
+      ? `<input class="form-control form-control-sm precio" type="number" min="1" aria-label="Precio promo" value="${it._precio || ''}" onchange="setPrecio('${esc(it.id)}', this.value)">${rango}
+         ${fueraDeRango(it) ? '<div class="pr-fuera">fuera del rango de ML</div>' : ''}
+         ${P.tipo === 'LIGHTNING' ? `<input class="form-control form-control-sm stockr mt-1" type="number" min="1" aria-label="Stock reservado" placeholder="stock" value="${it._stock}" onchange="setStock('${esc(it.id)}', this.value)"><div class="sub">stock ${it.stock_min ?? '?'}–${it.stock_max ?? '?'}</div>` : ''}`
+      : `${money(it._precio)}${it.meli_pct != null ? `<div class="sub">ML ${it.meli_pct}% · vos ${it.seller_pct}%</div>` : ''}`;
+    const res = it._res ? (it._res.ok ? '<div class="pr-res-ok">✓ listo</div>' : `<div class="pr-res-err">✗ ${esc(it._res.error)}</div>`) : '';
+    return `<tr>
+      <td><input type="checkbox" class="form-check-input" aria-label="Seleccionar" ${P.sel.has(it.id) ? 'checked' : ''} onchange="toggleSel('${esc(it.id)}', this.checked)"></td>
+      <td>${it.thumbnail ? `<img src="${esc(it.thumbnail)}" alt="">` : ''}</td>
+      <td><div class="tit">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.titulo)}</a>` : esc(it.titulo)}</div>
+          <div class="sub">${esc(it.id)}${it.sku ? ' · SKU ' + esc(it.sku) : ''}</div></td>
+      <td class="text-end">${it.stock ?? '—'}</td>
+      <td class="text-end">${money(it.original_price)}</td>
+      <td>${precioCell}</td>
+      <td class="text-end">${d !== null ? d.toFixed(1) + '%' : '—'}</td>
+      <td><span class="pr-m ${s}" title="${it.costo ? 'costo ' + money(it.costo) + ' · comisión+envío ' + Math.round((it.fee_rate || 0) * 100) + '%' : 'Cargá el costo en Cargar costos'}">${s === 'sin_costo' ? 'sin costo' : m === null ? '—' : m.toFixed(1) + '%'}</span></td>
+      <td>${esc(ESTADOS[it.status] || it.status)}${res}</td></tr>`;
+  }).join('') : '<tr><td colspan="9" class="pr-vacio">Ningún producto con esos filtros.</td></tr>';
+  $('sel-todos').checked = vs.length > 0 && vs.every(it => P.sel.has(it.id));
+  pintarResumen();
+}
+
+function pintarResumen() {
+  const sel = P.items.filter(it => P.sel.has(it.id));
+  const sumables = sel.filter(it => !ADENTRO.includes(it.status));
+  const quitables = sel.filter(it => ADENTRO.includes(it.status));
+  const perd = sumables.filter(it => semaforo(it, margen(it, it._precio)) === 'perdida').length;
+  const sinc = sumables.filter(it => !it.costo).length;
+  $('resumen').innerHTML = `<b>${sel.length}</b> seleccionados de ${P.items.length}` +
+    (perd ? ` · <span class="text-danger fw-bold">${perd} en pérdida</span>` : '') +
+    (sinc ? ` · <span class="text-muted">${sinc} sin costo</span>` : '');
+  $('btn-sumar').disabled = !sumables.length;
+  $('btn-sumar').innerHTML = `<i class="bi bi-check2-circle"></i> ${P.propia && P.tipo === 'SELLER_CAMPAIGN' ? 'Crear campaña y sumar' : 'Sumar'} ${sumables.length || ''}`;
+  $('btn-quitar').disabled = !quitables.length;
+  $('btn-quitar').innerHTML = `<i class="bi bi-x-circle"></i> Quitar ${quitables.length || ''}`;
+}
+
+const buscar = id => P.items.find(x => x.id === id);
+function setPrecio(id, v) { buscar(id)._precio = +v || null; pintar(); }
+function setStock(id, v) { buscar(id)._stock = +v || ''; }
+function toggleSel(id, on) { on ? P.sel.add(id) : P.sel.delete(id); pintarResumen(); }
+function selTodos(on) { visibles().forEach(it => on ? P.sel.add(it.id) : P.sel.delete(it.id)); pintar(); }
+
+function aplicarPctMasivo() {
+  const pct = +$('pct-masivo').value;
+  if (!(pct > 0 && pct < 90)) return alert('Poné un porcentaje válido.');
+  let n = 0;
+  P.items.forEach(it => {
+    if (P.sel.has(it.id) && !ADENTRO.includes(it.status) && it.original_price) {
+      it._precio = Math.round(it.original_price * (1 - pct / 100)); n++;
+    }
+  });
+  if (!n) alert('Seleccioná productos para sumar primero.');
+  pintar();
+}
+
+// ── Acciones ────────────────────────────────────────────────────
+async function enTandas(url, items, extra) {
+  const ok = [];
+  for (let i = 0; i < items.length; i += LOTE) {
+    $('resumen').innerHTML = `Procesando ${Math.min(i + LOTE, items.length)} de ${items.length}…`;
+    const lote = items.slice(i, i + LOTE);
+    const j = await api(url, {...extra, items: lote.map(it => ({id: it.id, deal_price: it._precio, stock: it._stock, offer_id: it.offer_id}))});
+    const res = j.ok ? j.resultados : lote.map(it => ({id: it.id, ok: false, error: j.error}));
+    for (const r of res) {
+      const it = buscar(r.id); if (!it) continue;
+      it._res = r;
+      if (r.ok) ok.push(it);
+    }
+    pintar();
+  }
+  return ok;
+}
+
+async function sumarSeleccionados() {
+  const items = P.items.filter(it => P.sel.has(it.id) && !ADENTRO.includes(it.status));
+  if (P.modo !== 'aceptar' && items.some(it => !it._precio)) return alert('Hay productos seleccionados sin precio de promo. Usá "Aplicar a seleccionados" o completalos.');
+  if (P.tipo === 'LIGHTNING' && items.some(it => !it._stock)) return alert('La oferta relámpago necesita el stock reservado de cada producto.');
+  if (P.tipo === 'PRICE_DISCOUNT') {
+    const malos = items.filter(it => { const d = descPct(it); return d < 5 || d > 80; }).length;
+    if (malos) return alert(`${malos} productos tienen un descuento fuera del rango permitido (5% a 80%).`);
+  }
+  const perd = items.filter(it => semaforo(it, margen(it, it._precio)) === 'perdida').length;
+  const fuera = items.filter(fueraDeRango).length;
+  let msg = `Vas a sumar ${items.length} productos`;
+  msg += P.propia ? (P.tipo === 'SELLER_CAMPAIGN' ? ` a la campaña nueva “${P.propia.nombre}” (${P.propia.desde} → ${P.propia.hasta}).` : ` con descuento individual (${P.propia.desde} → ${P.propia.hasta}).`) : ` a “${P.promo.name || P.promo.id}”.`;
+  if (perd) msg += `\n\n⚠️ ${perd} quedan EN PÉRDIDA con ese precio.`;
+  if (fuera) msg += `\n⚠️ ${fuera} están fuera del rango que acepta ML: probablemente los rechace.`;
+  if ((P.tipo === 'DOD' || P.tipo === 'LIGHTNING')) msg += '\n\nUna vez activa, la oferta no se puede quitar.';
+  if (!confirm(msg + '\n\n¿Confirmás?')) return;
+
+  $('btn-sumar').disabled = true;
+  if (P.propia && P.tipo === 'SELLER_CAMPAIGN' && !P.promo) {
+    $('resumen').textContent = 'Creando la campaña en Mercado Libre…';
+    const c = await api('/api/promociones/crear-campana', P.propia);
+    if (!c.ok) { alert('Mercado Libre no creó la campaña: ' + c.error); pintarResumen(); return; }
+    P.promo = {id: c.campana.id, name: c.campana.name, type: 'SELLER_CAMPAIGN'};
+    await new Promise(r => setTimeout(r, 2000));   // ML tarda un instante en habilitar los ítems
+  }
+  const ok = await enTandas('/api/promociones/sumar', items, {
+    promo_id: P.promo ? P.promo.id : null, tipo: P.tipo,
+    desde: P.propia ? P.propia.desde : null, hasta: P.propia ? P.propia.hasta : null});
+  ok.forEach(it => { it.status = 'pending'; P.sel.delete(it.id); });
+  if (ok.length) {
+    const nombre = (P.promo && P.promo.name) || (P.propia && P.propia.nombre) || 'Descuentos individuales';
+    await guardarPlantilla(`${nombre} · ${new Date().toLocaleDateString('es-AR')}`, ok);
+  }
+  pintar();
+  $('resumen').innerHTML = `<b class="text-success">${ok.length} sumados</b>` +
+    (items.length - ok.length ? ` · <span class="text-danger">${items.length - ok.length} rechazados (ver motivo en cada fila)</span>` : '') +
+    (ok.length ? ' · guardado como plantilla' : '');
+}
+
+async function quitarSeleccionados() {
+  const items = P.items.filter(it => P.sel.has(it.id) && ADENTRO.includes(it.status));
+  if (!confirm(`¿Quitar ${items.length} productos de “${P.promo.name || P.promo.id}”? Vuelven a su precio normal.`)) return;
+  const ok = await enTandas('/api/promociones/quitar', items, {promo_id: P.promo.id, tipo: P.tipo});
+  ok.forEach(it => { it.status = 'candidate'; P.sel.delete(it.id); });
+  pintar();
+}
+
+async function guardarPlantilla(nombre, items) {
+  const j = await api('/api/promociones/plantillas', {
+    nombre, tipo_origen: P.promo ? (P.promo.tipo_nombre || 'Campaña propia') : 'Descuento individual',
+    promo_origen: P.promo ? P.promo.id : null,
+    items: items.map(it => ({id: it.id, titulo: it.titulo, descuento_pct: +(descPct(it) || 0).toFixed(2)}))});
+  if (j.ok) { PLANTILLAS.unshift(j.plantilla); pintarPlantillas(); }
+  return j;
+}
+
+async function guardarSeleccionComoPlantilla() {
+  const items = P.items.filter(it => P.sel.has(it.id) && it._precio);
+  if (!items.length) return alert('Seleccioná productos con precio de promo.');
+  const nombre = prompt('Nombre de la plantilla:', (P.promo && P.promo.name) || (P.propia && P.propia.nombre) || '');
+  if (!nombre) return;
+  const j = await guardarPlantilla(nombre, items);
+  alert(j.ok ? 'Plantilla guardada.' : 'No se pudo guardar: ' + j.error);
+}
+
+function volver() {
+  $('vista-panel').style.display = 'none'; $('vista-lista').style.display = '';
+  P = null; PREFILL_PROPIA = null; $('np-plantilla').style.display = 'none';
+  cargarLista();
+}
+
+$('f-tipo').addEventListener('change', pintarLista);
+$('f-terminadas').addEventListener('change', pintarLista);
+$('np-desde').value = hoyISO(1); $('np-hasta').value = hoyISO(7);
+$('np-desde').min = hoyISO();
+cargarLista();
+</script>
+{% endblock %}

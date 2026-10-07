@@ -97,6 +97,21 @@ class MLClient:
             raise MLApiError(f"POST {path} failed: {resp.text}", resp.status_code)
         return resp.json()
 
+    def _delete(self, path: str, params: dict = None) -> Any:
+        self._ensure_token()
+        resp = self.session.delete(
+            f"{ML_API_BASE}{path}",
+            headers={"Authorization": f"Bearer {self.account.access_token}"},
+            params=params or {},
+        )
+        if not resp.ok:
+            raise MLApiError(f"DELETE {path} failed: {resp.text}", resp.status_code)
+        # Varios DELETE de ML responden 200 con body vacio o "null"
+        try:
+            return resp.json()
+        except ValueError:
+            return None
+
     # ── User ─────────────────────────────────────────────────────────────────
 
     def get_me(self) -> dict:

@@ -286,6 +286,9 @@
     <a href="/pricing-strategy/{{ acc.alias }}" class="{{ 'active' if request.path == '/pricing-strategy/'~acc.alias else '' }}">
       <i class="bi bi-graph-up"></i> Políticas de Precio
     </a>
+    <a href="/promociones/{{ acc.alias }}" class="{{ 'active' if request.path == '/promociones/'~acc.alias else '' }}">
+      <i class="bi bi-percent"></i> Promociones
+    </a>
     <a href="/repricing/{{ acc.alias }}" class="{{ 'active' if request.path == '/repricing/'~acc.alias else '' }}">
       <i class="bi bi-tags"></i> Repricing
     </a>

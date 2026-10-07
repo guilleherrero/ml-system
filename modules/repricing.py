@@ -199,6 +199,22 @@ def _should_skip_item(alias: str, item_id: str,
     return False, ""
 
 
+def _promo_que_lo_bloquea(client: MLClient, item_id: str) -> str:
+    """Nombre de la promoción activa o programada del ítem; '' si no tiene.
+
+    Mientras un ítem está en promo el repricing no lo toca: si ML ve que el
+    precio cambia, lo saca de la campaña. Si la consulta falla no bloquea
+    (fail-open): una caída de /seller-promotions no debe frenar el repricing.
+    """
+    from modules.promociones import promo_activa_del_item
+    try:
+        p = promo_activa_del_item(client, item_id)
+    except Exception as e:
+        _logger.warning("repricing: no se pudo consultar promociones de %s: %s", item_id, e)
+        return ""
+    return (p.get("name") or p.get("type") or "promoción") if p else ""
+
+
 def _enforce_max_drop_per_iter(current_price: float, new_price: float,
                                 breakers: dict | None = None) -> tuple[float, str | None]:
     """Limita cuánto puede bajar el precio en UNA sola iteración del cron.
@@ -535,6 +551,10 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
         # ── Sprint 4.3: Circuit breaker pre-cálculo (drop 24h) ──
         # Si el item ya bajó >5% acumulado en últimas 24h, skipear (anti-guerra).
         skip, skip_reason = _should_skip_item(alias, item_id, breakers)
+        if not skip:
+            promo = _promo_que_lo_bloquea(client, item_id)
+            if promo:
+                skip, skip_reason = True, f"en promoción ({promo}) — repricing pausado hasta que termine"
         if skip:
             results.append({
                 "id": item_id, "titulo": titulo,
