@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from datetime import date, datetime
@@ -53,6 +54,24 @@ DIAS_MAX_PROPIA = 14            # SELLER_CAMPAIGN y PRICE_DISCOUNT: plazo máxim
 DESCUENTO_MIN_PCT = 5           # PRICE_DISCOUNT: rango permitido por ML
 DESCUENTO_MAX_PCT = 80
 ESTADOS_ADENTRO = ('started', 'pending')
+
+
+# Los IDs llegan del navegador y van dentro del path de la API: sin esto,
+# "../../items/MLA1" haría que el panel llame a otro endpoint con el token.
+_RE_ITEM = re.compile(r'^ML[A-Z]\d+$')
+_RE_PROMO = re.compile(r'^[A-Za-z0-9_-]+$')
+
+
+def _item(item_id) -> str:
+    if not _RE_ITEM.match(str(item_id or '')):
+        raise ValueError(f'ID de publicación inválido: {item_id!r}')
+    return item_id
+
+
+def _promo(promo_id) -> str:
+    if not _RE_PROMO.match(str(promo_id or '')):
+        raise ValueError(f'ID de promoción inválido: {promo_id!r}')
+    return promo_id
 
 
 def tipo_info(tipo: str) -> dict:
@@ -93,7 +112,7 @@ def items_de_promocion(client, promo_id: str, tipo: str, status: str | None = No
         params['status'] = status
     out = []
     while len(out) < max_items:
-        data = client._get(f'/seller-promotions/promotions/{promo_id}/items', params)
+        data = client._get(f'/seller-promotions/promotions/{_promo(promo_id)}/items', params)
         res = data.get('results') or []
         out.extend(res)
         sa = data.get('search_after') or data.get('searchAfter')
@@ -105,9 +124,9 @@ def items_de_promocion(client, promo_id: str, tipo: str, status: str | None = No
 
 def contar_items(client, promo_id: str, tipo: str, status: str) -> int | None:
     try:
-        data = client._get(f'/seller-promotions/promotions/{promo_id}/items',
+        data = client._get(f'/seller-promotions/promotions/{_promo(promo_id)}/items',
                            {**V2, 'promotion_type': tipo, 'status': status, 'limit': 1})
-    except MLApiError:
+    except (MLApiError, ValueError):
         return None
     total = (data.get('paging') or {}).get('total')
     return total if isinstance(total, int) else len(data.get('results') or [])
@@ -136,7 +155,7 @@ def mis_items_activos(client) -> list[dict]:
 
 
 def promos_del_item(client, item_id: str) -> list[dict]:
-    data = client._get(f'/seller-promotions/items/{item_id}', V2)
+    data = client._get(f'/seller-promotions/items/{_item(item_id)}', V2)
     return data if isinstance(data, list) else (data or {}).get('results') or []
 
 
@@ -242,7 +261,7 @@ def body_para_sumar(tipo: str, promo_id: str | None, *, deal_price=None,
 
 def sumar_item(client, item_id: str, body: dict) -> dict:
     """POST a ML. Reintenta una vez si el ítem está bloqueado (423)."""
-    path = f'/seller-promotions/items/{item_id}?app_version=v2'
+    path = f'/seller-promotions/items/{_item(item_id)}?app_version=v2'
     try:
         return client._post(path, body)
     except MLApiError as e:
@@ -259,7 +278,7 @@ def quitar_item(client, item_id: str, tipo: str, promo_id: str | None = None,
         params['promotion_id'] = promo_id
     if offer_id:
         params['offer_id'] = offer_id
-    return client._delete(f'/seller-promotions/items/{item_id}', params)
+    return client._delete(f'/seller-promotions/items/{_item(item_id)}', params)
 
 
 def validar_fechas(desde: str, hasta: str, hoy: date | None = None) -> tuple[date, date]:

@@ -194,3 +194,13 @@ def test_cofondeada_el_margen_usa_lo_que_cobra_el_vendedor():
               'meli_percentage': 5, 'seller_percentage': 15}]
     out = pm.enriquecer(items, {}, {'MLA1': {'costo': 4000}}, lambda lt: 0.30)[0]
     assert out['margen_promo_pct'] == 22.9
+
+
+@pytest.mark.parametrize('malo', ['../../items/MLA1', 'MLA1/../x', 'MLA1?x=1', '', None])
+def test_ids_con_path_injection_se_rechazan_antes_de_llamar_a_ml(malo):
+    c = FakeClient()
+    with pytest.raises(ValueError):
+        pm.sumar_item(c, malo, {'deal_price': 1})
+    with pytest.raises(ValueError):
+        pm.items_de_promocion(c, malo, 'DEAL')
+    assert c.posts == [] and c.get_calls == []
