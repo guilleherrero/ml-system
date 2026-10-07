@@ -3766,249 +3766,88 @@ def posiciones(alias):
 
 @app.route('/reputacion/<alias>')
 def reputacion(alias):
-    from datetime import datetime as _dt, timedelta as _td
+    """Reputación y reclamos: lo que hay que resolver ahora. Las secciones se
+    cargan por separado desde el navegador (cada una pega a ML y tarda)."""
+    return render_template('reputacion.html', alias=alias, accounts=get_accounts())
 
-    snapshots = load_json(os.path.join(DATA_DIR, f'reputacion_{safe(alias)}.json')) or []
 
-    all_accs  = get_accounts()
-    account   = next((a for a in all_accs if a.get('alias') == alias), None)
+_POSTVENTA_SECCIONES = {
+    'reputacion': 'reputacion', 'reclamos': 'reclamos_abiertos',
+    'mensajes': 'mensajes_sin_leer', 'preguntas': 'preguntas_sin_responder',
+    'envios': 'envios_por_despachar',
+}
 
-    rep_live     = {}
-    claims_list  = []
-    dashboard    = {}
-    top_products = []
-    shipping_metrics = {}
 
-    if account:
-        try:
-            token, user_id, heads = _ml_auth(alias)
-        except Exception:
-            token, user_id, heads = '', '', {}
+def _pv_client(alias):
+    from core.account_manager import AccountManager
+    return AccountManager().get_client(_resolve_alias(alias))
 
-        # 1 — Reputación en vivo
-        if user_id:
-            try:
-                r = req_lib.get(f'https://api.mercadolibre.com/users/{user_id}/seller_reputation',
-                                headers=heads, timeout=8)
-                if r.ok:
-                    rep_live = r.json()
-            except Exception:
-                pass
 
-        # 2 — Mediaciones pendientes (órdenes activas con mediación abierta)
-        # Solo buscamos las NO canceladas → son reclamos aún sin resolver
-        if user_id:
-            try:
-                date_60d = (_dt.now() - _td(days=60)).strftime('%Y-%m-%dT00:00:00.000-03:00')
-                r = req_lib.get('https://api.mercadolibre.com/orders/search',
-                                headers=heads,
-                                params={'seller': user_id,
-                                        'order.date_created.from': date_60d,
-                                        'limit': 50, 'sort': 'date_desc'},
-                                timeout=12)
-                if r.ok:
-                    for order in r.json().get('results', []):
-                        if order.get('status') == 'cancelled':
-                            continue
-                        if not order.get('mediations'):
-                            continue
-                        items   = order.get('order_items', [])
-                        title   = items[0].get('item', {}).get('title', '—') if items else '—'
-                        item_id = items[0].get('item', {}).get('id', '')     if items else ''
-                        claims_list.append({
-                            'order_id':     order.get('id', ''),
-                            'item_title':   title,
-                            'item_id':      item_id,
-                            'date_created': (order.get('date_created') or '')[:10],
-                        })
-            except Exception:
-                pass
+@app.route('/api/postventa/<alias>/<seccion>')
+def api_postventa_seccion(alias, seccion):
+    from modules import postventa as pv
+    fn = _POSTVENTA_SECCIONES.get(seccion)
+    if not fn:
+        return jsonify({'ok': False, 'error': 'Sección desconocida'}), 404
+    try:
+        return jsonify({'ok': True, 'data': getattr(pv, fn)(_pv_client(alias))})
+    except Exception as e:
+        app.logger.warning('[postventa] %s %s: %s', alias, seccion, e)
+        return jsonify({'ok': False, 'error': str(e)[:300]}), 502
 
-        # 3 — Órdenes 60 días → dashboard + top 10
-        # Todo alineado al período de cálculo de ML (60 días)
-        if user_id:
-            try:
-                now      = _dt.now()
-                date_60d = (now - _td(days=60)).strftime('%Y-%m-%dT00:00:00.000-03:00')
-                date_30d = (now - _td(days=30)).strftime('%Y-%m-%dT00:00:00.000-03:00')
-                date_7d  = (now - _td(days=7)).strftime('%Y-%m-%dT00:00:00.000-03:00')
-                date_hoy = now.strftime('%Y-%m-%dT00:00:00.000-03:00')
 
-                def _fetch_all_orders(date_from):
-                    """Pagina completamente las órdenes pagadas desde date_from."""
-                    orders = []
-                    offset = 0
-                    while True:
-                        r = req_lib.get('https://api.mercadolibre.com/orders/search',
-                            params={
-                                'seller': user_id,
-                                'order.status': 'paid',
-                                'order.date_created.from': date_from,
-                                'limit': 50, 'offset': offset,
-                                'sort': 'date_desc',
-                            }, headers=heads, timeout=15)
-                        if not r.ok:
-                            break
-                        data_o  = r.json()
-                        results = data_o.get('results', [])
-                        orders.extend(results)
-                        total   = data_o.get('paging', {}).get('total', 0)
-                        offset += len(results)
-                        if not results or offset >= total:
-                            break
-                    return orders
+@app.route('/api/postventa/<alias>/reclamo/<claim_id>')
+def api_postventa_reclamo(alias, claim_id):
+    from modules import postventa as pv
+    try:
+        return jsonify({'ok': True, 'data': pv.detalle_reclamo(_pv_client(alias), claim_id)})
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)[:300]}), 502
 
-                orders_60d    = _fetch_all_orders(date_60d)
-                orders_30d    = _fetch_all_orders(date_30d)
-                orders_7d     = _fetch_all_orders(date_7d)
-                orders_hoy    = _fetch_all_orders(date_hoy)
 
-                def _sum_orders(order_list):
-                    amt = 0.0
-                    unt = 0
-                    for o in order_list:
-                        amt += o.get('total_amount', 0) or 0
-                        unt += sum(i.get('quantity', 1) for i in o.get('order_items', []))
-                    return amt, unt
+@app.route('/api/postventa/reclamo-accion', methods=['POST'])
+def api_postventa_reclamo_accion():
+    from modules import postventa as pv
+    d = request.get_json(silent=True) or {}
+    alias = d.get('alias', '')
+    try:
+        r = pv.ejecutar_accion(_pv_client(alias), d.get('claim_id'), d.get('accion', ''),
+                               d.get('texto', ''), d.get('porcentaje'))
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)[:400]}), 502
+    _audit('RECLAMO_ACCION', alias=alias, claim_id=d.get('claim_id'), accion=d.get('accion'),
+           porcentaje=d.get('porcentaje'))
+    return jsonify({'ok': True, 'respuesta': r})
 
-                dashboard = {
-                    'hoy':    {'amount': 0.0, 'units': 0},
-                    'semana': {'amount': 0.0, 'units': 0},
-                    'mes':    {'amount': 0.0, 'units': 0},
-                    'sesenta':{'amount': 0.0, 'units': 0},
-                }
-                dashboard['hoy']['amount'],     dashboard['hoy']['units']     = _sum_orders(orders_hoy)
-                dashboard['semana']['amount'],  dashboard['semana']['units']  = _sum_orders(orders_7d)
-                dashboard['mes']['amount'],     dashboard['mes']['units']     = _sum_orders(orders_30d)
-                dashboard['sesenta']['amount'], dashboard['sesenta']['units'] = _sum_orders(orders_60d)
 
-                # Top 10 productos — últimos 60 días (alineado con métricas de reputación)
-                items_agg = {}
-                for order in orders_60d:
-                    for oi in order.get('order_items', []):
-                        iid   = oi.get('item', {}).get('id', '')
-                        title = oi.get('item', {}).get('title', '')
-                        qty   = oi.get('quantity', 1)
-                        price = oi.get('unit_price', 0) or 0
-                        if iid:
-                            if iid not in items_agg:
-                                items_agg[iid] = {'id': iid, 'title': title, 'units': 0, 'revenue': 0.0}
-                            items_agg[iid]['units']   += qty
-                            items_agg[iid]['revenue'] += qty * price
+@app.route('/api/postventa/<alias>/mensajes/<pack_id>')
+def api_postventa_hilo(alias, pack_id):
+    from modules import postventa as pv
+    try:
+        return jsonify({'ok': True, 'data': pv.hilo_mensajes(_pv_client(alias), pack_id)})
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)[:300]}), 502
 
-                top_products = sorted(items_agg.values(), key=lambda x: -x['units'])[:10]
-            except Exception:
-                pass
 
-        # 4 — Métricas de envío / Flex desde reputación
-        if rep_live:
-            m = rep_live.get('metrics', {})
-            shipping_metrics = {
-                'delayed': m.get('delayed_handling_time', {}),
-                'cancels': m.get('cancellations', {}),
-                'claims':  m.get('claims', {}),
-            }
-
-    # Totales de stock desde snapshot guardado (data/stock_{alias}.json)
-    # Totales de stock con deduplicación por family_id (grupo de AppSeller).
-    # Si el snapshot no tiene family_id (generado antes del cambio), lo busca
-    # en la API en tiempo real usando los item_ids del snapshot.
-    stock_snap      = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
-    stock_items_raw = stock_snap.get('items', [])
-
-    # ¿El snapshot ya tiene family_id guardado?
-    _has_family = any(i.get('family_id') is not None for i in stock_items_raw)
-
-    if not _has_family and stock_items_raw and account:
-        # Buscar family_id en la API para todos los items del snapshot
-        _item_ids  = [i['id'] for i in stock_items_raw if i.get('id')]
-        _fid_map   = {}  # item_id → family_id
-        try:
-            _, __, _heads = _ml_auth(alias)
-        except Exception:
-            _heads = {}
-        for _b in range(0, len(_item_ids), 20):
-            _batch = _item_ids[_b:_b + 20]
-            try:
-                _r = req_lib.get('https://api.mercadolibre.com/items',
-                                 headers=_heads,
-                                 params={'ids': ','.join(_batch),
-                                         'attributes': 'id,family_id'},
-                                 timeout=10)
-                if _r.ok:
-                    for _entry in _r.json():
-                        _body = _entry.get('body', {})
-                        if _body.get('id'):
-                            _fid_map[_body['id']] = _body.get('family_id')
-            except Exception:
-                pass
-        # Inyectar family_id en cada item para el cálculo
-        for _si in stock_items_raw:
-            if _si.get('id') in _fid_map:
-                _si['family_id'] = _fid_map[_si['id']]
-
-    # Agrupar por family_id: por grupo tomar el MAX stock (1 conteo por grupo)
-    _family_groups = {}
-    _no_family     = []
-    for _si in stock_items_raw:
-        _fid = _si.get('family_id')
-        if _fid:
-            _family_groups.setdefault(_fid, []).append(_si)
-        else:
-            _no_family.append(_si)
-
-    total_stock_units = 0
-    total_stock_value = 0
-
-    for _grp in _family_groups.values():
-        # Dentro del grupo, sub-agrupar por stock exacto:
-        #   - Mismo stock → comparten pool → contar una sola vez
-        #   - Stock distinto → variante real (talle/color) → contar por separado
-        _seen_stocks = {}   # stock_qty → precio representativo
-        for _si in _grp:
-            _s = int(_si.get('stock', 0) or 0)
-            if _s not in _seen_stocks:
-                _seen_stocks[_s] = float(_si.get('precio', 0) or 0)
-        for _s, _p in _seen_stocks.items():
-            total_stock_units += _s
-            total_stock_value += _s * _p
-
-    for _si in _no_family:
-        _s = int(_si.get('stock', 0) or 0)
-        total_stock_units += _s
-        total_stock_value += _s * float(_si.get('precio', 0) or 0)
-
-    # Nivel de reputación
-    LEVEL_MAP = {
-        '5_green':       ('MercadoLíder Platinum', 'platinum', '#7c3aed'),
-        '4_light_green': ('MercadoLíder Gold',     'gold',     '#d97706'),
-        '3_yellow':      ('MercadoLíder',          'leader',   '#2563eb'),
-        '2_orange':      ('Bueno',                 'good',     '#16a34a'),
-        '1_red':         ('Nuevo',                 'new',      '#64748b'),
-    }
-    nivel_id    = rep_live.get('level_id', '')
-    nivel_info  = LEVEL_MAP.get(nivel_id, (nivel_id or 'Sin datos', 'nd', '#94a3b8'))
-    power_seller = rep_live.get('power_seller_status', '')
-    transactions = rep_live.get('transactions', {})
-    metrics_raw  = rep_live.get('metrics', {})
-
-    return render_template('reputacion.html',
-                           alias=alias,
-                           snapshots=snapshots,
-                           rep_live=rep_live,
-                           nivel_label=nivel_info[0],
-                           nivel_slug=nivel_info[1],
-                           nivel_color=nivel_info[2],
-                           power_seller=power_seller,
-                           transactions=transactions,
-                           metrics_raw=metrics_raw,
-                           shipping_metrics=shipping_metrics,
-                           claims=claims_list,
-                           dashboard=dashboard,
-                           top_products=top_products,
-                           total_stock_units=total_stock_units,
-                           total_stock_value=total_stock_value,
-                           accounts=all_accs)
+@app.route('/api/postventa/mensaje-responder', methods=['POST'])
+def api_postventa_mensaje_responder():
+    from modules import postventa as pv
+    d = request.get_json(silent=True) or {}
+    alias = d.get('alias', '')
+    try:
+        pv.responder_mensaje(_pv_client(alias), d.get('pack_id'), d.get('texto', ''))
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)[:400]}), 502
+    _audit('MENSAJE_RESPONDER', alias=alias, pack_id=d.get('pack_id'))
+    return jsonify({'ok': True})
 
 
 # ── Preguntas ─────────────────────────────────────────────────────────────────
@@ -5008,8 +4847,9 @@ def api_reclamos():
         resp = req_lib.get(
             'https://api.mercadolibre.com/post-purchase/v1/claims/search',
             params={
-                'player_user_id': user_id,
-                'player_role':    'respondent',
+                'players.user_id': user_id,
+                'players.role':    'respondent',
+                'sort':            'date_created:desc',
                 'limit':       request.args.get('limit',  50),
                 'offset':      request.args.get('offset',  0),
             },
@@ -18221,6 +18061,25 @@ def _job_veredictos_weekly():
           f'Costo mensual acumulado: ${final:.2f} / ${_vo.HARD_CAP_USD_MENSUAL}')
 
 
+def _job_reclamos_avisos():
+    """Cada 30 min: avisa por Telegram los reclamos nuevos y los que vencen en
+    menos de 24 h. Lo ya avisado queda en data/reclamos_avisados_<alias>.json."""
+    from core.account_manager import AccountManager
+    from modules import postventa as pv
+    mgr = AccountManager()
+    for acc in [a for a in mgr.list_accounts() if a.active]:
+        try:
+            reclamos = pv.reclamos_abiertos(mgr.get_client(acc.alias))
+        except Exception as e:
+            app.logger.warning('[reclamos_avisos] %s: %s', acc.alias, e)
+            continue
+        path = os.path.join(DATA_DIR, f'reclamos_avisados_{safe(acc.alias)}.json')
+        avisos, estado = pv.avisos_reclamos(reclamos, load_json(path) or {})
+        for titulo, detalle, url in avisos:
+            _tg('reclamo', titulo, detalle, acc.alias, url=url)
+        save_json(path, estado)
+
+
 def _enviar_mensajes_auto(alias):
     """Envía el mensaje automático a compradores de órdenes pagas nuevas.
 
@@ -18494,6 +18353,14 @@ def _start_scheduler():
             description=('Elimina definitivamente las cuentas que estuvieron pausadas '
                          'hace más de 90 días. Borra config/accounts.json + data/ asociada. '
                          'Solo afecta cuentas en soft-delete vencido.'),
+        )
+
+        # Job 10 — Reclamos: aviso por Telegram de nuevos y por vencer
+        jm.register_job(
+            'reclamos_avisos', _job_reclamos_avisos,
+            CronTrigger(hour='7-23', minute='*/30', timezone='America/Argentina/Buenos_Aires'),
+            name='Reclamos — avisos',
+            description='Avisa por Telegram los reclamos nuevos y los que vencen en menos de 24 h.',
         )
 
         # Job 11 — Mensajes automáticos post-venta (DESHABILITADO — API /messages/orders 404)

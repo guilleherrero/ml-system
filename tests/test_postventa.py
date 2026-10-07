@@ -1,0 +1,209 @@
+"""Postventa: límites de reputación, urgencia de reclamos, acciones que mueven
+plata y avisos de Telegram.
+
+Las respuestas de ML salen de la documentación oficial de reclamos (revisada
+el 2026-10-07). Lo crítico: nunca ejecutar una acción que ML ya no ofrece y
+nunca avisar dos veces lo mismo.
+"""
+
+import os
+import sys
+from datetime import datetime, timezone
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from modules import postventa as pv  # noqa: E402
+
+AHORA = datetime(2026, 10, 7, 15, 0, tzinfo=timezone.utc)
+
+
+class FakeClient:
+    def __init__(self, gets=None):
+        self.gets = gets or {}
+        self.posts = []
+
+        class _Acc:
+            user_id = 99
+        self.account = _Acc()
+
+    def _get(self, path, params=None):
+        return self.gets[path]
+
+    def _post(self, path, body):
+        self.posts.append((path, body))
+        return {}
+
+
+def _claim(acciones, status='opened'):
+    return {'id': 5001, 'status': status, 'stage': 'claim', 'reason_id': 'PDD9939',
+            'players': [{'role': 'complainant', 'available_actions': []},
+                        {'role': 'respondent', 'available_actions': acciones}]}
+
+
+# ── reputación ───────────────────────────────────────────────────────────────
+
+def _rep(**metricas):
+    base = {'sales': {'completed': 200}}
+    base.update(metricas)
+    return {'level_id': '5_green', 'metrics': base}
+
+
+def test_limites_oficiales_verde_y_margen():
+    r = pv.resumen_reputacion(_rep(claims={'rate': 0.01, 'value': 2}))
+    claims = r['metricas'][0]
+    assert claims['limite_pct'] == 1.5            # verde: 1,5% de reclamos
+    assert claims['quedan'] == 1                  # 1,5% de 200 = 3 → quedan 1
+    assert claims['pp_por_caso'] == 0.5           # cada reclamo suma 0,5 pp
+    assert claims['estado'] == 'ok'
+
+
+def test_mercadolider_usa_limites_mas_duros():
+    rep = _rep(cancellations={'rate': 0.006, 'value': 1})
+    rep['power_seller_status'] = 'gold'
+    canc = pv.resumen_reputacion(rep)['metricas'][2]
+    assert canc['limite_pct'] == 0.5 and canc['estado'] == 'mal'
+
+
+def test_protegido_muestra_datos_reales():
+    rep = _rep(claims={'rate': 0, 'value': 0, 'excluded': {'real_value': 5, 'real_rate': 0.025}})
+    claims = pv.resumen_reputacion(rep)['metricas'][0]
+    assert claims['valor'] == 5 and claims['quedan'] == -2 and claims['estado'] == 'mal'
+
+
+# ── urgencia ─────────────────────────────────────────────────────────────────
+
+def test_accion_obligatoria_marca_vencimiento_y_me_toca():
+    c = _claim([{'action': 'send_message_to_complainant', 'mandatory': True,
+                 'due_date': '2026-10-08T10:00:00.000-03:00'},
+                {'action': 'refund', 'mandatory': False, 'due_date': None}])
+    u = pv.urgencia_reclamo(c, {}, {'affects_reputation': 'affected', 'has_incentive': False})
+    assert u['me_toca'] and u['vence'] == '2026-10-08T10:00:00.000-03:00'
+    assert u['afecta'] == 'si'
+    assert u['motivo'] == 'Producto diferente o defectuoso'
+    assert [a['ejecutable'] for a in u['acciones']] == [True, True]
+
+
+def test_incentivo_48h():
+    u = pv.urgencia_reclamo(_claim([]), {'action_responsible': 'buyer'},
+                            {'affects_reputation': 'affected', 'has_incentive': True})
+    assert u['afecta'] == '48h' and not u['me_toca']
+
+
+def test_detalle_dice_que_le_toca_al_vendedor():
+    u = pv.urgencia_reclamo(_claim([]), {'action_responsible': 'seller',
+                                         'due_date': '2026-10-09T00:00:00.000-03:00'}, {})
+    assert u['me_toca'] and u['vence'].startswith('2026-10-09')
+
+
+# ── acciones ─────────────────────────────────────────────────────────────────
+
+def test_no_ejecuta_si_ml_ya_no_ofrece_la_accion():
+    c = FakeClient({'/post-purchase/v1/claims/5001': _claim([{'action': 'send_message_to_complainant'}])})
+    with pytest.raises(ValueError):
+        pv.ejecutar_accion(c, '5001', 'refund')
+    assert c.posts == []
+
+
+def test_no_ejecuta_sobre_reclamo_cerrado():
+    c = FakeClient({'/post-purchase/v1/claims/5001': _claim([{'action': 'refund'}], status='closed')})
+    with pytest.raises(ValueError):
+        pv.ejecutar_accion(c, '5001', 'refund')
+    assert c.posts == []
+
+
+@pytest.mark.parametrize('accion,path', [
+    ('refund', '/post-purchase/v1/claims/5001/expected-resolutions/refund'),
+    ('allow_return', '/post-purchase/v1/claims/5001/expected-resolutions/allow-return'),
+    ('open_dispute', '/post-purchase/v1/claims/5001/actions/open-dispute'),
+])
+def test_cada_accion_va_a_su_endpoint(accion, path):
+    c = FakeClient({'/post-purchase/v1/claims/5001': _claim([{'action': accion}])})
+    pv.ejecutar_accion(c, '5001', accion)
+    assert c.posts == [(path, {})]
+
+
+def test_mensaje_al_comprador_y_al_mediador():
+    c = FakeClient({'/post-purchase/v1/claims/5001': _claim(
+        [{'action': 'send_message_to_complainant'}, {'action': 'send_message_to_mediator'}])})
+    pv.ejecutar_accion(c, '5001', 'send_message_to_complainant', '  Hola  ')
+    pv.ejecutar_accion(c, '5001', 'send_message_to_mediator', 'Adjunto prueba')
+    assert c.posts[0][1] == {'receiver_role': 'complainant', 'message': 'Hola'}
+    assert c.posts[1][1]['receiver_role'] == 'mediator'
+    with pytest.raises(ValueError):
+        pv.ejecutar_accion(c, '5001', 'send_message_to_complainant', '   ')
+
+
+def test_reembolso_parcial_manda_porcentaje():
+    c = FakeClient({'/post-purchase/v1/claims/5001': _claim([{'action': 'allow_partial_refund'}])})
+    pv.ejecutar_accion(c, '5001', 'allow_partial_refund', porcentaje='40')
+    assert c.posts == [('/post-purchase/v1/claims/5001/expected-resolutions/partial-refund',
+                        {'percentage': 40.0})]
+
+
+def test_acciones_de_ml_no_se_ejecutan_desde_el_panel():
+    c = FakeClient()
+    with pytest.raises(ValueError):
+        pv.ejecutar_accion(c, '5001', 'add_shipping_evidence')
+
+
+@pytest.mark.parametrize('malo', ['../../orders/1', '5001/x', '', None, 'abc'])
+def test_ids_invalidos_no_llegan_a_ml(malo):
+    c = FakeClient()
+    with pytest.raises(ValueError):
+        pv.ejecutar_accion(c, malo, 'refund')
+    with pytest.raises(ValueError):
+        pv.responder_mensaje(c, malo, 'hola')
+    assert c.posts == []
+
+
+# ── mensajes ─────────────────────────────────────────────────────────────────
+
+def test_responde_a_la_contraparte_del_hilo():
+    hilo = {'messages': [{'from': {'user_id': 99}}, {'from': {'user_id': 3037674934}}]}
+    c = FakeClient({'/messages/packs/123/sellers/99': hilo})
+    pv.responder_mensaje(c, '123', 'Sale mañana')
+    path, body = c.posts[0]
+    assert path == '/messages/packs/123/sellers/99?tag=post_sale'
+    assert body == {'from': {'user_id': '99'}, 'to': {'user_id': '3037674934'}, 'text': 'Sale mañana'}
+
+
+def test_mensaje_de_mas_de_350_caracteres_se_rechaza():
+    with pytest.raises(ValueError):
+        pv.responder_mensaje(FakeClient(), '123', 'x' * 351)
+
+
+# ── avisos ───────────────────────────────────────────────────────────────────
+
+def _r(id_, vence, me_toca=True, afecta='si'):
+    return {'id': id_, 'me_toca': me_toca, 'vence': vence, 'afecta': afecta,
+            'motivo': 'No le llegó el producto', 'producto': 'Faja', 'url': 'https://ml/x'}
+
+
+def test_avisa_nuevo_una_sola_vez():
+    avisos, est = pv.avisos_reclamos([_r('1', '2026-10-10T00:00:00+00:00')], {}, AHORA)
+    assert [a[0] for a in avisos] == ['Reclamo nuevo: No le llegó el producto']
+    avisos2, _ = pv.avisos_reclamos([_r('1', '2026-10-10T00:00:00+00:00')], est, AHORA)
+    assert avisos2 == []
+
+
+def test_avisa_cuando_quedan_menos_de_24h():
+    _, est = pv.avisos_reclamos([_r('1', '2026-10-10T00:00:00+00:00')], {}, AHORA)
+    avisos, est2 = pv.avisos_reclamos([_r('1', '2026-10-08T05:00:00+00:00')], est, AHORA)
+    assert len(avisos) == 1 and avisos[0][0].startswith('Reclamo por vencer')
+    assert 'vence en 14 h' in avisos[0][1]
+    assert pv.avisos_reclamos([_r('1', '2026-10-08T05:00:00+00:00')], est2, AHORA)[0] == []
+
+
+def test_reclamo_cerrado_sale_del_estado_y_esperando_no_avisa():
+    _, est = pv.avisos_reclamos([_r('1', None), _r('2', None)], {}, AHORA)
+    avisos, est2 = pv.avisos_reclamos([_r('2', None, me_toca=False)], est, AHORA)
+    assert avisos == [] and set(est2) == {'2'}
+
+
+def test_un_caso_mas_y_se_pasa_es_amarillo_aunque_la_tasa_sea_baja():
+    # 2 reclamos en 180 ventas = 1,11% (< 75% de 1,5%), pero el tercero da 1,67%
+    m = pv.resumen_reputacion({'metrics': {'sales': {'completed': 180},
+                                           'claims': {'rate': 0.0111, 'value': 2}}})['metricas'][0]
+    assert m['quedan'] == 0 and m['estado'] == 'justo'

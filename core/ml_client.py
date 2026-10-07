@@ -95,7 +95,11 @@ class MLClient:
         )
         if not resp.ok:
             raise MLApiError(f"POST {path} failed: {resp.text}", resp.status_code)
-        return resp.json()
+        # Algunos POST de ML (ej. mensajes de reclamos) responden 201 sin body
+        try:
+            return resp.json()
+        except ValueError:
+            return None
 
     def _delete(self, path: str, params: dict = None) -> Any:
         self._ensure_token()
