@@ -68,28 +68,31 @@
   </div>
 </div>
 
-<!-- ── Reputación ───────────────────────────────────────────── -->
-<div class="app-card mb-3">
-  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-    <h2 class="h6 m-0">Tu reputación</h2>
-    <span id="rep-nivel" class="badge bg-secondary">…</span>
-    <span id="rep-nota" class="small text-muted"></span>
-  </div>
-  <div id="rep-metricas" class="rp-metrics"><div class="rp-cargando">Leyendo reputación…</div></div>
-  <div id="rep-proy" class="mt-3"></div>
-</div>
-
 <!-- ── Resolver ahora ───────────────────────────────────────── -->
-<div class="rp-kpis" id="kpis"></div>
-<div class="rp-sec" id="sec-ahora">Resolver ahora</div>
+<div class="rp-sec mt-0" id="sec-ahora">Resolver ahora</div>
+<div class="rp-kpis mt-0" id="kpis"></div>
 <div id="lista-ahora"><div class="rp-vacio">Buscando reclamos, mensajes, preguntas y envíos…</div></div>
 <div class="rp-sec">En curso — esperando al comprador o a Mercado Libre</div>
 <div id="lista-curso"><div class="rp-vacio rp-cargando">…</div></div>
-<details id="sec-viejos" class="mt-4" style="display:none">
+<details id="sec-viejos" class="mt-3" style="display:none">
   <summary class="small text-muted">Ver <span id="n-viejos"></span> mensajes y preguntas de hace más de 7 días — ya no cuentan, el comprador no está esperando</summary>
   <div id="lista-viejos" class="mt-2"></div>
 </details>
 <div id="errores" class="small text-danger mt-2"></div>
+
+<!-- ── Reputación ───────────────────────────────────────────── -->
+<div class="rp-sec">Tu reputación</div>
+<div class="app-card mb-3">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <span id="rep-nivel" class="badge bg-secondary">…</span>
+    <span id="rep-nota" class="small text-muted"></span>
+  </div>
+  <div id="rep-metricas" class="rp-metrics"><div class="rp-cargando">Leyendo reputación…</div></div>
+</div>
+
+<!-- ── Recuperación ─────────────────────────────────────────── -->
+<div class="rp-sec">¿Cuándo te recuperás en reclamos?</div>
+<div id="rep-proy" class="app-card mb-3"><div class="rp-cargando">Calculando…</div></div>
 {% endblock %}
 
 {% block scripts %}
@@ -125,8 +128,8 @@ async function cargarReputacion() {
   const niveles = {'5_green':'Verde','4_light_green':'Verde claro','3_yellow':'Amarilla','2_orange':'Naranja','1_red':'Roja'};
   $('rep-nivel').textContent = (niveles[r.nivel] || r.nivel || 'Sin datos') + (r.lider ? ' · MercadoLíder ' + r.lider : '');
   $('rep-nivel').className = 'badge ' + (r.nivel === '5_green' ? 'bg-success' : r.nivel?.startsWith('4') ? 'bg-success' : r.nivel ? 'bg-warning text-dark' : 'bg-secondary');
-  $('rep-nota').textContent = `${r.ventas_periodo} ventas en el período · límites oficiales para ${r.referencia}` +
-    (r.protegido_hasta ? ` · protegido hasta ${new Date(r.protegido_hasta).toLocaleDateString('es-AR')} (se muestran los datos reales)` : '');
+  $('rep-nota').textContent = `Límites oficiales para ${r.referencia}` +
+    (r.protegido_hasta ? ` · protegido hasta el ${new Date(r.protegido_hasta).toLocaleDateString('es-AR')}: se muestran tus números reales` : '');
   $('rep-metricas').innerHTML = r.metricas.map(m => {
     const ancho = Math.min(100, m.limite_pct ? m.tasa_pct / m.limite_pct * 100 : 0);
     const quedan = m.quedan === null ? '' : m.quedan > 0
@@ -148,86 +151,107 @@ let PROY = null;
 async function cargarProyeccion() {
   $('rep-proy').innerHTML = '<div class="rp-cargando">Calculando cuándo dejan de contar tus reclamos… (la primera vez tarda)</div>';
   const j = await api(`/api/postventa/${A}/proyeccion`);
-  if (!j.ok) { $('rep-proy').innerHTML = `<div class="small text-danger">No se pudo calcular la proyección: ${esc(j.error)}</div>`; return; }
+  if (!j.ok) { $('rep-proy').innerHTML = `<div class="small text-danger">No se pudo calcular: ${esc(j.error)}</div>`; return; }
   PROY = j.data;
   PROY.ritmo = Math.round(PROY.base / 60);
   pintarProyeccion(PROY.ritmo);
 }
 
-// La tasa es reclamos / ventas de los últimos 60 días. Si a partir de hoy
-// vendés 'vd' por día, cada día sale de la ventana un día de ventas viejas
-// (base/60) y entra uno nuevo (vd): la base cambia y con ella cuántos
-// reclamos tolera ML.
-function simular(vd) {
+const DIA_SEM = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const fechaLarga = f => { const d = new Date(f + 'T12:00:00'); return `${DIA_SEM[d.getDay()]} ${fechaDia(f)}`; };
+const sumarDias = (f, n) => new Date(new Date(f + 'T12:00:00').getTime() + n * 864e5).toLocaleDateString('en-CA');
+
+// La tasa es reclamos / ventas de los últimos 60 días. Si desde hoy vendés
+// 'vd' por día, cada día sale de la ventana un día de ventas viejas
+// (base/60) y entra uno nuevo: cambia la base y con ella cuántos reclamos
+// tolera ML. Cada reclamo cuenta 60 días desde que se abrió.
+function modelo(vd) {
   const p = PROY, lim = p.limite_pct / 100, diaViejo = p.base / 60;
   const dias = f => Math.round((new Date(f + 'T12:00:00') - new Date(p.hoy_fecha + 'T12:00:00')) / 864e5);
-  const baseEn = f => p.base + (vd - diaViejo) * Math.min(Math.max(dias(f), 0), 60);
-  const permitidosEn = f => Math.floor(lim * baseEn(f) + 1e-9);
-  const fechas = [...new Set(p.reclamos.map(r => r.deja_de_contar).filter(f => f && f >= p.hoy_fecha))].sort();
-  let cuentan = p.reclamos.length;
-  const pasos = fechas.map(f => {
-    cuentan -= p.reclamos.filter(r => r.deja_de_contar === f).length;
-    const base = baseEn(f), perm = permitidosEn(f);
-    return {fecha: f, cuentan, base: Math.round(base), permitidos: perm,
-            tasa: base ? 100 * cuentan / base : 0, dentro: cuentan <= perm};
-  });
-  const yaDentro = p.reclamos.length <= permitidosEn(p.hoy_fecha);
-  // Día por día: con más ventas la tolerancia puede alcanzar antes de que
-  // venza el próximo reclamo.
+  const ventasEn = f => p.base + (vd - diaViejo) * Math.min(Math.max(dias(f), 0), 60);
+  const toleraEn = f => Math.floor(lim * ventasEn(f) + 1e-9);
+  const cuentanEn = f => p.reclamos.filter(r => !r.deja_de_contar || r.deja_de_contar > f).length;
   let recupera = null;
-  for (let d = 1; !yaDentro && d <= 60; d++) {
-    const f = new Date(new Date(p.hoy_fecha + 'T12:00:00').getTime() + d * 864e5).toLocaleDateString('en-CA');
-    const c = p.reclamos.filter(r => !r.deja_de_contar || r.deja_de_contar > f).length;
-    if (c <= permitidosEn(f)) { recupera = f; break; }
+  if (cuentanEn(p.hoy_fecha) > toleraEn(p.hoy_fecha)) {
+    for (let d = 1; d <= 60 && !recupera; d++) {
+      const f = sumarDias(p.hoy_fecha, d);
+      if (cuentanEn(f) <= toleraEn(f)) recupera = f;
+    }
   }
-  const prot = p.protegido_hasta;
-  // Ventas por día que harían falta desde hoy para llegar a la fecha de fin
-  // de la protección ya dentro del límite.
-  let ritmoProt = null;
-  if (prot && prot > p.hoy_fecha) {
-    const t = Math.min(dias(prot), 60);
-    const cuentanProt = p.reclamos.filter(r => !r.deja_de_contar || r.deja_de_contar > prot).length;
-    const baseNecesaria = Math.ceil(cuentanProt / lim - 1e-9);
-    ritmoProt = Math.max(0, Math.ceil(diaViejo + (baseNecesaria - p.base) / t));
-  }
-  return {pasos, yaDentro, recupera, ritmoProt,
-          enProt: prot ? p.reclamos.filter(r => r.deja_de_contar > prot).length : null,
-          permProt: prot ? permitidosEn(prot) : null};
+  return {ventasEn, toleraEn, cuentanEn, recupera, dias, lim, diaViejo};
 }
 
 function pintarProyeccion(vd) {
-  const p = PROY, s = simular(vd);
-  const necesarias = Math.ceil(p.hoy / (p.limite_pct / 100));
-  let titular;
-  if (s.yaDentro) titular = `<b class="text-success">Estás dentro del límite:</b> cuentan ${p.hoy} reclamos y con tus ventas ML tolera ${p.permitidos}.`;
-  else if (s.recupera) titular = `Hoy cuentan <b>${p.hoy}</b> reclamos sobre <b>${p.base}</b> ventas: ML tolera <b>${p.permitidos}</b> (${p.limite_pct}%). ` +
-    `Vendiendo <b>${vd} por día</b> y sin reclamos nuevos que afecten, <b class="text-success">volvés a estar dentro el ${fechaDia(s.recupera)}</b>.`;
-  else titular = `Hoy cuentan <b>${p.hoy}</b> reclamos. A ${vd} ventas por día no alcanza para volver al límite en los próximos 60 días.`;
-  const filas = s.pasos.map(x => {
-    const vencen = p.reclamos.filter(r => r.deja_de_contar === x.fecha);
-    return `<tr class="${x.dentro ? 'table-success' : ''}"><td class="text-nowrap"><b>${fechaDia(x.fecha)}</b></td>
-      <td>${vencen.map(r => `${esc(r.motivo || 'Reclamo')} <span class="text-muted">· abierto el ${fechaDia(r.abierto.slice(0, 10))}${r.estado === 'opened' ? ' · todavía abierto' : ''}</span>`).join('<br>')}</td>
-      <td class="text-end">${x.cuentan}</td><td class="text-end">${x.base}</td><td class="text-end">${x.permitidos}</td>
-      <td class="text-end">${x.tasa.toFixed(2)}%</td><td>${x.dentro ? '✓ dentro' : ''}</td></tr>`;
+  const p = PROY, m = modelo(vd), hoy = p.hoy_fecha, prot = p.protegido_hasta;
+  const dentroHoy = m.cuentanEn(hoy) <= m.toleraEn(hoy);
+  const pill = ok => ok ? '<span class="rp-af no" style="background:var(--color-success-100);color:#166534">Dentro</span>'
+                        : '<span class="rp-af si">Afuera</span>';
+
+  // Titular: la respuesta en una frase
+  let titular, color;
+  if (dentroHoy) { titular = 'Estás dentro del límite'; color = 'text-success'; }
+  else if (m.recupera) { titular = `Volvés a estar dentro del límite el ${fechaLarga(m.recupera)}`; color = 'text-success'; }
+  else { titular = 'A este ritmo no volvés al límite en los próximos 60 días'; color = 'text-danger'; }
+  const condicion = dentroHoy ? '' : `si vendés <b>${vd} por día</b> y no entra ningún reclamo nuevo que afecte.`;
+
+  // Ventas por día para llegar al fin de la protección ya dentro
+  let ritmoProt = null;
+  if (prot && prot > hoy && m.cuentanEn(prot) > m.toleraEn(prot)) {
+    const t = Math.min(m.dias(prot), 60);
+    ritmoProt = Math.max(0, Math.ceil(m.diaViejo + (Math.ceil(m.cuentanEn(prot) / m.lim - 1e-9) - p.base) / t));
+  }
+
+  // Calendario: hoy, fin de protección y cada vencimiento, en orden
+  const eventos = new Map();
+  const agregar = (f, txt) => { if (!eventos.has(f)) eventos.set(f, []); eventos.get(f).push(txt); };
+  agregar(hoy, 'Situación de hoy');
+  if (prot && prot >= hoy) agregar(prot, '<b>Termina tu protección</b>: desde acá cuenta para tu nivel');
+  const porFecha = {};
+  p.reclamos.forEach(r => { if (r.deja_de_contar && r.deja_de_contar > hoy) (porFecha[r.deja_de_contar] ||= []).push(r); });
+  Object.entries(porFecha).forEach(([f, rs]) => agregar(f,
+    `Deja${rs.length > 1 ? 'n' : ''} de contar ${rs.length} reclamo${rs.length > 1 ? 's' : ''} ` +
+    `<span class="text-muted">(abierto${rs.length > 1 ? 's' : ''} el ${[...new Set(rs.map(r => fechaDia(r.abierto.slice(0, 10))))].join(' y ')}` +
+    `${rs.some(r => r.estado === 'opened') ? ', todavía abierto' : ''})</span>`));
+  if (m.recupera && !eventos.has(m.recupera)) agregar(m.recupera, 'Las ventas nuevas ya alcanzan');
+  const filas = [...eventos.keys()].sort().map(f => {
+    const c = m.cuentanEn(f), t = m.toleraEn(f), ok = c <= t, esRec = f === m.recupera;
+    return `<tr class="${esRec ? 'table-success fw-bold' : ''}">
+      <td class="text-nowrap">${f === hoy ? '<b>Hoy</b>' : fechaLarga(f)}</td>
+      <td>${eventos.get(f).join('<br>')}${esRec ? '<br><span class="text-success">→ volvés a estar dentro</span>' : ''}</td>
+      <td class="text-end">${c}</td><td class="text-end">${t}</td><td>${pill(ok)}</td></tr>`;
   }).join('');
-  $('rep-proy').innerHTML = `<div class="border rounded p-3" style="background:var(--color-neutral-50)">
-    <div class="fw-bold mb-1"><i class="bi bi-calendar-check me-1"></i>¿Cuándo te recuperás en reclamos?</div>
-    <div class="small">${titular}</div>
-    <div class="small mt-1">El porcentaje es reclamos ÷ ventas de los últimos 60 días: <b>cada ${Math.round(100 / p.limite_pct)} ventas te dan 1 reclamo más de tolerancia</b>.
-      ${s.yaDentro ? '' : `Para estar dentro hoy con ${p.hoy} reclamos harían falta ${necesarias} ventas en 60 días (tenés ${p.base}).`}</div>
-    <div class="d-flex align-items-center gap-2 mt-2 small flex-wrap">
-      <label for="ritmo">Si vendés por día:</label>
-      <input id="ritmo" type="number" min="0" step="1" value="${vd}" class="form-control form-control-sm" style="width:90px"
-             onchange="pintarProyeccion(Math.max(0, +this.value || 0))">
-      <span class="text-muted">tu ritmo de los últimos 60 días es ${p.ritmo} por día</span>
-      ${[p.ritmo, Math.round(p.ritmo * 1.25), Math.round(p.ritmo * 1.5)].map((v, i) => `<button class="btn btn-sm ${v === vd ? 'btn-dark' : 'btn-outline-secondary'}" onclick="pintarProyeccion(${v})">${['Igual que ahora', '+25%', '+50%'][i]} (${v})</button>`).join('')}
+
+  const caja = (num, lbl, sub, cls = '') => `<div class="rp-m ${cls}"><div class="val">${num}</div><div class="lbl">${lbl}</div>${sub ? `<div class="sub mt-1">${sub}</div>` : ''}</div>`;
+  $('rep-proy').innerHTML = `
+    <div class="h5 mb-1 ${color}">${titular}</div>
+    ${condicion ? `<div class="small mb-3">${condicion}</div>` : '<div class="mb-3"></div>'}
+    <div class="rp-metrics mb-3">
+      ${caja(p.hoy, 'Reclamos que cuentan hoy', 'los que ML marca como "afecta" de los últimos 60 días', dentroHoy ? '' : 'mal')}
+      ${caja(p.permitidos, 'Máximo que tolera ML hoy', `${p.limite_pct}% de tus ${p.base} ventas de los últimos 60 días`)}
+      ${prot && prot >= hoy ? caja(fechaDia(prot), 'Termina tu protección',
+          `ese día cuentan ${m.cuentanEn(prot)} y ML tolera ${m.toleraEn(prot)} → ${m.cuentanEn(prot) <= m.toleraEn(prot) ? '<b class="text-success">dentro</b>' : '<b class="text-danger">afuera</b>'}`,
+          m.cuentanEn(prot) <= m.toleraEn(prot) ? '' : 'justo') : ''}
     </div>
-    ${p.protegido_hasta && !s.yaDentro ? `<div class="small mt-2">Tu protección termina el <b>${fechaDia(p.protegido_hasta)}</b>: ese día van a contar ${s.enProt} reclamo${s.enProt === 1 ? '' : 's'} y ML va a tolerar ${s.permProt}${s.enProt <= s.permProt ? ' — <b class="text-success">ya dentro del límite</b>' : ' — <b class="text-danger">todavía por encima del límite</b>'}${s.enProt > s.permProt && s.ritmoProt ? `. Para llegar a esa fecha dentro del límite necesitás vender unas <b>${s.ritmoProt} por día</b> desde hoy` : ''}.</div>` : ''}
-    ${p.ml_informa !== p.hoy ? `<div class="small text-muted mt-1">ML informa ${p.ml_informa} reclamos; acá se cuentan ${p.hoy} (ML puede excluir alguno por su cuenta).</div>` : ''}
-    ${filas ? `<details class="mt-2"${s.yaDentro ? '' : ' open'}><summary class="small">Qué reclamo deja de contar cada día (cada uno cuenta 60 días desde que se abrió)</summary>
-      <table class="table table-sm small mt-2 mb-0"><thead><tr><th>Fecha</th><th>Deja de contar</th><th class="text-end">Cuentan</th><th class="text-end">Ventas 60 d</th><th class="text-end">Tolera</th><th class="text-end">Tasa</th><th></th></tr></thead><tbody>${filas}</tbody></table>
-      <div class="small text-muted mt-1">Cada reclamo nuevo que afecte suma 60 días más.</div></details>` : ''}
-  </div>`;
+    <div class="small mb-3" style="line-height:1.6">
+      <b>Cómo funciona:</b><br>
+      · Cada reclamo cuenta durante <b>60 días</b> desde que se abrió; después deja de contar solo.<br>
+      · ML tolera hasta el ${p.limite_pct}% de tus ventas: <b>cada ${Math.round(100 / p.limite_pct)} ventas, 1 reclamo más de margen</b>. Vender más te da tolerancia.
+    </div>
+    <div class="border rounded p-2 mb-3 small d-flex align-items-center gap-2 flex-wrap" style="background:var(--color-neutral-50)">
+      <b>Simulá tus ventas por día:</b>
+      ${[[PROY.ritmo, 'Como ahora'], [Math.round(PROY.ritmo * 1.25), '+25%'], [Math.round(PROY.ritmo * 1.5), '+50%']]
+        .map(([v, l]) => `<button class="btn btn-sm ${v === vd ? 'btn-dark' : 'btn-outline-secondary'}" onclick="pintarProyeccion(${v})">${l} · ${v}</button>`).join('')}
+      <label for="ritmo" class="ms-2">otro:</label>
+      <input id="ritmo" type="number" min="0" step="1" value="${vd}" class="form-control form-control-sm" style="width:80px"
+             onchange="pintarProyeccion(Math.max(0, +this.value || 0))">
+      ${ritmoProt ? `<span class="ms-auto">Para llegar al ${fechaDia(prot)} dentro del límite: <b>${ritmoProt} ventas por día</b></span>` : ''}
+    </div>
+    <table class="table table-sm small mb-1">
+      <thead><tr><th>Fecha</th><th>Qué pasa</th><th class="text-end">Reclamos que cuentan</th><th class="text-end">ML tolera</th><th>Estado</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+    <div class="small text-muted">Proyección: supone que no entra ningún reclamo nuevo que afecte. Cada uno que entre cuenta 60 días más.
+      ${p.ml_informa !== p.hoy ? ` ML informa ${p.ml_informa} reclamos y acá se cuentan ${p.hoy}: ML puede excluir alguno por su cuenta.` : ''}</div>`;
 }
 
 // ── Lista unificada ────────────────────────────────────────────
