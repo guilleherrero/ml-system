@@ -1,5 +1,5 @@
 """
-Conexión SQLAlchemy para datos transaccionales de la tienda Biobella.
+Conexión SQLAlchemy para datos transaccionales (contabilidad y pricing).
 
 Mismo patrón que core/db_storage.py:
 - DATABASE_URL set  → PostgreSQL (Render)
@@ -101,7 +101,6 @@ def init_db():
     """Crea las tablas si no existen. Idempotente."""
     # Import diferido para evitar ciclos — los modelos se registran en Base.metadata
     # al importarse
-    from web import models_tienda        # noqa: F401
     from web import models_contabilidad  # noqa: F401
     from web import models_pricing       # noqa: F401
     Base.metadata.create_all(engine)

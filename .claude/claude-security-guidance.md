@@ -1,6 +1,6 @@
 # Reglas de seguridad — ml-system
 
-Sistema en producción (Render) con acceso de escritura a la cuenta real de MercadoLibre, a Mercado Pago y a la tienda Biobella. Estas reglas aplican a cualquier cambio de código, script o comando. Las marcadas con ⚠️ hoy **no se cumplen** en el código: no copiar ese patrón y corregirlo cuando se toque esa parte (relevamiento del 2026-10-03).
+Sistema en producción (Render) con acceso de escritura a la cuenta real de MercadoLibre y a Mercado Pago. Estas reglas aplican a cualquier cambio de código, script o comando. Las marcadas con ⚠️ hoy **no se cumplen** en el código: no copiar ese patrón y corregirlo cuando se toque esa parte (relevamiento del 2026-10-03).
 
 ## 1. Secretos y tokens
 
@@ -20,7 +20,7 @@ Sistema en producción (Render) con acceso de escritura a la cuenta real de Merc
 
 ## 3. Webhooks y datos externos
 
-Todo lo que llega de afuera (webhooks, bookmarklet, formularios de la tienda, respuestas de APIs de terceros) es no confiable hasta validarlo.
+Todo lo que llega de afuera (webhooks, bookmarklet, respuestas de APIs de terceros) es no confiable hasta validarlo.
 
 - **Verificar el origen**: secreto en el path o header comparado con `secrets.compare_digest`, nunca con `==` o `!=`. ⚠️ El webhook de Telegram compara el secreto con `!=`.
 - **Mercado Pago (`/api/mp/webhook`)**: no confiar en el payload. El patrón correcto, que ya se usa, es tomar solo el `payment_id` y consultar el pago a la API de MP con nuestro token. Además:
@@ -33,7 +33,7 @@ Todo lo que llega de afuera (webhooks, bookmarklet, formularios de la tienda, re
 
 ## 4. Autenticación de endpoints
 
-- El `before_request` global (`require_login` en `web/app.py`) protege todo por defecto. Cualquier excepción nueva (`_AUTH_EXEMPT` o los prefijos públicos de la tienda) tiene que estar justificada en un comentario y tener su propia validación adentro del endpoint.
+- El `before_request` global (`require_login` en `web/app.py`) protege todo por defecto. Cualquier excepción nueva (`_AUTH_EXEMPT` o prefijos públicos en `require_login`) tiene que estar justificada en un comentario y tener su propia validación adentro del endpoint.
 - No sumar rutas públicas que lean o escriban datos de una cuenta. ⚠️ Hoy son públicas `/api/pending-competidores` (devuelve la cola de competidores de cualquier alias) y `/api/list-aliases` (marcada como "Temporal"). Pasarlas detrás de login o del token MCP.
 - ⚠️ `/api/capturar-competidor` acepta pedidos sin token si `CEREBRO_BOOKMARKLET_TOKEN` no está configurado. En producción tiene que estar configurado siempre.
 - El bypass por `MCP_API_TOKEN` es acceso total de administrador: el token tiene que ser largo y aleatorio, vivir solo en las variables de entorno de Render y en el `.env` del MCP, y rotarse si se expone.
@@ -56,5 +56,5 @@ Todo lo que llega de afuera (webhooks, bookmarklet, formularios de la tienda, re
 
 ## 7. Datos personales
 
-- Las órdenes de Biobella y los mensajes de ML tienen nombre, email, teléfono y dirección de clientes: no loguearlos completos ni copiarlos a archivos fuera de la base, y no mostrarlos en endpoints públicos.
+- Los mensajes y órdenes de ML tienen nombre, email, teléfono y dirección de clientes: no loguearlos completos ni copiarlos a archivos fuera de la base, y no mostrarlos en endpoints públicos.
 - No enviar datos de clientes a servicios externos (IA incluida) salvo lo mínimo para la tarea.
