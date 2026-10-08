@@ -83,7 +83,7 @@
 /* Hub nav */
 .hub-nav { display:flex; gap:8px; margin-bottom:1.5rem; flex-wrap:wrap; }
 .hub-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-size:.82rem; font-weight:600; text-decoration:none; transition:all .15s; border:2px solid transparent; }
-.hub-btn.active { background:var(--color-info-700); color:var(--color-neutral-0); border-color:var(--color-info-700); }
+.hub-btn.active { background:var(--color-info-700); color:#fff; border-color:var(--color-info-700); }
 .hub-btn.inactive { background:var(--color-neutral-0); color:var(--color-neutral-700); border-color:var(--color-neutral-200); }
 .hub-btn.inactive:hover { border-color:var(--color-info-300); color:var(--color-info-700); }
 </style>
@@ -156,7 +156,7 @@
             </div>
           </div>
           <button id="btnDescubrir" class="btn btn-sm fw-semibold flex-shrink-0"
-                  style="background:#0369a1;color:var(--color-neutral-0);border:none;padding:.4rem 1rem"
+                  style="background:#0369a1;color:#fff;border:none;padding:.4rem 1rem"
                   onclick="analizarProducto()">
             <i class="bi bi-cpu me-1"></i>Analizar producto
           </button>
@@ -203,7 +203,7 @@
           </div>
 
           <button id="btnConfirmar" class="btn fw-semibold w-100"
-                  style="background:var(--color-warning-500);color:var(--color-neutral-0);border:none;font-size:.85rem"
+                  style="background:var(--color-warning-500);color:#fff;border:none;font-size:.85rem"
                   onclick="confirmarYDescubrir()">
             <i class="bi bi-search me-1"></i>Confirmar términos y buscar competidores
           </button>
@@ -240,11 +240,11 @@
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          <div id="bookmarkletPing" style="display:none;background:var(--color-success-500);color:var(--color-neutral-0);border-radius:20px;padding:3px 10px;font-size:.72rem;font-weight:700;animation:pulse 1s infinite">
+          <div id="bookmarkletPing" style="display:none;background:var(--color-success-500);color:#fff;border-radius:20px;padding:3px 10px;font-size:.72rem;font-weight:700;animation:pulse 1s infinite">
             <i class="bi bi-arrow-down-circle me-1"></i><span id="bookmarkletPingText"></span>
           </div>
           <button onclick="toggleBookmarkletPanel()"
-                  style="background:var(--color-success-700);color:var(--color-neutral-0);border:none;border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
+                  style="background:var(--color-success-700);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
             <i class="bi bi-download me-1"></i>Instalar botón
           </button>
         </div>
@@ -256,11 +256,11 @@
           <i class="bi bi-info-circle me-1"></i>Cómo instalar — solo una vez
         </div>
         <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:var(--color-neutral-0);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
+          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700)">Mostrá la <strong>barra de favoritos</strong> del navegador si no está visible <span style="color:var(--color-neutral-500)">(Ctrl+Shift+B en Chrome)</span></div>
         </div>
         <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:var(--color-neutral-0);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
+          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700);flex:1">
             <div style="margin-bottom:5px">Arrastrá este botón a tu barra de favoritos:</div>
             <a id="bookmarkletLink" href="#"
@@ -273,7 +273,7 @@
           </div>
         </div>
         <div style="display:flex;gap:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:var(--color-neutral-0);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
+          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700)">Abrí la publicación de un competidor en ML → clic en <strong>"Enviar a Herramienta ML"</strong> → volvé acá, el competidor aparece solo.</div>
         </div>
       </div>
@@ -351,7 +351,7 @@
 
         <div style="padding:0 12px 12px;background:#f0fdf4">
           <button id="btnReverseKw" class="btn fw-semibold w-100"
-                  style="background:#0f766e;color:var(--color-neutral-0);border:none;font-size:.84rem"
+                  style="background:#0f766e;color:#fff;border:none;font-size:.84rem"
                   onclick="analizarKeywordsCompetidores()">
             <i class="bi bi-binoculars me-1"></i>Analizar keywords de los competidores seleccionados
           </button>
@@ -386,7 +386,7 @@
     <div id="autosuggestPanel" style="display:none;border:2px solid var(--color-info-500);border-radius:8px;overflow:hidden;margin-bottom:12px">
       <div style="background:#1e3a8a;padding:9px 14px;display:flex;align-items:center;gap:8px">
         <i class="bi bi-graph-up-arrow" style="color:var(--color-info-300)"></i>
-        <span style="color:var(--color-neutral-0);font-size:.8rem;font-weight:700">Búsquedas reales en MercadoLibre — ordenadas por popularidad</span>
+        <span style="color:#fff;font-size:.8rem;font-weight:700">Búsquedas reales en MercadoLibre — ordenadas por popularidad</span>
         <span style="color:var(--color-info-300);font-size:.7rem;margin-left:4px">estas son las frases que la gente escribe en ML para encontrar tu producto</span>
       </div>
       <div style="padding:10px 14px;background:#eff6ff">
@@ -1120,7 +1120,7 @@ function renderReverseKeywords(data) {
            title="Aparece en: ${kw.competitors.join(', ')}">
         <span style="font-weight:600;color:var(--color-neutral-800)">${kw.keyword}</span>
         ${descBadge}
-        <span style="background:${freqColor};color:var(--color-neutral-0);border-radius:10px;padding:0 5px;font-size:.62rem;font-weight:700">${kw.frequency}/${totalComps}</span>
+        <span style="background:${freqColor};color:#fff;border-radius:10px;padding:0 5px;font-size:.62rem;font-weight:700">${kw.frequency}/${totalComps}</span>
         <span style="color:var(--color-neutral-400);font-size:.63rem">pos.${kw.avg_position}</span>
       </div>`;
   }

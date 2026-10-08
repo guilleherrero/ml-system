@@ -1,17 +1,18 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Optimizaciones {{ alias }}{% endblock %}
 {% block content %}
 <style>
 /* ── Optimization Cards ───────────────────────────────────────────────── */
 .opt-card { border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.07); border:1px solid var(--color-neutral-200); overflow:hidden; background:var(--color-neutral-0); margin-bottom:1.5rem; }
 .opt-card-hdr { padding:14px 20px; display:flex; align-items:center; gap:10px; background:var(--color-neutral-0); border-bottom:1px solid var(--color-neutral-100); flex-wrap:wrap; }
-.opt-card-title { font-size:.9rem; font-weight:600; color:#0f172a; flex:1; min-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.opt-card-title { font-size:.9rem; font-weight:600; color:var(--app-text); flex:1; min-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Score */
 .score-strip { display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .score-pill { display:flex; flex-direction:column; align-items:center; padding:5px 13px; border-radius:8px; line-height:1.1; }
-.score-pill.bad  { background:var(--color-critical-100); border:1px solid #fca5a5; }
-.score-pill.good { background:var(--color-success-100); border:1px solid #86efac; }
+.score-pill.bad  { background:var(--color-critical-100); border:1px solid var(--color-critical-400); }
+.score-pill.good { background:var(--color-success-100); border:1px solid var(--color-success-400); }
 .score-pill .sp-num { font-size:1.15rem; font-weight:800; }
 .score-pill.bad  .sp-num { color:var(--color-critical-500); }
 .score-pill.good .sp-num { color:var(--color-success-500); }
@@ -28,29 +29,29 @@
 /* Title options */
 .t-opt { border-radius:9px; overflow:hidden; margin-bottom:8px; }
 .t-opt.rec { border:2px solid var(--color-success-500); box-shadow:0 1px 6px rgba(22,163,74,.15); }
-.t-opt.nor { border:1px solid #d1fae5; }
+.t-opt.nor { border:1px solid var(--color-success-100); }
 .t-opt-head { padding:10px 14px; display:flex; align-items:center; gap:10px; }
-.t-opt.rec .t-opt-head { background:#bbf7d0; }
-.t-opt.nor .t-opt-head { background:#f0fdf4; }
-.t-opt-num { font-size:.62rem; font-weight:800; text-transform:uppercase; color:#166534; flex-shrink:0; min-width:55px; }
-.t-opt-text { font-size:.9rem; font-weight:600; color:#14532d; flex:1; }
+.t-opt.rec .t-opt-head { background:var(--color-success-100); }
+.t-opt.nor .t-opt-head { background:var(--color-success-50); }
+.t-opt-num { font-size:.62rem; font-weight:800; text-transform:uppercase; color:var(--color-success-700); flex-shrink:0; min-width:55px; }
+.t-opt-text { font-size:.9rem; font-weight:600; color:var(--color-success-700); flex:1; }
 .t-opt-chars { font-size:.67rem; color:var(--color-neutral-500); flex-shrink:0; }
-.t-opt-strat { padding:6px 14px; font-size:.71rem; color:#475569; background:#f7fdf9; border-top:1px solid #d1fae5; display:flex; align-items:flex-start; gap:6px; }
-.t-opt-why   { padding:6px 14px; font-size:.72rem; color:#166534; background:var(--color-success-100); border-top:1px solid #a7f3d0; display:flex; align-items:flex-start; gap:6px; }
+.t-opt-strat { padding:6px 14px; font-size:.71rem; color:var(--app-text-2); background:var(--color-success-50); border-top:1px solid var(--color-success-100); display:flex; align-items:flex-start; gap:6px; }
+.t-opt-why   { padding:6px 14px; font-size:.72rem; color:var(--color-success-700); background:var(--color-success-100); border-top:1px solid var(--color-success-100); display:flex; align-items:flex-start; gap:6px; }
 
 /* Actions */
 .act-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
 .act-card { border-radius:10px; padding:14px 16px; }
-.act-card.catalog { background:#fef9c3; border:1px solid #fde68a; }
-.act-card.fix     { background:#eff6ff; border:1px solid #bfdbfe; }
-.act-card.price   { background:#f0fdf4; border:1px solid #bbf7d0; }
-.act-card.photos  { background:#fdf4ff; border:1px solid #e9d5ff; }
+.act-card.catalog { background:var(--color-warning-100); border:1px solid var(--color-warning-100); }
+.act-card.fix     { background:var(--color-info-100); border:1px solid var(--color-info-100); }
+.act-card.price   { background:var(--color-success-50); border:1px solid var(--color-success-100); }
+.act-card.photos  { background:var(--color-info-100); border:1px solid var(--color-info-100); }
 .act-lbl  { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
 .act-body { font-size:.82rem; line-height:1.65; white-space:pre-wrap; }
-.act-card.catalog .act-lbl { color:var(--color-warning-700); } .act-card.catalog .act-body { color:#78350f; }
-.act-card.fix     .act-lbl { color:#1e40af; } .act-card.fix     .act-body { color:#1e3a8a; }
-.act-card.price   .act-lbl { color:#14532d; } .act-card.price   .act-body { color:#166534; }
-.act-card.photos  .act-lbl { color:#6b21a8; } .act-card.photos  .act-body { color:#581c87; }
+.act-card.catalog .act-lbl { color:var(--color-warning-700); } .act-card.catalog .act-body { color:var(--color-warning-700); }
+.act-card.fix     .act-lbl { color:var(--color-info-700); } .act-card.fix     .act-body { color:var(--color-info-700); }
+.act-card.price   .act-lbl { color:var(--color-success-700); } .act-card.price   .act-body { color:var(--color-success-700); }
+.act-card.photos  .act-lbl { color:var(--color-info-700); } .act-card.photos  .act-body { color:var(--color-info-700); }
 
 /* Analysis accordion */
 .anl-item { border-radius:8px; overflow:hidden; border:1px solid var(--color-neutral-200); margin-bottom:8px; }
@@ -64,27 +65,27 @@
 /* Insights */
 .ins-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
 .ins-card { border-radius:10px; padding:14px 16px; }
-.ins-card.debil { background:#fef2f2; border:1px solid #fecaca; }
-.ins-card.dudas { background:#fef9c3; border:1px solid #fde68a; }
-.ins-card.valor { background:#f0fdf4; border:1px solid #bbf7d0; }
-.ins-card.leng  { background:#fdf4ff; border:1px solid #e9d5ff; }
+.ins-card.debil { background:var(--color-critical-50); border:1px solid var(--color-critical-100); }
+.ins-card.dudas { background:var(--color-warning-100); border:1px solid var(--color-warning-100); }
+.ins-card.valor { background:var(--color-success-50); border:1px solid var(--color-success-100); }
+.ins-card.leng  { background:var(--color-info-100); border:1px solid var(--color-info-100); }
 .ins-lbl  { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
 .ins-body { font-size:.8rem; line-height:1.6; white-space:pre-wrap; }
-.ins-card.debil .ins-lbl { color:var(--color-critical-700); } .ins-card.debil .ins-body { color:#7f1d1d; }
-.ins-card.dudas .ins-lbl { color:#854d0e; } .ins-card.dudas .ins-body { color:#78350f; }
-.ins-card.valor .ins-lbl { color:#14532d; } .ins-card.valor .ins-body { color:#166534; }
-.ins-card.leng  .ins-lbl { color:#6b21a8; } .ins-card.leng  .ins-body { color:#581c87; }
+.ins-card.debil .ins-lbl { color:var(--color-critical-700); } .ins-card.debil .ins-body { color:var(--color-critical-700); }
+.ins-card.dudas .ins-lbl { color:var(--color-warning-700); } .ins-card.dudas .ins-body { color:var(--color-warning-700); }
+.ins-card.valor .ins-lbl { color:var(--color-success-700); } .ins-card.valor .ins-body { color:var(--color-success-700); }
+.ins-card.leng  .ins-lbl { color:var(--color-info-700); } .ins-card.leng  .ins-body { color:var(--color-info-700); }
 
 /* Description */
-.desc-wrap { border:1px solid #86efac; border-radius:10px; overflow:hidden; }
-.desc-wrap-body { padding:14px 16px; white-space:pre-wrap; font-size:.86rem; max-height:280px; overflow-y:auto; line-height:1.75; background:#f0fdf4; }
-.desc-wrap-foot { padding:7px 14px; background:var(--color-success-100); border-top:1px solid #bbf7d0; display:flex; justify-content:space-between; align-items:center; }
+.desc-wrap { border:1px solid var(--color-success-400); border-radius:10px; overflow:hidden; }
+.desc-wrap-body { padding:14px 16px; white-space:pre-wrap; font-size:.86rem; max-height:280px; overflow-y:auto; line-height:1.75; background:var(--color-success-50); }
+.desc-wrap-foot { padding:7px 14px; background:var(--color-success-100); border-top:1px solid var(--color-success-100); display:flex; justify-content:space-between; align-items:center; }
 
 /* Stats */
 .opt-stats { display:flex; gap:12px; margin-bottom:1.25rem; }
 .opt-stat-box { flex:1; border-radius:10px; padding:14px 16px; text-align:center; }
-.opt-stat-box.blue  { background:#eff6ff; border:1px solid #bfdbfe; }
-.opt-stat-box.green { background:#f0fdf4; border:1px solid #bbf7d0; }
+.opt-stat-box.blue  { background:var(--color-info-100); border:1px solid var(--color-info-100); }
+.opt-stat-box.green { background:var(--color-success-50); border:1px solid var(--color-success-100); }
 .opt-stat-num { font-size:1.7rem; font-weight:800; line-height:1; }
 .opt-stat-box.blue  .opt-stat-num { color:var(--color-info-700); }
 .opt-stat-box.green .opt-stat-num { color:var(--color-success-500); }
@@ -92,7 +93,7 @@
 
 /* Quality scores panel */
 .qs-row { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:7px; cursor:pointer; transition:background .12s; border:1px solid transparent; margin-bottom:4px; }
-.qs-row:hover { background:#f0f9ff; border-color:#bae6fd; }
+.qs-row:hover { background:var(--color-info-100); border-color:var(--color-info-100); }
 .qs-row:last-child { margin-bottom:0; }
 .qs-score { font-size:1rem; font-weight:800; min-width:36px; text-align:center; }
 .qs-score.bad  { color:var(--color-critical-500); }
@@ -104,10 +105,10 @@
 .qs-bar { height:100%; border-radius:3px; transition:width .4s; }
 .qs-bar.bad  { background:var(--color-critical-400); }
 .qs-bar.mid  { background:var(--color-warning-400); }
-.qs-bar.good { background:#22c55e; }
+.qs-bar.good { background:var(--color-success-400); }
 .qs-level { font-size:.65rem; color:var(--color-neutral-600); min-width:60px; text-align:right; white-space:nowrap; }
 .qs-sel-btn { font-size:.68rem; padding:2px 8px; border-radius:5px; border:1px solid var(--color-info-500); color:var(--color-info-500); background:transparent; white-space:nowrap; }
-.qs-sel-btn:hover { background:var(--color-info-500); color:var(--color-neutral-0); }
+.qs-sel-btn:hover { background:var(--solid-info); color:#fff; }
 
 /* ── Modal confirmar aplicar en ML ───────────────────────────────────── */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1100; align-items:center; justify-content:center; }
@@ -116,17 +117,17 @@
 .modal-apply-title { font-size:1rem; font-weight:700; color:var(--color-neutral-800); margin-bottom:1.25rem; display:flex; align-items:center; gap:8px; }
 .modal-apply-section { margin-bottom:1rem; }
 .modal-apply-label { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--color-neutral-600); margin-bottom:6px; }
-.modal-apply-after { background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:10px 13px; font-size:.88rem; color:#14532d; line-height:1.65; font-weight:500; }
+.modal-apply-after { background:var(--color-success-50); border:1px solid var(--color-success-400); border-radius:8px; padding:10px 13px; font-size:.88rem; color:var(--color-success-700); line-height:1.65; font-weight:500; }
 .modal-apply-text  { background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); border-radius:8px; padding:10px 13px; font-size:.83rem; color:var(--color-neutral-700); line-height:1.65; max-height:200px; overflow-y:auto; white-space:pre-wrap; }
-.modal-apply-warn  { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 13px; font-size:.78rem; color:var(--color-warning-700); display:flex; align-items:flex-start; gap:8px; margin-top:1rem; }
+.modal-apply-warn  { background:var(--color-warning-50); border:1px solid var(--color-warning-100); border-radius:8px; padding:10px 13px; font-size:.78rem; color:var(--color-warning-700); display:flex; align-items:flex-start; gap:8px; margin-top:1rem; }
 .btn-modal-cancel  { background:transparent; color:var(--color-neutral-600); border:1px solid var(--color-neutral-200); border-radius:7px; padding:9px 18px; font-size:.87rem; cursor:pointer; }
-.btn-modal-confirm { background:var(--color-info-600); color:var(--color-neutral-0); border:none; border-radius:7px; padding:9px 22px; font-size:.87rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background .15s; }
-.btn-modal-confirm:hover:not(:disabled) { background:var(--color-info-700); }
+.btn-modal-confirm { background:var(--solid-info); color:#fff; border:none; border-radius:7px; padding:9px 22px; font-size:.87rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background .15s; }
+.btn-modal-confirm:hover:not(:disabled) { background:var(--solid-info); filter:brightness(.9); }
 .btn-modal-confirm:disabled { background:var(--color-info-300); cursor:not-allowed; }
-.modal-char-warn { background:#fef9c3; border:1px solid #fde68a; border-radius:6px; padding:6px 10px; font-size:.75rem; color:var(--color-warning-700); margin-top:8px; }
+.modal-char-warn { background:var(--color-warning-100); border:1px solid var(--color-warning-100); border-radius:6px; padding:6px 10px; font-size:.75rem; color:var(--color-warning-700); margin-top:8px; }
 
 /* ─── Sprint UX M4: Vista previa "como se ve en ML" ───────────── */
-.ml-preview-container { padding:18px 20px; background:#f5f5f5; max-height:none; }
+.ml-preview-container { padding:18px 20px; background:var(--color-neutral-100); max-height:none; }
 .ml-preview-header {
   display:flex; justify-content:space-between; align-items:flex-start; gap:1rem;
   margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--color-neutral-200);
@@ -144,7 +145,7 @@
 
 /* Card de búsqueda — imita el listing card de ML */
 .ml-search-card {
-  display:flex; gap:14px; background:var(--color-neutral-0); border:1px solid #e6e6e6;
+  display:flex; gap:14px; background:var(--color-neutral-0); border:1px solid var(--color-neutral-200);
   border-radius:6px; padding:14px; box-shadow:0 1px 2px rgba(0,0,0,.04);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
@@ -152,26 +153,26 @@
 .ml-search-img img,
 .ml-search-img-placeholder {
   width:160px; height:160px; object-fit:contain; border-radius:4px;
-  background:#fafafa; display:flex; align-items:center; justify-content:center;
-  color:#cbd5e1; font-size:2rem;
+  background:var(--color-neutral-50); display:flex; align-items:center; justify-content:center;
+  color:var(--color-neutral-300); font-size:2rem;
 }
 .ml-search-info { flex:1; min-width:0; }
 .ml-search-title {
-  font-size:14px; line-height:1.4; color:#333; margin-bottom:8px;
+  font-size:14px; line-height:1.4; color:var(--app-text); margin-bottom:8px;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
   overflow:hidden; max-height:2.8em;
 }
 .ml-search-price-row { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
-.ml-search-price { font-size:24px; font-weight:300; color:#333; }
+.ml-search-price { font-size:24px; font-weight:300; color:var(--app-text); }
 .ml-search-shipping {
-  background:#00a650; color:var(--color-neutral-0); font-size:11px; font-weight:600;
+  background:#00a650; color:#fff; font-size:11px; font-weight:600;
   padding:2px 6px; border-radius:2px;
 }
-.ml-search-meta { font-size:12px; color:#666; }
+.ml-search-meta { font-size:12px; color:var(--app-text-2); }
 
 /* Página de detalle — imita la pantalla de producto de ML */
 .ml-detail-card {
-  background:var(--color-neutral-0); border:1px solid #e6e6e6; border-radius:6px; overflow:hidden;
+  background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:6px; overflow:hidden;
   box-shadow:0 1px 2px rgba(0,0,0,.04);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
@@ -180,45 +181,45 @@
 .ml-detail-img img,
 .ml-detail-img-placeholder {
   width:100%; aspect-ratio:1; object-fit:contain; border-radius:6px;
-  background:#fafafa; display:flex; align-items:center; justify-content:center;
-  color:#cbd5e1; font-size:3rem;
+  background:var(--color-neutral-50); display:flex; align-items:center; justify-content:center;
+  color:var(--color-neutral-300); font-size:3rem;
 }
-.ml-detail-condition { font-size:14px; color:#666; margin-bottom:6px; }
+.ml-detail-condition { font-size:14px; color:var(--app-text-2); margin-bottom:6px; }
 .ml-detail-title {
-  font-size:22px; line-height:1.25; color:#333; margin:0 0 12px; font-weight:600;
+  font-size:22px; line-height:1.25; color:var(--app-text); margin:0 0 12px; font-weight:600;
 }
-.ml-detail-price { font-size:36px; font-weight:300; color:#333; margin-bottom:6px; }
+.ml-detail-price { font-size:36px; font-weight:300; color:var(--app-text); margin-bottom:6px; }
 .ml-detail-shipping { font-size:14px; color:#00a650; font-weight:600; margin:8px 0 16px; }
 .ml-detail-buybtn, .ml-detail-cartbtn {
   display:block; width:100%; padding:12px; border:none; border-radius:6px;
   font-size:14px; font-weight:600; cursor:not-allowed; opacity:.85; margin-bottom:8px;
 }
-.ml-detail-buybtn { background:#3483fa; color:var(--color-neutral-0); }
-.ml-detail-cartbtn { background:#e3edfb; color:#3483fa; }
-.ml-detail-section { padding:18px 20px; border-top:1px solid #ebebeb; }
+.ml-detail-buybtn { background:#3483fa; color:#fff; }
+.ml-detail-cartbtn { background:var(--color-info-100); color:#3483fa; }
+.ml-detail-section { padding:18px 20px; border-top:1px solid var(--color-neutral-200); }
 .ml-detail-section-title {
-  font-size:18px; color:#333; margin:0 0 14px; font-weight:400;
+  font-size:18px; color:var(--app-text); margin:0 0 14px; font-weight:400;
 }
 .ml-detail-attrs {
-  display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#ebebeb;
-  border:1px solid #ebebeb; border-radius:4px; overflow:hidden;
+  display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--color-neutral-200);
+  border:1px solid var(--color-neutral-200); border-radius:4px; overflow:hidden;
 }
 .ml-detail-attr-row {
   display:flex; gap:14px; padding:10px 14px; background:var(--color-neutral-0); font-size:13px;
 }
-.ml-detail-attr-row:nth-child(odd) { background:#fafafa; }
-.ml-detail-attr-name { color:#666; min-width:120px; }
-.ml-detail-attr-value { color:#333; font-weight:500; }
+.ml-detail-attr-row:nth-child(odd) { background:var(--color-neutral-50); }
+.ml-detail-attr-name { color:var(--app-text-2); min-width:120px; }
+.ml-detail-attr-value { color:var(--app-text); font-weight:500; }
 .ml-detail-desc {
-  font-size:14px; line-height:1.6; color:#333; white-space:pre-wrap;
+  font-size:14px; line-height:1.6; color:var(--app-text); white-space:pre-wrap;
   max-height:400px; overflow-y:auto;
 }
 
 /* ─── Sprint UX M3: Botón master "Aplicar TODO" + checkboxes ───── */
 .opt-apply-master {
   display:flex; align-items:center; gap:.7rem; margin-left:auto;
-  padding:6px 14px; background:linear-gradient(135deg, var(--color-info-600) 0%, var(--color-info-700) 100%);
-  color:var(--color-neutral-0); border:none; border-radius:8px; font-size:.82rem; font-weight:700;
+  padding:6px 14px; background:linear-gradient(135deg, var(--solid-info) 0%, var(--solid-info) 100%);
+  color:#fff; border:none; border-radius:8px; font-size:.82rem; font-weight:700;
   cursor:pointer; box-shadow:0 2px 6px rgba(37,99,235,.25);
   transition:transform .12s, box-shadow .12s;
 }
@@ -226,7 +227,7 @@
   transform:translateY(-1px); box-shadow:0 4px 10px rgba(37,99,235,.35);
 }
 .opt-apply-master:disabled {
-  background:#cbd5e1; cursor:not-allowed; box-shadow:none;
+  background:var(--color-neutral-300); cursor:not-allowed; box-shadow:none;
   transform:none;
 }
 .opt-apply-master .count-badge {
@@ -250,7 +251,7 @@
   margin-top:.5rem;
 }
 .master-progress-fill {
-  height:100%; background:linear-gradient(90deg, var(--color-success-500), #22c55e);
+  height:100%; background:linear-gradient(90deg, var(--color-success-500), var(--color-success-400));
   width:0%; transition:width .3s ease;
 }
 .master-step-status {
@@ -259,17 +260,17 @@
 }
 .master-step-status.pending  { background:var(--color-neutral-100); color:var(--color-neutral-600); }
 .master-step-status.running  { background:var(--color-info-100); color:var(--color-info-700); }
-.master-step-status.success  { background:var(--color-success-100); color:#166534; }
-.master-step-status.error    { background:var(--color-critical-100); color:#b91c1c; }
+.master-step-status.success  { background:var(--color-success-100); color:var(--color-success-700); }
+.master-step-status.error    { background:var(--color-critical-100); color:var(--color-critical-700); }
 
 /* ─── Sprint UX M2: Mini-tarjeta sticky con foto del producto ───── */
 .opt-card-flex          { display:flex; gap:14px; align-items:flex-start; }
 .opt-card-content       { flex:1; min-width:0; }
-.opt-mini-card          { position:sticky; top:8px; flex-shrink:0; width:128px; background:var(--color-neutral-0); border:1px solid #e5e7eb; border-radius:8px; padding:8px; align-self:flex-start; box-shadow:0 1px 2px rgba(0,0,0,.04); z-index:5; }
+.opt-mini-card          { position:sticky; top:8px; flex-shrink:0; width:128px; background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:8px; padding:8px; align-self:flex-start; box-shadow:0 1px 2px rgba(0,0,0,.04); z-index:5; }
 .opt-mini-card-img      { width:100%; aspect-ratio:1; border-radius:6px; background:var(--color-neutral-100); object-fit:cover; display:block; }
-.opt-mini-card-loading  { width:100%; aspect-ratio:1; border-radius:6px; background:var(--color-neutral-100); display:flex; align-items:center; justify-content:center; color:#cbd5e1; font-size:1.6rem; }
+.opt-mini-card-loading  { width:100%; aspect-ratio:1; border-radius:6px; background:var(--color-neutral-100); display:flex; align-items:center; justify-content:center; color:var(--color-neutral-300); font-size:1.6rem; }
 .opt-mini-card-data     { font-size:.7rem; margin-top:6px; line-height:1.45; }
-.opt-mini-card-price    { font-weight:700; color:#0f172a; font-size:.78rem; }
+.opt-mini-card-price    { font-weight:700; color:var(--app-text); font-size:.78rem; }
 .opt-mini-card-sold     { color:var(--color-neutral-600); font-size:.66rem; margin-top:1px; }
 .opt-mini-card-status   { display:inline-block; font-size:.6rem; padding:1px 5px; border-radius:4px; margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
 .opt-mini-card-status.active { background:var(--color-success-100); color:var(--color-success-700); }
@@ -288,13 +289,13 @@
 }
 
 /* ─── Sprint UX M1: Tabs horizontales del output de optimización ───── */
-.opt-tabs              { border-top:1px solid #e5e7eb; background:var(--color-neutral-0); }
-.opt-tabs-nav          { display:flex; gap:0; background:var(--color-neutral-50); border-bottom:1px solid #e5e7eb; padding:0 12px; overflow-x:auto; scrollbar-width:thin; }
+.opt-tabs              { border-top:1px solid var(--color-neutral-200); background:var(--color-neutral-0); }
+.opt-tabs-nav          { display:flex; gap:0; background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-200); padding:0 12px; overflow-x:auto; scrollbar-width:thin; }
 .opt-tabs-nav button   { background:transparent; border:none; padding:11px 16px; font-size:.83rem; font-weight:600; color:var(--color-neutral-600); cursor:pointer; border-bottom:2.5px solid transparent; white-space:nowrap; transition:color .15s, border-color .15s, background .15s; display:inline-flex; align-items:center; gap:6px; }
-.opt-tabs-nav button:hover:not(:disabled) { color:var(--color-neutral-800); background:#eef2f7; }
+.opt-tabs-nav button:hover:not(:disabled) { color:var(--color-neutral-800); background:var(--color-neutral-100); }
 .opt-tabs-nav button.active { color:var(--color-info-600); border-bottom-color:var(--color-info-600); background:var(--color-neutral-0); }
-.opt-tabs-nav button:disabled { color:#cbd5e1; cursor:not-allowed; opacity:.55; }
-.opt-tabs-nav button .tab-badge { background:var(--color-critical-500); color:var(--color-neutral-0); font-size:.62rem; font-weight:700; border-radius:9px; padding:1px 6px; margin-left:4px; }
+.opt-tabs-nav button:disabled { color:var(--color-neutral-300); cursor:not-allowed; opacity:.55; }
+.opt-tabs-nav button .tab-badge { background:var(--solid-critical); color:#fff; font-size:.62rem; font-weight:700; border-radius:9px; padding:1px 6px; margin-left:4px; }
 .opt-tabs-nav button.active .tab-badge { background:var(--color-info-600); }
 .opt-tabs-nav button:disabled .tab-badge { display:none; }
 .opt-tab-pane          { display:none; }
@@ -317,7 +318,7 @@
   <div class="card-header d-flex align-items-center gap-2" style="cursor:pointer" onclick="toggleMisPreguntas()">
     <i class="bi bi-chat-quote text-warning"></i>
     <span class="fw-semibold">Señales de tus compradores — qué les falta en tus publicaciones</span>
-    <span id="mq-badge" style="display:none;background:var(--color-warning-400);color:var(--color-neutral-0);border-radius:12px;padding:1px 9px;font-size:.7rem;font-weight:700;margin-left:4px"></span>
+    <span id="mq-badge" style="display:none;background:var(--solid-warning);color:#fff;border-radius:12px;padding:1px 9px;font-size:.7rem;font-weight:700;margin-left:4px"></span>
     <button class="btn btn-sm btn-outline-warning ms-auto run-btn" id="btn-mq-cargar"
             onclick="event.stopPropagation();cargarMisPreguntas()" style="font-size:.75rem">
       <i class="bi bi-arrow-repeat me-1"></i>Analizar mis preguntas
@@ -380,7 +381,7 @@
         <div style="background:var(--color-neutral-50);border-bottom:1px solid var(--color-neutral-200);padding:9px 14px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleQsPanel()">
           <i class="bi bi-bar-chart-fill" style="color:var(--color-info-500);font-size:.85rem"></i>
           <span style="font-size:.82rem;font-weight:700;color:var(--color-neutral-800)">Puntaje de calidad ML — ver cuáles necesitan optimización</span>
-          <span id="qs-badge" style="display:none;background:var(--color-critical-400);color:var(--color-neutral-0);border-radius:10px;padding:1px 8px;font-size:.65rem;font-weight:700;margin-left:2px"></span>
+          <span id="qs-badge" style="display:none;background:var(--solid-critical);color:#fff;border-radius:10px;padding:1px 8px;font-size:.65rem;font-weight:700;margin-left:2px"></span>
           <button class="btn btn-sm ms-auto" style="font-size:.72rem;padding:3px 10px;border:1px solid var(--color-info-500);color:var(--color-info-500);background:transparent;border-radius:6px"
                   onclick="event.stopPropagation();cargarPuntajesML()" id="qs-btn">
             <i class="bi bi-arrow-repeat me-1"></i>Cargar puntajes
@@ -408,10 +409,10 @@
       </div>
 
       <!-- Panel descubrimiento automático -->
-      <div style="background:#f0f9ff;border-bottom:1px solid #bae6fd;padding:12px 14px">
+      <div style="background:var(--color-info-100);border-bottom:1px solid var(--color-info-100);padding:12px 14px">
         <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
           <div style="flex:1;min-width:220px">
-            <div style="font-size:.8rem;font-weight:700;color:#0369a1;margin-bottom:2px">
+            <div style="font-size:.8rem;font-weight:700;color:var(--color-info-700);margin-bottom:2px">
               <i class="bi bi-stars me-1"></i>Descubrimiento automático
             </div>
             <div style="font-size:.73rem;color:var(--color-neutral-600);line-height:1.4">
@@ -420,7 +421,7 @@
             </div>
           </div>
           <button id="btnDescubrir" class="btn btn-sm fw-semibold flex-shrink-0"
-                  style="background:#0369a1;color:var(--color-neutral-0);border:none;padding:.4rem 1rem"
+                  style="background:var(--solid-info);color:#fff;border:none;padding:.4rem 1rem"
                   onclick="analizarProducto()"
                   disabled title="Seleccioná primero tu publicación en el Paso 1">
             <i class="bi bi-cpu me-1"></i>Analizar producto
@@ -428,7 +429,7 @@
         </div>
 
         <!-- Panel de análisis Claude (paso intermedio con checkboxes) -->
-        <div id="analysisPanel" style="display:none;background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div id="analysisPanel" style="display:none;background:var(--color-warning-50);border:1px solid var(--color-warning-100);border-radius:8px;padding:12px 14px;margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <i class="bi bi-lightbulb-fill" style="color:var(--color-warning-500);font-size:.9rem"></i>
             <span style="font-size:.78rem;font-weight:700;color:var(--color-warning-700)">Análisis del producto — revisá y confirmá los términos</span>
@@ -437,15 +438,15 @@
           </div>
 
           <!-- Concepto y diferenciador editable -->
-          <div style="background:var(--color-neutral-0);border-radius:6px;padding:8px 11px;margin-bottom:10px;border:1px solid #fde68a">
+          <div style="background:var(--color-neutral-0);border-radius:6px;padding:8px 11px;margin-bottom:10px;border:1px solid var(--color-warning-100)">
             <div id="analysisConcept" style="font-size:.78rem;color:var(--color-neutral-700);margin-bottom:6px"></div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span style="font-size:.73rem;color:#059669;font-weight:700;white-space:nowrap">
+              <span style="font-size:.73rem;color:var(--color-success-500);font-weight:700;white-space:nowrap">
                 <i class="bi bi-key-fill me-1"></i>Filtro diferenciador:
               </span>
               <input type="text" id="diferenciadorInput"
-                     style="flex:1;min-width:140px;font-size:.78rem;font-weight:600;color:#065f46;
-                            background:#f0fdf4;border:1px solid #6ee7b7;border-radius:5px;padding:3px 8px"
+                     style="flex:1;min-width:140px;font-size:.78rem;font-weight:600;color:var(--color-success-700);
+                            background:var(--color-success-50);border:1px solid var(--color-success-400);border-radius:5px;padding:3px 8px"
                      placeholder="ej: puntas"
                      oninput="_currentDiferenciador = this.value.trim()">
               <span style="font-size:.68rem;color:var(--color-neutral-500);line-height:1.3">
@@ -472,7 +473,7 @@
 
           <!-- Botón confirmar -->
           <button id="btnConfirmar" class="btn fw-semibold w-100"
-                  style="background:var(--color-warning-500);color:var(--color-neutral-0);border:none;font-size:.85rem"
+                  style="background:var(--solid-warning);color:#fff;border:none;font-size:.85rem"
                   onclick="confirmarYDescubrir()">
             <i class="bi bi-search me-1"></i>Confirmar términos y buscar competidores
           </button>
@@ -486,7 +487,7 @@
 
         <!-- Keywords analizadas (se muestra tras la búsqueda de competidores) -->
         <div id="kwsAnalizadas" style="display:none;margin-bottom:10px">
-          <div style="font-size:.68rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:5px;letter-spacing:.04em">
+          <div style="font-size:.68rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:5px;letter-spacing:.04em">
             <i class="bi bi-graph-up-arrow me-1"></i>Keywords usadas — ordenadas por popularidad en ML
           </div>
           <div id="kwsAnalizadasList" style="display:flex;flex-wrap:wrap;gap:4px"></div>
@@ -498,40 +499,40 @@
           <div class="spinner-border spinner-border-sm text-primary me-2"></div>
           Cruzando competidores en el mercado...
         </div>
-        <div id="discoveryError" style="display:none;padding:8px 10px;background:#fef2f2;border-radius:6px;font-size:.78rem;color:var(--color-critical-500)"></div>
+        <div id="discoveryError" style="display:none;padding:8px 10px;background:var(--color-critical-50);border-radius:6px;font-size:.78rem;color:var(--color-critical-500)"></div>
       </div>
 
       <!-- Bookmarklet banner — aparece siempre -->
-      <div id="bookmarkletBanner" style="background:#f0fdf4;border-top:1px solid #bbf7d0;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div id="bookmarkletBanner" style="background:var(--color-success-50);border-top:1px solid var(--color-success-100);padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:200px">
           <div style="font-size:.78rem;font-weight:700;color:var(--color-success-700);margin-bottom:2px">
             <i class="bi bi-bookmark-star-fill me-1"></i>Capturar competidor directo desde ML
           </div>
-          <div style="font-size:.7rem;color:#4b7a5a;line-height:1.4">
+          <div style="font-size:.7rem;color:var(--color-success-700);line-height:1.4">
             Instalá el botón una vez → abrís la publicación del competidor en ML → clic en el botón → los datos llegan acá solos con título y descripción completa.
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
           <!-- Indicador de llegada -->
-          <div id="bookmarkletPing" style="display:none;background:var(--color-success-500);color:var(--color-neutral-0);border-radius:20px;padding:3px 10px;font-size:.72rem;font-weight:700;animation:pulse 1s infinite">
+          <div id="bookmarkletPing" style="display:none;background:var(--solid-success);color:#fff;border-radius:20px;padding:3px 10px;font-size:.72rem;font-weight:700;animation:pulse 1s infinite">
             <i class="bi bi-arrow-down-circle me-1"></i><span id="bookmarkletPingText"></span>
           </div>
           <button onclick="toggleBookmarkletPanel()"
-                  style="background:var(--color-success-700);color:var(--color-neutral-0);border:none;border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
+                  style="background:var(--solid-success);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
             <i class="bi bi-download me-1"></i>Instalar botón
           </button>
         </div>
       </div>
 
       <!-- Panel de instalación del bookmarklet -->
-      <div id="bookmarkletPanel" style="display:none;background:#f8fffe;border-top:1px solid #6ee7b7;padding:14px">
-        <div style="font-size:.75rem;font-weight:700;color:#0f766e;margin-bottom:10px">
+      <div id="bookmarkletPanel" style="display:none;background:var(--color-success-50);border-top:1px solid var(--color-success-400);padding:14px">
+        <div style="font-size:.75rem;font-weight:700;color:var(--color-success-700);margin-bottom:10px">
           <i class="bi bi-info-circle me-1"></i>Cómo instalar — solo una vez
         </div>
 
         <!-- Paso 1 -->
         <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:var(--color-neutral-0);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
+          <div style="background:var(--solid-success);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700)">
             Mostrá la <strong>barra de favoritos</strong> del navegador si no está visible
             <span style="color:var(--color-neutral-500)">(Ctrl+Shift+B en Chrome)</span>
@@ -540,13 +541,13 @@
 
         <!-- Paso 2 -->
         <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:var(--color-neutral-0);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
+          <div style="background:var(--solid-success);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700);flex:1">
             <div style="margin-bottom:5px">Arrastrá este botón a tu barra de favoritos:</div>
             <a id="bookmarkletLink" href="#"
-               style="display:inline-flex;align-items:center;gap:5px;background:#facc15;color:#0f172a;border-radius:6px;
+               style="display:inline-flex;align-items:center;gap:5px;background:#facc15;color:var(--app-text);border-radius:6px;
                       padding:6px 14px;font-size:.82rem;font-weight:800;text-decoration:none;cursor:grab;
-                      border:2px dashed #a16207;user-select:none"
+                      border:2px dashed var(--color-warning-700);user-select:none"
                title="Arrastrá este botón a tu barra de favoritos">
               <i class="bi bi-stars"></i> Enviar a Herramienta ML
             </a>
@@ -558,7 +559,7 @@
 
         <!-- Paso 3 -->
         <div style="display:flex;gap:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:var(--color-neutral-0);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
+          <div style="background:var(--solid-success);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700)">
             Abrí la publicación de un competidor en ML → clic en <strong>"Enviar a Herramienta ML"</strong> → volvé acá, el competidor aparece solo.
           </div>
@@ -568,7 +569,7 @@
       <!-- Buscar competidores en ML real -->
       <div style="border-top:1px solid var(--color-neutral-200)">
         <div class="d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
-             style="background:#fafafa;cursor:pointer;user-select:none"
+             style="background:var(--color-neutral-50);cursor:pointer;user-select:none"
              onclick="toggleManualSearch()">
           <i class="bi bi-search" style="color:var(--color-neutral-600);font-size:.85rem"></i>
           <span style="font-size:.78rem;font-weight:600;color:var(--color-neutral-700)">Buscar competidores en MercadoLibre</span>
@@ -579,20 +580,20 @@
         <div id="manualSearchSection" style="display:none;background:var(--color-neutral-50);border-top:1px solid var(--color-neutral-200)">
 
           <!-- PASO A: Buscar en ML -->
-          <div style="background:#0f172a;padding:12px 14px">
+          <div style="background:var(--app-text);padding:12px 14px">
             <div style="color:var(--color-neutral-400);font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px">
               <i class="bi bi-search me-1" style="color:#facc15"></i>Paso 1 — Buscá el producto en MercadoLibre
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="text" id="mlSearchQueryInput"
                      style="flex:1;font-size:.84rem;font-weight:600;background:var(--color-neutral-800);color:var(--color-neutral-100);
-                            border:1px solid #334155;border-radius:6px;padding:7px 11px;outline:none"
+                            border:1px solid var(--color-neutral-700);border-radius:6px;padding:7px 11px;outline:none"
                      placeholder="Ej: cortador de puntas cabello profesional..."
                      onkeydown="if(event.key==='Enter'){ const a=document.getElementById('btnBuscarEnML'); prepararBusquedaML(a) && a.click(); }"
-                     onfocus="this.style.borderColor='#facc15'" onblur="this.style.borderColor='#334155'">
+                     onfocus="this.style.borderColor='#facc15'" onblur="this.style.borderColor='var(--color-neutral-700)'">
               <a id="btnBuscarEnML" href="https://www.mercadolibre.com.ar" target="_blank"
                  onclick="return prepararBusquedaML(this)"
-                 style="background:#facc15;color:#0f172a;border-radius:6px;padding:7px 14px;
+                 style="background:#facc15;color:var(--app-text);border-radius:6px;padding:7px 14px;
                         font-size:.82rem;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
                 <i class="bi bi-box-arrow-up-right"></i>Buscar en ML
               </a>
@@ -603,14 +604,14 @@
           </div>
 
           <!-- PASO B: Pegar el link -->
-          <div style="padding:10px 12px;background:#f0f9ff;border-bottom:1px solid #bae6fd">
-            <div style="color:#0369a1;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+          <div style="padding:10px 12px;background:var(--color-info-100);border-bottom:1px solid var(--color-info-100)">
+            <div style="color:var(--color-info-700);font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
               <i class="bi bi-clipboard-plus me-1"></i>Paso 2 — Pegá el link del competidor
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="text" id="pasteUrlField"
                      class="form-control"
-                     style="font-size:.82rem;border:2px dashed #0369a1;background:var(--color-neutral-0)"
+                     style="font-size:.82rem;border:2px dashed var(--color-info-700);background:var(--color-neutral-0)"
                      placeholder="Ctrl+V — URL de ML o ID directo (ej: MLA1234567890)"
                      onpaste="setTimeout(() => { procesarUrl(this.value); this.value=''; }, 60)"
                      onkeydown="if(event.key==='Enter'){ procesarUrl(this.value); this.value=''; }">
@@ -624,7 +625,7 @@
           </div>
 
           <!-- Competidores agregados en esta sesión -->
-          <div id="recentlyAdded" style="display:none;padding:8px 12px;background:#f0fdf4;border-bottom:1px solid #bbf7d0">
+          <div id="recentlyAdded" style="display:none;padding:8px 12px;background:var(--color-success-50);border-bottom:1px solid var(--color-success-100)">
             <div style="font-size:.69rem;font-weight:700;color:var(--color-success-700);margin-bottom:5px">
               <i class="bi bi-check2-circle me-1"></i>Agregados en esta sesión
             </div>
@@ -634,70 +635,70 @@
       </div>
 
       <!-- Lista de competidores seleccionados -->
-      <div id="compSelectedArea" style="display:none;border-top:2px solid #22c55e">
-        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap" style="background:#f0fdf4">
+      <div id="compSelectedArea" style="display:none;border-top:2px solid var(--color-success-400)">
+        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap" style="background:var(--color-success-50)">
           <i class="bi bi-check2-circle text-success"></i>
           <span class="fw-semibold text-success small" id="compSelectedLabel"></span>
           <button class="btn btn-xs btn-outline-danger ms-auto" onclick="limpiarSeleccion()">Limpiar todo</button>
         </div>
-        <div id="compSelectedCards" class="d-flex flex-wrap gap-2 p-3" style="background:#f0fdf4"></div>
+        <div id="compSelectedCards" class="d-flex flex-wrap gap-2 p-3" style="background:var(--color-success-50)"></div>
 
         <!-- Botón reverse keywords -->
-        <div style="padding:0 12px 12px;background:#f0fdf4">
+        <div style="padding:0 12px 12px;background:var(--color-success-50)">
           <button id="btnReverseKw" class="btn fw-semibold w-100"
-                  style="background:#0f766e;color:var(--color-neutral-0);border:none;font-size:.84rem"
+                  style="background:var(--solid-success);color:#fff;border:none;font-size:.84rem"
                   onclick="analizarKeywordsCompetidores()">
             <i class="bi bi-binoculars me-1"></i>Analizar keywords de los competidores seleccionados
           </button>
         </div>
 
         <!-- Panel resultado reverse keywords -->
-        <div id="reverseKwPanel" style="display:none;border-top:1px solid #6ee7b7;background:#f8fffe">
+        <div id="reverseKwPanel" style="display:none;border-top:1px solid var(--color-success-400);background:var(--color-success-50)">
 
           <!-- Loading -->
           <div id="reverseKwLoading" style="display:none;text-align:center;padding:1.2rem;color:var(--color-neutral-600);font-size:.82rem">
-            <div class="spinner-border spinner-border-sm text-teal me-2" style="color:#0f766e"></div>
+            <div class="spinner-border spinner-border-sm text-teal me-2" style="color:var(--color-success-700)"></div>
             Extrayendo keywords de los competidores con autosuggest...
           </div>
 
           <!-- Error -->
-          <div id="reverseKwError" style="display:none;padding:8px 14px;background:#fef2f2;font-size:.78rem;color:var(--color-critical-500)"></div>
+          <div id="reverseKwError" style="display:none;padding:8px 14px;background:var(--color-critical-50);font-size:.78rem;color:var(--color-critical-500)"></div>
 
           <!-- Resultados -->
           <div id="reverseKwResults" style="display:none;padding:12px 14px">
 
             <!-- Resumen -->
-            <div id="reverseKwSummary" style="font-size:.8rem;color:var(--color-neutral-700);margin-bottom:12px;background:var(--color-neutral-0);border-radius:8px;padding:10px 14px;border:1px solid #d1fae5;line-height:1.6"></div>
+            <div id="reverseKwSummary" style="font-size:.8rem;color:var(--color-neutral-700);margin-bottom:12px;background:var(--color-neutral-0);border-radius:8px;padding:10px 14px;border:1px solid var(--color-success-100);line-height:1.6"></div>
 
             <!-- Keywords que YA CUBRÍS (primero — es la buena noticia) -->
             <div id="reverseKwSharedSection" style="display:none;margin-bottom:14px">
-              <div style="font-size:.7rem;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+              <div style="font-size:.7rem;font-weight:800;color:var(--color-success-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
                 <i class="bi bi-check2-circle"></i>
                 Ya cubrís estas búsquedas — tus competidores top también las usan
-                <span style="font-size:.65rem;font-weight:500;color:#4ade80;background:#14532d;border-radius:10px;padding:1px 7px;text-transform:none;letter-spacing:0">buena señal</span>
+                <span style="font-size:.65rem;font-weight:500;color:#fff;background:var(--solid-success);border-radius:10px;padding:1px 7px;text-transform:none;letter-spacing:0">buena señal</span>
               </div>
               <div id="reverseKwSharedList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
             </div>
 
             <!-- GAPS: oportunidades nuevas -->
             <div id="reverseKwGapsSection" style="display:none;margin-bottom:12px">
-              <div style="font-size:.7rem;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:flex;align-items:center;gap:6px">
+              <div style="font-size:.7rem;font-weight:800;color:var(--color-warning-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;display:flex;align-items:center;gap:6px">
                 <i class="bi bi-plus-circle-fill"></i>
                 Oportunidades — keywords que usan tus competidores y vos no tenés aún
               </div>
-              <div style="font-size:.68rem;color:#b45309;margin-bottom:8px;padding:5px 8px;background:#fffbeb;border-radius:5px;border:1px solid #fde68a">
+              <div style="font-size:.68rem;color:var(--color-warning-700);margin-bottom:8px;padding:5px 8px;background:var(--color-warning-50);border-radius:5px;border:1px solid var(--color-warning-100)">
                 <i class="bi bi-magic me-1"></i>Estas keywords se envían automáticamente al optimizador de IA para incorporarlas al título y descripción
               </div>
               <div id="reverseKwGapsList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
             </div>
 
             <!-- Estado 0 gaps -->
-            <div id="reverseKwNoGaps" style="display:none;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;font-size:.8rem;color:#166534">
+            <div id="reverseKwNoGaps" style="display:none;padding:10px 12px;background:var(--color-success-50);border:1px solid var(--color-success-400);border-radius:7px;font-size:.8rem;color:var(--color-success-700)">
               <i class="bi bi-trophy-fill me-2"></i><strong>Excelente cobertura</strong> — tus keywords ya cubren todo lo que usan tus competidores top. No hay brechas detectadas.
             </div>
 
             <!-- Leyenda -->
-            <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e5e7eb;font-size:.65rem;color:var(--color-neutral-500);display:flex;gap:14px;flex-wrap:wrap">
+            <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--color-neutral-200);font-size:.65rem;color:var(--color-neutral-500);display:flex;gap:14px;flex-wrap:wrap">
               <span><strong style="color:var(--color-neutral-600)">2/4</strong> = aparece en 2 de los 4 competidores analizados</span>
               <span><strong style="color:var(--color-neutral-600)">pos.1</strong> = posición en autosuggest de ML (1 = más buscada)</span>
             </div>
@@ -708,27 +709,27 @@
 
     <!-- ── Panel autosuggest (aparece después del descubrimiento) ───────────── -->
     <div id="autosuggestPanel" style="display:none;border:2px solid var(--color-info-500);border-radius:8px;overflow:hidden;margin-bottom:12px">
-      <div style="background:#1e3a8a;padding:9px 14px;display:flex;align-items:center;gap:8px">
+      <div style="background:var(--solid-info);padding:9px 14px;display:flex;align-items:center;gap:8px">
         <i class="bi bi-graph-up-arrow" style="color:var(--color-info-300)"></i>
-        <span style="color:var(--color-neutral-0);font-size:.8rem;font-weight:700">Búsquedas reales en MercadoLibre — ordenadas por popularidad</span>
+        <span style="color:#fff;font-size:.8rem;font-weight:700">Búsquedas reales en MercadoLibre — ordenadas por popularidad</span>
         <span style="color:var(--color-info-300);font-size:.7rem;margin-left:4px">estas son las frases que la gente escribe en ML para encontrar tu producto</span>
       </div>
-      <div style="padding:10px 14px;background:#eff6ff">
+      <div style="padding:10px 14px;background:var(--color-info-100)">
         <div id="autosuggestList" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
     </div>
 
     <!-- PASO 3: Investigar Keywords con IA -->
-    <div class="mb-3" style="border:1px solid #e0e7ff;border-radius:8px;overflow:hidden">
+    <div class="mb-3" style="border:1px solid var(--color-info-100);border-radius:8px;overflow:hidden">
       <div class="d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
-           style="background:#eef2ff;border-bottom:1px solid #e0e7ff;cursor:pointer"
+           style="background:var(--color-info-100);border-bottom:1px solid var(--color-info-100);cursor:pointer"
            onclick="toggleKwSection()">
         <span class="badge bg-primary me-1">3</span>
         <span class="fw-semibold">Investigar keywords con IA</span>
         <span class="text-muted ms-1" style="font-size:.78rem">(opcional — Claude analiza qué palabras buscan los compradores)</span>
         <i class="bi bi-chevron-down ms-auto" id="kwChevron"></i>
       </div>
-      <div id="kwSection" style="display:none;padding:12px 14px;background:#f8f9ff">
+      <div id="kwSection" style="display:none;padding:12px 14px;background:var(--color-neutral-50)">
         <div class="d-flex gap-2 mb-2">
           <input type="text" id="kwProductInput" class="form-control form-control-sm"
                  placeholder="Ej: faja embarazada, silla gaming, cargador inalámbrico..."
@@ -801,7 +802,7 @@
     <div class="opt-stat-lbl">Aplicadas en ML</div>
   </div>
   {% if con_resultado %}
-  <div class="opt-stat-box" style="background:#f0fdf4;border:1px solid #bbf7d0">
+  <div class="opt-stat-box" style="background:var(--color-success-50);border:1px solid var(--color-success-100)">
     <div class="opt-stat-num" style="color:var(--color-success-700)">{{ con_mejora|length }}/{{ con_resultado|length }}</div>
     <div class="opt-stat-lbl">Mejoraron / Con resultado</div>
   </div>
@@ -828,16 +829,16 @@
   {% if violations %}
   {% set criticos = violations | selectattr('nivel', 'equalto', 'critico') | list %}
   {% set advertencias = violations | selectattr('nivel', 'equalto', 'advertencia') | list %}
-  <div style="background:#fef2f2;border-left:4px solid var(--color-critical-500);border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:2px">
+  <div style="background:var(--color-critical-50);border-left:4px solid var(--color-critical-500);border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:2px">
     <div style="font-weight:700;font-size:.8rem;color:var(--color-critical-500);margin-bottom:6px">
       <i class="bi bi-exclamation-triangle-fill me-1"></i>
       TÍTULO ACTUAL CON VIOLACIONES — ML puede estar penalizando esta publicación ahora mismo
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">
       {% for v in violations %}
-      {% set vc = 'var(--color-critical-500)' if v.nivel == 'critico' else '#b45309' %}
-      {% set vb = 'var(--color-critical-100)' if v.nivel == 'critico' else '#fef9c3' %}
-      <div style="background:{{ vb }};border:1px solid {{ vc }}33;border-radius:6px;padding:5px 10px;font-size:.76rem;max-width:100%">
+      {% set vc = 'var(--color-critical-500)' if v.nivel == 'critico' else 'var(--color-warning-700)' %}
+      {% set vb = 'var(--color-critical-100)' if v.nivel == 'critico' else 'var(--color-warning-100)' %}
+      <div style="background:{{ vb }};border:1px solid color-mix(in srgb, {{ vc }} 20%, transparent);border-radius:6px;padding:5px 10px;font-size:.76rem;max-width:100%">
         <span style="font-weight:700;color:{{ vc }}">{{ '🚨' if v.nivel == 'critico' else '⚠️' }} {{ v.regla }}</span>
         <span style="color:var(--color-neutral-700);margin-left:4px">{{ v.detalle }}</span>
         <span style="color:var(--color-neutral-500);margin-left:4px;font-style:italic">→ {{ v.sugerencia }}</span>
@@ -854,8 +855,8 @@
     <div class="score-strip">
       {% if item.get('score_oficial_ml') %}
       {% set sof = item.get('score_oficial_ml', 0) %}
-      {% set sof_color = 'var(--color-success-700)' if sof >= 70 else '#b45309' if sof >= 45 else 'var(--color-critical-500)' %}
-      {% set sof_bg    = 'var(--color-success-100)' if sof >= 70 else '#fef9c3' if sof >= 45 else 'var(--color-critical-100)' %}
+      {% set sof_color = 'var(--color-success-700)' if sof >= 70 else 'var(--color-warning-700)' if sof >= 45 else 'var(--color-critical-500)' %}
+      {% set sof_bg    = 'var(--color-success-100)' if sof >= 70 else 'var(--color-warning-100)' if sof >= 45 else 'var(--color-critical-100)' %}
       <div title="Score oficial de calidad que ML asigna a esta publicación{{ ' — ' + item.get('score_oficial_nivel','') if item.get('score_oficial_nivel') else '' }}"
            style="display:flex;flex-direction:column;align-items:center;background:{{ sof_bg }};border:1.5px solid {{ sof_color }};border-radius:8px;padding:4px 10px;min-width:52px">
         <span style="font-size:1.05rem;font-weight:800;color:{{ sof_color }};line-height:1">{{ sof }}</span>
@@ -945,9 +946,9 @@
 
   <!-- ─ Seguimiento post-optimización ──────────────────────────────────── -->
   <div id="seg-{{ item.get('item_id','') }}"
-       style="background:{% if item.get('aplicado') %}#f0f9ff{% else %}#fafafa{% endif %};border-bottom:1px solid {% if item.get('aplicado') %}#bae6fd{% else %}var(--color-neutral-200){% endif %};padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <i class="bi bi-graph-up-arrow" style="color:{% if item.get('aplicado') %}#0369a1{% else %}var(--color-neutral-400){% endif %};flex-shrink:0"></i>
-    <span style="font-size:.75rem;font-weight:700;color:{% if item.get('aplicado') %}#0369a1{% else %}var(--color-neutral-600){% endif %};flex-shrink:0">Seguimiento</span>
+       style="background:{% if item.get('aplicado') %}var(--color-info-100){% else %}var(--color-neutral-50){% endif %};border-bottom:1px solid {% if item.get('aplicado') %}var(--color-info-100){% else %}var(--color-neutral-200){% endif %};padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <i class="bi bi-graph-up-arrow" style="color:{% if item.get('aplicado') %}var(--color-info-700){% else %}var(--color-neutral-400){% endif %};flex-shrink:0"></i>
+    <span style="font-size:.75rem;font-weight:700;color:{% if item.get('aplicado') %}var(--color-info-700){% else %}var(--color-neutral-600){% endif %};flex-shrink:0">Seguimiento</span>
     {% if item.get('aplicado') %}
       {% set seg = item.get('seguimiento') %}
       {% set bl  = item.get('baseline', {}) %}
@@ -958,7 +959,7 @@
                      color:{{ 'var(--color-success-700)' if v == 'mejoro' else ('var(--color-critical-500)' if v == 'empeoro' else 'var(--color-warning-700)') }}">
           {{ '✓ Mejoró' if v == 'mejoro' else ('✗ Empeoró' if v == 'empeoro' else ('↔ Sin cambio' if v == 'sin_cambio' else 'Muy reciente')) }}
         </span>
-        <span style="font-size:.73rem;color:#334155;flex:1">{{ seg.veredicto_txt }}</span>
+        <span style="font-size:.73rem;color:var(--color-neutral-700);flex:1">{{ seg.veredicto_txt }}</span>
         {% if seg.delta_pos is not none %}
         <span style="font-size:.73rem;font-weight:700;color:{{ 'var(--color-success-700)' if seg.delta_pos < 0 else 'var(--color-critical-500)' }}">
           Posición: {{ seg.baseline.posicion_antes if seg.baseline else '?' }} →
@@ -985,18 +986,18 @@
       {% endif %}
       <button onclick="refreshSeguimiento('{{ item.get('item_id','') }}', '{{ alias }}')"
               id="btn-seg-{{ item.get('item_id','') }}"
-              style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+              style="font-size:.68rem;padding:2px 8px;background:var(--solid-info);color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
         <i class="bi bi-rulers me-1"></i>Medir ahora
       </button>
     {% else %}
       <span style="font-size:.73rem;color:var(--color-neutral-600);flex:1">Si aplicaste cambios en MercadoLibre, capturá el baseline. También podés enviar esta publicación a Monitor de Evolución para hacer seguimiento sin aplicar nada.</span>
       <button onclick="marcarAplicadoYMedir('{{ item.get('item_id','') }}', '{{ alias }}', this)"
-              style="font-size:.68rem;padding:2px 8px;background:var(--color-neutral-600);color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+              style="font-size:.68rem;padding:2px 8px;background:var(--color-neutral-600);color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
         <i class="bi bi-check2-circle me-1"></i>Ya apliqué — capturar baseline
       </button>
       <button onclick="enviarAMonitor('{{ item.get('item_id','') }}', {{ item.get('titulo_actual','')|tojson }}, '{{ alias }}', this)"
               id="btn-monitor-{{ item.get('item_id','') }}"
-              style="font-size:.68rem;padding:2px 8px;background:#6d28d9;color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+              style="font-size:.68rem;padding:2px 8px;background:#6d28d9;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
         <i class="bi bi-graph-up-arrow me-1"></i>Enviar a Monitor de Evolución
       </button>
     {% endif %}
@@ -1005,7 +1006,7 @@
   <!-- ─ Nueva publicación (cuando el título no es modificable por ventas) ── -->
   {% if item.get('competidores_ids') or item.get('competidores_n', 0) > 0 %}
   <div id="panel-nueva-{{ item.get('item_id','') }}"
-       style="background:#faf5ff;border-bottom:1px solid #e9d5ff;padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+       style="background:var(--color-info-100);border-bottom:1px solid var(--color-info-100);padding:9px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <i class="bi bi-box-arrow-up-right" style="color:#7c3aed;flex-shrink:0"></i>
     <span style="font-size:.73rem;font-weight:700;color:#6d28d9;flex-shrink:0">¿Creaste una nueva publicación con esta optimización?</span>
     <span style="font-size:.71rem;color:#7c3aed;flex:1">Ingresá su ID para registrarla en Monitor de Evolución con los {{ item.get('competidores_n', 0) }} competidores del análisis.</span>
@@ -1014,7 +1015,7 @@
            oninput="this.value=this.value.toUpperCase().replace(/[^MLA0-9]/g,'')"
     />
     <button onclick="vincularNuevaPublicacion('{{ item.get('item_id','') }}', '{{ alias }}', this)"
-            style="font-size:.68rem;padding:3px 10px;background:#7c3aed;color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;flex-shrink:0;font-weight:700">
+            style="font-size:.68rem;padding:3px 10px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0;font-weight:700">
       <i class="bi bi-link-45deg me-1"></i>Vincular al Monitor
     </button>
   </div>
@@ -1049,8 +1050,8 @@
   <div class="opt-sec">
     <div class="opt-sec-hdr">
       <i class="bi bi-check-circle-fill" style="color:var(--color-success-500);font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#166534">Títulos optimizados — elegí y copiá</span>
-      <span style="font-size:.65rem;color:var(--color-info-600);background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600;flex-shrink:0"><i class="bi bi-pencil me-1"></i>Click para editar</span>
+      <span class="opt-sec-lbl" style="color:var(--color-success-700)">Títulos optimizados — elegí y copiá</span>
+      <span style="font-size:.65rem;color:var(--color-info-600);background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:10px;padding:2px 7px;font-weight:600;flex-shrink:0"><i class="bi bi-pencil me-1"></i>Click para editar</span>
       {% if tr_n %}
       <span class="badge ms-auto" style="background:var(--color-success-500);font-size:.65rem;font-weight:700;flex-shrink:0">
         <i class="bi bi-stars me-1"></i>IA recomienda opción {{ tr_n }}
@@ -1058,7 +1059,7 @@
       {% endif %}
     </div>
     {% if has_ventas %}
-    <div style="display:flex;align-items:flex-start;gap:.6rem;background:var(--color-warning-100);border:1px solid #fcd34d;border-radius:8px;padding:.6rem .9rem;margin:.75rem 1rem .25rem;font-size:.8rem;color:var(--color-warning-700)">
+    <div style="display:flex;align-items:flex-start;gap:.6rem;background:var(--color-warning-100);border:1px solid var(--color-warning-400);border-radius:8px;padding:.6rem .9rem;margin:.75rem 1rem .25rem;font-size:.8rem;color:var(--color-warning-700)">
       <i class="bi bi-lock-fill flex-shrink-0" style="margin-top:.1rem"></i>
       <div>
         <strong>Esta publicación tiene {{ item.get('sold_quantity') }} venta{{ 's' if item.get('sold_quantity') != 1 else '' }} — ML no permite editar el título.</strong>
@@ -1207,8 +1208,8 @@
              onclick="event.stopPropagation()"
              onchange="actualizarMasterCount({{ outer_idx }})"
              title="Incluir ficha técnica al aplicar TODO">
-      <i class="bi bi-table" style="color:#9a3412;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#9a3412">Ficha técnica perfecta</span>
+      <i class="bi bi-table" style="color:var(--color-warning-700);font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:var(--color-warning-700)">Ficha técnica perfecta</span>
       {% set _n_req_miss = namespace(v=0) %}
       {% set _n_seo = namespace(v=0) %}
       {% for _a in _ficha_attrs %}
@@ -1216,14 +1217,14 @@
         {% if _a.get('tipo','') == 'texto-libre-seo' %}{% set _n_seo.v = _n_seo.v + 1 %}{% endif %}
       {% endfor %}
       {% if _n_req_miss.v > 0 %}
-      <span style="font-size:.65rem;background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:10px;padding:2px 8px;font-weight:600">{{ _n_req_miss.v }} requerido{{ 's' if _n_req_miss.v > 1 else '' }} faltante{{ 's' if _n_req_miss.v > 1 else '' }}</span>
+      <span style="font-size:.65rem;background:var(--color-critical-50);color:var(--color-critical-700);border:1px solid var(--color-critical-400);border-radius:10px;padding:2px 8px;font-weight:600">{{ _n_req_miss.v }} requerido{{ 's' if _n_req_miss.v > 1 else '' }} faltante{{ 's' if _n_req_miss.v > 1 else '' }}</span>
       {% endif %}
       {% if _n_seo.v > 0 %}
-      <span style="font-size:.65rem;background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:10px;padding:2px 8px;font-weight:600">{{ _n_seo.v }} campo{{ 's' if _n_seo.v > 1 else '' }} SEO libre</span>
+      <span style="font-size:.65rem;background:var(--color-success-50);color:var(--color-success-700);border:1px solid var(--color-success-400);border-radius:10px;padding:2px 8px;font-weight:600">{{ _n_seo.v }} campo{{ 's' if _n_seo.v > 1 else '' }} SEO libre</span>
       {% endif %}
       <div class="d-flex gap-2 ms-auto">
         <button class="btn btn-sm fw-semibold" id="btn-apply-ficha-{{ outer_idx }}"
-                style="background:#0f766e;color:var(--color-neutral-0);border:none;font-size:.73rem;padding:3px 10px"
+                style="background:var(--solid-success);color:#fff;border:none;font-size:.73rem;padding:3px 10px"
                 onclick="aplicarFichaTabla('{{ item.get('item_id','') }}', 'ficha-tbl-{{ outer_idx }}', 'btn-apply-ficha-{{ outer_idx }}')">
           <i class="bi bi-cloud-upload me-1"></i>Aplicar seleccionados
         </button>
@@ -1232,12 +1233,12 @@
     <div id="ficha-tbl-{{ outer_idx }}" style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:.82rem">
         <thead>
-          <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
-            <th style="padding:8px 10px;text-align:left;min-width:140px;color:#475569;font-weight:600">Atributo</th>
-            <th style="padding:8px 10px;text-align:left;min-width:110px;color:#475569;font-weight:600">Actual</th>
-            <th style="padding:8px 10px;text-align:left;min-width:180px;color:#475569;font-weight:600">Sugerido por IA</th>
-            <th style="padding:8px 10px;text-align:left;min-width:90px;color:#475569;font-weight:600">Tipo</th>
-            <th style="padding:8px 10px;text-align:left;color:#475569;font-weight:600">Estrategia</th>
+          <tr style="background:var(--color-neutral-50);border-bottom:2px solid var(--color-neutral-200)">
+            <th style="padding:8px 10px;text-align:left;min-width:140px;color:var(--app-text-2);font-weight:600">Atributo</th>
+            <th style="padding:8px 10px;text-align:left;min-width:110px;color:var(--app-text-2);font-weight:600">Actual</th>
+            <th style="padding:8px 10px;text-align:left;min-width:180px;color:var(--app-text-2);font-weight:600">Sugerido por IA</th>
+            <th style="padding:8px 10px;text-align:left;min-width:90px;color:var(--app-text-2);font-weight:600">Tipo</th>
+            <th style="padding:8px 10px;text-align:left;color:var(--app-text-2);font-weight:600">Estrategia</th>
           </tr>
         </thead>
         <tbody>
@@ -1246,34 +1247,34 @@
         {% set _tipo = _attr.get('tipo', 'opcional') %}
         {% set _needs_check = _attr.get('needs_check', false) %}
         {% if _tipo == 'obligatorio' %}
-          {% set _row_bg = '#fff5f5' if not _cur_v else '#f0fdf4' %}
-          {% set _badge_style = 'background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5' %}
+          {% set _row_bg = 'var(--color-critical-50)' if not _cur_v else 'var(--color-success-50)' %}
+          {% set _badge_style = 'background:var(--color-critical-50);color:var(--color-critical-700);border:1px solid var(--color-critical-400)' %}
           {% set _badge_label = 'REQUERIDO' %}
         {% elif _tipo == 'obligatorio-vars' %}
-          {% set _row_bg = '#fefce8' %}
-          {% set _badge_style = 'background:#fefce8;color:#92400e;border:1px solid #fde68a' %}
+          {% set _row_bg = 'var(--color-warning-50)' %}
+          {% set _badge_style = 'background:var(--color-warning-50);color:var(--color-warning-700);border:1px solid var(--color-warning-100)' %}
           {% set _badge_label = 'REQ+VARS' %}
         {% elif _tipo == 'texto-libre-seo' %}
-          {% set _row_bg = '#f0fdf4' if not _cur_v else '#f8fafc' %}
-          {% set _badge_style = 'background:#dcfce7;color:#15803d;border:1px solid #86efac' %}
+          {% set _row_bg = 'var(--color-success-50)' if not _cur_v else 'var(--color-neutral-50)' %}
+          {% set _badge_style = 'background:var(--color-success-100);color:var(--color-success-700);border:1px solid var(--color-success-400)' %}
           {% set _badge_label = 'SEO LIBRE' %}
         {% else %}
-          {% set _row_bg = '#f8fafc' %}
-          {% set _badge_style = 'background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1' %}
+          {% set _row_bg = 'var(--color-neutral-50)' %}
+          {% set _badge_style = 'background:var(--color-neutral-100);color:var(--color-neutral-500);border:1px solid var(--color-neutral-300)' %}
           {% set _badge_label = 'OPCIONAL' %}
         {% endif %}
-        <tr style="border-bottom:1px solid #e2e8f0;background:{{ _row_bg }}">
-          <td style="padding:8px 10px;font-weight:600;color:#1e293b;vertical-align:top">
+        <tr style="border-bottom:1px solid var(--color-neutral-200);background:{{ _row_bg }}">
+          <td style="padding:8px 10px;font-weight:600;color:var(--app-text);vertical-align:top">
             {{ _attr['name'] }}
             {% if _needs_check %}
-            <br><span style="font-size:.65rem;color:#92400e;font-weight:400;font-style:italic">verificar antes de aplicar</span>
+            <br><span style="font-size:.65rem;color:var(--color-warning-700);font-weight:400;font-style:italic">verificar antes de aplicar</span>
             {% endif %}
           </td>
           <td style="padding:8px 10px;vertical-align:top">
             {% if _cur_v %}
-            <span style="color:#15803d;font-size:.8rem;word-break:break-word">{{ _cur_v }}</span>
+            <span style="color:var(--color-success-700);font-size:.8rem;word-break:break-word">{{ _cur_v }}</span>
             {% else %}
-            <span style="color:#94a3b8;font-size:.78rem;font-style:italic">sin valor</span>
+            <span style="color:var(--color-neutral-400);font-size:.78rem;font-style:italic">sin valor</span>
             {% endif %}
           </td>
           <td style="padding:6px 10px;vertical-align:top">
@@ -1281,25 +1282,25 @@
                    class="ficha-attr-input"
                    data-attr-name="{{ _attr['name'] }}"
                    value="{{ _attr.get('value', '') }}"
-                   style="width:100%;padding:4px 7px;border:1px solid {{ '#f59e0b' if _needs_check else '#cbd5e1' }};border-radius:5px;font-size:.79rem;background:{{ '#fffbeb' if _needs_check else 'var(--color-neutral-0)' }};min-width:160px"
+                   style="width:100%;padding:4px 7px;border:1px solid {{ 'var(--color-warning-400)' if _needs_check else 'var(--color-neutral-300)' }};border-radius:5px;font-size:.79rem;background:{{ 'var(--color-warning-50)' if _needs_check else 'var(--color-neutral-0)' }};min-width:160px"
                    title="{{ 'Inferido — verificar con el proveedor antes de aplicar' if _needs_check else 'Valor sugerido por IA' }}">
           </td>
           <td style="padding:8px 10px;vertical-align:top">
             <span style="{{ _badge_style }};border-radius:4px;padding:2px 6px;font-size:.66rem;font-weight:700;white-space:nowrap">{{ _badge_label }}</span>
           </td>
-          <td style="padding:8px 10px;font-size:.75rem;color:#475569;vertical-align:top;font-style:italic;max-width:200px">{{ _attr.get('strategy', '') }}</td>
+          <td style="padding:8px 10px;font-size:.75rem;color:var(--app-text-2);vertical-align:top;font-style:italic;max-width:200px">{{ _attr.get('strategy', '') }}</td>
         </tr>
         {% endfor %}
         </tbody>
       </table>
-      <div style="font-size:.71rem;color:var(--color-neutral-500);padding:8px 12px;border-top:1px solid #f1f5f9;background:#fafafa;line-height:1.7">
+      <div style="font-size:.71rem;color:var(--color-neutral-500);padding:8px 12px;border-top:1px solid var(--color-neutral-100);background:var(--color-neutral-50);line-height:1.7">
         <i class="bi bi-info-circle me-1"></i>
         La IA sugiere un valor concreto para cada campo usando datos reales (competidores, autosuggest, título del producto).
         Los campos con borde naranja fueron <strong>inferidos</strong> — revisalos antes de aplicar.
         Podés editar cualquier valor directamente en el input antes de hacer clic en Aplicar.
-        <span style="margin-left:8px;color:#b91c1c">Rojo</span> = requerido faltante &nbsp;·&nbsp;
-        <span style="color:#15803d">Verde</span> = SEO libre (indexación extra) &nbsp;·&nbsp;
-        <span style="color:#92400e">Naranja</span> = verificar con proveedor
+        <span style="margin-left:8px;color:var(--color-critical-700)">Rojo</span> = requerido faltante &nbsp;·&nbsp;
+        <span style="color:var(--color-success-700)">Verde</span> = SEO libre (indexación extra) &nbsp;·&nbsp;
+        <span style="color:var(--color-warning-700)">Naranja</span> = verificar con proveedor
       </div>
     </div>
   </div>
@@ -1316,15 +1317,15 @@
              onclick="event.stopPropagation()"
              onchange="actualizarMasterCount({{ outer_idx }})"
              title="Incluir ficha técnica al aplicar TODO">
-      <i class="bi bi-table" style="color:#9a3412;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#9a3412">Ficha técnica perfecta</span>
-      <span style="font-size:.65rem;color:var(--color-info-600);background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
+      <i class="bi bi-table" style="color:var(--color-warning-700);font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:var(--color-warning-700)">Ficha técnica perfecta</span>
+      <span style="font-size:.65rem;color:var(--color-info-600);background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
       <div class="d-flex gap-2 ms-auto" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-warning fw-semibold" onclick="copyById('ficha-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
           <i class="bi bi-clipboard me-1"></i>Copiar
         </button>
         <button class="btn btn-sm fw-semibold" id="btn-apply-ficha-{{ outer_idx }}"
-                style="background:#0f766e;color:var(--color-neutral-0);border:none;font-size:.73rem;padding:3px 10px"
+                style="background:var(--solid-success);color:#fff;border:none;font-size:.73rem;padding:3px 10px"
                 onclick="aplicarFicha('{{ item.get('item_id','') }}', 'ficha-{{ outer_idx }}', 'btn-apply-ficha-{{ outer_idx }}')">
           <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
         </button>
@@ -1334,7 +1335,7 @@
     <div style="display:none">
       <div id="ficha-{{ outer_idx }}"
            contenteditable="true" spellcheck="false"
-           style="padding:14px 20px;white-space:pre-wrap;font-size:.84rem;line-height:1.9;font-family:monospace;background:#fffbf0;max-height:320px;overflow-y:auto;outline:none;cursor:text"
+           style="padding:14px 20px;white-space:pre-wrap;font-size:.84rem;line-height:1.9;font-family:monospace;background:var(--color-warning-50);max-height:320px;overflow-y:auto;outline:none;cursor:text"
            title="Editá directamente los campos antes de aplicar">{{ item.get('ficha_perfecta') }}</div>
     </div>
   </div>
@@ -1349,15 +1350,15 @@
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.achev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
       <i class="bi bi-bar-chart-fill" style="color:#7c3aed;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#6b21a8">Análisis de calidad</span>
+      <span class="opt-sec-lbl" style="color:var(--color-info-700)">Análisis de calidad</span>
       <i class="bi bi-chevron-down achev ms-auto" style="font-size:.75rem;color:var(--color-neutral-400)"></i>
     </div>
-    <div style="display:none;padding:14px 20px;background:#fafafe">
+    <div style="display:none;padding:14px 20px;background:var(--color-neutral-50)">
 
       {% if item.get('score_oficial_ml') %}
       {% set sof = item.get('score_oficial_ml', 0) %}
-      {% set sof_color = 'var(--color-success-700)' if sof >= 70 else '#b45309' if sof >= 45 else 'var(--color-critical-500)' %}
-      {% set sof_bg    = '#f0fdf4' if sof >= 70 else '#fefce8' if sof >= 45 else '#fef2f2' %}
+      {% set sof_color = 'var(--color-success-700)' if sof >= 70 else 'var(--color-warning-700)' if sof >= 45 else 'var(--color-critical-500)' %}
+      {% set sof_bg    = 'var(--color-success-50)' if sof >= 70 else 'var(--color-warning-50)' if sof >= 45 else 'var(--color-critical-50)' %}
       {% set sof_label = 'Buena' if sof >= 70 else 'Regular' if sof >= 45 else 'Baja' %}
       <div style="background:{{ sof_bg }};border:1.5px solid {{ sof_color }};border-radius:10px;padding:12px 16px;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:{% if item.get('score_oficial_razones') %}8px{% else %}0{% endif %}">
@@ -1371,7 +1372,7 @@
           </div>
         </div>
         {% if item.get('score_oficial_razones') %}
-        <div style="font-size:.78rem;color:var(--color-neutral-700);border-top:1px solid {{ sof_color }}33;padding-top:8px">
+        <div style="font-size:.78rem;color:var(--color-neutral-700);border-top:1px solid color-mix(in srgb, {{ sof_color }} 20%, transparent);padding-top:8px">
           <strong style="color:{{ sof_color }}">Qué dice ML que falta:</strong>
           <ul style="margin:4px 0 0 0;padding-left:18px">
             {% for razon in item.get('score_oficial_razones', []) %}
@@ -1386,31 +1387,31 @@
       {% if item.get('puntaje_calidad') %}
       <details class="anl-item">
         <summary><i class="bi bi-speedometer2 me-2" style="color:#7c3aed"></i>Puntaje de calidad (análisis Claude)<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#fdf4ff;font-family:monospace">{{ item.get('puntaje_calidad') }}</div>
+        <div class="anl-item-body" style="background:var(--color-info-100);font-family:monospace">{{ item.get('puntaje_calidad') }}</div>
       </details>
       {% endif %}
       {% if item.get('resumen_mercado') %}
       <details class="anl-item">
         <summary><i class="bi bi-people-fill me-2" style="color:var(--color-info-700)"></i>Fortalezas de cada competidor<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#eff6ff">{{ item.get('resumen_mercado') }}</div>
+        <div class="anl-item-body" style="background:var(--color-info-100)">{{ item.get('resumen_mercado') }}</div>
       </details>
       {% endif %}
       {% if item.get('keywords_faltantes') %}
       <details class="anl-item">
-        <summary><i class="bi bi-key-fill me-2" style="color:#b45309"></i>Palabras clave faltantes<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#fef9c3">{{ item.get('keywords_faltantes') }}</div>
+        <summary><i class="bi bi-key-fill me-2" style="color:var(--color-warning-700)"></i>Palabras clave faltantes<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:var(--color-warning-100)">{{ item.get('keywords_faltantes') }}</div>
       </details>
       {% endif %}
       {% if item.get('analisis_ficha') %}
       <details class="anl-item">
-        <summary><i class="bi bi-clipboard-x me-2" style="color:#9a3412"></i>Análisis ficha técnica<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#fff7ed">{{ item.get('analisis_ficha') }}</div>
+        <summary><i class="bi bi-clipboard-x me-2" style="color:var(--color-warning-700)"></i>Análisis ficha técnica<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:var(--color-warning-50)">{{ item.get('analisis_ficha') }}</div>
       </details>
       {% endif %}
       {% if item.get('analisis_desc') %}
       <details class="anl-item">
-        <summary><i class="bi bi-file-text me-2" style="color:#7e22ce"></i>Análisis descripción<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#fdf4ff">{{ item.get('analisis_desc') }}</div>
+        <summary><i class="bi bi-file-text me-2" style="color:var(--color-info-700)"></i>Análisis descripción<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:var(--color-info-100)">{{ item.get('analisis_desc') }}</div>
       </details>
       {% endif %}
     </div>
@@ -1421,12 +1422,12 @@
   {% if item.get('qa_insights') %}
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.ichev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
-      <i class="bi bi-chat-quote-fill" style="color:#0284c7;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#0c4a6e">Insights de compradores reales</span>
+      <i class="bi bi-chat-quote-fill" style="color:var(--color-info-500);font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:var(--color-info-700)">Insights de compradores reales</span>
       <span style="font-size:.66rem;color:var(--color-neutral-600);font-weight:400;text-transform:none;letter-spacing:0">Q&amp;A y reseñas de competidores</span>
       <i class="bi bi-chevron-down ichev ms-auto" style="font-size:.75rem;color:var(--color-neutral-400)"></i>
     </div>
-    <div style="display:none;padding:14px 20px;background:#f0f9ff">
+    <div style="display:none;padding:14px 20px;background:var(--color-info-100)">
       <div class="ins-grid">
         {% set qa_sections = item.get('qa_insights', '').split('## ') %}
         {% for section in qa_sections %}
@@ -1480,11 +1481,11 @@
              checked
              onchange="actualizarMasterCount({{ outer_idx }})"
              title="Incluir descripción al aplicar TODO">
-      <i class="bi bi-file-richtext-fill" style="color:#14532d;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#14532d">Descripción superadora — lista para pegar en ML</span>
-      <span style="font-size:.65rem;color:var(--color-info-600);background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
+      <i class="bi bi-file-richtext-fill" style="color:var(--color-success-700);font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:var(--color-success-700)">Descripción superadora — lista para pegar en ML</span>
+      <span style="font-size:.65rem;color:var(--color-info-600);background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:10px;padding:2px 7px;font-weight:600"><i class="bi bi-pencil me-1"></i>Click para editar</span>
       {% if has_ventas and not item.get('descripcion_aplicada') %}
-      <span style="font-size:.65rem;color:var(--color-success-700);background:var(--color-success-100);border:1px solid #86efac;border-radius:10px;padding:2px 7px;font-weight:700;flex-shrink:0">
+      <span style="font-size:.65rem;color:var(--color-success-700);background:var(--color-success-100);border:1px solid var(--color-success-400);border-radius:10px;padding:2px 7px;font-weight:700;flex-shrink:0">
         <i class="bi bi-arrow-up-circle-fill me-1"></i>Acción disponible para esta publicación
       </span>
       {% endif %}
@@ -1494,7 +1495,7 @@
         {% else %}
         <button class="btn btn-sm fw-semibold" id="btn-apply-desc-{{ outer_idx }}"
                 onclick="aplicarDescripcion('{{ item.get('item_id','') }}', 'btn-apply-desc-{{ outer_idx }}')"
-                style="font-size:.73rem;padding:3px 10px;{% if has_ventas %}background:var(--color-success-500);color:var(--color-neutral-0);border:none;{% else %}border:1px solid var(--color-success-500);color:var(--color-success-500);background:transparent;{% endif %}">
+                style="font-size:.73rem;padding:3px 10px;{% if has_ventas %}background:var(--solid-success);color:#fff;border:none;{% else %}border:1px solid var(--color-success-500);color:var(--color-success-500);background:transparent;{% endif %}">
           <i class="bi bi-cloud-upload me-1"></i>Aplicar en ML
         </button>
         {% endif %}
@@ -1779,7 +1780,7 @@ function renderAnalysisPanel(data) {
       !t.recomendado ? '<span style="background:var(--color-neutral-100);color:var(--color-neutral-600);border-radius:4px;padding:1px 5px;font-size:.62rem">genérico</span>' : '',
     ].filter(Boolean).join(' ');
 
-    const borderColor = (t.recomendado && !t.ambiguo) ? '#bbf7d0' : '#e5e7eb';
+    const borderColor = (t.recomendado && !t.ambiguo) ? 'var(--color-success-100)' : 'var(--color-neutral-200)';
     const accentColor = (t.recomendado && !t.ambiguo) ? 'var(--color-success-500)' : 'var(--color-neutral-500)';
 
     list.innerHTML += `
@@ -1789,7 +1790,7 @@ function renderAnalysisPanel(data) {
                ${t.recomendado ? 'checked' : ''}
                style="margin-top:3px;accent-color:${accentColor};cursor:pointer;flex-shrink:0">
         <div style="flex:1;min-width:0">
-          <div style="font-size:.8rem;font-weight:600;color:#1f2937;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <div style="font-size:.8rem;font-weight:600;color:var(--app-text);display:flex;align-items:center;gap:5px;flex-wrap:wrap">
             ${t.termino} ${badges}
           </div>
           <div style="font-size:.7rem;color:var(--color-neutral-500);line-height:1.3;margin-top:2px">${t.razon || ''}</div>
@@ -1810,11 +1811,11 @@ function addCustomTerm() {
   const id   = 'term_custom_' + Date.now();
   list.innerHTML += `
     <label for="${id}" style="display:flex;align-items:flex-start;gap:8px;background:var(--color-neutral-0);border-radius:6px;
-           padding:7px 10px;cursor:pointer;border:1px solid #bfdbfe;margin:0">
+           padding:7px 10px;cursor:pointer;border:1px solid var(--color-info-100);margin:0">
       <input type="checkbox" id="${id}" value="${term}" checked
              style="margin-top:3px;accent-color:var(--color-info-600);cursor:pointer;flex-shrink:0">
       <div style="flex:1;min-width:0">
-        <div style="font-size:.8rem;font-weight:600;color:#1f2937;display:flex;align-items:center;gap:5px">
+        <div style="font-size:.8rem;font-weight:600;color:var(--app-text);display:flex;align-items:center;gap:5px">
           ${term}
           <span style="background:var(--color-info-100);color:var(--color-info-700);border-radius:4px;padding:1px 5px;font-size:.62rem;font-weight:700">propio</span>
         </div>
@@ -1871,8 +1872,8 @@ async function confirmarYDescubrir() {
       kwList.innerHTML = data.keywords.map((k, i) => {
         const barW  = k.weight;
         const color = i === 0 ? 'var(--color-info-600)' : i < 3 ? 'var(--color-info-500)' : 'var(--color-neutral-400)';
-        return `<div style="display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid #bae6fd;
-                     border-radius:6px;padding:3px 8px;font-size:.74rem;color:#0c4a6e">
+        return `<div style="display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid var(--color-info-100);
+                     border-radius:6px;padding:3px 8px;font-size:.74rem;color:var(--color-info-700)">
           <span style="font-weight:${i<3?'700':'400'}">${i+1}. ${k.keyword}</span>
           <div style="width:40px;background:var(--color-neutral-200);border-radius:3px;height:4px">
             <div style="width:${barW}%;background:${color};height:4px;border-radius:3px"></div>
@@ -1891,7 +1892,7 @@ async function confirmarYDescubrir() {
         const label = i === 0 ? ' — más buscada' : i === 1 ? ' — 2ª más buscada' : i === 2 ? ' — 3ª más buscada' : '';
         return `<div style="display:flex;align-items:center;gap:10px">
           <span style="min-width:20px;font-size:.72rem;color:var(--color-neutral-600);font-weight:700;text-align:right">${i+1}</span>
-          <span style="flex:1;font-size:.82rem;font-weight:${bold};color:#1e3a5f">${k.keyword}<span style="font-size:.68rem;color:var(--color-neutral-500);font-weight:400">${label}</span></span>
+          <span style="flex:1;font-size:.82rem;font-weight:${bold};color:var(--color-info-700)">${k.keyword}<span style="font-size:.68rem;color:var(--color-neutral-500);font-weight:400">${label}</span></span>
           <div style="width:120px;background:var(--color-info-100);border-radius:4px;height:7px;flex-shrink:0">
             <div style="width:${pct}%;background:${color};height:7px;border-radius:4px;transition:width .4s"></div>
           </div>
@@ -1951,7 +1952,7 @@ function renderDiscoveryResults(data) {
     <div id="disc-card-${safeId}"
          onclick="toggleDiscoverySelection('${comp.id}')"
          style="cursor:pointer;border:2px solid ${isSelected ? 'var(--color-success-500)' : 'var(--color-neutral-200)'};
-                border-radius:10px;background:${isSelected ? '#f0fdf4' : 'var(--color-neutral-0)'};
+                border-radius:10px;background:${isSelected ? 'var(--color-success-50)' : 'var(--color-neutral-0)'};
                 padding:10px;transition:all .15s;position:relative">
 
       <!-- Checkmark seleccionado -->
@@ -1986,9 +1987,9 @@ function renderDiscoveryResults(data) {
 
       <!-- Métricas -->
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
-        ${comp.sold_quantity ? `<span style="background:#eff6ff;color:var(--color-info-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">${comp.sold_quantity.toLocaleString('es-AR')} ventas</span>` : ''}
+        ${comp.sold_quantity ? `<span style="background:var(--color-info-100);color:var(--color-info-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">${comp.sold_quantity.toLocaleString('es-AR')} ventas</span>` : ''}
         ${comp.price ? `<span style="background:var(--color-neutral-50);color:var(--color-neutral-700);border-radius:5px;padding:2px 6px;font-size:.68rem">$${Math.round(comp.price).toLocaleString('es-AR')}</span>` : ''}
-        ${comp.is_premium ? `<span style="background:#fef9c3;color:var(--color-warning-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">Premium</span>` : ''}
+        ${comp.is_premium ? `<span style="background:var(--color-warning-100);color:var(--color-warning-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">Premium</span>` : ''}
         ${comp.free_shipping ? `<span style="background:var(--color-success-100);color:var(--color-success-700);border-radius:5px;padding:2px 6px;font-size:.68rem">Envío gratis</span>` : ''}
         ${comp.photos_count ? `<span style="background:var(--color-neutral-50);color:var(--color-neutral-700);border-radius:5px;padding:2px 6px;font-size:.68rem">${comp.photos_count} fotos</span>` : ''}
       </div>
@@ -2031,7 +2032,7 @@ function toggleDiscoverySelection(compId) {
       id: compId, title: compId,
       thumbnail: '', attributes: [], description: '', main_features: []
     };
-    if (card)  { card.style.borderColor = 'var(--color-success-500)'; card.style.background = '#f0fdf4'; }
+    if (card)  { card.style.borderColor = 'var(--color-success-500)'; card.style.background = 'var(--color-success-50)'; }
     if (check) check.style.display = 'flex';
     const label = card ? card.querySelector('div[style*="margin-top:7px"]') : null;
     if (label) { label.style.color = 'var(--color-success-500)'; label.textContent = '✓ Seleccionado — clic para quitar'; }
@@ -2121,10 +2122,10 @@ function renderReverseKeywords(data) {
 
   // ── Resumen en lenguaje claro ────────────────────────────────────────
   const gapMsg = gaps.length
-    ? `<span style="color:#92400e;font-weight:700"><i class="bi bi-plus-circle-fill me-1"></i>${gaps.length} keyword${gaps.length !== 1 ? 's nuevas' : ' nueva'} para agregar</span>`
-    : `<span style="color:#166534;font-weight:700"><i class="bi bi-check2-circle me-1"></i>Sin brechas — cobertura completa</span>`;
+    ? `<span style="color:var(--color-warning-700);font-weight:700"><i class="bi bi-plus-circle-fill me-1"></i>${gaps.length} keyword${gaps.length !== 1 ? 's nuevas' : ' nueva'} para agregar</span>`
+    : `<span style="color:var(--color-success-700);font-weight:700"><i class="bi bi-check2-circle me-1"></i>Sin brechas — cobertura completa</span>`;
   const sharedMsg = shared.length
-    ? `<span style="color:#0369a1;font-weight:700">${shared.length} búsquedas ya cubiertas</span>`
+    ? `<span style="color:var(--color-info-700);font-weight:700">${shared.length} búsquedas ya cubiertas</span>`
     : '';
 
   document.getElementById('reverseKwSummary').innerHTML =
@@ -2134,10 +2135,10 @@ function renderReverseKeywords(data) {
   // ── Chip de keyword ──────────────────────────────────────────────────
   function kwChip(kw) {
     const isGap      = kw.is_gap;
-    const bgColor    = isGap ? '#fffbeb' : '#f0fdf4';
-    const border     = isGap ? '#fcd34d' : '#86efac';
-    const kwColor    = isGap ? '#92400e' : '#166534';
-    const freqColor  = kw.frequency >= 3 ? '#7c3aed' : kw.frequency >= 2 ? '#1d4ed8' : '#475569';
+    const bgColor    = isGap ? 'var(--color-warning-50)' : 'var(--color-success-50)';
+    const border     = isGap ? 'var(--color-warning-400)' : 'var(--color-success-400)';
+    const kwColor    = isGap ? 'var(--color-warning-700)' : 'var(--color-success-700)';
+    const freqColor  = kw.frequency >= 3 ? '#7c3aed' : kw.frequency >= 2 ? 'var(--color-info-700)' : 'var(--app-text-2)';
     const freqLabel  = `en ${kw.frequency} de ${totalComps} competidores`;
     const posLabel   = `pos. ${kw.avg_position} en autosuggest ML`;
     const tooltip    = `${freqLabel} · ${posLabel}\nCompetidores: ${kw.competitors.join(', ')}`;
@@ -2326,9 +2327,9 @@ let toastTimer = null;
 function showToast(msg, type, duration) {
   const el = document.getElementById('addToast');
   const styles = {
-    ok:   { bg: '#166534', color: 'var(--color-success-100)' },
-    warn: { bg: 'var(--color-warning-700)', color: '#fef9c3' },
-    info: { bg: '#1e3a5f', color: 'var(--color-info-100)' },
+    ok:   { bg: 'var(--color-success-700)', color: 'var(--color-success-100)' },
+    warn: { bg: 'var(--color-warning-700)', color: 'var(--color-warning-100)' },
+    info: { bg: 'var(--color-info-700)', color: 'var(--color-info-100)' },
   };
   const s = styles[type] || styles.info;
   el.style.background = s.bg;
@@ -2353,10 +2354,10 @@ function updateRecentlyAdded(productId) {
   const shortTitle = (comp.title || productId).substring(0, 45);
   const chip = document.createElement('div');
   chip.id = 'recent-' + productId;
-  chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid #86efac;border-radius:20px;padding:2px 8px 2px 4px;font-size:.72rem;color:var(--color-success-700);max-width:200px';
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid var(--color-success-400);border-radius:20px;padding:2px 8px 2px 4px;font-size:.72rem;color:var(--color-success-700);max-width:200px';
   chip.innerHTML = `
     ${comp.thumbnail
-      ? `<img src="${comp.thumbnail}" style="width:20px;height:20px;object-fit:contain;border-radius:50%;background:#f0fdf4;flex-shrink:0">`
+      ? `<img src="${comp.thumbnail}" style="width:20px;height:20px;object-fit:contain;border-radius:50%;background:var(--color-success-50);flex-shrink:0">`
       : `<i class="bi bi-check-circle-fill" style="font-size:.8rem;flex-shrink:0"></i>`}
     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${comp.title || productId}">${shortTitle}${(comp.title||'').length > 45 ? '…' : ''}</span>
   `;
@@ -2402,14 +2403,14 @@ function renderSelectedSection() {
     const displayTitle = c._manualTitle || (noData ? '' : c.title);
     const displayDesc  = c._manualDesc  || c.description || '';
     return `
-    <div style="background:var(--color-neutral-0);border:1px solid ${noData ? '#fed7aa' : '#bbf7d0'};border-radius:8px;max-width:340px;overflow:hidden" id="comp-card-${safeId}">
+    <div style="background:var(--color-neutral-0);border:1px solid ${noData ? 'var(--color-warning-100)' : 'var(--color-success-100)'};border-radius:8px;max-width:340px;overflow:hidden" id="comp-card-${safeId}">
       <div class="d-flex align-items-start gap-2 p-2">
         ${c.thumbnail
           ? `<img src="${c.thumbnail}" style="width:44px;height:44px;object-fit:contain;border-radius:4px;flex-shrink:0;background:var(--color-neutral-50)">`
           : `<div style="width:44px;height:44px;background:var(--color-neutral-100);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--color-neutral-400)"><i class="bi bi-image"></i></div>`}
         <div style="min-width:0;flex:1">
-          <div class="fw-semibold text-truncate" style="font-size:.8rem;color:${noData?'#ea580c':'inherit'}" title="${displayTitle || c.id}">
-            ${displayTitle || `<em style="color:#ea580c">Sin datos — editá para agregar título</em>`}
+          <div class="fw-semibold text-truncate" style="font-size:.8rem;color:${noData?'var(--color-warning-500)':'inherit'}" title="${displayTitle || c.id}">
+            ${displayTitle || `<em style="color:var(--color-warning-500)">Sin datos — editá para agregar título</em>`}
           </div>
           <div class="text-muted" style="font-size:.68rem;margin-top:2px">${meta.join(' · ') || (noData ? 'Ficha no disponible (API restringida)' : '—')}</div>
           <div class="text-muted" style="font-size:.67rem">
@@ -2428,7 +2429,7 @@ function renderSelectedSection() {
         </div>
       </div>
       <!-- Formulario de edición manual -->
-      <div id="edit-comp-${safeId}" style="display:${noData?'block':'none'};border-top:1px solid #fed7aa;padding:8px 10px;background:#fff7ed">
+      <div id="edit-comp-${safeId}" style="display:${noData?'block':'none'};border-top:1px solid var(--color-warning-100);padding:8px 10px;background:var(--color-warning-50)">
         <div style="font-size:.73rem;color:var(--color-warning-700);font-weight:600;margin-bottom:6px">
           <i class="bi bi-pencil-fill me-1"></i>
           ${noData ? 'Buscá este producto en el panel de ML y pegá el título y descripción:' : 'Editar datos del competidor:'}
@@ -2544,11 +2545,11 @@ function renderKwResults(data) {
     if (!p.aparece || pos === null) {
       bg = 'var(--color-critical-100)'; color = 'var(--color-critical-700)'; label = '🔴 No aparece';
     } else if (pos <= 5) {
-      bg = 'var(--color-success-100)'; color = '#166534'; label = `🟢 #${pos}`;
+      bg = 'var(--color-success-100)'; color = 'var(--color-success-700)'; label = `🟢 #${pos}`;
     } else if (pos <= 20) {
-      bg = '#fef9c3'; color = '#854d0e'; label = `🟡 #${pos}`;
+      bg = 'var(--color-warning-100)'; color = 'var(--color-warning-700)'; label = `🟡 #${pos}`;
     } else if (pos <= 50) {
-      bg = '#ffedd5'; color = '#9a3412'; label = `🟠 #${pos}`;
+      bg = 'var(--color-warning-100)'; color = 'var(--color-warning-700)'; label = `🟠 #${pos}`;
     } else {
       bg = 'var(--color-critical-100)'; color = 'var(--color-critical-700)'; label = `🔴 #${pos}`;
     }
@@ -2566,11 +2567,11 @@ function renderKwResults(data) {
 
   function kwBadge(kw, type) {
     const present = inMyTitle(kw);
-    const bg    = present ? '#d1fae5' : (type === 'titulo' ? 'var(--color-warning-100)' : '#eff6ff');
-    const color = present ? '#065f46' : (type === 'titulo' ? 'var(--color-warning-700)' : '#1e40af');
+    const bg    = present ? 'var(--color-success-100)' : (type === 'titulo' ? 'var(--color-warning-100)' : 'var(--color-info-100)');
+    const color = present ? 'var(--color-success-700)' : (type === 'titulo' ? 'var(--color-warning-700)' : 'var(--color-info-700)');
     const icon  = present ? '✓' : (type === 'titulo' ? '!' : '+');
     const tip   = present ? 'Ya está en tu título' : (type === 'titulo' ? 'Prioritario para el título' : 'Usar en descripción');
-    const prio  = isPriority(kw) ? `<span style="background:var(--color-critical-400);color:var(--color-neutral-0);border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800;margin-left:3px">⚡ Prioridad</span>` : '';
+    const prio  = isPriority(kw) ? `<span style="background:var(--solid-critical);color:#fff;border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800;margin-left:3px">⚡ Prioridad</span>` : '';
     return `<span style="display:inline-flex;align-items:center;gap:3px;background:${bg};color:${color};border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:600;margin:2px;cursor:default" title="${tip}">${icon} ${kw}${posPill(kw)}${prio}</span>`;
   }
 
@@ -2580,7 +2581,7 @@ function renderKwResults(data) {
   if (hasPositions) {
     const aparece = Object.values(positions).filter(p => p.aparece).length;
     const total   = Object.keys(positions).length;
-    html += `<div style="margin-bottom:10px;padding:8px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:.75rem;color:#0369a1;display:flex;align-items:center;gap:6px">
+    html += `<div style="margin-bottom:10px;padding:8px 12px;background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:8px;font-size:.75rem;color:var(--color-info-700);display:flex;align-items:center;gap:6px">
       <i class="bi bi-crosshair2"></i>
       <strong>Tu publicación aparece en ${aparece} de ${total} búsquedas analizadas.</strong>
       Los badges 🟢🟡🟠🔴 muestran tu posición actual. <strong style="color:var(--color-critical-400)">⚡ Prioridad</strong> = muy buscada y posición débil → atacar primero.
@@ -2590,15 +2591,15 @@ function renderKwResults(data) {
   // ── Keywords de poder (top 2 de Claude para el título) ───────────────────
   const kwPoder = (data.titulo || []).slice(0, 2);
   if (kwPoder.length) {
-    html += `<div style="margin-bottom:12px;padding:10px 14px;background:#fffbeb;border:2px solid var(--color-warning-400);border-radius:10px">
+    html += `<div style="margin-bottom:12px;padding:10px 14px;background:var(--color-warning-50);border:2px solid var(--color-warning-400);border-radius:10px">
       <div style="font-size:.7rem;font-weight:800;color:var(--color-warning-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
         <i class="bi bi-lightning-fill me-1"></i>Keywords de poder — las más importantes para el título
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">`;
     kwPoder.forEach(k => {
       const present = inMyTitle(k);
-      const prio  = isPriority(k) ? `<span style="background:var(--color-critical-400);color:var(--color-neutral-0);border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800">⚡ Prioridad</span>` : '';
-      html += `<div style="display:inline-flex;align-items:center;gap:5px;background:${present?'#d1fae5':'var(--color-warning-100)'};color:${present?'#065f46':'var(--color-warning-700)'};border:2px solid ${present?'#6ee7b7':'var(--color-warning-400)'};border-radius:8px;padding:5px 12px;font-size:.85rem;font-weight:800;flex-wrap:wrap">
+      const prio  = isPriority(k) ? `<span style="background:var(--solid-critical);color:#fff;border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800">⚡ Prioridad</span>` : '';
+      html += `<div style="display:inline-flex;align-items:center;gap:5px;background:${present?'var(--color-success-100)':'var(--color-warning-100)'};color:${present?'var(--color-success-700)':'var(--color-warning-700)'};border:2px solid ${present?'var(--color-success-400)':'var(--color-warning-400)'};border-radius:8px;padding:5px 12px;font-size:.85rem;font-weight:800;flex-wrap:wrap">
         ${present?'✓':''} ${k}${posPill(k)} ${present?'<span style="font-size:.65rem;font-weight:400">ya en tu título</span>':''} ${prio}
       </div>`;
     });
@@ -2620,7 +2621,7 @@ function renderKwResults(data) {
 
   if (data.descripcion?.length) {
     html += `<div style="margin-bottom:8px">
-      <div style="font-size:.7rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:4px">
+      <div style="font-size:.7rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:4px">
         <i class="bi bi-text-paragraph me-1"></i>Descripción — variantes y sinónimos
       </div>
       <div>${data.descripcion.map(k => kwBadge(k, 'desc')).join('')}</div>
@@ -2629,7 +2630,7 @@ function renderKwResults(data) {
 
   if (data.long_tail?.length) {
     html += `<div style="margin-bottom:10px">
-      <div style="font-size:.7rem;font-weight:700;color:#5b21b6;text-transform:uppercase;margin-bottom:4px">
+      <div style="font-size:.7rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:4px">
         <i class="bi bi-bullseye me-1"></i>Long-tail — alta intención de compra
       </div>
       <div>${data.long_tail.map(k => kwBadge(k, 'desc')).join('')}</div>
@@ -2640,18 +2641,18 @@ function renderKwResults(data) {
   const mlSuggestions = (data.ml_suggestions || []).slice(0, 10);
   if (mlSuggestions.length) {
     const total = mlSuggestions.length;
-    html += `<div style="margin-top:4px;padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px">
-      <div style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:8px">
+    html += `<div style="margin-top:4px;padding:10px 12px;background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:8px">
+      <div style="font-size:.7rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:8px">
         <i class="bi bi-graph-up-arrow me-1"></i>Búsquedas reales en MercadoLibre — top ${total}
       </div>`;
     mlSuggestions.forEach((s, i) => {
       const pct      = Math.round(((total - i) / total) * 100);
       const present  = inMyTitle(s);
       const barColor = present ? 'var(--color-success-400)' : (i < 2 ? 'var(--color-info-500)' : 'var(--color-neutral-400)');
-      const prio     = isPriority(s) ? `<span style="background:var(--color-critical-400);color:var(--color-neutral-0);border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800;margin-left:4px">⚡</span>` : '';
+      const prio     = isPriority(s) ? `<span style="background:var(--solid-critical);color:#fff;border-radius:6px;padding:1px 5px;font-size:.62rem;font-weight:800;margin-left:4px">⚡</span>` : '';
       html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
         <span style="min-width:16px;font-size:.68rem;color:var(--color-neutral-600);font-weight:700">${i+1}</span>
-        <span style="flex:1;font-size:.78rem;font-weight:${i<2?'700':'400'};color:${present?'#065f46':'var(--color-neutral-800)'}">${s}${present?' <span style="color:var(--color-success-400);font-size:.65rem">✓ en tu título</span>':''}${prio}</span>
+        <span style="flex:1;font-size:.78rem;font-weight:${i<2?'700':'400'};color:${present?'var(--color-success-700)':'var(--color-neutral-800)'}">${s}${present?' <span style="color:var(--color-success-400);font-size:.65rem">✓ en tu título</span>':''}${prio}</span>
         ${posPill(s)}
         <div style="width:50px;background:var(--color-neutral-200);border-radius:4px;height:5px;flex-shrink:0">
           <div style="width:${pct}%;background:${barColor};height:5px;border-radius:4px"></div>
@@ -2663,7 +2664,7 @@ function renderKwResults(data) {
   }
 
   if (data.consejo) {
-    html += `<div style="margin-top:8px;padding:8px 10px;background:#fff7ed;border-radius:6px;font-size:.78rem;color:var(--color-warning-700);border-left:3px solid var(--color-warning-400)">
+    html += `<div style="margin-top:8px;padding:8px 10px;background:var(--color-warning-50);border-radius:6px;font-size:.78rem;color:var(--color-warning-700);border-left:3px solid var(--color-warning-400)">
       <i class="bi bi-lightbulb-fill me-1"></i>${data.consejo}
     </div>`;
   }
@@ -2852,7 +2853,7 @@ function aplicarFichaTabla(itemId, tblId, btnId) {
 
   const rows = attributes.map(a =>
     `<div style="display:flex;gap:8px;font-size:.82rem;padding:4px 0;border-bottom:1px solid var(--color-neutral-100)">
-      <span style="min-width:150px;font-weight:600;color:#475569">${a.name}</span>
+      <span style="min-width:150px;font-weight:600;color:var(--app-text-2)">${a.name}</span>
       <span style="color:var(--color-neutral-800)">${a.value}</span>
     </div>`).join('');
 
@@ -2875,7 +2876,7 @@ function aplicarFichaTabla(itemId, tblId, btnId) {
     .then(d => {
       if (d.ok) {
         const warnings = d.attrs_warnings || [];
-        btn.outerHTML = `<span class="badge" style="background:#0f766e;color:var(--color-neutral-0);padding:4px 10px;border-radius:5px;font-size:.8rem">
+        btn.outerHTML = `<span class="badge" style="background:var(--solid-success);color:#fff;padding:4px 10px;border-radius:5px;font-size:.8rem">
           <i class="bi bi-check2 me-1"></i>${attributes.length} atributos aplicados${warnings.length ? ' — ' + warnings.length + ' no mapeados' : ''}</span>`;
         setTimeout(() => { window.location.href = `/monitor/${ALIAS_OPT}`; }, 1800);
       } else {
@@ -2913,7 +2914,7 @@ function aplicarFicha(itemId, fichaElId, btnId) {
 
   const rows = attributes.map(a =>
     `<div style="display:flex;gap:8px;font-size:.82rem;padding:4px 0;border-bottom:1px solid var(--color-neutral-100)">
-      <span style="min-width:130px;font-weight:600;color:#475569">${a.name}</span>
+      <span style="min-width:130px;font-weight:600;color:var(--app-text-2)">${a.name}</span>
       <span style="color:var(--color-neutral-800)">${a.value}</span>
     </div>`).join('');
 
@@ -2936,7 +2937,7 @@ function aplicarFicha(itemId, fichaElId, btnId) {
     .then(d => {
       if (d.ok) {
         const warnings = d.attrs_warnings || [];
-        btn.outerHTML = `<span class="badge" style="background:#0f766e;color:var(--color-neutral-0);padding:4px 8px;border-radius:5px">
+        btn.outerHTML = `<span class="badge" style="background:var(--solid-success);color:#fff;padding:4px 8px;border-radius:5px">
           <i class="bi bi-check2 me-1"></i>¡Aplicado! Redirigiendo...${warnings.length ? ' ⚠️ ' + warnings.length + ' no mapeados' : ''}</span>`;
         setTimeout(() => { window.location.href = `/monitor/${ALIAS_OPT}`; }, 1500);
       } else {
@@ -3070,17 +3071,17 @@ function copyById(elementId, btn) {
 
 function renderMd(text) {
   const sectionMeta = {
-    'KEYWORDS DEL MERCADO':          { bg:'#f0fdf4', border:'var(--color-success-500)', title:'#14532d', icon:'🔑' },
-    'FORTALEZAS DE CADA COMPETIDOR': { bg:'#eff6ff', border:'var(--color-info-500)', title:'var(--color-info-700)', icon:'🔍' },
-    'PUNTAJE DE CALIDAD ACTUAL':     { bg:'#fdf2f8', border:'#9333ea', title:'#6b21a8', icon:'📊' },
-    'PALABRAS CLAVE FALTANTES':      { bg:'#fef9c3', border:'#ca8a04', title:'#854d0e', icon:'🔑' },
-    'ANÁLISIS DE FICHA TÉCNICA':     { bg:'#fff7ed', border:'#f97316', title:'#9a3412', icon:'📋' },
-    'ANÁLISIS DE DESCRIPCIÓN':       { bg:'#fdf4ff', border:'#a855f7', title:'#7e22ce', icon:'✍️' },
-    'TÍTULO ALTERNATIVO 1':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
-    'TÍTULO ALTERNATIVO 2':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
-    'TÍTULO ALTERNATIVO 3':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
-    'FICHA TÉCNICA PERFECTA':        { bg:'#fffbf0', border:'var(--color-warning-400)', title:'var(--color-warning-700)', icon:'📋' },
-    'DESCRIPCIÓN SUPERADORA':        { bg:'#f0fdf4', border:'var(--color-success-500)', title:'#14532d', icon:'📝' },
+    'KEYWORDS DEL MERCADO':          { bg:'var(--color-success-50)', border:'var(--color-success-500)', title:'var(--color-success-700)', icon:'🔑' },
+    'FORTALEZAS DE CADA COMPETIDOR': { bg:'var(--color-info-100)', border:'var(--color-info-500)', title:'var(--color-info-700)', icon:'🔍' },
+    'PUNTAJE DE CALIDAD ACTUAL':     { bg:'var(--color-critical-50)', border:'#9333ea', title:'var(--color-info-700)', icon:'📊' },
+    'PALABRAS CLAVE FALTANTES':      { bg:'var(--color-warning-100)', border:'var(--color-warning-500)', title:'var(--color-warning-700)', icon:'🔑' },
+    'ANÁLISIS DE FICHA TÉCNICA':     { bg:'var(--color-warning-50)', border:'#f97316', title:'var(--color-warning-700)', icon:'📋' },
+    'ANÁLISIS DE DESCRIPCIÓN':       { bg:'var(--color-info-100)', border:'#a855f7', title:'var(--color-info-700)', icon:'✍️' },
+    'TÍTULO ALTERNATIVO 1':          { bg:'var(--color-success-50)', border:'var(--color-success-400)', title:'var(--color-success-700)', icon:'🏷️' },
+    'TÍTULO ALTERNATIVO 2':          { bg:'var(--color-success-50)', border:'var(--color-success-400)', title:'var(--color-success-700)', icon:'🏷️' },
+    'TÍTULO ALTERNATIVO 3':          { bg:'var(--color-success-50)', border:'var(--color-success-400)', title:'var(--color-success-700)', icon:'🏷️' },
+    'FICHA TÉCNICA PERFECTA':        { bg:'var(--color-warning-50)', border:'var(--color-warning-400)', title:'var(--color-warning-700)', icon:'📋' },
+    'DESCRIPCIÓN SUPERADORA':        { bg:'var(--color-success-50)', border:'var(--color-success-500)', title:'var(--color-success-700)', icon:'📝' },
   };
 
   let out = '<div>';
@@ -3093,11 +3094,11 @@ function renderMd(text) {
     if (h2) {
       if (inSection) out += '</div></div>';
       const key = h2[1].trim();
-      const s = sectionMeta[key] || { bg:'var(--color-neutral-50)', border:'var(--color-neutral-400)', title:'#334155', icon:'▸' };
+      const s = sectionMeta[key] || { bg:'var(--color-neutral-50)', border:'var(--color-neutral-400)', title:'var(--color-neutral-700)', icon:'▸' };
       const needsCopy = copyableSections.has(key);
       currentSectionId = needsCopy ? 'sec_' + Math.random().toString(36).slice(2,8) : '';
       out += `<div style="background:${s.bg};border-left:4px solid ${s.border};border-radius:0 10px 10px 0;margin:14px 0 0;overflow:hidden">`;
-      out += `<div style="padding:8px 14px;background:${s.border}18;border-bottom:1px solid ${s.border}44;display:flex;justify-content:space-between;align-items:center">`;
+      out += `<div style="padding:8px 14px;background:color-mix(in srgb, ${s.border} 9%, transparent);border-bottom:1px solid color-mix(in srgb, ${s.border} 27%, transparent);display:flex;justify-content:space-between;align-items:center">`;
       out += `<strong style="color:${s.title};font-size:.88rem;letter-spacing:.03em">${s.icon} ${key}</strong>`;
       if (needsCopy) {
         out += `<button onclick="(function(b){var c=document.getElementById('${currentSectionId}');if(c){navigator.clipboard.writeText(c.innerText).then(function(){b.textContent='✓';setTimeout(function(){b.textContent='Copiar todo'},1400)})}})(this)" style="font-size:.72rem;padding:2px 8px;border:1px solid ${s.border};border-radius:4px;background:var(--color-neutral-0);cursor:pointer;color:${s.title};white-space:nowrap;flex-shrink:0">Copiar todo</button>`;
@@ -3119,23 +3120,23 @@ function renderMd(text) {
       out += `<div style="margin-top:10px;padding:5px 10px;background:rgba(0,0,0,.05);border-radius:6px;font-weight:600;font-size:.85rem">${line}</div>`;
     } else if (/^(Mi valor|Competidores|Acción):/.test(line)) {
       const isAccion = line.startsWith('Acción:');
-      out += `<div style="padding:2px 0 2px 14px;font-size:.83rem;${isAccion ? 'color:#166534;font-weight:600' : 'color:var(--color-neutral-700)'}">${line}</div>`;
+      out += `<div style="padding:2px 0 2px 14px;font-size:.83rem;${isAccion ? 'color:var(--color-success-700);font-weight:600' : 'color:var(--color-neutral-700)'}">${line}</div>`;
     } else if (/^---$/.test(line)) {
-      out += `<hr style="border:none;border-top:1px dashed #cbd5e1;margin:8px 0">`;
+      out += `<hr style="border:none;border-top:1px dashed var(--color-neutral-300);margin:8px 0">`;
     } else if (/^▸ /.test(line)) {
       out += `<div style="padding:3px 0 3px 4px;font-size:.85rem"><span style="color:var(--color-info-500);font-weight:700">▸</span> ${line.slice(2)}</div>`;
     } else if (/^TÍTULO: /.test(line) && inSection && out.includes('TÍTULO ALTERNATIVO')) {
       // Título dentro de sección TÍTULO ALTERNATIVO — destacarlo con botón copiar
       const t = line.replace('TÍTULO: ', '').trim();
       const safeT = t.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-      out += `<div style="background:#d1fae5;border:1px solid #86efac;border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:700;font-size:.95rem;color:#14532d;display:flex;justify-content:space-between;align-items:center">
+      out += `<div style="background:var(--color-success-100);border:1px solid var(--color-success-400);border-radius:6px;padding:8px 12px;margin:6px 0;font-weight:700;font-size:.95rem;color:var(--color-success-700);display:flex;justify-content:space-between;align-items:center">
         <span>${t}</span>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <span style="font-size:.7rem;color:var(--color-neutral-500)">${t.length}/60 car.</span>
-          <button onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='Copiar',1400)})" data-t="${safeT}" style="font-size:.72rem;padding:2px 8px;border:1px solid #86efac;border-radius:4px;background:var(--color-neutral-0);cursor:pointer;color:#166534;white-space:nowrap">Copiar</button>
+          <button onclick="navigator.clipboard.writeText(this.dataset.t).then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='Copiar',1400)})" data-t="${safeT}" style="font-size:.72rem;padding:2px 8px;border:1px solid var(--color-success-400);border-radius:4px;background:var(--color-neutral-0);cursor:pointer;color:var(--color-success-700);white-space:nowrap">Copiar</button>
         </div></div>`;
     } else if (/^PUNTAJE TOTAL/.test(line)) {
-      out += `<div style="margin-top:10px;padding:8px 12px;background:#6b21a8;color:var(--color-neutral-0);border-radius:7px;font-weight:700;font-size:.92rem">${line}</div>`;
+      out += `<div style="margin-top:10px;padding:8px 12px;background:var(--solid-info);color:#fff;border-radius:7px;font-weight:700;font-size:.92rem">${line}</div>`;
     } else if (/^(TÍTULO|FICHA TÉCNICA|DESCRIPCIÓN|FOTOS|TIPO DE PUBLICACIÓN|ENVÍO):/.test(line)) {
       const scoreMatch = line.match(/\[(\d+)\/10\]/);
       const score = scoreMatch ? parseInt(scoreMatch[1]) : 5;
@@ -3147,10 +3148,10 @@ function renderMd(text) {
       </div>`;
     } else if (/^(LONGITUD|ESTRUCTURA|ARGUMENTOS FALTANTES|ERRORES DETECTADOS|KEYWORDS EN DESCRIPCIÓN):/.test(line)) {
       const [label, ...rest] = line.split(':');
-      out += `<div style="margin-top:8px"><span style="font-weight:700;color:#7e22ce;font-size:.8rem;text-transform:uppercase">${label}:</span> <span style="font-size:.85rem">${rest.join(':')}</span></div>`;
+      out += `<div style="margin-top:8px"><span style="font-weight:700;color:var(--color-info-700);font-size:.8rem;text-transform:uppercase">${label}:</span> <span style="font-size:.85rem">${rest.join(':')}</span></div>`;
     } else if (/^(Estrategia|Caracteres):/.test(line)) {
       const [label, ...rest] = line.split(':');
-      out += `<div style="font-size:.82rem;color:#475569"><em>${label}:</em>${rest.join(':')}</div>`;
+      out += `<div style="font-size:.82rem;color:var(--app-text-2)"><em>${label}:</em>${rest.join(':')}</div>`;
     } else if (line.trim() === '') {
       out += '<div style="height:6px"></div>';
     } else {
@@ -3243,7 +3244,7 @@ function _buildBookmarkletLink() {
   }).then(function(r){return r.json();}).then(function(d){
     if(d.ok){
       var btn=document.createElement('div');
-      btn.style.cssText='position:fixed;top:20px;right:20px;z-index:999999;background:var(--color-success-500);color:var(--color-neutral-0);'+
+      btn.style.cssText='position:fixed;top:20px;right:20px;z-index:999999;background:var(--color-success-500);color:#fff;'+
         'padding:12px 20px;border-radius:10px;font-size:15px;font-weight:700;'+
         'box-shadow:0 4px 20px rgba(0,0,0,.25);font-family:sans-serif';
       btn.textContent='✅ Enviado a la herramienta: '+d.title.substring(0,40);
@@ -3328,21 +3329,21 @@ function marcarAplicadoYMedir(itemId, alias, btn) {
     // Baseline capturado — ahora medir
     const box = document.getElementById('seg-' + itemId);
     if (box) {
-      box.style.background = '#f0f9ff';
-      box.style.borderBottomColor = '#bae6fd';
+      box.style.background = 'var(--color-info-100)';
+      box.style.borderBottomColor = 'var(--color-info-100)';
       const bl = d.baseline;
       const blInfo = bl.posicion_antes ? ` · Posición: #${bl.posicion_antes}` : '';
       const visInfo = bl.visitas_antes !== undefined ? ` · Visitas: ${bl.visitas_antes}` : '';
       box.innerHTML = `
-        <i class="bi bi-graph-up-arrow" style="color:#0369a1;flex-shrink:0"></i>
-        <span style="font-size:.75rem;font-weight:700;color:#0369a1;flex-shrink:0">Seguimiento</span>
+        <i class="bi bi-graph-up-arrow" style="color:var(--color-info-700);flex-shrink:0"></i>
+        <span style="font-size:.75rem;font-weight:700;color:var(--color-info-700);flex-shrink:0">Seguimiento</span>
         <span style="font-size:.73rem;color:var(--color-neutral-600);flex:1">Baseline capturado hoy${blInfo}${visInfo} · Registrado en Monitor para línea de tiempo</span>
         <button onclick="refreshSeguimiento('${itemId}','${alias}')" id="btn-seg-${itemId}"
-                style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+                style="font-size:.68rem;padding:2px 8px;background:var(--solid-info);color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
           <i class="bi bi-rulers me-1"></i>Medir ahora
         </button>
         <a href="/monitor/${alias}"
-           style="font-size:.68rem;padding:2px 10px;background:var(--color-success-500);color:var(--color-neutral-0);border-radius:6px;text-decoration:none;font-weight:600;flex-shrink:0">
+           style="font-size:.68rem;padding:2px 10px;background:var(--solid-success);color:#fff;border-radius:6px;text-decoration:none;font-weight:600;flex-shrink:0">
           <i class="bi bi-activity me-1"></i>Ver en Monitor
         </a>`;
     }
@@ -3387,7 +3388,7 @@ async function vincularNuevaPublicacion(itemIdOriginal, alias, btn) {
         <span style="font-size:.73rem;color:var(--color-success-700);flex:1">
           <strong>${nuevoId}</strong>${titulo} registrada en Monitor de Evolución con ${d.competidores_n} competidores del análisis original.
         </span>
-        <a href="/monitor/${alias}" style="font-size:.7rem;padding:3px 10px;background:var(--color-success-500);color:var(--color-neutral-0);border-radius:6px;text-decoration:none;font-weight:700">
+        <a href="/monitor/${alias}" style="font-size:.7rem;padding:3px 10px;background:var(--solid-success);color:#fff;border-radius:6px;text-decoration:none;font-weight:700">
           <i class="bi bi-graph-up-arrow me-1"></i>Ver en Monitor
         </a>`;
     }
@@ -3452,10 +3453,10 @@ function refreshSeguimiento(itemId, alias) {
       const lblMap = { mejoro: '✓ Mejoró', empeoro: '✗ Empeoró', sin_cambio: '↔ Sin cambio', muy_reciente: 'Muy reciente', sin_dato: 'Sin dato' };
 
       let html = `
-        <i class="bi bi-graph-up-arrow" style="color:#0369a1;flex-shrink:0"></i>
-        <span style="font-size:.75rem;font-weight:700;color:#0369a1;flex-shrink:0">Seguimiento</span>
+        <i class="bi bi-graph-up-arrow" style="color:var(--color-info-700);flex-shrink:0"></i>
+        <span style="font-size:.75rem;font-weight:700;color:var(--color-info-700);flex-shrink:0">Seguimiento</span>
         <span style="font-size:.73rem;padding:2px 8px;border-radius:20px;font-weight:700;background:${bgMap[v]||'var(--color-neutral-100)'};color:${colMap[v]||'var(--color-neutral-600)'}">${lblMap[v]||v}</span>
-        <span style="font-size:.73rem;color:#334155;flex:1">${d.veredicto_txt}</span>`;
+        <span style="font-size:.73rem;color:var(--color-neutral-700);flex:1">${d.veredicto_txt}</span>`;
 
       if (d.delta_pos !== null && d.delta_pos !== undefined) {
         const posColor = d.delta_pos < 0 ? 'var(--color-success-700)' : 'var(--color-critical-500)';
@@ -3473,7 +3474,7 @@ function refreshSeguimiento(itemId, alias) {
       }
 
       html += `<button onclick="refreshSeguimiento('${itemId}','${alias}')" id="btn-seg-${itemId}"
-                 style="font-size:.68rem;padding:2px 8px;background:#0ea5e9;color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
+                 style="font-size:.68rem;padding:2px 8px;background:var(--solid-info);color:#fff;border:none;border-radius:6px;cursor:pointer;flex-shrink:0">
                  <i class="bi bi-arrow-clockwise me-1"></i>Actualizar</button>`;
 
       box.innerHTML = html;
@@ -3535,27 +3536,27 @@ function cargarMisPreguntas() {
           </div>`;
 
         if (an.patron_principal) {
-          html += `<div style="background:#fef9c3;border-radius:6px;padding:7px 10px;font-size:.8rem;margin-bottom:8px">
+          html += `<div style="background:var(--color-warning-100);border-radius:6px;padding:7px 10px;font-size:.8rem;margin-bottom:8px">
             <strong>Duda principal:</strong> ${an.patron_principal}</div>`;
         }
 
         const cols = [];
         if (an.falta_en_descripcion?.length) {
           cols.push(`<div style="flex:1;min-width:180px">
-            <div style="font-size:.67rem;font-weight:800;text-transform:uppercase;color:#b45309;margin-bottom:4px">Agregar a descripción</div>
-            <ul style="margin:0;padding-left:16px;font-size:.78rem;color:#78350f">${an.falta_en_descripcion.map(x=>`<li>${x}</li>`).join('')}</ul>
+            <div style="font-size:.67rem;font-weight:800;text-transform:uppercase;color:var(--color-warning-700);margin-bottom:4px">Agregar a descripción</div>
+            <ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--color-warning-700)">${an.falta_en_descripcion.map(x=>`<li>${x}</li>`).join('')}</ul>
           </div>`);
         }
         if (an.falta_en_ficha?.length) {
           cols.push(`<div style="flex:1;min-width:180px">
             <div style="font-size:.67rem;font-weight:800;text-transform:uppercase;color:var(--color-info-700);margin-bottom:4px">Completar ficha técnica</div>
-            <ul style="margin:0;padding-left:16px;font-size:.78rem;color:#1e3a8a">${an.falta_en_ficha.map(x=>`<li>${x}</li>`).join('')}</ul>
+            <ul style="margin:0;padding-left:16px;font-size:.78rem;color:var(--color-info-700)">${an.falta_en_ficha.map(x=>`<li>${x}</li>`).join('')}</ul>
           </div>`);
         }
         if (an.keywords_long_tail?.length) {
           cols.push(`<div style="flex:1;min-width:180px">
             <div style="font-size:.67rem;font-weight:800;text-transform:uppercase;color:var(--color-success-700);margin-bottom:4px">Keywords long-tail detectadas</div>
-            <div style="font-size:.78rem;color:#14532d">${an.keywords_long_tail.map(k=>`<span style="background:var(--color-success-100);border-radius:4px;padding:1px 6px;margin:1px;display:inline-block">"${k}"</span>`).join('')}</div>
+            <div style="font-size:.78rem;color:var(--color-success-700)">${an.keywords_long_tail.map(k=>`<span style="background:var(--color-success-100);border-radius:4px;padding:1px 6px;margin:1px;display:inline-block">"${k}"</span>`).join('')}</div>
           </div>`);
         }
         if (cols.length) {
@@ -3563,7 +3564,7 @@ function cargarMisPreguntas() {
         }
 
         if (an.accion_prioritaria) {
-          html += `<div style="background:#eff6ff;border-radius:6px;padding:7px 10px;font-size:.8rem">
+          html += `<div style="background:var(--color-info-100);border-radius:6px;padding:7px 10px;font-size:.8rem">
             <i class="bi bi-lightning-charge-fill text-primary me-1"></i><strong>Acción prioritaria:</strong> ${an.accion_prioritaria}</div>`;
         }
 
@@ -3603,7 +3604,7 @@ function cargarPuntajesML() {
   if (!btn || !content) return;
 
   btn.disabled = true;
-  btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #ddd;border-top-color:var(--color-info-500);border-radius:50%;animation:spin .6s linear infinite"></span> Cargando...';
+  btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid var(--color-neutral-200);border-top-color:var(--color-info-500);border-radius:50%;animation:spin .6s linear infinite"></span> Cargando...';
   body.style.display = 'block';
   chevron.style.transform = 'rotate(180deg)';
   content.innerHTML = '<div style="font-size:.8rem;color:var(--color-neutral-400);padding:4px 0">Consultando ML para cada publicación... puede tardar unos segundos.</div>';
@@ -4168,7 +4169,7 @@ function abrirModalCrearPub(itemId, tituloElemId, cardIdx) {
     modal = document.createElement('div');
     modal.id = 'modalCrearPub';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:1200;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:2rem';
-    modal.innerHTML = '<div id="modalCrearPubBody" style="background:#fff;border-radius:14px;max-width:560px;width:100%;padding:1.75rem;box-shadow:0 20px 60px rgba(0,0,0,.25);margin:auto"></div>';
+    modal.innerHTML = '<div id="modalCrearPubBody" style="background:var(--app-surface);border-radius:14px;max-width:560px;width:100%;padding:1.75rem;box-shadow:0 20px 60px rgba(0,0,0,.25);margin:auto"></div>';
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if (e.target === modal) cerrarModalCrearPub(); });
   }
@@ -4177,41 +4178,41 @@ function abrirModalCrearPub(itemId, tituloElemId, cardIdx) {
   body.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem">
       <div>
-        <div style="font-size:1rem;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px">
+        <div style="font-size:1rem;font-weight:700;color:var(--app-text);display:flex;align-items:center;gap:8px">
           <span style="background:#7c3aed;color:#fff;border-radius:6px;padding:3px 8px;font-size:.78rem">NUEVA PUB</span>
           Crear publicación con título optimizado
         </div>
-        <div style="font-size:.78rem;color:#64748b;margin-top:.3rem">Revisá los datos antes de confirmar</div>
+        <div style="font-size:.78rem;color:var(--color-neutral-500);margin-top:.3rem">Revisá los datos antes de confirmar</div>
       </div>
-      <button onclick="cerrarModalCrearPub()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer">✕</button>
+      <button onclick="cerrarModalCrearPub()" style="background:none;border:none;font-size:1.2rem;color:var(--color-neutral-400);cursor:pointer">✕</button>
     </div>
 
-    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 13px;margin-bottom:.9rem">
-      <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#166534;margin-bottom:4px">Título nuevo</div>
-      <div style="font-size:.9rem;font-weight:600;color:#14532d">${titulo}</div>
-      <div style="font-size:.68rem;color:#6b7280;margin-top:3px">${titulo.length}/60 caracteres</div>
+    <div style="background:var(--color-success-50);border:1px solid var(--color-success-400);border-radius:8px;padding:10px 13px;margin-bottom:.9rem">
+      <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-success-700);margin-bottom:4px">Título nuevo</div>
+      <div style="font-size:.9rem;font-weight:600;color:var(--color-success-700)">${titulo}</div>
+      <div style="font-size:.68rem;color:var(--color-neutral-500);margin-top:3px">${titulo.length}/60 caracteres</div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.9rem">
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:8px 12px">
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:3px">Tipo</div>
-        <div style="font-size:.82rem;font-weight:600;color:#0f172a">Igual al original</div>
+      <div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:7px;padding:8px 12px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:3px">Tipo</div>
+        <div style="font-size:.82rem;font-weight:600;color:var(--app-text)">Igual al original</div>
       </div>
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:8px 12px">
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:3px">Precio</div>
-        <div style="font-size:.82rem;font-weight:600;color:#0f172a">${precio}</div>
+      <div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:7px;padding:8px 12px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:3px">Precio</div>
+        <div style="font-size:.82rem;font-weight:600;color:var(--app-text)">${precio}</div>
       </div>
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:8px 12px">
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#166534;margin-bottom:3px">Descripción</div>
-        <div style="font-size:.82rem;font-weight:600;color:#14532d">${descripcion ? '✓ IA optimizada' : '⚠ Sin descripción'}</div>
+      <div style="background:var(--color-success-50);border:1px solid var(--color-success-100);border-radius:7px;padding:8px 12px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:var(--color-success-700);margin-bottom:3px">Descripción</div>
+        <div style="font-size:.82rem;font-weight:600;color:var(--color-success-700)">${descripcion ? '✓ IA optimizada' : '⚠ Sin descripción'}</div>
       </div>
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;padding:8px 12px">
-        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#166534;margin-bottom:3px">Ficha técnica</div>
-        <div style="font-size:.82rem;font-weight:600;color:#14532d">${fichaAttrs.length > 0 ? `✓ ${fichaAttrs.length} atributos` : 'Copia del original'}</div>
+      <div style="background:var(--color-success-50);border:1px solid var(--color-success-100);border-radius:7px;padding:8px 12px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:var(--color-success-700);margin-bottom:3px">Ficha técnica</div>
+        <div style="font-size:.82rem;font-weight:600;color:var(--color-success-700)">${fichaAttrs.length > 0 ? `✓ ${fichaAttrs.length} atributos` : 'Copia del original'}</div>
       </div>
     </div>
 
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 13px;font-size:.79rem;color:#92400e;margin-bottom:1rem;display:flex;gap:8px;align-items:flex-start">
+    <div style="background:var(--color-warning-50);border:1px solid var(--color-warning-100);border-radius:8px;padding:10px 13px;font-size:.79rem;color:var(--color-warning-700);margin-bottom:1rem;display:flex;gap:8px;align-items:flex-start">
       <span style="flex-shrink:0">⚠</span>
       <div>
         <strong>Full Shipping</strong> no se activa automáticamente — podés habilitarlo desde el panel de ML después de crear.
@@ -4221,14 +4222,14 @@ function abrirModalCrearPub(itemId, tituloElemId, cardIdx) {
     </div>
 
     <div id="crear-pub-progress" style="display:none;margin-bottom:.9rem">
-      <div style="font-size:.8rem;color:#475569;margin-bottom:.5rem" id="crear-pub-status">Creando publicación...</div>
-      <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden">
+      <div style="font-size:.8rem;color:var(--app-text-2);margin-bottom:.5rem" id="crear-pub-status">Creando publicación...</div>
+      <div style="height:6px;background:var(--color-neutral-200);border-radius:3px;overflow:hidden">
         <div id="crear-pub-bar" style="height:100%;background:#7c3aed;width:0%;transition:width .4s"></div>
       </div>
     </div>
 
     <div style="display:flex;gap:.6rem;justify-content:flex-end">
-      <button onclick="cerrarModalCrearPub()" style="padding:9px 18px;background:transparent;border:1px solid #cbd5e1;border-radius:7px;font-size:.87rem;cursor:pointer;color:#475569">Cancelar</button>
+      <button onclick="cerrarModalCrearPub()" style="padding:9px 18px;background:transparent;border:1px solid var(--color-neutral-300);border-radius:7px;font-size:.87rem;cursor:pointer;color:var(--app-text-2)">Cancelar</button>
       <button id="btn-confirmar-crear" onclick="confirmarCrearPub()"
               style="padding:9px 22px;background:#7c3aed;color:#fff;border:none;border-radius:7px;font-size:.87rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">
         <i class="bi bi-plus-circle"></i> Confirmar y crear
@@ -4258,7 +4259,7 @@ async function confirmarCrearPub() {
   if (!btn) return;
 
   btn.disabled = true;
-  btn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite"></span> Creando...';
+  btn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:var(--app-surface);border-radius:50%;animation:spin .6s linear infinite"></span> Creando...';
   progress.style.display = 'block';
 
   const steps = [
@@ -4291,15 +4292,15 @@ async function confirmarCrearPub() {
 
     if (d.ok) {
       status.textContent = '✓ Publicación creada exitosamente';
-      bar.style.background = '#22c55e';
+      bar.style.background = 'var(--color-success-400)';
       const body = document.getElementById('modalCrearPubBody');
       const newId = d.new_item_id || '';
       setTimeout(() => {
         body.innerHTML = `
           <div style="text-align:center;padding:1.5rem 0">
             <div style="font-size:2.5rem;margin-bottom:.75rem">✅</div>
-            <div style="font-size:1.05rem;font-weight:700;color:#0f172a;margin-bottom:.4rem">Publicación creada</div>
-            <div style="font-size:.85rem;color:#475569;margin-bottom:1rem">${newId}</div>
+            <div style="font-size:1.05rem;font-weight:700;color:var(--app-text);margin-bottom:.4rem">Publicación creada</div>
+            <div style="font-size:.85rem;color:var(--app-text-2);margin-bottom:1rem">${newId}</div>
             <div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap">
               <a href="https://articulo.mercadolibre.com.ar/MLA-${newId.replace('MLA','')}"
                  target="_blank" rel="noopener"
@@ -4307,11 +4308,11 @@ async function confirmarCrearPub() {
                 <i class="bi bi-box-arrow-up-right me-1"></i>Ver en ML
               </a>
               <a href="/monitor/${encodeURIComponent(ALIAS_OPT)}"
-                 style="padding:8px 16px;background:#0f172a;color:#fff;border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:600">
+                 style="padding:8px 16px;background:var(--app-text);color:#fff;border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:600">
                 <i class="bi bi-activity me-1"></i>Ver en Monitor
               </a>
               <button onclick="cerrarModalCrearPub()"
-                      style="padding:8px 16px;background:transparent;border:1px solid #cbd5e1;border-radius:6px;font-size:.85rem;cursor:pointer">
+                      style="padding:8px 16px;background:transparent;border:1px solid var(--color-neutral-300);border-radius:6px;font-size:.85rem;cursor:pointer">
                 Cerrar
               </button>
             </div>
@@ -4319,14 +4320,14 @@ async function confirmarCrearPub() {
       }, 600);
     } else {
       status.textContent = '✗ Error: ' + (d.error || 'desconocido');
-      bar.style.background = '#ef4444';
+      bar.style.background = 'var(--color-critical-400)';
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-plus-circle"></i> Reintentar';
     }
   } catch (e) {
     clearInterval(tick);
     status.textContent = '✗ Error de red: ' + e.message;
-    bar.style.background = '#ef4444';
+    bar.style.background = 'var(--color-critical-400)';
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-plus-circle"></i> Reintentar';
   }

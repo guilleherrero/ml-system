@@ -42,6 +42,13 @@
   --brand-ink:    #000000;
   --brand-text:   #8a6d00;          /* amarillo legible sobre fondo claro */
 
+  /* Rellenos sólidos para botones/etiquetas con texto blanco: oscuros en
+     los dos temas (los tokens -500/-700 se aclaran en modo oscuro). */
+  --solid-info:     #2563eb;
+  --solid-success:  #047857;
+  --solid-warning:  #b45309;
+  --solid-critical: #dc2626;
+
   --radius-card: 16px;              /* rounded-2xl */
   --radius-ctl:  12px;              /* rounded-xl */
 

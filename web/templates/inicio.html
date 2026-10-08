@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Inicio {{ alias }}{% endblock %}
 
 {% block content %}
@@ -8,17 +9,17 @@
     display:flex; gap:12px; flex-wrap:wrap; margin-bottom:22px;
   }
   .ini-stat {
-    background:#fff; border-radius:10px; padding:12px 20px;
-    border:1px solid #e5e7eb; display:flex; flex-direction:column;
+    background:var(--app-surface); border-radius:10px; padding:12px 20px;
+    border:1px solid var(--color-neutral-200); display:flex; flex-direction:column;
     gap:2px; min-width:130px;
   }
   .ini-stat .val {
     font-size:1.55rem; font-weight:700; line-height:1;
   }
-  .ini-stat .lbl { font-size:.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:.06em; }
-  .ini-stat.urgente .val { color:#dc2626; }
-  .ini-stat.win     .val { color:#16a34a; }
-  .ini-stat.bajando .val { color:#d97706; }
+  .ini-stat .lbl { font-size:.72rem; color:var(--color-neutral-500); text-transform:uppercase; letter-spacing:.06em; }
+  .ini-stat.urgente .val { color:var(--color-critical-500); }
+  .ini-stat.win     .val { color:var(--color-success-500); }
+  .ini-stat.bajando .val { color:var(--color-warning-500); }
 
   /* ── Section ────────────────────────────────────── */
   .ini-sec {
@@ -29,18 +30,18 @@
     margin-bottom:12px; cursor:pointer; user-select:none;
   }
   .ini-sec-hdr h2 {
-    font-size:1rem; font-weight:700; margin:0; color:#111827;
+    font-size:1rem; font-weight:700; margin:0; color:var(--app-text);
   }
   .ini-sec-badge {
-    background:#e5e7eb; color:#374151; border-radius:20px;
+    background:var(--color-neutral-200); color:var(--color-neutral-700); border-radius:20px;
     padding:1px 9px; font-size:.72rem; font-weight:700;
   }
-  .ini-sec-badge.red    { background:#fee2e2; color:#dc2626; }
-  .ini-sec-badge.amber  { background:#fef3c7; color:#d97706; }
-  .ini-sec-badge.green  { background:#dcfce7; color:#16a34a; }
-  .ini-sec-badge.blue   { background:#dbeafe; color:#1d4ed8; }
-  .ini-sec-badge.gray   { background:#f3f4f6; color:#6b7280; }
-  .ini-toggle { color:#9ca3af; font-size:.8rem; margin-left:auto; transition:transform .2s; }
+  .ini-sec-badge.red    { background:var(--color-critical-100); color:var(--color-critical-500); }
+  .ini-sec-badge.amber  { background:var(--color-warning-100); color:var(--color-warning-500); }
+  .ini-sec-badge.green  { background:var(--color-success-100); color:var(--color-success-500); }
+  .ini-sec-badge.blue   { background:var(--color-info-100); color:var(--color-info-700); }
+  .ini-sec-badge.gray   { background:var(--color-neutral-100); color:var(--color-neutral-500); }
+  .ini-toggle { color:var(--color-neutral-400); font-size:.8rem; margin-left:auto; transition:transform .2s; }
   .ini-toggle.collapsed { transform:rotate(-90deg); }
 
   /* ── Cards ──────────────────────────────────────── */
@@ -48,28 +49,28 @@
     display:flex; flex-direction:column; gap:10px;
   }
   .ini-card {
-    background:#fff; border-radius:10px; border:1px solid #e5e7eb;
+    background:var(--app-surface); border-radius:10px; border:1px solid var(--color-neutral-200);
     padding:14px 18px; display:flex; align-items:flex-start; gap:14px;
   }
-  .ini-card.urgente { border-left:4px solid #dc2626; }
-  .ini-card.bajando { border-left:4px solid #d97706; }
-  .ini-card.win     { border-left:4px solid #16a34a; }
+  .ini-card.urgente { border-left:4px solid var(--color-critical-500); }
+  .ini-card.bajando { border-left:4px solid var(--color-warning-500); }
+  .ini-card.win     { border-left:4px solid var(--color-success-500); }
   .ini-card.revisar { border-left:4px solid #6366f1; }
-  .ini-card.ok      { border-left:4px solid #d1d5db; }
-  .ini-card.no-costo{ border-left:4px solid #9ca3af; }
+  .ini-card.ok      { border-left:4px solid var(--color-neutral-300); }
+  .ini-card.no-costo{ border-left:4px solid var(--color-neutral-400); }
 
   .ini-card-body { flex:1; min-width:0; }
   .ini-card-title {
-    font-size:.88rem; font-weight:600; color:#111827;
+    font-size:.88rem; font-weight:600; color:var(--app-text);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     margin-bottom:3px;
   }
   .ini-card-meta {
-    font-size:.75rem; color:#6b7280; display:flex; align-items:center; gap:8px;
+    font-size:.75rem; color:var(--color-neutral-500); display:flex; align-items:center; gap:8px;
     flex-wrap:wrap; margin-bottom:7px;
   }
-  .ini-card-meta a { color:#6b7280; text-decoration:none; }
-  .ini-card-meta a:hover { color:#2563eb; }
+  .ini-card-meta a { color:var(--color-neutral-500); text-decoration:none; }
+  .ini-card-meta a:hover { color:var(--color-info-600); }
   .ini-card-metrics {
     display:flex; gap:14px; flex-wrap:wrap; align-items:center;
   }
@@ -77,34 +78,34 @@
     display:flex; flex-direction:column; gap:1px;
   }
   .ini-metric .mv {
-    font-size:.88rem; font-weight:700; color:#111827; line-height:1;
+    font-size:.88rem; font-weight:700; color:var(--app-text); line-height:1;
   }
-  .ini-metric .ml { font-size:.65rem; color:#9ca3af; text-transform:uppercase; }
-  .ini-metric.hi .mv { color:#dc2626; }
-  .ini-metric.ok .mv { color:#16a34a; }
+  .ini-metric .ml { font-size:.65rem; color:var(--color-neutral-400); text-transform:uppercase; }
+  .ini-metric.hi .mv { color:var(--color-critical-500); }
+  .ini-metric.ok .mv { color:var(--color-success-500); }
 
   /* Trend pill */
   .tend-pill {
     font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:20px;
     white-space:nowrap;
   }
-  .tend-baja  { background:#fef3c7; color:#92400e; }
-  .tend-sube  { background:#dcfce7; color:#166534; }
-  .tend-estable { background:#f3f4f6; color:#6b7280; }
+  .tend-baja  { background:var(--color-warning-100); color:var(--color-warning-700); }
+  .tend-sube  { background:var(--color-success-100); color:var(--color-success-700); }
+  .tend-estable { background:var(--color-neutral-100); color:var(--color-neutral-500); }
 
   /* Causa pill */
   .causa-pill {
     font-size:.68rem; padding:2px 7px; border-radius:20px; font-weight:600;
     white-space:nowrap;
   }
-  .causa-precio      { background:#fee2e2; color:#dc2626; }
-  .causa-visibilidad { background:#dbeafe; color:#1d4ed8; }
-  .causa-mixta       { background:#fef3c7; color:#d97706; }
-  .causa-ok          { background:#dcfce7; color:#16a34a; }
+  .causa-precio      { background:var(--color-critical-100); color:var(--color-critical-500); }
+  .causa-visibilidad { background:var(--color-info-100); color:var(--color-info-700); }
+  .causa-mixta       { background:var(--color-warning-100); color:var(--color-warning-500); }
+  .causa-ok          { background:var(--color-success-100); color:var(--color-success-500); }
 
   /* Diag label */
   .ini-diag-txt {
-    font-size:.75rem; color:#6b7280; margin-top:4px;
+    font-size:.75rem; color:var(--color-neutral-500); margin-top:4px;
   }
 
   /* ── Actions ────────────────────────────────────── */
@@ -116,19 +117,19 @@
     cursor:pointer; border:none; white-space:nowrap; text-decoration:none;
     display:inline-flex; align-items:center; gap:5px;
   }
-  .ini-btn-primary   { background:#2563eb; color:#fff; }
-  .ini-btn-primary:hover { background:#1d4ed8; color:#fff; }
-  .ini-btn-outline   { background:#fff; color:#374151; border:1px solid #d1d5db; }
-  .ini-btn-outline:hover { background:#f9fafb; color:#111827; }
-  .ini-btn-success   { background:#16a34a; color:#fff; }
-  .ini-btn-success:hover { background:#15803d; color:#fff; }
-  .ini-btn-amber     { background:#d97706; color:#fff; }
-  .ini-btn-amber:hover { background:#b45309; color:#fff; }
+  .ini-btn-primary   { background:var(--solid-info); color:#fff; }
+  .ini-btn-primary:hover { background:var(--solid-info); color:#fff; }
+  .ini-btn-outline   { background:var(--app-surface); color:var(--color-neutral-700); border:1px solid var(--color-neutral-300); }
+  .ini-btn-outline:hover { background:var(--color-neutral-50); color:var(--app-text); }
+  .ini-btn-success   { background:var(--solid-success); color:#fff; }
+  .ini-btn-success:hover { background:var(--solid-success); color:#fff; }
+  .ini-btn-amber     { background:var(--solid-warning); color:#fff; }
+  .ini-btn-amber:hover { background:var(--solid-warning); color:#fff; }
 
   /* empty state */
   .ini-empty {
-    padding:18px; text-align:center; color:#9ca3af; font-size:.82rem;
-    border:1px dashed #e5e7eb; border-radius:10px;
+    padding:18px; text-align:center; color:var(--color-neutral-400); font-size:.82rem;
+    border:1px dashed var(--color-neutral-200); border-radius:10px;
   }
 
   /* ── Modal ──────────────────────────────────────── */
@@ -137,22 +138,22 @@
     display:flex; align-items:center; justify-content:center; z-index:1050;
   }
   .mp-modal {
-    background:#fff; border-radius:14px; padding:24px 28px;
+    background:var(--app-surface); border-radius:14px; padding:24px 28px;
     width:460px; max-width:95vw; max-height:90vh; overflow-y:auto;
     box-shadow:0 20px 60px rgba(0,0,0,.2);
   }
   .mp-modal h3 { font-size:1rem; font-weight:700; margin-bottom:4px; }
-  .mp-modal .mp-sub { font-size:.78rem; color:#6b7280; margin-bottom:18px; }
+  .mp-modal .mp-sub { font-size:.78rem; color:var(--color-neutral-500); margin-bottom:18px; }
   .mp-group-block {
-    background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;
+    background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); border-radius:8px;
     padding:12px 14px; margin-bottom:12px;
   }
   .mp-group-block h4 { font-size:.8rem; font-weight:600; margin-bottom:6px; }
-  .mp-group-items { font-size:.72rem; color:#6b7280; margin-bottom:8px; }
+  .mp-group-items { font-size:.72rem; color:var(--color-neutral-500); margin-bottom:8px; }
   .mp-price-row { display:flex; align-items:center; gap:8px; }
-  .mp-price-row label { font-size:.78rem; color:#374151; font-weight:600; white-space:nowrap; }
+  .mp-price-row label { font-size:.78rem; color:var(--color-neutral-700); font-weight:600; white-space:nowrap; }
   .mp-price-row input {
-    flex:1; padding:6px 10px; border:1px solid #d1d5db; border-radius:7px;
+    flex:1; padding:6px 10px; border:1px solid var(--color-neutral-300); border-radius:7px;
     font-size:.9rem; font-weight:700;
   }
   .mp-modal-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
@@ -162,7 +163,7 @@
 
 <div class="page-header">
   <div>
-    <h1><i class="bi bi-speedometer2" style="color:#2563eb;margin-right:8px"></i>Inicio — {{ alias }}</h1>
+    <h1><i class="bi bi-speedometer2" style="color:var(--color-info-600);margin-right:8px"></i>Inicio — {{ alias }}</h1>
     <div class="sub">Última actualización: {{ ultima_act }}</div>
   </div>
   <a href="/pricing-strategy/{{ alias }}" class="ini-btn ini-btn-outline">
@@ -235,7 +236,7 @@
           {% endif %}
         {% endif %}
         {% if r.tiene_win_win %}
-          <span class="causa-pill" style="background:#dcfce7;color:#166534;">🏆 Win-Win</span>
+          <span class="causa-pill" style="background:var(--color-success-100);color:var(--color-success-700);">🏆 Win-Win</span>
         {% endif %}
       </div>
       <div class="ini-card-metrics">
@@ -263,7 +264,7 @@
         </div>
         {% if precio_obj > 0 %}
         <div class="ini-metric">
-          <span class="mv" style="color:#16a34a">${{ '{:,.0f}'.format(precio_obj) }}</span>
+          <span class="mv" style="color:var(--color-success-500)">${{ '{:,.0f}'.format(precio_obj) }}</span>
           <span class="ml">Precio sugerido</span>
         </div>
         {% endif %}
@@ -381,7 +382,7 @@
             <span class="ml">Conv.</span>
           </div>
         </div>
-        <div class="ini-diag-txt" style="color:#d97706;margin-top:6px;">
+        <div class="ini-diag-txt" style="color:var(--color-warning-500);margin-top:6px;">
           <i class="bi bi-exclamation-triangle"></i> Sin costo cargado — no se puede analizar rentabilidad
         </div>
       </div>
@@ -525,17 +526,17 @@ async function confirmarPrecio() {
     if (data.ok) {
       const oks  = (data.resultados || []).filter(r => r.ok).length;
       const errs = (data.resultados || []).filter(r => !r.ok).length;
-      status.style.color = errs ? '#d97706' : '#16a34a';
+      status.style.color = errs ? 'var(--color-warning-500)' : 'var(--color-success-500)';
       status.textContent = errs
         ? `${oks} actualizado(s), ${errs} error(es)`
         : `✓ ${oks} publicación(es) actualizada(s)`;
       setTimeout(() => cerrarModal(), 1800);
     } else {
-      status.style.color = '#dc2626';
+      status.style.color = 'var(--color-critical-500)';
       status.textContent = data.error || 'Error al aplicar precio';
     }
   } catch(e) {
-    status.style.color = '#dc2626';
+    status.style.color = 'var(--color-critical-500)';
     status.textContent = 'Error de conexión';
   } finally {
     btn.disabled = false;

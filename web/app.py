@@ -1979,17 +1979,18 @@ def stock(alias):
             headers=heads, params={'attributes': 'seller_reputation'}, timeout=6)
         if r_rep.ok:
             rep = r_rep.json().get('seller_reputation', {})
-            m = rep.get('metrics', {})
-            seller_metrics = {
-                'level':        rep.get('level_id', ''),
-                'claims_rate':  round(float(m.get('claims', {}).get('rate', 0)) * 100, 2),
-                'claims_value': int(m.get('claims', {}).get('value', 0)),
-                'delays_rate':  round(float(m.get('delayed_handling_time', {}).get('rate', 0)) * 100, 2),
-                'delays_value': int(m.get('delayed_handling_time', {}).get('value', 0)),
-                'cancel_rate':  round(float(m.get('cancellations', {}).get('rate', 0)) * 100, 2),
-                'cancel_value': int(m.get('cancellations', {}).get('value', 0)),
-                'period':       m.get('claims', {}).get('period', '60 días'),
-            }
+            # Mismo cálculo que Reputación y reclamos: números reales aunque
+            # ML tenga la cuenta protegida, y límites oficiales vigentes.
+            from modules.postventa import resumen_reputacion
+            res = resumen_reputacion(rep)
+            met = {x['clave']: x for x in res['metricas']}
+            seller_metrics = {'level': rep.get('level_id', ''), 'period': met['claims'].get('periodo') or '60 días',
+                              'referencia': res['referencia'], 'protegido_hasta': res['protegido_hasta']}
+            for corto, clave in (('claims', 'claims'), ('delays', 'delayed_handling_time'),
+                                 ('cancel', 'cancellations')):
+                x = met[clave]
+                seller_metrics.update({f'{corto}_rate': x['tasa_pct'], f'{corto}_value': x['valor'],
+                                       f'{corto}_lim': x['limite_pct'], f'{corto}_estado': x['estado']})
     except Exception:
         pass
 

@@ -85,14 +85,14 @@
   border: 1px solid var(--color-info-500); color: var(--color-info-500); background: transparent;
   cursor: pointer; transition: all .15s;
 }
-.btn-refresh:hover { background: var(--color-info-500); color: var(--color-neutral-0); }
+.btn-refresh:hover { background: var(--color-info-500); color: #fff; }
 .btn-refresh:disabled { opacity: .5; cursor: not-allowed; }
 .btn-delete {
   font-size: .78rem; padding: .35rem .85rem; border-radius: 6px;
   border: 1px solid var(--color-critical-400); color: var(--color-critical-400); background: transparent;
   cursor: pointer; transition: all .15s;
 }
-.btn-delete:hover { background: var(--color-critical-400); color: var(--color-neutral-0); }
+.btn-delete:hover { background: var(--color-critical-400); color: #fff; }
 
 .badge-applied {
   font-size: .65rem; padding: .15rem .5rem; border-radius: 10px;
@@ -206,7 +206,7 @@
 }
 .recapture-banner .desc { flex: 1; line-height: 1.45; }
 .btn-recapturar {
-  background: var(--color-warning-500); color: var(--color-neutral-0); border: none; padding: .35rem .85rem;
+  background: var(--color-warning-500); color: #fff; border: none; padding: .35rem .85rem;
   border-radius: 6px; font-size: .76rem; font-weight: 600; cursor: pointer;
   white-space: nowrap;
 }
@@ -312,13 +312,13 @@
   cursor: pointer; transition: all .15s; font-weight: 600;
 }
 .veredicto-actions button:hover:not(:disabled) {
-  background: currentColor; color: var(--color-neutral-0);
+  background: currentColor; color: #fff;
 }
 .veredicto-actions button[data-action="cta-replicar"]:hover:not(:disabled),
 .veredicto-actions button[data-action="cta-revertir"]:hover:not(:disabled),
 .veredicto-actions button[data-action="cta-regenerar"]:hover:not(:disabled) {
   /* Override del color para que no se confunda con el texto del banner */
-  background: var(--color-neutral-800); color: var(--color-neutral-0); border-color: var(--color-neutral-800);
+  background: var(--color-neutral-800); color: #fff; border-color: var(--color-neutral-800);
 }
 .veredicto-actions button:disabled {
   opacity: .55; cursor: not-allowed; border-style: dashed;
@@ -1069,7 +1069,7 @@ function abrirModalRevincular(itemIdNuevo) {
     </p>
     <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
       <button onclick="cerrarModalRevinc()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
-      <button id="btn-confirmar-revinc" onclick="ejecutarRevincular()" style="padding:.5rem 1.2rem;background:var(--color-warning-500);color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;font-weight:600">
+      <button id="btn-confirmar-revinc" onclick="ejecutarRevincular()" style="padding:.5rem 1.2rem;background:var(--color-warning-500);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
         Capturar snapshot retroactivo
       </button>
     </div>`;
@@ -1144,7 +1144,7 @@ function abrirModalRecapturar(itemId) {
     </p>
     <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem">
       <button onclick="cerrarModalRecap()" style="padding:.5rem 1rem;background:transparent;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer">Cancelar</button>
-      <button id="btn-confirmar-recap" onclick="ejecutarRecapturar()" style="padding:.5rem 1.2rem;background:var(--color-warning-500);color:var(--color-neutral-0);border:none;border-radius:6px;cursor:pointer;font-weight:600">
+      <button id="btn-confirmar-recap" onclick="ejecutarRecapturar()" style="padding:.5rem 1.2rem;background:var(--color-warning-500);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
         Re-capturar ahora
       </button>
     </div>`;
