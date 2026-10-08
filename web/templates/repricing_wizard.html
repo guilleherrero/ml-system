@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Wizard de repricing · {{ alias }}{% endblock %}
 
 {% block content %}
@@ -10,14 +11,14 @@
   .breadcrumb-steps { display:flex; gap:.4rem; margin-top:.9rem; }
   .step-pill { padding:.3rem .85rem; border-radius:14px; font-size:.74rem;
                background:var(--color-neutral-100); color:var(--color-neutral-400); font-weight:600; }
-  .step-pill.active { background:var(--color-critical-500); color:#fff; }
+  .step-pill.active { background:var(--solid-critical); color:#fff; }
   .step-pill.done   { background:var(--color-success-100); color:var(--color-success-700); }
 
   .wiz-section { display:none; }
   .wiz-section.active { display:block; }
 
   .danger-banner {
-    background:#fef2f2; border:1px solid #fca5a5; color:#b91c1c;
+    background:var(--color-critical-50); border:1px solid var(--color-critical-400); color:var(--color-critical-700);
     border-radius:10px; padding:.85rem 1.05rem; margin-bottom:1.2rem;
     font-size:.86rem; line-height:1.5;
   }
@@ -30,30 +31,30 @@
                    text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-600);
                    padding:.65rem .8rem; text-align:left; border-bottom:1px solid var(--color-neutral-200); }
   .cand-table td { padding:.7rem .8rem; border-bottom:1px solid var(--color-neutral-100); vertical-align:top; }
-  .cand-table tr.viable    td { background:#f0fdf4; }
-  .cand-table tr.ajustado  td { background:#fffbeb; }
-  .cand-table tr.sin_margen td { background:#fef2f2; opacity:.7; }
+  .cand-table tr.viable    td { background:var(--color-success-50); }
+  .cand-table tr.ajustado  td { background:var(--color-warning-50); }
+  .cand-table tr.sin_margen td { background:var(--color-critical-50); opacity:.7; }
   .cat-pill { font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:10px; }
   .cat-pill.viable    { background:var(--color-success-100); color:var(--color-success-700); }
-  .cat-pill.ajustado  { background:var(--color-warning-100); color:#b45309; }
-  .cat-pill.sin_margen { background:var(--color-critical-100); color:#b91c1c; }
+  .cat-pill.ajustado  { background:var(--color-warning-100); color:var(--color-warning-700); }
+  .cat-pill.sin_margen { background:var(--color-critical-100); color:var(--color-critical-700); }
 
   .min-input { width:90px; padding:.25rem .45rem; font-size:.78rem;
-               border:1px solid #cbd5e1; border-radius:5px; }
+               border:1px solid var(--color-neutral-300); border-radius:5px; }
 
   /* Paso 2 — reglas */
   .rule-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
                padding:1rem 1.2rem; margin-bottom:.85rem; }
-  .rule-card h6 { font-size:.85rem; font-weight:700; color:#0f172a;
+  .rule-card h6 { font-size:.85rem; font-weight:700; color:var(--app-text);
                   margin:0 0 .55rem; display:flex; align-items:center; gap:.4rem; }
   .rule-card .opts { display:flex; gap:.5rem; flex-wrap:wrap; }
   .opt-radio { display:flex; align-items:center; gap:.35rem; padding:.35rem .8rem;
-               border:1.5px solid #cbd5e1; border-radius:7px; cursor:pointer;
-               font-size:.8rem; font-weight:600; color:#475569; background:var(--color-neutral-0); }
-  .opt-radio.selected { border-color:var(--color-critical-500); background:#fef2f2; color:#b91c1c; }
+               border:1.5px solid var(--color-neutral-300); border-radius:7px; cursor:pointer;
+               font-size:.8rem; font-weight:600; color:var(--app-text-2); background:var(--color-neutral-0); }
+  .opt-radio.selected { border-color:var(--color-critical-500); background:var(--color-critical-50); color:var(--color-critical-700); }
   .opt-radio input { display:none; }
   .breaker-row { display:flex; align-items:center; gap:.55rem; padding:.4rem 0;
-                 font-size:.82rem; color:#334155; }
+                 font-size:.82rem; color:var(--color-neutral-700); }
   .breaker-row code { background:var(--color-neutral-100); padding:1px 5px; border-radius:4px;
                       font-size:.74rem; color:var(--color-neutral-600); }
 
@@ -64,7 +65,7 @@
   .sim-table th, .sim-table td { padding:.6rem .8rem; border-bottom:1px solid var(--color-neutral-100); }
   .sim-table th { background:var(--color-neutral-50); font-size:.66rem; font-weight:700;
                   text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-600); }
-  .sim-table tr.alerta td { background:#fef2f2; }
+  .sim-table tr.alerta td { background:var(--color-critical-50); }
   .totals-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
                 gap:.7rem; margin-bottom:1rem; }
   .total-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px;
@@ -75,15 +76,15 @@
 
   .nav-buttons { display:flex; gap:.6rem; justify-content:space-between;
                  margin-top:1.4rem; padding-top:1.2rem; border-top:1px solid var(--color-neutral-200); }
-  .btn-prev { background:transparent; color:var(--color-neutral-600); border:1px solid #cbd5e1;
+  .btn-prev { background:transparent; color:var(--color-neutral-600); border:1px solid var(--color-neutral-300);
               padding:.55rem 1.2rem; border-radius:7px; cursor:pointer; }
-  .btn-next { background:var(--color-info-500); color:#fff; border:none;
+  .btn-next { background:var(--solid-info); color:#fff; border:none;
               padding:.55rem 1.5rem; border-radius:7px; font-weight:600; cursor:pointer; }
   .btn-next:hover { background:var(--color-info-600); }
-  .btn-next:disabled { background:#cbd5e1; cursor:not-allowed; }
+  .btn-next:disabled { background:var(--color-neutral-300); cursor:not-allowed; }
   .btn-final { background:var(--color-critical-500); }
-  .btn-final:hover { background:#b91c1c; }
-  .btn-final:disabled { background:#fca5a5; cursor:not-allowed; }
+  .btn-final:hover { background:var(--solid-critical); }
+  .btn-final:disabled { background:var(--color-critical-400); cursor:not-allowed; }
 </style>
 
 <div class="wiz-header">
@@ -100,7 +101,7 @@
 <div class="danger-banner">
   <strong>⚠ Este wizard activa cambios automáticos de PRECIO REAL en MercadoLibre.</strong>
   El cron horario va a aplicar los cambios cada hora entre 8 y 22 ART. Podés pausar todo
-  desde <a href="/settings" style="color:#b91c1c;text-decoration:underline">Settings</a> en cualquier momento.
+  desde <a href="/settings" style="color:var(--color-critical-700);text-decoration:underline">Settings</a> en cualquier momento.
 </div>
 
 <div id="wiz-loading" style="text-align:center; padding:3rem; color:var(--color-neutral-400)">
@@ -136,7 +137,7 @@
     </table>
 
     <div id="sin-costo-section" style="display:none; margin-top:1.5rem">
-      <h6 style="font-weight:700; color:#b45309">⚠ Necesitan costo cargado para poder activarse</h6>
+      <h6 style="font-weight:700; color:var(--color-warning-700)">⚠ Necesitan costo cargado para poder activarse</h6>
       <p style="font-size:.82rem; color:var(--color-neutral-600); margin-bottom:.6rem">
         Estos items están perdiendo Buy Box pero no podemos calcular margen sin su costo.
       </p>
@@ -242,12 +243,12 @@
   <!-- ── PASO 4 ─────────────────────────────────────────────── -->
   <div class="wiz-section" id="sec-4">
     <h5 style="margin-bottom:.7rem">Confirmación final</h5>
-    <div style="background:#fef2f2; border:2px solid var(--color-critical-500); border-radius:10px;
+    <div style="background:var(--color-critical-50); border:2px solid var(--color-critical-500); border-radius:10px;
                 padding:1.2rem 1.4rem; margin-bottom:1.2rem">
-      <p style="font-weight:600; color:#b91c1c; margin:0 0 .4rem">
+      <p style="font-weight:600; color:var(--color-critical-700); margin:0 0 .4rem">
         Vas a ACTIVAR repricing automático en <span id="final-count">0</span> publicaciones.
       </p>
-      <p style="font-size:.85rem; color:#7f1d1d; line-height:1.5; margin-bottom:.7rem">
+      <p style="font-size:.85rem; color:var(--color-critical-700); line-height:1.5; margin-bottom:.7rem">
         Cada hora entre 8-22 ART, el sistema:<br>
         1. Lee el precio del Buy Box de cada publicación<br>
         2. Calcula el nuevo precio según la estrategia configurada<br>
@@ -261,7 +262,7 @@
         </label>
         <label style="display:flex; align-items:flex-start; gap:.5rem; font-size:.84rem; margin-top:.4rem">
           <input type="checkbox" id="confirm-2" onchange="onConfirmChange()">
-          <span>Entiendo que puedo pausar todo desde <a href="/settings" style="color:#b91c1c">Settings</a> cuando quiera.</span>
+          <span>Entiendo que puedo pausar todo desde <a href="/settings" style="color:var(--color-critical-700)">Settings</a> cuando quiera.</span>
         </label>
       </div>
     </div>
@@ -321,7 +322,7 @@ function renderPaso1(data) {
           <div style="font-size:.7rem">${c.diferencia_pct}%</div>
         </td>
         <td class="text-end">${c.margen_actual_pct}%</td>
-        <td class="text-end" style="font-weight:700; color:${c.categoria === 'viable' ? 'var(--color-success-700)' : c.categoria === 'ajustado' ? '#b45309' : '#b91c1c'}">
+        <td class="text-end" style="font-weight:700; color:${c.categoria === 'viable' ? 'var(--color-success-700)' : c.categoria === 'ajustado' ? 'var(--color-warning-700)' : 'var(--color-critical-700)'}">
           ${c.margen_sugerido_pct}%
         </td>
         <td class="text-end">
@@ -437,9 +438,9 @@ function renderSimulacion(d) {
   const t = d.totales;
   document.getElementById('sim-totals').innerHTML = `
     <div class="total-card"><div class="num">${t.items_n}</div><div class="lbl">items</div></div>
-    <div class="total-card"><div class="num" style="color:${t.items_con_alerta ? '#b91c1c' : 'var(--color-success-700)'}">${t.items_con_alerta}</div><div class="lbl">con alerta</div></div>
+    <div class="total-card"><div class="num" style="color:${t.items_con_alerta ? 'var(--color-critical-700)' : 'var(--color-success-700)'}">${t.items_con_alerta}</div><div class="lbl">con alerta</div></div>
     <div class="total-card"><div class="num" style="color:var(--color-success-700)">+$${(t.impacto_margen_pos||0).toLocaleString('es-AR')}</div><div class="lbl">impacto margen positivo/mes</div></div>
-    <div class="total-card"><div class="num" style="color:${t.impacto_neto < 0 ? '#b91c1c' : 'var(--color-success-700)'}">${t.impacto_neto >= 0 ? '+' : ''}$${t.impacto_neto.toLocaleString('es-AR')}</div><div class="lbl">impacto neto/mes</div></div>
+    <div class="total-card"><div class="num" style="color:${t.impacto_neto < 0 ? 'var(--color-critical-700)' : 'var(--color-success-700)'}">${t.impacto_neto >= 0 ? '+' : ''}$${t.impacto_neto.toLocaleString('es-AR')}</div><div class="lbl">impacto neto/mes</div></div>
   `;
   document.getElementById('sim-tbody').innerHTML = (d.simulacion || []).map(s => {
     const cls = s.alerta ? 'alerta' : '';
@@ -449,9 +450,9 @@ function renderSimulacion(d) {
       <td class="text-end">$${s.precio_actual.toLocaleString('es-AR')}</td>
       <td class="text-end" style="font-weight:700">$${s.precio_nuevo.toLocaleString('es-AR')}</td>
       <td class="text-end" style="color:${deltaCol}">${s.delta_pct >= 0 ? '+' : ''}${s.delta_pct}%</td>
-      <td class="text-end" style="font-weight:600;color:${s.margen_nuevo < 0 ? '#b91c1c' : s.margen_nuevo < 15 ? '#b45309' : 'var(--color-success-700)'}">${s.margen_nuevo}%</td>
+      <td class="text-end" style="font-weight:600;color:${s.margen_nuevo < 0 ? 'var(--color-critical-700)' : s.margen_nuevo < 15 ? 'var(--color-warning-700)' : 'var(--color-success-700)'}">${s.margen_nuevo}%</td>
       <td class="text-end">${s.impacto_margen >= 0 ? '+' : ''}$${(s.impacto_margen||0).toLocaleString('es-AR')}</td>
-      <td>${s.alerta ? `<span style="color:#b91c1c;font-size:.74rem">⚠ ${s.alerta}</span>` : ''}</td>
+      <td>${s.alerta ? `<span style="color:var(--color-critical-700);font-size:.74rem">⚠ ${s.alerta}</span>` : ''}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="7" class="text-center text-muted py-3">Sin items seleccionados</td></tr>';
 }
