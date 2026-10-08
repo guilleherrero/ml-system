@@ -19968,6 +19968,9 @@ try:
     _mig = _costos_boot.unificar_una_vez()
     if _mig:
         print(f'[costos] unificados en la tabla contable: {_mig}')
+    _rep = _costos_boot.reparar_miles_una_vez()
+    if _rep:
+        print(f"[costos] reparados ×1000: {len(_rep['reparados'])} · a revisar: {len(_rep['revisar'])} · cmv: {_rep['cmv']}")
 except Exception as _e:
     print(f'[db] ERROR inicializando tablas relacionales: {_e}')
 

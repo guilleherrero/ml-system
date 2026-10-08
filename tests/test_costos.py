@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -150,3 +151,36 @@ def test_limpiar_demo_solo_toca_el_seed():
     detectar = ns['_detectar_costos_demo']
     costos_json = {'MLA001': {}, 'MLA099': {}, 'MLA2570796766': {}, 'MLA1234': {}}
     assert detectar(costos_json, [{'id': 'MLA1234'}]) == ['MLA001', 'MLA099']
+
+
+# ── Reparación de costos divididos por mil (Novara, 08/10/2026) ──────────────
+
+def test_lector_de_planillas_entiende_separador_de_miles():
+    from modules.contabilidad_cierre import _a_decimal as a
+    assert a('15.000') == 15000 and a('2.673') == 2673 and a('1.250.000') == 1250000
+    assert a('$ 12.345,67') == Decimal('12345.67') and a('2,5') == Decimal('2.5') and a('0,75') == Decimal('0.75')
+
+
+def test_reparacion_multiplica_por_mil_y_respeta_los_que_no_cierran(entorno, monkeypatch):
+    from web.db import session_scope
+    from web.models_contabilidad import CostoProducto
+    import modules.contabilidad_cierre as cc
+    monkeypatch.setattr(cc, 'aplicar_cmv', lambda d, h: {'generados': 0, 'actualizados': 5, 'sin_costo': 0})
+    with session_scope() as s:
+        for iid, v in (('MLA1', '2.673'), ('MLA2', '22'), ('MLA3', '450')):
+            s.add(CostoProducto(item_id=iid, variacion='', costo_unitario=Decimal(v),
+                                vigente_desde=date(HOY.year, 1, 1), origen_dato='excel'))
+    entorno[os.path.normpath(costos.ESPEJO)] = {
+        'MLA1': {'titulo': 'Parches', 'costo': 2673}, 'MLA2': {'titulo': 'Cortador', 'costo': 13000}}
+    unif = costos.unificar_una_vez()
+    assert {d['item_id'] for d in unif['distintos']} == {'MLA1', 'MLA2'}
+    rep = costos.reparar_miles_una_vez()
+    assert rep['reparados'] == ['MLA1']
+    assert [r['item_id'] for r in rep['revisar']] == ['MLA2']
+    assert [x['item_id'] for x in rep['sospechosos']] == ['MLA3']          # listado, no tocado
+    v = costos.vigentes()
+    assert v['MLA1']['costo'] == 2673.0 and v['MLA2']['costo'] == 13000.0 and v['MLA3']['costo'] == 450.0
+    from modules.contabilidad_cierre import costo_vigente
+    with session_scope() as s:                                              # ventas pasadas: la planilla ×1000
+        assert float(costo_vigente(s, 'MLA2', date(HOY.year, 1, 2)).costo_unitario) == 22000.0
+    assert costos.reparar_miles_una_vez() is None

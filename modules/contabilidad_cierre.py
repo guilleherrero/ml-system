@@ -218,6 +218,11 @@ def _a_decimal(valor):
             s = s.replace('.', '').replace(',', '.')
         else:
             s = s.replace(',', '')
+    elif re.fullmatch(r'-?\d{1,3}([.,]\d{3})+', s):
+        # Solo separadores de miles: '15.000' o '1.250.000' son quince mil y
+        # un millón doscientos cincuenta mil (formato argentino), no 15,000.
+        # Leerlo como decimal dividía costos por mil (Novara, 08/10/2026).
+        s = s.replace('.', '').replace(',', '')
     elif ',' in s:
         s = s.replace(',', '.')
     try:

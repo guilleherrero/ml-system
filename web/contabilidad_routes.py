@@ -378,13 +378,15 @@ def costos():
         from core.db_storage import db_load
         from modules import costos as _c
         unificacion = db_load(_c.MARCA_MIGRACION)
+        reparacion = db_load(_c.MARCA_REPARACION)
     except Exception:
-        unificacion = None
+        unificacion = reparacion = None
     return render_template(
         'contabilidad_costos.html',
         resultado=resultado,
         faltantes=faltantes,
         unificacion=unificacion,
+        reparacion=reparacion,
         mes_actual=date(date.today().year, 1, 1).isoformat(),
         **_ctx_base(),
     )

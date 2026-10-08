@@ -9,23 +9,35 @@
 {% set subtitulo = "Sin costo de mercadería no hay ganancia, hay facturación." %}
 {% include "_contabilidad_tabs.html" %}
 
-{% if unificacion %}
+{% if reparacion %}
+<div class="app-card mb-3" style="padding:14px 18px">
+  <div class="fw-bold mb-1"><i class="bi bi-wrench-adjustable me-1" style="color:var(--color-warning-400)"></i>Costos corregidos: estaban divididos por mil</div>
+  <div class="small" style="color:var(--app-text-2)">
+    La carga por planilla leía «15.000» como 15. Se corrigieron {{ reparacion.reparados | length }} productos (×1000, incluida su historia)
+    y se recalculó el costo de mercadería del año{% if reparacion.cmv and reparacion.cmv.actualizados is not none %} ({{ reparacion.cmv.actualizados }} ventas actualizadas){% endif %}.
+  </div>
+  {% if reparacion.revisar %}
+  <div class="small mt-2"><b>Confirmá estos {{ reparacion.revisar | length }}:</b> la planilla y la carga rápida tenían costos distintos.
+    Las ventas pasadas quedaron con el de la planilla y desde hoy rige el de la carga rápida (el que veías en las pantallas). Si no es así, cargá el correcto abajo.</div>
+  <table class="table table-sm small mt-1 mb-0">
+    <thead><tr><th>Publicación</th><th class="text-end">Planilla (ventas pasadas)</th><th class="text-end">Carga rápida (desde hoy)</th></tr></thead>
+    <tbody>{% for d in reparacion.revisar %}
+      <tr><td>{{ d.titulo or d.item_id }} <span class="text-muted">{{ d.item_id }}</span></td>
+          <td class="text-end">{{ d.costo_tabla_corregido | pesos }}</td><td class="text-end"><b>{{ d.costo_json | pesos }}</b></td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% if reparacion.sospechosos %}
+  <div class="small mt-2"><b>{{ reparacion.sospechosos | length }} costos menores a $1.000 que no se tocaron</b> (revisá si también están divididos por mil):
+    {% for x in reparacion.sospechosos[:15] %}{{ x.titulo or x.item_id }} ({{ x.costo | pesos }}){{ ', ' if not loop.last }}{% endfor %}</div>
+  {% endif %}
+</div>
+{% elif unificacion %}
 <div class="app-card mb-3" style="padding:14px 18px">
   <div class="fw-bold mb-1"><i class="bi bi-check2-circle me-1" style="color:var(--color-success-400)"></i>Costos unificados</div>
   <div class="small" style="color:var(--app-text-2)">
     Esta es la única base de costos del sistema: Mis publicaciones, la Calculadora, Promociones y Alertas usan el costo vigente de acá.
-    Al unificar ({{ unificacion.fecha[:10] }}) se trajeron {{ unificacion.cargados }} costos que solo estaban en la carga rápida.
   </div>
-  {% if unificacion.distintos %}
-  <div class="small mt-2"><b>{{ unificacion.distintos | length }} productos tenían un costo distinto en la carga rápida.</b> Quedó el de Contabilidad; si alguno no es correcto, cargalo de nuevo abajo.</div>
-  <table class="table table-sm small mt-1 mb-0">
-    <thead><tr><th>Publicación</th><th class="text-end">Carga rápida</th><th class="text-end">Contabilidad (quedó)</th></tr></thead>
-    <tbody>{% for d in unificacion.distintos %}
-      <tr><td>{{ d.titulo or d.item_id }} <span class="text-muted">{{ d.item_id }}</span></td>
-          <td class="text-end">{{ d.costo_json | pesos }}</td><td class="text-end"><b>{{ d.costo_tabla | pesos }}</b></td></tr>
-    {% endfor %}</tbody>
-  </table>
-  {% endif %}
 </div>
 {% endif %}
 
