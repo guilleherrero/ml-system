@@ -175,9 +175,9 @@
 {# Menú por áreas. Cada ítem: (texto, url, icono, activo, id del badge) #}
 {% set areas = [
   ('Hoy', 'bi-lightning-charge', [
-     ('Panel general', '/', 'bi-speedometer2', p == '/', ''),
-     ('Inicio de la cuenta', '/inicio/' ~ ca, 'bi-house', p.startswith('/inicio/'), ''),
-     ('Alertas', '/alertas', 'bi-bell', p == '/alertas', 'badge-alertas'),
+     ('Hoy', '/', 'bi-lightning-charge', p == '/', ''),
+     ('Todas las alertas', '/alertas', 'bi-bell', p == '/alertas', 'badge-alertas'),
+     ('Panel por cuenta', '/panel', 'bi-speedometer2', p == '/panel', ''),
   ]),
   ('Publicaciones', 'bi-grid-1x2', [
      ('Mis publicaciones', '/stock/' ~ ca, 'bi-grid-1x2', p.startswith('/stock/'), ''),
@@ -194,6 +194,7 @@
      ('Mercado Full', '/full/' ~ ca, 'bi-box-seam', p.startswith('/full/'), ''),
   ]),
   ('Precios y promos', 'bi-tags', [
+     ('Oportunidades de precio', '/inicio/' ~ ca, 'bi-graph-up-arrow', p.startswith('/inicio/'), ''),
      ('Promociones', '/promociones/' ~ ca, 'bi-percent', p.startswith('/promociones/'), ''),
      ('Políticas de precio', '/pricing-strategy/' ~ ca, 'bi-graph-up', p.startswith('/pricing-strategy/'), ''),
      ('Repricing', '/repricing/' ~ ca, 'bi-arrow-repeat', p.startswith('/repricing/') and not p.startswith('/repricing/wizard'), ''),
@@ -339,7 +340,7 @@
 </main>
 
 <nav id="bottomnav" aria-label="Navegación rápida">
-  <a href="/" class="{{ 'active' if p == '/' or p.startswith('/inicio/') or p == '/alertas' }}"><i class="bi bi-lightning-charge"></i>Hoy</a>
+  <a href="/" class="{{ 'active' if p == '/' or p == '/alertas' or p == '/panel' }}"><i class="bi bi-lightning-charge"></i>Hoy</a>
   <a href="/stock/{{ ca }}" class="{{ 'active' if p.startswith('/stock/') }}"><i class="bi bi-grid-1x2"></i>Publicaciones</a>
   <a href="/reputacion/{{ ca }}" class="{{ 'active' if p.startswith('/reputacion/') or p.startswith('/preguntas/') }}"><i class="bi bi-chat-square-heart"></i>Clientes</a>
   <a href="/promociones/{{ ca }}" class="{{ 'active' if p.startswith('/promociones/') }}"><i class="bi bi-tags"></i>Precios</a>

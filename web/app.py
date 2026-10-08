@@ -1745,6 +1745,16 @@ def ml_search_web(query: str, limit: int = 20) -> list[dict]:
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 @app.route('/')
+def hoy():
+    """Hoy: una sola lista de lo que hay que resolver, de todas las cuentas.
+    Junta Panel general, Inicio, Alertas, la bandeja de Cerebro y el
+    'Resolver ahora' de Reputación. Los datos se cargan desde el navegador
+    con los endpoints de cada fuente (cada una tarda distinto)."""
+    return render_template('hoy.html', accounts=get_accounts(),
+                           cuentas=[a['alias'] for a in get_accounts() if a.get('alias')])
+
+
+@app.route('/panel')
 def dashboard():
     accounts = get_accounts()
     rows = []
