@@ -242,7 +242,7 @@
               data-id="{{ item.id }}"
               data-titulo-full="{{ item.titulo }}">
             <td style="max-width:240px">
-              <div class="text-truncate fw-semibold" title="{{ item.titulo }}" style="max-width:220px;font-size:.85rem">{{ item.titulo }}</div>
+              <div class="text-truncate fw-semibold" title="{{ item.titulo }}" style="max-width:220px;font-size:.85rem"><a class="link-ficha" href="/publicacion/{{ alias | urlencode }}/{{ item.id }}">{{ item.titulo }}</a></div>
               <div class="text-muted" style="font-size:.68rem">{{ item.id }}</div>
             </td>
             <td class="text-end">${{ "{:,.0f}".format(item.precio) }}</td>

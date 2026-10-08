@@ -4332,5 +4332,14 @@ async function confirmarCrearPub() {
     btn.innerHTML = '<i class="bi bi-plus-circle"></i> Reintentar';
   }
 }
+
+// Abrir con la publicación ya elegida: /optimizaciones/<alias>?item=MLA… (desde la ficha)
+(function () {
+  const it = new URLSearchParams(location.search).get('item');
+  const sel = document.getElementById('pubSelect'), inp = document.getElementById('pubIdInput');
+  if (!it) return;
+  if (sel && [...sel.options].some(o => o.value === it)) { sel.value = it; sel.dispatchEvent(new Event('change')); sel.scrollIntoView({block: 'center'}); }
+  else if (inp) { inp.value = it; }
+})();
 </script>
 {% endblock %}

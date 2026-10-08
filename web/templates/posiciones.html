@@ -211,7 +211,7 @@
     {% set facturado = item.facturado_30d if item.facturado_30d else None %}
     <tr>
       <td>
-        <div class="fw-semibold text-truncate" style="max-width:260px" title="{{ item.title }}">{{ item.title }}</div>
+        <div class="fw-semibold text-truncate" style="max-width:260px" title="{{ item.title }}"><a class="link-ficha" href="/publicacion/{{ alias | urlencode }}/{{ item.id }}">{{ item.title }}</a></div>
         <div class="text-muted" style="font-size:.7rem">{{ item.id }}</div>
       </td>
       <td class="text-end text-muted small">{% if item.precio %}${{ "{:,.0f}".format(item.precio) }}{% else %}—{% endif %}</td>

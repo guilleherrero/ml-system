@@ -240,7 +240,7 @@ function buildRow(item, rank, maxIng, period) {
   <div class="prod-row">
     <div class="rank-num ${rankCls}">${rank}</div>
     <div class="prod-info">
-      <div class="prod-title" title="${item.titulo}">${item.titulo}</div>
+      <div class="prod-title" title="${item.titulo}"><a class="link-ficha" href="/publicacion/${encodeURIComponent(alias)}/${item.item_id}">${item.titulo}</a></div>
       <div class="prod-meta">
         ${unid.toLocaleString('es-AR')} unid${period==='30d'?' · '+item.ordenes+' venta'+(item.ordenes!=1?'s':''):''}
         · precio prom. ${fmt(item.precio_promedio)}

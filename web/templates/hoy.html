@@ -250,7 +250,7 @@ function fila(x) {
       <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
         <span class="hy-tag ${x.tipo}">${NOMBRE[x.tipo]}</span>${CUENTAS.length > 1 ? `<span class="hy-cuenta">${esc(x.alias)}</span>` : ''}
       </div>
-      <div class="tit">${esc(x.titulo)}</div>
+      <div class="tit">${x.item_id ? `<a class="link-ficha" href="/publicacion/${encodeURIComponent(x.alias)}/${esc(x.item_id)}">${esc(x.titulo)}</a>` : esc(x.titulo)}</div>
       ${x.det ? `<div class="det">${esc(x.det)}</div>` : ''}
     </div>
     <div class="lado">${reloj(x)}<div class="hy-acc">${acciones(x)}</div></div>

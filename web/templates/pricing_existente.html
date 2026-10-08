@@ -1210,5 +1210,21 @@ function verEvolucion(experimentoId) {
     });
 }
 
+
+// Abrir con la publicación ya elegida: /pricing/existente?alias=X&item=MLA… (desde la ficha)
+(function () {
+  const q = new URLSearchParams(location.search), a = q.get('alias'), it = q.get('item');
+  const sa = document.getElementById('peAlias');
+  if (!a || !sa || ![...sa.options].some(o => o.value === a)) return;
+  sa.value = a; sa.dispatchEvent(new Event('change'));
+  if (!it) return;
+  const t = setInterval(() => {
+    const si = document.getElementById('peItem');
+    if (si && !si.disabled && [...si.options].some(o => o.value === it)) {
+      clearInterval(t); si.value = it; si.dispatchEvent(new Event('change'));
+    }
+  }, 200);
+  setTimeout(() => clearInterval(t), 20000);
+})();
 </script>
 {% endblock %}

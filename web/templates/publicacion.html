@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
+{% block title %} — {{ (it.titulo or item_id)[:40] }}{% endblock %}
+
+{% block content %}
+{% from "_kw_tarjeta.html" import tarjeta, kw_estilos %}
+{{ kw_estilos() }}
+<style>
+.fp-head{display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:1rem}
+.fp-foto{width:88px;height:88px;border-radius:var(--radius-ctl);background:#fff;object-fit:contain;border:1px solid var(--app-border);flex-shrink:0}
+.fp-tit{font-size:1.3rem;font-weight:800;color:var(--app-text);line-height:1.25;margin:0}
+.fp-meta{font-size:.8rem;color:var(--app-text-2);margin-top:4px;display:flex;flex-wrap:wrap;gap:.4rem .8rem;align-items:center}
+.fp-acciones{margin-left:auto;display:flex;gap:.4rem;flex-wrap:wrap}
+.fp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem;margin-bottom:1rem}
+.fp-kpi{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--radius-card);padding:.75rem .9rem}
+.fp-kpi .n{font-size:1.25rem;font-weight:800;line-height:1.15}
+.fp-kpi .l{font-size:.72rem;color:var(--app-text-2);margin-top:2px}
+.fp-kpi .s{font-size:.7rem;color:var(--app-muted);margin-top:3px}
+.fp-tabs{display:flex;gap:.25rem;border-bottom:1px solid var(--app-border);margin-bottom:1rem;overflow-x:auto}
+.fp-tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--app-text-2);padding:.55rem .85rem;font-size:.86rem;font-weight:600;white-space:nowrap}
+.fp-tab.on{color:var(--app-text);border-bottom-color:var(--brand)}
+.fp-panel{display:none}.fp-panel.on{display:block}
+.fp-card{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--radius-card);padding:1rem 1.1rem;margin-bottom:.9rem}
+.fp-card h3{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--app-muted);margin:0 0 .6rem}
+.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.9rem}
+.fp-fila{display:flex;justify-content:space-between;gap:1rem;padding:.35rem 0;border-bottom:1px solid var(--app-border);font-size:.85rem}
+.fp-fila:last-child{border-bottom:0}
+.fp-fila span:first-child{color:var(--app-text-2)}
+.fp-fila b{text-align:right}
+.fp-pill{font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.fp-pill.ok{background:var(--color-success-100);color:var(--color-success-700)}
+.fp-pill.warn{background:var(--color-warning-100);color:var(--color-warning-700)}
+.fp-pill.bad{background:var(--color-critical-100);color:var(--color-critical-700)}
+.fp-pill.info{background:var(--color-info-100);color:var(--color-info-700)}
+.fp-pill.mute{background:var(--app-surface-2);color:var(--app-muted)}
+.fp-vacio{color:var(--app-muted);font-size:.85rem;padding:.4rem 0}
+.fp-cargando{color:var(--app-muted);font-size:.8rem}
+.fp-chart{position:relative;height:240px}
+.fp-tabla{width:100%;font-size:.82rem;border-collapse:collapse}
+.fp-tabla th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--app-muted);font-weight:700;padding:.35rem .4rem;border-bottom:1px solid var(--app-border);text-align:left}
+.fp-tabla td{padding:.45rem .4rem;border-bottom:1px solid var(--app-border);vertical-align:top}
+.fp-tabla .r{text-align:right}
+.fp-hall{border-left:3px solid var(--color-info-500);padding:.45rem .7rem;background:var(--app-surface-2);border-radius:8px;font-size:.83rem;margin-bottom:.4rem}
+.fp-hall.critica,.fp-hall.alta{border-left-color:var(--color-critical-400)}
+.fp-hall.media{border-left-color:var(--color-warning-400)}
+</style>
+
+{% macro pesos(v) %}{% if v is not none and v != '' %}${{ '{:,.0f}'.format(v | float).replace(',', '.') }}{% else %}—{% endif %}{% endmacro %}
+
+<a href="javascript:history.back()" class="small text-muted text-decoration-none"><i class="bi bi-arrow-left"></i> Volver</a>
+
+<div class="fp-head mt-2">
+  <img id="fp-foto" class="fp-foto" alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+  <div style="flex:1;min-width:16rem">
+    <h1 class="fp-tit" id="fp-titulo">{{ it.titulo or item_id }}</h1>
+    <div class="fp-meta">
+      <span>{{ item_id }}</span>
+      <span id="fp-estado" class="fp-pill mute">…</span>
+      {% if it.listing_type %}<span>{{ {'gold_pro': 'Premium', 'gold_special': 'Clásica'}.get(it.listing_type, it.listing_type) }}</span>{% endif %}
+      <span>{{ alias }}</span>
+      <span id="fp-promo-pill"></span>
+      <a id="fp-link" href="#" target="_blank" rel="noopener" hidden>Ver en Mercado Libre <i class="bi bi-box-arrow-up-right"></i></a>
+    </div>
+  </div>
+  <div class="fp-acciones">
+    <a class="btn btn-sm btn-primary" href="/optimizaciones/{{ alias | urlencode }}?item={{ item_id }}"><i class="bi bi-stars me-1"></i>Optimizar con IA</a>
+    <a class="btn btn-sm btn-outline-secondary" href="/pricing/existente?alias={{ alias | urlencode }}&item={{ item_id }}"><i class="bi bi-calculator me-1"></i>Calculadora</a>
+  </div>
+</div>
+
+{% set margen = it.margen_pct %}
+<div class="fp-kpis">
+  <div class="fp-kpi"><div class="n" id="k-precio">{{ pesos(it.precio) }}</div><div class="l">precio</div></div>
+  <div class="fp-kpi"><div class="n" id="k-stock">{{ it.stock if it.stock is not none else '—' }}</div><div class="l">stock</div>
+    <div class="s">{% if it.dias_stock %}{{ it.dias_stock | round | int }} días al ritmo actual{% endif %}</div></div>
+  <div class="fp-kpi"><div class="n" style="color:{{ 'var(--color-critical-500)' if margen is not none and margen < 0 else ('var(--color-warning-500)' if margen is not none and margen < 0.15 else 'var(--color-success-500)') }}">
+      {{ '%.1f%%' | format(margen * 100) if margen is not none else '—' }}</div>
+    <div class="l">margen</div><div class="s">{% if costo.costo %}costo {{ pesos(costo.costo) }}{% else %}<a href="/costos/wizard?alias={{ alias | urlencode }}">cargá el costo</a>{% endif %}</div></div>
+  <div class="fp-kpi"><div class="n">{{ it.ventas_30d if it.ventas_30d is not none else '—' }}</div><div class="l">ventas 30 días</div>
+    <div class="s">{% if it.facturado_30d %}{{ pesos(it.facturado_30d) }} facturado{% endif %}</div></div>
+  <div class="fp-kpi"><div class="n">{{ it.visitas_30d if it.visitas_30d is not none else '—' }}</div><div class="l">visitas 30 días</div></div>
+  <div class="fp-kpi"><div class="n">{{ '%.1f%%' | format(it.conversion_pct) if it.conversion_pct is not none else '—' }}</div><div class="l">conversión</div></div>
+</div>
+{% if not it %}<div class="alert alert-warning small">Esta publicación no está en la última foto de stock ({{ fecha_stock or 'sin fecha' }}). Lo que viene de Mercado Libre en vivo se muestra igual.</div>{% endif %}
+
+<div class="fp-tabs" role="tablist">
+  {% for k, n in [('resumen','Resumen'),('ventas','Ventas y conversión'),('busqueda','Búsqueda'),('competencia','Competencia'),('precio','Precio y promociones'),('ia','Optimizar con IA'),('historial','Historial')] %}
+  <button class="fp-tab {{ 'on' if loop.first }}" role="tab" data-tab="{{ k }}" onclick="tab('{{ k }}')">{{ n }}</button>
+  {% endfor %}
+</div>
+
+<!-- ── Resumen ───────────────────────────────────────────── -->
+<section class="fp-panel on" id="p-resumen">
+  <div class="fp-grid">
+    <div class="fp-card"><h3>Calidad de la publicación</h3><div id="r-salud" class="fp-cargando">Consultando a Mercado Libre…</div></div>
+    <div class="fp-card"><h3>Promociones</h3><div id="r-promos" class="fp-cargando">Consultando…</div></div>
+    <div class="fp-card"><h3>Lo que hay que mirar</h3>
+      {% set avisos = [] %}
+      {% if it.alerta_stock and it.alerta_stock != 'OK' %}{% set _ = avisos.append(('bad' if it.alerta_stock in ['SIN_STOCK','CRITICO'] else 'warn', 'Stock: ' ~ it.alerta_stock | replace('_',' ') | lower)) %}{% endif %}
+      {% if it.alerta_margen and it.alerta_margen != 'OK' %}{% set _ = avisos.append(('bad' if it.alerta_margen == 'NEGATIVO' else 'warn', 'Margen ' ~ it.alerta_margen | lower)) %}{% endif %}
+      {% if not costo.costo %}{% set _ = avisos.append(('warn', 'Sin costo cargado: el margen no se puede calcular')) %}{% endif %}
+      {% if kw_item and kw_item.errores_escritura %}{% set _ = avisos.append(('bad', 'Error de escritura en el título (ver Búsqueda)')) %}{% endif %}
+      {% if kw_item and kw_item.cobertura_pct is not none and kw_item.cobertura_pct < 50 %}{% set _ = avisos.append(('warn', 'El título cubre solo el ' ~ kw_item.cobertura_pct ~ '% de las búsquedas reales')) %}{% endif %}
+      {% if regla %}{% set _ = avisos.append(('info', 'Tiene repricing automático (' ~ pesos(regla.precio_min) ~ ' a ' ~ pesos(regla.precio_max) ~ ')')) %}{% endif %}
+      {% for c, t in avisos %}<div class="fp-fila"><span>{{ t }}</span><b><span class="fp-pill {{ c }}">{{ {'bad':'urgente','warn':'revisar','info':'info'}[c] }}</span></b></div>{% else %}<div class="fp-vacio">Nada para marcar en los datos guardados.</div>{% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- ── Ventas y conversión ──────────────────────────────── -->
+<section class="fp-panel" id="p-ventas">
+  <div class="fp-card"><h3>Últimos 30 días: visitas y unidades vendidas por día</h3>
+    <div class="fp-chart"><canvas id="ch-ventas" aria-label="Visitas y ventas por día"></canvas></div>
+    <div id="v-nota" class="small text-muted mt-2"></div>
+  </div>
+  <div class="fp-grid">
+    <div class="fp-card"><h3>Resumen 30 días</h3>
+      <div class="fp-fila"><span>Ventas</span><b>{{ it.ventas_30d if it.ventas_30d is not none else '—' }}</b></div>
+      <div class="fp-fila"><span>Visitas</span><b>{{ it.visitas_30d if it.visitas_30d is not none else '—' }}</b></div>
+      <div class="fp-fila"><span>Conversión</span><b>{{ '%.2f%%' | format(it.conversion_pct) if it.conversion_pct is not none else '—' }}</b></div>
+      <div class="fp-fila"><span>Velocidad</span><b>{{ '%.1f por día' | format(it.velocidad) if it.velocidad else '—' }}</b></div>
+      <div class="fp-fila"><span>Cuotas sin interés en sus ventas</span><b>{{ '%.0f%%' | format((1 - it.pct_contado) * 100) if it.pct_contado is not none else '—' }}</b></div>
+    </div>
+    <div class="fp-card"><h3>Último registro diario</h3><div id="v-acum" class="fp-cargando">…</div></div>
+  </div>
+</section>
+
+<!-- ── Búsqueda ─────────────────────────────────────────── -->
+<section class="fp-panel" id="p-busqueda">
+  <div class="fp-card"><h3>Posición en el buscador{% if keyword_seguida %} para «{{ keyword_seguida }}»{% endif %}</h3>
+    {% if posiciones %}
+      {% set ult = posiciones[-1][1] %}
+      <div class="fp-fila"><span>Última medición ({{ posiciones[-1][0] }})</span>
+        <b>{{ 'fuera del top 200' if ult >= 999 else '#' ~ ult }}</b></div>
+      <div class="fp-chart" style="height:180px"><canvas id="ch-pos" aria-label="Posición en el buscador"></canvas></div>
+    {% else %}<div class="fp-vacio">Todavía no se siguió la posición de esta publicación.</div>{% endif %}
+  </div>
+  {% if kw_item %}{{ tarjeta(kw_item, kw_valuado) }}
+  {% else %}<div class="fp-card"><h3>Keywords y ficha</h3><div class="fp-vacio">El barrido diario de keywords no encontró nada para corregir en esta publicación (o todavía no la analizó).</div></div>{% endif %}
+</section>
+
+<!-- ── Competencia ─────────────────────────────────────── -->
+<section class="fp-panel" id="p-competencia">
+  <div class="fp-card"><h3>Catálogo y buy box</h3><div id="c-catalogo" class="fp-cargando">Consultando…</div></div>
+  <div class="fp-card"><h3>Tu precio frente al competidor más barato</h3>
+    <div class="fp-chart"><canvas id="ch-comp" aria-label="Precio propio y de competidores"></canvas></div>
+    <div id="c-nota" class="small text-muted mt-2"></div></div>
+</section>
+
+<!-- ── Precio y promociones ────────────────────────────── -->
+<section class="fp-panel" id="p-precio">
+  <div class="fp-grid">
+    <div class="fp-card"><h3>Precio y ganancia</h3>
+      <div class="fp-fila"><span>Precio</span><b>{{ pesos(it.precio) }}</b></div>
+      <div class="fp-fila"><span>Costo vigente</span><b>{{ pesos(costo.costo) if costo.costo else 'sin cargar' }}</b></div>
+      <div class="fp-fila"><span>Comisión + envío de ML</span><b>{{ '%.1f%%' | format(it.fee_rate * 100) if it.fee_rate else '—' }}</b></div>
+      <div class="fp-fila"><span>Te queda por venta</span><b>{{ pesos(it.ganancia) if it.ganancia is not none else '—' }}</b></div>
+      <div class="fp-fila"><span>Margen</span><b>{{ '%.1f%%' | format(margen * 100) if margen is not none else '—' }}</b></div>
+      <div class="mt-2 d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-primary" href="/pricing/existente?alias={{ alias | urlencode }}&item={{ item_id }}">Abrir la calculadora</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/inicio/{{ alias | urlencode }}">Oportunidades de precio</a>
+      </div>
+    </div>
+    <div class="fp-card"><h3>Repricing automático</h3>
+      {% if regla %}
+        <div class="fp-fila"><span>Rango permitido</span><b>{{ pesos(regla.precio_min) }} – {{ pesos(regla.precio_max) }}</b></div>
+        <div class="fp-fila"><span>Estado</span><b>{{ 'activo' if regla.get('activo', True) else 'pausado' }}</b></div>
+        <div class="mt-2 small fp-cargando" id="p-hist">Buscando cambios de precio…</div>
+      {% else %}<div class="fp-vacio">Sin repricing. <a href="/repricing/wizard?alias={{ alias | urlencode }}">Configurar</a></div>{% endif %}
+    </div>
+  </div>
+  <div class="fp-card"><h3>Promociones de esta publicación</h3><div id="p-promos" class="fp-cargando">Consultando…</div>
+    <a class="btn btn-sm btn-outline-secondary mt-2" href="/promociones/{{ alias | urlencode }}">Ir a Promociones</a></div>
+</section>
+
+<!-- ── Optimizar con IA ────────────────────────────────── -->
+<section class="fp-panel" id="p-ia">
+  {% if opts %}
+    {% set o = opts[0] %}
+    <div class="fp-card"><h3>Última optimización generada{% if o.fecha %} · {{ o.fecha }}{% endif %}</h3>
+      <div class="fp-fila"><span>Título actual</span><b style="max-width:65%">{{ o.titulo_actual }}</b></div>
+      {% if o.titulo_recomendado %}<div class="fp-fila"><span>Título recomendado</span><b style="max-width:65%;color:var(--color-success-500)">{{ o.titulo_recomendado }}</b></div>{% endif %}
+      {% if o.keywords_faltantes %}<div class="fp-fila"><span>Keywords que faltan</span><b style="max-width:65%">{{ (o.keywords_faltantes if o.keywords_faltantes is string else o.keywords_faltantes | join(', '))[:300] }}</b></div>{% endif %}
+      <div class="fp-fila"><span>Estado</span><b>{{ 'aplicada en ML' if o.aplicado or o.aplicada else 'sin aplicar' }}</b></div>
+      <div class="mt-2 d-flex gap-2 flex-wrap">
+        <a class="btn btn-sm btn-primary" href="/optimizaciones/{{ alias | urlencode }}?item={{ item_id }}">Ver completa y aplicar</a>
+        {% if opts | length > 1 %}<span class="small text-muted align-self-center">{{ opts | length }} optimizaciones en total</span>{% endif %}
+      </div>
+    </div>
+    <div class="fp-card"><h3>¿Funcionó?</h3><div id="ia-veredicto" class="fp-cargando">Buscando la medición…</div></div>
+  {% else %}
+    <div class="fp-card"><h3>Optimizar con IA</h3><div class="fp-vacio mb-2">Esta publicación todavía no se optimizó.</div>
+      <a class="btn btn-sm btn-primary" href="/optimizaciones/{{ alias | urlencode }}?item={{ item_id }}"><i class="bi bi-stars me-1"></i>Optimizar ahora</a></div>
+  {% endif %}
+</section>
+
+<!-- ── Historial ───────────────────────────────────────── -->
+<section class="fp-panel" id="p-historial">
+  <div class="fp-card"><h3>Cambios registrados y su resultado</h3>
+    {% if acciones %}
+    <table class="fp-tabla"><thead><tr><th>Fecha</th><th>Qué se hizo</th><th>Estado</th><th>Resultado</th></tr></thead><tbody>
+    {% for a in acciones %}
+      {% set ev = (a.evaluacion or {}) %}
+      {% set v = (ev.get('14d') or ev.get('7d') or {}).get('veredicto') %}
+      <tr><td class="text-nowrap">{{ (a.aplicada_ts or a.ts or '')[:10] }}</td>
+        <td><b>{{ {'precio':'Cambio de precio','ficha':'Cambio de título o ficha','descripcion':'Descripción','respuesta':'Respuesta a pregunta','pausa':'Pausa','clon':'Clonado','publicacion_nueva':'Publicación nueva','ads_presupuesto':'Presupuesto de Ads','postura':'Postura de precio','promocion':'Promoción','cupon':'Cupón'}.get(a.tipo, a.tipo) }}</b>
+          {% if a.detalle and a.detalle.precio_antes %}<div class="small text-muted">{{ pesos(a.detalle.precio_antes) }} → {{ pesos(a.detalle.precio_despues) }}</div>{% endif %}
+          {% if a.hipotesis %}<div class="small text-muted">{{ a.hipotesis[:140] }}</div>{% endif %}</td>
+        <td><span class="fp-pill mute">{{ a.estado | replace('_',' ') }}</span></td>
+        <td>{% if v %}<span class="fp-pill {{ {'funciono':'ok','empeoro':'bad','neutra':'mute','contaminada':'warn'}.get(v,'mute') }}">{{ {'funciono':'funcionó','empeoro':'empeoró','neutra':'sin cambio','contaminada':'no se puede medir','sin_datos':'sin datos aún'}.get(v, v) }}</span>{% else %}<span class="text-muted small">midiendo</span>{% endif %}</td></tr>
+    {% endfor %}</tbody></table>
+    {% else %}<div class="fp-vacio">Cerebro todavía no registró cambios en esta publicación. Cada cambio de precio, título u optimización que hagas desde el sistema queda acá con su resultado a 7 y 14 días.</div>{% endif %}
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS = {{ alias | tojson }}, ITEM = {{ item_id | tojson }}, A = encodeURIComponent(ALIAS);
+const POS = {{ posiciones | tojson }};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => (n || n === 0) ? '$' + Math.round(n).toLocaleString('es-AR') : '—';
+const css = n => getComputedStyle(document.getElementById('main')).getPropertyValue(n).trim();
+async function get(url) { try { const r = await fetch(url); return await r.json(); } catch (e) { return {ok: false, error: String(e)}; } }
+const cargado = {};
+let SERIE = null;
+async function serie() { if (!SERIE) { const j = await get(`/api/cerebro/serie/${A}/${ITEM}`); SERIE = (j.ok && j.serie) || []; } return SERIE; }
+
+function tab(k) {
+  document.querySelectorAll('.fp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === k));
+  document.querySelectorAll('.fp-panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + k));
+  try { history.replaceState(null, '', '#' + k); } catch (e) {}
+  if (!cargado[k]) { cargado[k] = true; (CARGAR[k] || (() => {}))(); }
+}
+
+// ── Encabezado: foto, estado y link desde ML ───────────────────────
+get(`/api/item-info/${A}/${ITEM}`).then(j => {
+  if (!j.ok) { $('fp-estado').textContent = 'sin conexión'; return; }
+  if (j.thumbnail) $('fp-foto').src = j.thumbnail.replace('http://', 'https://');
+  if (j.title) $('fp-titulo').textContent = j.title;
+  const est = {active: ['activa', 'ok'], paused: ['pausada', 'warn'], closed: ['finalizada', 'bad'], under_review: ['en revisión', 'warn']}[j.status] || [j.status, 'mute'];
+  $('fp-estado').textContent = est[0]; $('fp-estado').className = 'fp-pill ' + est[1];
+  if (j.permalink) { $('fp-link').href = j.permalink; $('fp-link').hidden = false; }
+  if (j.price) $('k-precio').textContent = money(j.price);
+  if (j.available !== undefined) $('k-stock').textContent = j.available;
+});
+
+let PROMOS = null;
+async function promos() {
+  if (!PROMOS) { const j = await get(`/api/promociones/${A}/item/${ITEM}`); PROMOS = j.ok ? j.promociones : {error: j.error}; }
+  return PROMOS;
+}
+function pintarPromos(el, ps) {
+  if (ps.error) { el.innerHTML = `<div class="fp-vacio">No se pudieron leer: ${esc(ps.error)}</div>`; return; }
+  const est = {started: ['activa', 'ok'], pending: ['programada', 'info'], candidate: ['califica', 'mute']};
+  const vis = ps.filter(p => est[p.status]);
+  if (!vis.length) { el.innerHTML = '<div class="fp-vacio">No está en ninguna promoción ni califica para una ahora.</div>'; return; }
+  el.innerHTML = vis.map(p => `<div class="fp-fila"><span>${esc(p.name || p.tipo_nombre)} <span class="text-muted">· ${esc(p.tipo_nombre)}</span></span>
+    <b><span class="fp-pill ${est[p.status][1]}">${est[p.status][0]}</span>${p.price ? ' ' + money(p.price) : ''}</b></div>`).join('');
+}
+
+const CARGAR = {
+  async resumen() {
+    get(`/api/item-health/${A}/${ITEM}`).then(j => {
+      if (!j.ok) { $('r-salud').innerHTML = `<div class="fp-vacio">${esc(j.error || 'No se pudo consultar')}</div>`; return; }
+      const f = (t, ok, v) => `<div class="fp-fila"><span>${t}</span><b><span class="fp-pill ${ok ? 'ok' : 'warn'}">${v}</span></b></div>`;
+      $('r-salud').innerHTML =
+        f('Fotos', j.pic_count >= 5, j.pic_count + ' fotos') +
+        f('Video', j.has_video, j.has_video ? 'tiene' : 'no tiene') +
+        f('Envío gratis', j.free_shipping, j.free_shipping ? 'sí' : 'no') +
+        f('Descripción', (j.desc_len || 0) >= 500, (j.desc_len || 0) + ' caracteres') +
+        f('Atributos vacíos', !j.empty_attrs_count, j.empty_attrs_count ? j.empty_attrs_count + ' sin completar' : 'completos') +
+        ((j.neg_reviews || []).length ? f('Opiniones negativas', false, j.neg_reviews.length) : '');
+    });
+    const ps = await promos();
+    pintarPromos($('r-promos'), ps);
+    if (!ps.error) {
+      const act = ps.find(p => p.status === 'started');
+      if (act) $('fp-promo-pill').innerHTML = `<span class="fp-pill ok">en promoción: ${esc(act.name || act.tipo_nombre)}</span>`;
+    }
+  },
+  async ventas() {
+    const s = await serie();
+    if (!s.length) { $('v-nota').textContent = 'Todavía no hay serie diaria para esta publicación.'; $('v-acum').textContent = '—'; return; }
+    new Chart($('ch-ventas'), {
+      type: 'bar',
+      data: {labels: s.map(d => d.fecha.slice(5)), datasets: [
+        {type: 'line', label: 'Visitas', data: s.map(d => d.visitas_totales), borderColor: 'var(--color-info-500)', backgroundColor: 'var(--color-info-500)', yAxisID: 'v', tension: .3, pointRadius: 0},
+        {label: 'Unidades vendidas', data: s.map(d => d.unidades), backgroundColor: 'var(--brand)', yAxisID: 'u', borderRadius: 4},
+      ]},
+      options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+        scales: {v: {position: 'left', beginAtZero: true, title: {display: true, text: 'visitas'}},
+                 u: {position: 'right', beginAtZero: true, grid: {display: false}, title: {display: true, text: 'unidades'}}}},
+    });
+    const u = s.reduce((a, d) => a + (d.unidades || 0), 0), v = s.reduce((a, d) => a + (d.visitas_totales || 0), 0);
+    $('v-nota').textContent = `${u} unidades y ${v} visitas en ${s.length} días medidos` + (v ? ` · conversión ${(100 * u / v).toFixed(2)}%` : '');
+    const ult = s[s.length - 1];
+    $('v-acum').innerHTML = `<div class="fp-fila"><span>Fecha</span><b>${esc(String(ult.fecha || '').slice(0, 10))}</b></div>
+      <div class="fp-fila"><span>Visitas orgánicas / por publicidad</span><b>${ult.visitas_organicas ?? '—'} / ${ult.clics_ads ?? 0}</b></div>
+      <div class="fp-fila"><span>Posición</span><b>${ult.posicion ? '#' + ult.posicion : '—'}</b></div>
+      <div class="fp-fila"><span>Calificación</span><b>${ult.rating ?? '—'}</b></div>`;
+  },
+  busqueda() {
+    if (!$('ch-pos')) return;
+    if (!POS.some(p => p[1] < 999)) { $('ch-pos').closest('.fp-chart').outerHTML = '<div class="fp-vacio">En los últimos ' + POS.length + ' registros nunca apareció en el top 200.</div>'; return; }
+    new Chart($('ch-pos'), {
+      type: 'line',
+      data: {labels: POS.map(p => p[0].slice(5)), datasets: [{label: 'Posición', data: POS.map(p => p[1] >= 999 ? null : p[1]),
+        borderColor: 'var(--brand)', backgroundColor: 'var(--brand)', spanGaps: true, tension: .2}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}},
+        scales: {y: {reverse: true, beginAtZero: false, title: {display: true, text: 'posición (más arriba = mejor)'}}}},
+    });
+  },
+  async competencia() {
+    get(`/api/catalogo-competidores/${A}/${ITEM}`).then(j => {
+      const el = $('c-catalogo');
+      if (!j.ok) { el.innerHTML = `<div class="fp-vacio">${esc(j.error || 'No se pudo consultar')}</div>`; return; }
+      if (!j.es_catalogo) { el.innerHTML = '<div class="fp-vacio">No compite en una ficha de catálogo.</div>'; return; }
+      const hall = ((j.diagnostico || {}).hallazgos || []).map(h => `<div class="fp-hall ${esc(h.gravedad)}">${esc(h.texto)}</div>`).join('');
+      const filas = (j.vendedores || []).map(v => `<tr><td>${v.es_mio ? '<b>Vos</b>' : esc(v.seller_id)} <span class="text-muted">${esc(v.item_id)}</span></td>
+        <td class="r">${money(v.precio)}</td><td>${v.envio_gratis ? 'gratis' : '—'}</td><td>${esc(v.logistica || '')}</td>
+        <td>${v.gana_buy_box ? '<span class="fp-pill ok">gana</span>' : ''}</td></tr>`).join('');
+      el.innerHTML = `<div class="fp-fila"><span>Ficha</span><b>${esc(j.producto)}</b></div>
+        <div class="fp-fila"><span>Vendedores en la ficha</span><b>${j.total_vendedores}</b></div>
+        <div class="fp-fila"><span>Buy box</span><b>${j.gano_yo ? '<span class="fp-pill ok">la ganás vos</span>' : j.ganador_id ? '<span class="fp-pill bad">la tiene otro</span>' : '<span class="fp-pill mute">nadie</span>'}</b></div>
+        <div class="mt-2">${hall}</div>
+        ${filas ? `<table class="fp-tabla mt-2"><thead><tr><th>Vendedor</th><th class="r">Precio</th><th>Envío</th><th>Logística</th><th></th></tr></thead><tbody>${filas}</tbody></table>` : ''}`;
+    });
+    const s = await serie();
+    const con = s.filter(d => (d.competidores || []).length);
+    if (!con.length) { $('c-nota').textContent = 'No hay competidores seguidos para esta publicación. Podés sumarlos con Capturar competidores.'; $('ch-comp').closest('.fp-chart').hidden = true; return; }
+    const minC = s.map(d => { const ps = (d.competidores || []).map(c => c.precio).filter(Boolean); return ps.length ? Math.min(...ps) : null; });
+    new Chart($('ch-comp'), {
+      type: 'line',
+      data: {labels: s.map(d => d.fecha.slice(5)), datasets: [
+        {label: 'Tu precio', data: s.map(d => d.precio), borderColor: 'var(--brand)', backgroundColor: 'var(--brand)', tension: .2, pointRadius: 0},
+        {label: 'Competidor más barato', data: minC, borderColor: 'var(--color-critical-400)', backgroundColor: 'var(--color-critical-400)', borderDash: [5, 4], tension: .2, pointRadius: 0, spanGaps: true},
+      ]},
+      options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+        scales: {y: {ticks: {callback: v => '$' + Math.round(v / 1000) + 'K'}}}},
+    });
+    const ult = minC.filter(x => x !== null).pop(), mio = s[s.length - 1].precio;
+    if (ult && mio) $('c-nota').textContent = `Hoy: tu precio ${money(mio)} · competidor más barato ${money(ult)} (${mio > ult ? 'estás ' + Math.round(100 * (mio / ult - 1)) + '% más caro' : 'estás más barato'}).`;
+  },
+  async precio() {
+    pintarPromos($('p-promos'), await promos());
+    if ($('p-hist')) get(`/api/repricing-historial/${A}/${ITEM}`).then(j => {
+      const h = (j.ok && j.historial) || [];
+      $('p-hist').innerHTML = h.length ? h.slice(0, 8).map(x => `<div class="fp-fila"><span>${esc((x.timestamp || '').slice(0, 16))}</span><b>${money(x.precio_antes)} → ${money(x.precio_despues)}</b></div>`).join('')
+        : '<span class="text-muted">El repricing no cambió el precio todavía.</span>';
+    });
+  },
+  ia() {
+    if (!$('ia-veredicto')) return;
+    get(`/api/veredicto/${A}/${ITEM}`).then(j => {
+      const v = j.ok && j.veredicto;
+      if (!v) { $('ia-veredicto').innerHTML = `<div class="fp-vacio">${esc(j.mensaje || 'Todavía no hay medición del resultado.')}</div>`; return; }
+      const c = String(v.veredicto || '');
+      $('ia-veredicto').innerHTML = `<div class="fp-fila"><span>Resultado</span><b><span class="fp-pill ${/ganadora/i.test(c) ? 'ok' : /perdedora/i.test(c) ? 'bad' : 'mute'}">${esc(c.replace(/_/g, ' '))}</span>${v.score_exito != null ? ' ' + v.score_exito + '/100' : ''}</b></div>
+        ${v.razonamiento ? `<div class="small mt-2">${esc(v.razonamiento)}</div>` : ''}
+        ${v.recomendacion ? `<div class="small mt-1"><b>Recomendación:</b> ${esc(String(v.recomendacion).replace(/_/g, ' '))}</div>` : ''}
+        <a class="btn btn-sm btn-outline-secondary mt-2" href="/monitor/${A}">Ver en Seguimiento de cambios</a>`;
+    });
+  },
+};
+
+const inicial = (location.hash || '#resumen').slice(1);
+tab(document.getElementById('p-' + inicial) ? inicial : 'resumen');
+</script>
+{% endblock %}

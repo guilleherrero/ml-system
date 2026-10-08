@@ -1754,6 +1754,57 @@ def hoy():
                            cuentas=[a['alias'] for a in get_accounts() if a.get('alias')])
 
 
+@app.route('/publicacion/<alias>/<item_id>')
+def ficha_publicacion(alias, item_id):
+    """Ficha de una publicación: todo lo del producto en un lugar (etapa 3).
+
+    Lo que ya está guardado se arma acá (stock, posiciones, keywords,
+    optimizaciones, acciones de Cerebro, regla de repricing, costo). Lo que
+    pide ML en vivo lo carga el navegador por pestaña, con los endpoints que
+    ya existen.
+    """
+    item_id = (item_id or '').strip().upper()
+    if not re.fullmatch(r'ML[A-Z]\d+', item_id):
+        return 'Publicación inválida', 404
+    try:
+        alias = _resolve_alias(alias)
+    except ValueError:
+        return 'Cuenta inexistente', 404
+    s = safe(alias)
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{s}.json')) or {}
+    it = next((x for x in stock.get('items', []) if x.get('id') == item_id), None) or {}
+
+    pos = (load_json(os.path.join(DATA_DIR, f'posiciones_{s}.json')) or {}).get(item_id) or {}
+    posiciones = sorted((pos.get('history') or {}).items())[-30:]
+
+    kw = load_json(os.path.join(DATA_DIR, f'diagnostico_keywords_{s}.json')) or {}
+    kw_item, kw_valuado = None, False
+    for lista, valuado in (('valuados', True), ('no_valuados', False)):
+        h = next((h for h in kw.get(lista) or [] if h.get('item_id') == item_id), None)
+        if h:
+            kw_item, kw_valuado = h, valuado
+            break
+
+    opts = [o for o in (load_json(os.path.join(DATA_DIR, f'optimizaciones_{s}.json')) or {}).get('optimizaciones', [])
+            if o.get('item_id') == item_id]
+    try:
+        from modules import cerebro
+        acciones = cerebro.listar_acciones(alias, item_id=item_id, limit=30)
+    except Exception:
+        acciones = []
+    regla = ((load_json(os.path.join(CONFIG_DIR, 'repricing.json')) or {}).get('items') or {}).get(item_id)
+    try:
+        from modules import costos as _costos
+        costo = (_costos.vigentes().get(item_id) or {})
+    except Exception:
+        costo = {}
+    return render_template('publicacion.html', alias=alias, item_id=item_id, it=it,
+                           posiciones=posiciones, keyword_seguida=pos.get('keyword'),
+                           kw_item=kw_item, kw_valuado=kw_valuado, opts=opts[::-1],
+                           acciones=acciones, regla=regla, costo=costo,
+                           fecha_stock=stock.get('fecha'), accounts=get_accounts())
+
+
 @app.route('/panel')
 def dashboard():
     accounts = get_accounts()
@@ -20191,6 +20242,21 @@ def api_promociones_items(alias):
     fees = get_fee_rates()
     items = pm.enriquecer(crudos, detalles, costos, lambda lt: get_rate(lt, fees))
     return jsonify({'ok': True, 'items': items, 'modo': pm.tipo_info(tipo)['modo']})
+
+
+@app.route('/api/promociones/<alias>/item/<item_id>')
+def api_promociones_de_item(alias, item_id):
+    """Promociones de una publicación (activas, programadas y a las que califica)."""
+    from modules import promociones as pm
+    try:
+        promos = pm.promos_del_item(_promo_client(alias), item_id)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': pm.error_legible(e)}), 502
+    for p_ in promos:
+        p_['tipo_nombre'] = pm.tipo_info(p_.get('type'))['nombre']
+    return jsonify({'ok': True, 'promociones': promos})
 
 
 @app.route('/api/promociones/sumar', methods=['POST'])
