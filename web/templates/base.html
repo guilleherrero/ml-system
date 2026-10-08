@@ -1,416 +1,329 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sistema ML{% block title %}{% endblock %}</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <script>
+    /* Tema antes de pintar: sin parpadeo. Oscuro por defecto. */
+    (function () {
+      var t = 'dark';
+      try { t = localStorage.getItem('ml_tema') || 'dark'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t);
+      document.documentElement.setAttribute('data-bs-theme', t);
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" integrity="sha384-XGjxtQfXaH2tnPFa9x+ruJTuLE3Aa6LhHSWRr1XeTyhezb4abCG4ccI5AkVDxqC+" crossorigin="anonymous">
   <link href="{{ url_for('static', filename='css/tokens.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/components.css') }}" rel="stylesheet">
   <style>
-    /* :root con tokens definidos en web/static/css/tokens.css.
-       Aliases retrocompatibles (--sb, --sb2, --sbw, --accent, --accent2)
-       están ahí también — sin override local. */
+    /* ── Shell: menú lateral + header + barra inferior (celular) ── */
+    body { min-height: 100vh; }
 
-    body { background:#f0f2f7; font-family:var(--font-base); }
-
-    /* ── Sidebar ─────────────────────────────────────────────── */
     #sidebar {
-      width:var(--sbw); height:100vh; background:var(--sb);
-      position:fixed; top:0; left:0; z-index:100;
-      display:flex; flex-direction:column; overflow:hidden;
+      width: var(--sbw); height: 100vh; background: var(--app-shell);
+      border-right: 1px solid var(--app-border);
+      position: fixed; top: 0; left: 0; z-index: 1030;
+      display: flex; flex-direction: column;
+      transition: transform .2s ease;
     }
-    /* El nav central scrollea — el footer admin queda fijo abajo */
-    #sidebar nav { flex:1 1 auto; overflow-y:auto; min-height:0; }
-    .nav-admin {
-      flex-shrink:0; border-top:1px solid var(--color-sidebar-border); padding:6px 0 4px;
-      background:var(--sb);
+    #sidebar nav { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 6px 10px 12px; }
+
+    .brand { padding: 16px 18px; display: flex; align-items: center; gap: 10px; height: var(--header-height);
+             border-bottom: 1px solid var(--app-border); text-decoration: none; }
+    .brand-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--brand); color: var(--brand-ink);
+                  display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .brand .name { color: var(--app-text); font-size: .98rem; font-weight: 800; line-height: 1.1; }
+    .brand .sub  { color: var(--app-muted); font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; }
+
+    .nav-area { margin-top: 2px; }
+    .nav-area > summary, .nav-link-solo {
+      list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer;
+      padding: 9px 12px; border-radius: var(--radius-ctl); color: var(--app-text-2);
+      font-size: .88rem; font-weight: 600; text-decoration: none; user-select: none; position: relative;
+    }
+    .nav-area > summary::-webkit-details-marker { display: none; }
+    .nav-area > summary::after { content: "\F282"; font-family: "bootstrap-icons"; margin-left: auto; font-size: .7rem;
+                                 transition: transform .15s; opacity: .6; }
+    .nav-area[open] > summary::after { transform: rotate(180deg); }
+    .nav-area > summary:hover, .nav-link-solo:hover { background: var(--app-shell-2); color: var(--app-text); }
+    .nav-area > summary i, .nav-link-solo i { font-size: 1rem; width: 18px; text-align: center; }
+    .nav-area.has-active > summary, .nav-link-solo.active { color: var(--app-text); }
+    .nav-link-solo.active { background: var(--app-shell-2); }
+    .nav-link-solo.active::before, .nav-sub a.active::before {
+      content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--brand);
+    }
+    .nav-sub { display: flex; flex-direction: column; padding: 2px 0 6px 28px; }
+    .nav-sub a { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 10px;
+                 color: var(--app-text-2); text-decoration: none; font-size: .83rem; }
+    .nav-sub a:hover { color: var(--app-text); background: var(--app-shell-2); }
+    .nav-sub a.active { color: var(--app-text); background: var(--app-shell-2); font-weight: 600; }
+    .nav-sec { font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; color: var(--app-muted);
+               font-weight: 700; padding: 14px 12px 4px; }
+    .nav-badge { margin-left: auto; background: var(--color-critical-400); color: #fff; border-radius: 999px;
+                 padding: 0 7px; font-size: .66rem; font-weight: 700; line-height: 1.5; }
+
+    .sidebar-foot { border-top: 1px solid var(--app-border); padding: 10px 14px; font-size: .72rem; color: var(--app-muted);
+                    display: flex; align-items: center; gap: 8px; }
+
+    /* Header */
+    #topbar {
+      position: sticky; top: 0; z-index: 1020; height: var(--header-height);
+      margin-left: var(--sbw); background: color-mix(in srgb, var(--app-bg) 88%, transparent);
+      backdrop-filter: blur(10px); border-bottom: 1px solid var(--app-border);
+      display: flex; align-items: center; gap: 12px; padding: 0 24px;
+    }
+    .tb-btn { background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-2);
+              border-radius: var(--radius-ctl); height: 38px; padding: 0 12px; display: inline-flex; align-items: center;
+              gap: 8px; font-size: .82rem; font-weight: 600; white-space: nowrap; text-decoration: none; }
+    .tb-btn:hover { color: var(--app-text); border-color: var(--color-neutral-400); }
+    .tb-btn.icon { width: 38px; padding: 0; justify-content: center; }
+    .acc-sel { min-width: 0; }
+    .acc-sel .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success-400); flex-shrink: 0; }
+    .acc-sel .dot.warn { background: var(--color-warning-400); }
+    .acc-sel .nm { font-weight: 700; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; }
+    .acc-sel .st { color: var(--app-muted); font-weight: 500; font-size: .72rem; }
+    #buscador { position: relative; flex: 1; max-width: 420px; }
+    #buscador input { height: 38px; padding-left: 36px; }
+    #buscador > i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--app-muted); }
+    #buscador-res { position: absolute; top: 44px; left: 0; right: 0; z-index: 1040; max-height: 360px; overflow: auto;
+                    background: var(--app-surface); border: 1px solid var(--app-border); border-radius: var(--radius-ctl);
+                    box-shadow: var(--shadow-lg); padding: 6px; }
+    #buscador-res a { display: flex; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--app-text);
+                      text-decoration: none; font-size: .85rem; }
+    #buscador-res a span { color: var(--app-muted); margin-left: auto; font-size: .75rem; }
+    #buscador-res a:hover, #buscador-res a.sel { background: var(--app-surface-2); }
+    .tb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #ult-act { font-size: .72rem; color: var(--app-muted); white-space: nowrap; }
+
+    /* Contenido */
+    #main { margin-left: var(--sbw); padding: 26px 28px 40px; min-height: calc(100vh - var(--header-height)); }
+
+    /* Celular */
+    #bottomnav { display: none; }
+    #sidebar-backdrop { display: none; }
+    @media (max-width: 991.98px) {
+      #sidebar { transform: translateX(-100%); }
+      body.menu-abierto #sidebar { transform: none; box-shadow: var(--shadow-lg); }
+      body.menu-abierto #sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1025; }
+      #topbar { margin-left: 0; padding: 0 12px; gap: 8px; }
+      #buscador, #ult-act, .tb-hide-sm { display: none !important; }
+      #main { margin-left: 0; padding: 18px 16px calc(84px + env(safe-area-inset-bottom, 0px)); }
+      #bottomnav { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 1020;
+                   background: var(--app-shell); border-top: 1px solid var(--app-border);
+                   padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)); }
+      #bottomnav a, #bottomnav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+                   background: none; border: 0; color: var(--app-muted); font-size: .66rem; font-weight: 600; text-decoration: none; padding: 4px 0; }
+      #bottomnav i { font-size: 1.2rem; }
+      #bottomnav .active { color: var(--brand-text); }
     }
 
-    /* Brand */
-    .brand {
-      padding:20px 18px 16px; border-bottom:1px solid var(--color-sidebar-border);
-      display:flex; align-items:center; gap:10px;
-    }
-    .brand-icon {
-      width:34px; height:34px; border-radius:9px;
-      background:linear-gradient(135deg,var(--accent),var(--accent2));
-      display:flex; align-items:center; justify-content:center;
-      font-size:1rem; color:var(--color-neutral-0); flex-shrink:0;
-    }
-    .brand-text { line-height:var(--line-height-tight); }
-    .brand-text .name { color:var(--color-neutral-0); font-size:.95rem; font-weight:var(--font-weight-bold); }
-    .brand-text .sub  { color:#4b5563; font-size:var(--text-xxs); text-transform:uppercase; letter-spacing:.06em; }
+    /* Compatibilidad con clases viejas usadas por las pantallas */
+    .badge-ok   { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-warn { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-crit { background: var(--color-critical-100); color: var(--color-critical-700); }
+    .badge-dim  { background: var(--color-neutral-100); color: var(--color-neutral-500); }
+    .table td { vertical-align: middle; font-size: var(--text-base); }
+    tr.row-crit td:first-child { border-left: 3px solid var(--color-critical-400); }
+    tr.row-warn td:first-child { border-left: 3px solid var(--color-warning-400); }
+    .pos-top  { background: var(--color-success-100); color: var(--color-success-700); border-radius: var(--radius-sm); padding: 1px 5px; font-weight: 600; font-size: .8rem; }
+    .pos-mid  { background: var(--color-warning-100); color: var(--color-warning-700); border-radius: var(--radius-sm); padding: 1px 5px; font-size: .8rem; }
+    .pos-low  { color: var(--color-neutral-400); font-size: .8rem; }
+    .pos-none { color: var(--color-neutral-300); font-size: .8rem; }
+    .stat-box { background: var(--app-surface); border: 1px solid var(--app-border); border-radius: var(--radius-card); padding: var(--spacing-md) 18px; box-shadow: var(--shadow-sm); }
+    .stat-box .num { font-size: var(--text-h1); font-weight: 800; line-height: 1; }
+    .stat-box .lbl { font-size: .75rem; color: var(--app-muted); margin-top: 3px; }
+    .stat-box.crit .num { color: var(--color-critical-400); }
+    .stat-box.warn .num { color: var(--color-warning-400); }
+    .stat-box.ok   .num { color: var(--color-success-400); }
+    .stat-box.blue .num { color: var(--color-info-500); }
+    .event-card { border-radius: var(--radius-card); padding: var(--spacing-md); background: var(--app-surface); border: 1px solid var(--app-border); border-left: 4px solid var(--app-border); height: 100%; }
+    .event-card.urgent { border-left-color: var(--color-critical-400); }
+    .event-card.soon   { border-left-color: var(--color-warning-400); }
+    .event-card.plan   { border-left-color: var(--color-info-500); }
+    .run-btn { font-size: var(--text-sm); }
+    .btn-xs { padding: 2px 8px; font-size: .75rem; }
+    .no-data { background: var(--app-surface-2); border: 2px dashed var(--app-border); border-radius: var(--radius-ctl); padding: var(--spacing-xl); text-align: center; color: var(--app-muted); }
+    .mod-card { display: block; background: var(--app-surface); border: 1px solid var(--app-border); border-radius: var(--radius-ctl); padding: 14px 14px 12px; text-decoration: none; color: var(--app-text); transition: border-color .15s; height: 100%; }
+    .mod-card:hover { border-color: var(--brand); color: var(--app-text); }
+    .mod-card i { font-size: 1.4rem; display: block; margin-bottom: 6px; }
+    .mod-card .mod-name { font-size: var(--text-md); font-weight: 600; }
+    .mod-card .mod-desc { font-size: .73rem; color: var(--app-muted); margin-top: 2px; }
 
-    /* Section labels */
-    .sec {
-      padding:14px 18px 4px;
-      font-size:.6rem; text-transform:uppercase;
-      letter-spacing:.1em; color:var(--color-neutral-700); font-weight:var(--font-weight-bold);
-      cursor:help;
-    }
-    .sec-account {
-      padding:12px 18px 2px 18px;
-      font-size:var(--text-xs); font-weight:var(--font-weight-bold); color:var(--color-neutral-0);
-      display:flex; align-items:center; gap:6px;
-      border-top:1px solid var(--color-sidebar-border); margin-top:6px;
-    }
-    .sec-account i { color:var(--accent); font-size:.8rem; }
-
-    /* Nav links (incluye .nav-admin para que los items de abajo hereden el estilo) */
-    #sidebar nav a,
-    #sidebar .nav-admin a {
-      display:flex; align-items:center; gap:9px;
-      padding:7px 18px; color:var(--color-sidebar-text); text-decoration:none;
-      font-size:.845rem; transition:all .15s;
-      border-left:3px solid transparent; position:relative;
-    }
-    #sidebar nav a:hover,
-    #sidebar .nav-admin a:hover  { color:var(--color-sidebar-text-hover); background:var(--color-sidebar-link-hover-bg); border-left-color:var(--color-neutral-700); }
-    #sidebar nav a.active,
-    #sidebar .nav-admin a.active { color:var(--color-sidebar-text-active); background:var(--color-sidebar-link-active-bg); border-left-color:var(--accent); }
-    #sidebar nav a i,
-    #sidebar .nav-admin a i { font-size:.9rem; width:16px; text-align:center; flex-shrink:0; }
-
-    /* Primary action link (Optimizar IA) */
-    #sidebar nav a.nav-primary {
-      color:var(--color-info-300); font-weight:var(--font-weight-semibold);
-    }
-    #sidebar nav a.nav-primary:hover,
-    #sidebar nav a.nav-primary.active {
-      color:var(--color-neutral-0); background:#1e2d4a; border-left-color:var(--accent);
-    }
-    #sidebar nav a.nav-primary i { color:var(--color-info-400); }
-
-    /* Divider */
-    .nav-divider { height:1px; background:var(--color-sidebar-border); margin:6px 0; }
-
-    /* ── Main content ────────────────────────────────────────── */
-    #main { margin-left:var(--sbw); padding:28px 32px; }
-
-    .page-header {
-      margin-bottom:22px; display:flex;
-      align-items:center; justify-content:space-between;
-      flex-wrap:wrap; gap:10px;
-    }
-    .page-header h1 { font-size:var(--text-h2); font-weight:var(--font-weight-bold); color:#111827; margin:0; }
-    .page-header .sub { font-size:.82rem; color:var(--color-neutral-500); margin-top:2px; }
-
-    /* ── Cards ───────────────────────────────────────────────── */
-    .card { border:none; border-radius:var(--radius-xl); box-shadow:var(--shadow-sm); }
-    .card-header {
-      background:transparent; border-bottom:1px solid #f1f3f9;
-      font-weight:var(--font-weight-semibold); padding:13px 18px; font-size:.9rem;
-    }
-
-    /* ── Badges ──────────────────────────────────────────────── */
-    .badge-ok   { background:#d1fae5; color:#065f46; }
-    .badge-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
-    .badge-crit { background:var(--color-critical-100); color:var(--color-critical-700); }
-    .badge-dim  { background:#f3f4f6; color:var(--color-neutral-500); }
-
-    /* ── Tables ──────────────────────────────────────────────── */
-    .table thead th {
-      font-size:.75rem; text-transform:uppercase;
-      letter-spacing:.05em; color:var(--color-neutral-500);
-      border-bottom:2px solid var(--color-sidebar-text-hover);
-    }
-    .table td { vertical-align:middle; font-size:var(--text-base); }
-    tr.row-crit td:first-child { border-left:3px solid var(--color-critical-400); }
-    tr.row-warn td:first-child { border-left:3px solid var(--color-warning-400); }
-
-    /* ── Position pills ──────────────────────────────────────── */
-    .pos-top  { background:#d1fae5; color:#065f46; border-radius:var(--radius-sm); padding:1px 5px; font-weight:var(--font-weight-semibold); font-size:.8rem; }
-    .pos-mid  { background:var(--color-warning-100); color:var(--color-warning-700); border-radius:var(--radius-sm); padding:1px 5px; font-size:.8rem; }
-    .pos-low  { color:#9ca3af; font-size:.8rem; }
-    .pos-none { color:#d1d5db; font-size:.8rem; }
-
-    /* ── Stat boxes ──────────────────────────────────────────── */
-    .stat-box { background:var(--color-neutral-0); border-radius:var(--radius-xl); padding:var(--spacing-md) 18px; box-shadow:var(--shadow-sm); }
-    .stat-box .num { font-size:var(--text-h1); font-weight:var(--font-weight-bold); line-height:1; }
-    .stat-box .lbl { font-size:.75rem; color:var(--color-neutral-500); margin-top:3px; }
-    .stat-box.crit .num { color:var(--color-critical-400); }
-    .stat-box.warn .num { color:var(--color-warning-400); }
-    .stat-box.ok   .num { color:var(--color-success-400); }
-    .stat-box.blue .num { color:var(--color-info-500); }
-
-    /* ── Event cards ─────────────────────────────────────────── */
-    .event-card { border-radius:var(--radius-xl); padding:var(--spacing-md); background:var(--color-neutral-0); box-shadow:var(--shadow-sm); border-left:4px solid var(--color-sidebar-text-hover); height:100%; }
-    .event-card.urgent { border-left-color:var(--color-critical-400); }
-    .event-card.soon   { border-left-color:var(--color-warning-400); }
-    .event-card.plan   { border-left-color:var(--color-info-500); }
-
-    /* ── Misc ────────────────────────────────────────────────── */
-    .run-btn { font-size:var(--text-sm); }
-    .btn-xs { padding:2px 8px; font-size:.75rem; }
-    .no-data { background:var(--color-neutral-50); border:2px dashed var(--color-sidebar-text-hover); border-radius:var(--radius-lg); padding:var(--spacing-xl); text-align:center; color:#9ca3af; }
-    .mod-card { display:block; background:var(--color-neutral-0); border:1px solid var(--color-sidebar-text-hover); border-radius:var(--radius-lg); padding:14px 14px 12px; text-decoration:none; color:#111827; transition:box-shadow .15s,border-color .15s; height:100%; }
-    .mod-card:hover { box-shadow:0 4px 12px rgba(59,130,246,.15); border-color:var(--color-info-300); color:var(--color-info-700); }
-    .mod-card i { font-size:1.4rem; display:block; margin-bottom:6px; }
-    .mod-card .mod-name { font-size:var(--text-md); font-weight:var(--font-weight-semibold); }
-    .mod-card .mod-desc { font-size:.73rem; color:var(--color-neutral-500); margin-top:2px; }
+    .permisos-banner { background: var(--color-warning-100); border: 1px solid var(--color-warning-400); border-radius: var(--radius-ctl);
+                       padding: .7rem 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; font-size: .84rem; }
+    .permisos-banner i.bi-key-fill { color: var(--color-warning-500); font-size: 1.05rem; flex-shrink: 0; }
+    .permisos-banner .perm-msg { flex: 1; color: var(--color-warning-700); line-height: 1.5; min-width: 200px; }
+    .permisos-banner a { background: var(--brand); color: var(--brand-ink); border-radius: 8px; padding: .4rem .85rem; font-size: .78rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .permisos-banner.perm-banner-critico { background: var(--color-critical-100); border-color: var(--color-critical-400); }
+    .permisos-banner.perm-banner-critico .perm-msg { color: var(--color-critical-700); }
   </style>
 </head>
 <body>
 
-{% set accounts = accounts if accounts is defined else [] %}
+{% set accounts = accounts if (accounts is defined and accounts) else (cuentas_menu if cuentas_menu is defined else []) %}
+{% set _aliases = accounts | map(attribute='alias') | list %}
+{% set _alias_url = (request.view_args or {}).get('alias') or request.args.get('alias') %}
+{% set _cookie = request.cookies.get('ml_cuenta') %}
+{% set cur = _alias_url if _alias_url in _aliases else (_cookie if _cookie in _aliases else (_aliases[0] if _aliases else '')) %}
+{% set p = request.path %}
+{% set ca = cur | urlencode %}
 
-<div id="sidebar">
+{# Menú por áreas. Cada ítem: (texto, url, icono, activo, id del badge) #}
+{% set areas = [
+  ('Hoy', 'bi-lightning-charge', [
+     ('Panel general', '/', 'bi-speedometer2', p == '/', ''),
+     ('Inicio de la cuenta', '/inicio/' ~ ca, 'bi-house', p.startswith('/inicio/'), ''),
+     ('Alertas', '/alertas', 'bi-bell', p == '/alertas', 'badge-alertas'),
+  ]),
+  ('Publicaciones', 'bi-grid-1x2', [
+     ('Mis publicaciones', '/stock/' ~ ca, 'bi-grid-1x2', p.startswith('/stock/'), ''),
+     ('Ventas por producto', '/ventas/' ~ ca, 'bi-bar-chart-line', p.startswith('/ventas/'), ''),
+     ('Salud del catálogo', '/salud/' ~ ca, 'bi-heart-pulse', p.startswith('/salud/'), ''),
+     ('Keywords y ficha', '/keywords/' ~ ca, 'bi-search', p.startswith('/keywords/'), ''),
+     ('Posiciones', '/posiciones/' ~ ca, 'bi-graph-up-arrow', p.startswith('/posiciones/'), ''),
+     ('Seguimiento de cambios', '/monitor/' ~ ca, 'bi-activity', p.startswith('/monitor/'), 'badge-monitor'),
+     ('Optimizar con IA', '/optimizaciones/' ~ ca, 'bi-stars', p.startswith('/optimizaciones/'), ''),
+     ('Embudo de conversión', '/funnel/' ~ ca, 'bi-funnel', p.startswith('/funnel/'), ''),
+     ('Duplicados', '/duplicados/' ~ ca, 'bi-files', p.startswith('/duplicados/'), ''),
+  ]),
+  ('Stock y Full', 'bi-box-seam', [
+     ('Mercado Full', '/full/' ~ ca, 'bi-box-seam', p.startswith('/full/'), ''),
+  ]),
+  ('Precios y promos', 'bi-tags', [
+     ('Promociones', '/promociones/' ~ ca, 'bi-percent', p.startswith('/promociones/'), ''),
+     ('Políticas de precio', '/pricing-strategy/' ~ ca, 'bi-graph-up', p.startswith('/pricing-strategy/'), ''),
+     ('Repricing', '/repricing/' ~ ca, 'bi-arrow-repeat', p.startswith('/repricing/') and not p.startswith('/repricing/wizard'), ''),
+     ('Configurar repricing', '/repricing/wizard?alias=' ~ ca, 'bi-magic', p == '/repricing/wizard', ''),
+     ('Calculadora de precios', '/pricing/existente', 'bi-calculator', p == '/pricing/existente', ''),
+     ('Calculadora · producto nuevo', '/pricing/nuevo', 'bi-plus-square', p == '/pricing/nuevo', ''),
+  ]),
+  ('Clientes', 'bi-chat-square-heart', [
+     ('Reputación y reclamos', '/reputacion/' ~ ca, 'bi-shield-check', p.startswith('/reputacion/'), ''),
+     ('Preguntas', '/preguntas/' ~ ca, 'bi-chat-dots', p.startswith('/preguntas/'), 'badge-preguntas'),
+     ('Mensajes', '/mensajes/' ~ ca, 'bi-envelope', p.startswith('/mensajes/'), ''),
+  ]),
+  ('Crecimiento', 'bi-rocket-takeoff', [
+     ('Lanzar producto', '/lanzar-nuevo', 'bi-rocket-takeoff', p in ['/lanzar-nuevo', '/lanzamientos', '/evaluar-producto'], ''),
+     ('Meli Ads', '/meli-ads', 'bi-megaphone', p == '/meli-ads', ''),
+     ('Calendario comercial', '/calendario', 'bi-calendar-event', p == '/calendario', ''),
+     ('Capturar competidores', '/bookmarklet/' ~ ca, 'bi-bookmark-star', p.startswith('/bookmarklet/'), ''),
+  ]),
+  ('Finanzas', 'bi-cash-stack', [
+     ('Contabilidad', '/contabilidad', 'bi-journal-text', p.startswith('/contabilidad'), ''),
+     ('Cargar costos', '/costos/wizard?alias=' ~ ca, 'bi-cash-coin', p == '/costos/wizard', ''),
+  ]),
+] %}
+{% set areas_bajo = [
+  ('Laboratorio', 'bi-cpu', [
+     ('Cerebro', '/cerebro/' ~ ca, 'bi-lightbulb', p.startswith('/cerebro/') and not p.startswith('/cerebro/backtest'), ''),
+     ('Cerebro · backtest', '/cerebro/backtest/' ~ ca, 'bi-clock-history', p.startswith('/cerebro/backtest'), ''),
+  ]),
+  ('Configuración', 'bi-gear', [
+     ('Cuentas de Mercado Libre', '/admin/cuentas', 'bi-shop-window', p == '/admin/cuentas', '') if session.get('is_admin') else None,
+     ('Vista multicuenta', '/multicuenta', 'bi-diagram-3', p == '/multicuenta', '') if _aliases | length >= 2 else None,
+     ('Usuarios', '/settings/usuarios', 'bi-people', p == '/settings/usuarios', '') if session.get('is_admin') else None,
+     ('Permisos API', '/settings/permisos', 'bi-key', p == '/settings/permisos', ''),
+     ('Telegram', '/telegram', 'bi-send', p == '/telegram', ''),
+     ('Mi perfil', '/perfil', 'bi-person-circle', p == '/perfil', ''),
+     ('Sistema y tareas', '/settings', 'bi-sliders', p == '/settings', ''),
+  ]),
+] %}
 
-  <!-- Brand -->
-  <div class="brand">
-    <div class="brand-icon"><i class="bi bi-stars"></i></div>
-    <div class="brand-text">
-      <div class="name">Sistema ML</div>
-      <div class="sub">Control total de cuentas</div>
-    </div>
-  </div>
+{% macro area(nombre, icono, items) %}
+  {% set items = items | select | list %}
+  {% if items | length == 1 %}
+    {% set it = items[0] %}
+    <a href="{{ it[1] }}" class="nav-link-solo {{ 'active' if it[3] }}"><i class="bi {{ icono }}"></i>{{ nombre }}</a>
+  {% else %}
+    {% set activo = items | selectattr(3) | list | length > 0 %}
+    <details class="nav-area {{ 'has-active' if activo }}" {{ 'open' if activo }} data-area="{{ nombre }}">
+      <summary><i class="bi {{ icono }}"></i>{{ nombre }}</summary>
+      <div class="nav-sub">
+        {% for it in items %}
+        <a href="{{ it[1] }}" class="{{ 'active' if it[3] }}">{{ it[0] }}
+          {% if it[4] %}<span class="nav-badge" id="{{ it[4] }}" hidden></span>{% endif %}</a>
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
+{% endmacro %}
 
-  <!-- Botón Actualizar datos + última actualización -->
-  <div style="padding:8px 10px;border-bottom:1px solid #1e2128">
-    <button id="nav-actualizar" onclick="actualizarDatos()"
-      style="width:100%;background:#1a2540;border:1px solid #2a3a5c;color:#60a5fa;border-radius:8px;padding:7px 10px;font-size:.78rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s"
-      onmouseover="this.style.background='#1e3160';this.style.borderColor='#3b82f6'"
-      onmouseout="this.style.background='#1a2540';this.style.borderColor='#2a3a5c'">
-      <i class="bi bi-cloud-download" style="font-size:.85rem"></i>
-      <span id="nav-actualizar-text">Actualizar datos ahora</span>
-    </button>
-    <div id="nav-actualizar-status" style="font-size:.67rem;color:#6b7280;text-align:center;margin-top:4px;display:none"></div>
-    <div id="nav-ultima-act" style="font-size:.65rem;color:#4b5563;text-align:center;margin-top:5px">
-      <i class="bi bi-clock me-1"></i><span id="nav-ultima-act-text">verificando…</span>
-    </div>
-  </div>
+<div id="sidebar-backdrop" onclick="document.body.classList.remove('menu-abierto')"></div>
 
+<aside id="sidebar" aria-label="Menú principal">
+  <a class="brand" href="/">
+    <div class="brand-icon"><i class="bi bi-shop"></i></div>
+    <div><div class="name">Sistema ML</div><div class="sub">Gestión de ventas</div></div>
+  </a>
   <nav>
-
-    <!-- ── 🏠 CONTROL ─────────────────────────────────────────── -->
-    <div class="sec" title="Tu vista principal: dashboard, alertas, consultor">🏠 Control</div>
-    <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
-      <i class="bi bi-speedometer2"></i> Command Center
-    </a>
-    <a href="/telegram" class="{{ 'active' if request.path == '/telegram' else '' }}">
-      <i class="bi bi-send"></i> Telegram
-    </a>
-    <a href="/alertas" class="{{ 'active' if request.path == '/alertas' else '' }}" id="nav-alertas">
-      <i class="bi bi-bell"></i> Alertas
-      <span id="alertas-global-badge" style="display:none;background:#dc2626;color:#fff;border-radius:12px;padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
-    </a>
-
-    <!-- ── POR CUENTA ─────────────────────────────────────────── -->
-    {% if accounts %}
-
-    <!-- Filtro de cuentas activas (solo si hay 2+) -->
-    {% if accounts | length > 1 %}
-    <div id="acc-filter" style="padding:6px 10px 4px;display:flex;flex-wrap:wrap;gap:4px">
-      {% for acc in accounts %}
-      <button
-        id="acc-btn-{{ loop.index }}"
-        data-alias="{{ acc.alias }}"
-        onclick="toggleAccount('{{ acc.alias }}', {{ loop.index }})"
-        style="font-size:.62rem;font-weight:700;padding:3px 9px;border-radius:10px;border:1px solid #2a3a5c;background:#1a2540;color:#60a5fa;cursor:pointer;transition:all .15s;white-space:nowrap"
-        title="Mostrar/ocultar {{ acc.alias }}">
-        {{ acc.alias }}
-      </button>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    {% for acc in accounts %}
-
-    <div class="acc-group" id="acc-group-{{ acc.alias | replace(' ','_') }}" data-alias="{{ acc.alias }}">
-
-    <div class="sec-account">
-      <i class="bi bi-shop"></i>{{ acc.alias }}
-    </div>
-
-    <!-- Dashboard de inicio -->
-    <a href="/inicio/{{ acc.alias }}" class="nav-primary {{ 'active' if request.path == '/inicio/'~acc.alias else '' }}">
-      <i class="bi bi-speedometer2"></i> Inicio
-    </a>
-
-    <!-- Consultor IA (per-cuenta, primer item del acc-group) -->
-    <a href="/analisis-experto/{{ acc.alias }}" class="{{ 'active' if request.path == '/analisis-experto/'~acc.alias else '' }}">
-      <i class="bi bi-stethoscope"></i> Consultor IA
-    </a>
-
-    <!-- 📦 Catálogo -->
-    <div class="sec" title="Gestión de tus publicaciones: stock, ventas, posiciones, salud">📦 Catálogo</div>
-    <a href="/stock/{{ acc.alias }}" class="{{ 'active' if request.path == '/stock/'~acc.alias else '' }}">
-      <i class="bi bi-grid-1x2"></i> Mis Publicaciones
-    </a>
-    <a href="/ventas/{{ acc.alias }}" class="{{ 'active' if request.path == '/ventas/'~acc.alias else '' }}">
-      <i class="bi bi-bar-chart-line"></i> Ventas por Producto
-    </a>
-    <a href="/salud/{{ acc.alias }}" class="{{ 'active' if request.path == '/salud/'~acc.alias else '' }}">
-      <i class="bi bi-heart-pulse"></i> Salud del Catálogo
-    </a>
-    <a href="/keywords/{{ acc.alias }}" class="{{ 'active' if request.path == '/keywords/'~acc.alias else '' }}">
-      <i class="bi bi-search"></i> Keywords y ficha
-    </a>
-    <a href="/duplicados/{{ acc.alias }}" class="{{ 'active' if request.path == '/duplicados/'~acc.alias else '' }}">
-      <i class="bi bi-files"></i> Duplicados
-    </a>
-    <a href="/posiciones/{{ acc.alias }}" class="{{ 'active' if request.path == '/posiciones/'~acc.alias else '' }}">
-      <i class="bi bi-graph-up-arrow"></i> Posiciones
-    </a>
-    <a href="/cerebro/{{ acc.alias }}" class="{{ 'active' if request.path == '/cerebro/'~acc.alias else '' }}">
-      <i class="bi bi-lightbulb"></i> Cerebro
-    </a>
-    <a href="/bookmarklet/{{ acc.alias }}" class="{{ 'active' if request.path == '/bookmarklet/'~acc.alias else '' }}">
-      <i class="bi bi-bookmark-star"></i> Capturar competidores
-    </a>
-    <a href="/cerebro/backtest/{{ acc.alias }}" class="{{ 'active' if request.path == '/cerebro/backtest/'~acc.alias else '' }}">
-      <i class="bi bi-clock-history"></i> Cerebro — backtest
-    </a>
-    <a href="/monitor/{{ acc.alias }}" class="{{ 'active' if request.path == '/monitor/'~acc.alias else '' }}"
-       id="nav-monitor-{{ acc.alias | replace(' ','_') }}">
-      <i class="bi bi-activity"></i> Monitor de Evolución
-      <span class="nav-monitor-badge" id="monitor-badge-{{ acc.alias | replace(' ','_') }}"
-            style="display:none;background:#dc2626;color:#fff;border-radius:12px;
-                   padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
-    </a>
-
-    <!-- 🧠 Inteligencia -->
-    <div class="sec" title="Optimizaciones IA y análisis de conversión">🧠 Inteligencia</div>
-    <a href="/optimizaciones/{{ acc.alias }}"
-       class="nav-primary {{ 'active' if request.path == '/optimizaciones/'~acc.alias else '' }}">
-      <i class="bi bi-stars"></i> Optimizar IA
-    </a>
-    <a href="/funnel/{{ acc.alias }}" class="{{ 'active' if request.path == '/funnel/'~acc.alias else '' }}">
-      <i class="bi bi-funnel"></i> Funnel de Conversión
-    </a>
-
-    <!-- 💰 Pricing -->
-    <div class="sec" title="Repricing automático y carga de costos">💰 Pricing</div>
-    <a href="/pricing-strategy/{{ acc.alias }}" class="{{ 'active' if request.path == '/pricing-strategy/'~acc.alias else '' }}">
-      <i class="bi bi-graph-up"></i> Políticas de Precio
-    </a>
-    <a href="/promociones/{{ acc.alias }}" class="{{ 'active' if request.path == '/promociones/'~acc.alias else '' }}">
-      <i class="bi bi-percent"></i> Promociones
-    </a>
-    <a href="/repricing/{{ acc.alias }}" class="{{ 'active' if request.path == '/repricing/'~acc.alias else '' }}">
-      <i class="bi bi-tags"></i> Repricing
-    </a>
-    <a href="/repricing/wizard?alias={{ acc.alias | urlencode }}"
-       class="{{ 'active' if request.path == '/repricing/wizard' and request.args.get('alias') == acc.alias else '' }}">
-      <i class="bi bi-magic"></i> Wizard de repricing
-    </a>
-    <a href="/costos/wizard?alias={{ acc.alias | urlencode }}"
-       class="{{ 'active' if request.path == '/costos/wizard' and request.args.get('alias') == acc.alias else '' }}">
-      <i class="bi bi-cash-coin"></i> Cargar costos (top 10)
-    </a>
-
-    <!-- 📦 Logística -->
-    <div class="sec" title="Mercado Full y reposición">📦 Logística</div>
-    <a href="/full/{{ acc.alias }}" class="{{ 'active' if request.path == '/full/'~acc.alias else '' }}">
-      <i class="bi bi-box-seam"></i> Mercado Full
-    </a>
-
-    <!-- 🤝 Postventa -->
-    <div class="sec" title="Preguntas y reputación">🤝 Postventa</div>
-    <a href="/preguntas/{{ acc.alias }}" class="{{ 'active' if request.path == '/preguntas/'~acc.alias else '' }}"
-       id="nav-preguntas-{{ acc.alias | replace(' ','_') }}">
-      <i class="bi bi-chat-dots"></i> Preguntas IA
-      <span class="nav-q-badge" id="badge-{{ acc.alias | replace(' ','_') }}"
-            style="display:none;background:#dc2626;color:#fff;border-radius:12px;
-                   padding:0 6px;font-size:.65rem;font-weight:700;margin-left:auto"></span>
-    </a>
-    <a href="/reputacion/{{ acc.alias }}" class="{{ 'active' if request.path == '/reputacion/'~acc.alias else '' }}">
-      <i class="bi bi-shield-check"></i> Reputación y reclamos
-    </a>
-    <a href="/mensajes/{{ acc.alias }}" class="{{ 'active' if request.path == '/mensajes/'~acc.alias else '' }}">
-      <i class="bi bi-envelope"></i> Mensajes
-    </a>
-
-    </div>{# /acc-group #}
-    {% endfor %}
-    {% endif %}
-
-    <!-- ── SECCIONES GLOBALES ─────────────────────────────────── -->
-    <div class="nav-divider"></div>
-
-    <!-- 🚀 Lanzamientos -->
-    <div class="sec" title="Crear publicaciones nuevas con IA">🚀 Lanzamientos</div>
-    <a href="/lanzar-nuevo" class="{{ 'active' if request.path in ['/lanzar-nuevo','/lanzamientos','/evaluar-producto'] else '' }}">
-      <i class="bi bi-rocket-takeoff"></i> Lanzar Producto
-    </a>
-    <a href="/pricing/existente" class="{{ 'active' if request.path == '/pricing/existente' else '' }}">
-      <i class="bi bi-calculator"></i> Calculadora de Precios
-    </a>
-    <a href="/pricing/nuevo" class="{{ 'active' if request.path == '/pricing/nuevo' else '' }}">
-      <i class="bi bi-box-seam"></i> — Producto nuevo
-    </a>
-
-    <!-- 📣 Marketing -->
-    <div class="sec" title="Meli ADS">📣 Marketing</div>
-    <a href="/meli-ads" class="nav-primary {{ 'active' if request.path == '/meli-ads' else '' }}">
-      <i class="bi bi-megaphone"></i> Meli ADS
-    </a>
-
-    <!-- 📅 Planificación -->
-    <div class="sec" title="Calendario de eventos comerciales">📅 Planificación</div>
-    <a href="/calendario" class="{{ 'active' if request.path == '/calendario' else '' }}">
-      <i class="bi bi-calendar-event"></i> Calendario
-    </a>
-
-
+    {% for a in areas %}{{ area(a[0], a[1], a[2]) }}{% endfor %}
+    <div class="nav-sec">Avanzado</div>
+    {% for a in areas_bajo %}{{ area(a[0], a[1], a[2]) }}{% endfor %}
   </nav>
-
-  <!-- ── ⚙️ Admin (siempre visible, no scrollea) ─────────────── -->
-  <div class="nav-admin">
-    <a href="/contabilidad" class="{{ 'active' if request.path.startswith('/contabilidad') else '' }}">
-      <i class="bi bi-calculator"></i> Contabilidad
-    </a>
-    {% if accounts and accounts | length >= 2 %}
-    <a href="/multicuenta" class="{{ 'active' if request.path == '/multicuenta' else '' }}">
-      <i class="bi bi-diagram-3"></i> Multicuenta
-    </a>
-    {% endif %}
-    {% if session.get('is_admin') %}
-    <a href="/admin/cuentas" class="{{ 'active' if request.path == '/admin/cuentas' else '' }}" style="color:#60a5fa">
-      <i class="bi bi-shop-window"></i> Gestión de cuentas
-    </a>
-    {% endif %}
-    <a href="/settings/permisos" class="{{ 'active' if request.path == '/settings/permisos' else '' }}">
-      <i class="bi bi-key"></i> Permisos API
-    </a>
-    {% if session.get('is_admin') %}
-    <a href="/settings/usuarios" class="{{ 'active' if request.path == '/settings/usuarios' else '' }}">
-      <i class="bi bi-people"></i> Usuarios
-    </a>
-    {% endif %}
-    <a href="/perfil" class="{{ 'active' if request.path == '/perfil' else '' }}">
-      <i class="bi bi-person-circle"></i> Mi perfil
-    </a>
-    <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}">
-      <i class="bi bi-gear"></i> Configuración
-    </a>
-    <a href="#" onclick="reiniciarServidor();return false;" style="color:#6b7280">
-      <i class="bi bi-arrow-clockwise"></i> Reiniciar servidor
-    </a>
+  <div class="sidebar-foot">
+    <i class="bi bi-person-circle"></i>
+    <span class="text-truncate">{{ session.get('username') or '' }} · {{ 'Admin' if session.get('is_admin') else 'Usuario' }}</span>
   </div>
+</aside>
 
-  <!-- Usuario logueado -->
-  <div style="padding:10px 14px;border-top:1px solid #1e2128;margin-top:auto;display:flex;align-items:center;gap:8px">
-    <div style="width:28px;height:28px;border-radius:50%;background:{% if session.get('is_admin') %}#1d3461{% else %}#163016{% endif %};display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;color:{% if session.get('is_admin') %}#60a5fa{% else %}#86efac{% endif %};flex-shrink:0">
-      {{ (session.get('username') or 'U')[0].upper() }}
-    </div>
-    <div style="flex:1;min-width:0">
-      <div style="font-size:.75rem;font-weight:600;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ session.get('username') or '' }}</div>
-      <div style="font-size:.62rem;color:#6b7280">{% if session.get('is_admin') %}Admin{% else %}Usuario{% endif %}</div>
-    </div>
-    <button onclick="reiniciarServidor()" title="Reiniciar servidor (aplicar cambios)" style="background:none;border:none;color:#6b7280;font-size:.85rem;flex-shrink:0;cursor:pointer;padding:0" onmouseover="this.style.color='#f59e0b'" onmouseout="this.style.color='#6b7280'">
-      <i class="bi bi-arrow-clockwise"></i>
+<header id="topbar">
+  <button class="tb-btn icon d-lg-none" onclick="document.body.classList.add('menu-abierto')" aria-label="Abrir menú"><i class="bi bi-list"></i></button>
+
+  {% if _aliases %}
+  <div class="dropdown acc-sel">
+    <button class="tb-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Cambiar de cuenta">
+      <span class="dot" id="estado-dot"></span>
+      <span class="nm">{{ cur }}</span>
+      <span class="st tb-hide-sm" id="estado-txt">conectada</span>
+      <i class="bi bi-chevron-down" style="font-size:.7rem"></i>
     </button>
-    <a href="/logout" title="Cerrar sesión" style="color:#6b7280;font-size:.85rem;flex-shrink:0;text-decoration:none" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#6b7280'">
-      <i class="bi bi-box-arrow-right"></i>
-    </a>
+    <ul class="dropdown-menu">
+      <li><h6 class="dropdown-header">Cuenta de Mercado Libre</h6></li>
+      {% for a in _aliases %}
+      <li><a class="dropdown-item {{ 'active' if a == cur }}" href="#" data-cuenta="{{ a }}">{{ a }}</a></li>
+      {% endfor %}
+      {% if session.get('is_admin') %}<li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="/admin/cuentas"><i class="bi bi-plus-lg me-1"></i>Agregar cuenta</a></li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div id="buscador" role="search">
+    <i class="bi bi-search"></i>
+    <label for="buscador-in" class="visually-hidden">Buscar sección</label>
+    <input id="buscador-in" class="form-control" placeholder="Ir a… (ej: promociones, reclamos, costos)" autocomplete="off">
+    <div id="buscador-res" hidden></div>
   </div>
 
-</div>
+  <div class="tb-right">
+    <span id="ult-act"><i class="bi bi-clock me-1"></i><span id="nav-ultima-act-text">verificando…</span></span>
+    <button id="nav-actualizar" class="tb-btn" onclick="actualizarDatos()" title="Actualizar los datos de todas las cuentas">
+      <i class="bi bi-arrow-repeat"></i><span id="nav-actualizar-text" class="tb-hide-sm">Actualizar datos</span>
+    </button>
+    {% if cur %}<a class="tb-btn tb-hide-sm" href="/analisis-experto/{{ ca }}" title="Consultor IA de tu negocio"><i class="bi bi-stars" style="color:var(--brand-text)"></i>Consultor IA</a>{% endif %}
+    <button class="tb-btn icon" onclick="cambiarTema()" title="Cambiar entre modo oscuro y claro" aria-label="Cambiar tema">
+      <i class="bi bi-moon-stars" id="tema-ico"></i>
+    </button>
+    <div class="dropdown">
+      <button class="tb-btn icon" data-bs-toggle="dropdown" aria-label="Mi usuario"><i class="bi bi-person"></i></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><h6 class="dropdown-header">{{ session.get('username') or '' }}</h6></li>
+        <li><a class="dropdown-item" href="/perfil"><i class="bi bi-person-circle me-2"></i>Mi perfil</a></li>
+        <li><a class="dropdown-item" href="#" onclick="reiniciarServidor();return false;"><i class="bi bi-arrow-clockwise me-2"></i>Reiniciar servidor</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="/logout"><i class="bi bi-box-arrow-right me-2"></i>Cerrar sesión</a></li>
+      </ul>
+    </div>
+  </div>
+  <div id="nav-actualizar-status" hidden></div>
+</header>
 
-<div id="main">
+{% set _listo = tema_listo is defined and tema_listo %}
+<main id="main" class="{{ '' if _listo else 'legacy' }}" {% if not _listo %}data-bs-theme="light"{% endif %}>
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for cat, msg in messages %}
@@ -421,35 +334,21 @@
     {% endif %}
   {% endwith %}
 
-  {# ── Banner global de permisos faltantes (Sprint 4.5) ──────── #}
   <div id="permisos-global-banner" style="display:none"></div>
 
   {% block content %}{% endblock %}
-</div>
+</main>
 
-<style>
-.permisos-banner {
-  background:linear-gradient(135deg,#fef3c7 0%,#fff7ed 100%);
-  border:1px solid #fcd34d; border-radius:10px;
-  padding:.7rem 1rem; margin-bottom:1rem;
-  display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
-  font-size:.84rem;
-}
-.permisos-banner i.bi-key-fill { color:#c2410c; font-size:1.05rem; flex-shrink:0; }
-.permisos-banner .perm-msg { flex:1; color:#92400e; line-height:1.5; min-width:200px; }
-.permisos-banner .perm-msg strong { color:#7c2d12; }
-.permisos-banner a {
-  background:#c2410c; color:#fff; border-radius:7px;
-  padding:.4rem .85rem; font-size:.78rem; font-weight:700;
-  text-decoration:none; white-space:nowrap;
-}
-.permisos-banner a:hover { background:#9a3412; color:#fff; }
-.permisos-banner .perm-banner-critico { background:#fee2e2; border-color:#fca5a5; }
-.permisos-banner .perm-banner-critico .perm-msg { color:#991b1b; }
-</style>
+<nav id="bottomnav" aria-label="Navegación rápida">
+  <a href="/" class="{{ 'active' if p == '/' or p.startswith('/inicio/') or p == '/alertas' }}"><i class="bi bi-lightning-charge"></i>Hoy</a>
+  <a href="/stock/{{ ca }}" class="{{ 'active' if p.startswith('/stock/') }}"><i class="bi bi-grid-1x2"></i>Publicaciones</a>
+  <a href="/reputacion/{{ ca }}" class="{{ 'active' if p.startswith('/reputacion/') or p.startswith('/preguntas/') }}"><i class="bi bi-chat-square-heart"></i>Clientes</a>
+  <a href="/promociones/{{ ca }}" class="{{ 'active' if p.startswith('/promociones/') }}"><i class="bi bi-tags"></i>Precios</a>
+  <button onclick="document.body.classList.add('menu-abierto')"><i class="bi bi-list"></i>Más</button>
+</nav>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous"></script>
 <script>
 function runComando(comando, alias) {
   const btn = event.currentTarget;
@@ -491,169 +390,123 @@ function runComando(comando, alias) {
 </script>
 {% block scripts %}{% endblock %}
 <script>
-(function loadAlertasBadge() {
-  fetch('/api/alertas')
-    .then(r => r.json())
-    .then(data => {
-      const badge = document.getElementById('alertas-global-badge');
-      if (!badge) return;
-      // Sprint 4.4: si hay impacto $ pendiente, mostrar badge con monto.
-      // Si no hay impacto pero hay urgentes, mostrar conteo simple.
-      const impacto = data.impacto_total_ars || 0;
-      if (impacto > 0) {
-        const fmt = impacto >= 1e6 ? `$${(impacto/1e6).toFixed(1).replace('.',',')}M`
-                  : impacto >= 1e3 ? `$${Math.round(impacto/1e3)}K`
-                  : `$${Math.round(impacto)}`;
-        badge.textContent = fmt;
-        badge.style.display = 'inline-block';
-        badge.title = `${data.urgentes} urgentes · ${data.importantes} importantes · impacto pendiente: ${fmt}/mes`;
-      } else if (data.urgentes > 0) {
-        badge.textContent = data.urgentes;
-        badge.style.display = 'inline-block';
-      }
-    }).catch(() => {});
-})();
+const CUENTA_ACTUAL = {{ cur | tojson }};
 
-// ── Selector de cuentas activas ───────────────────────────────────────────
-(function initAccountFilter() {
-  const LS_KEY = 'ml_active_accounts';
-  const groups = document.querySelectorAll('.acc-group');
-  if (!groups.length) return;
+// ── Tema ────────────────────────────────────────────────────────────────
+function pintarIconoTema() {
+  const t = document.documentElement.getAttribute('data-theme');
+  const ico = document.getElementById('tema-ico');
+  if (ico) ico.className = 'bi ' + (t === 'dark' ? 'bi-sun' : 'bi-moon-stars');
+}
+function cambiarTema() {
+  const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  document.documentElement.setAttribute('data-bs-theme', t);
+  try { localStorage.setItem('ml_tema', t); } catch (e) {}
+  pintarIconoTema();
+}
+pintarIconoTema();
 
-  const allAliases = [...groups].map(g => g.dataset.alias);
-
-  function getSaved() {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length) return new Set(parsed);
-      }
-    } catch(e) {}
-    return new Set(allAliases); // por defecto: todas activas
+// ── Selector de cuenta: guarda la elección y abre la misma pantalla en la otra cuenta
+document.querySelectorAll('[data-cuenta]').forEach(el => el.addEventListener('click', ev => {
+  ev.preventDefault();
+  const nueva = el.dataset.cuenta;
+  document.cookie = 'ml_cuenta=' + encodeURIComponent(nueva) + ';path=/;max-age=31536000;samesite=lax';
+  const viejo = '/' + encodeURIComponent(CUENTA_ACTUAL);
+  const url = new URL(location.href);
+  if (CUENTA_ACTUAL && url.pathname.includes(viejo)) {
+    url.pathname = url.pathname.replace(viejo, '/' + encodeURIComponent(nueva));
+  } else if (url.searchParams.has('alias')) {
+    url.searchParams.set('alias', nueva);
   }
+  location.href = url.toString();
+}));
 
-  function applyState(active) {
-    groups.forEach(g => {
-      g.style.display = active.has(g.dataset.alias) ? '' : 'none';
-    });
-    allAliases.forEach((alias, i) => {
-      const btn = document.getElementById(`acc-btn-${i + 1}`);
-      if (!btn) return;
-      const on = active.has(alias);
-      btn.style.background  = on ? '#1a2540' : '#0f1117';
-      btn.style.color        = on ? '#60a5fa' : '#374151';
-      btn.style.borderColor  = on ? '#2a3a5c' : '#1e2128';
-      btn.style.opacity      = on ? '1' : '0.5';
-    });
+// ── Buscador de secciones: filtra el propio menú ────────────────────────
+(function () {
+  const inp = document.getElementById('buscador-in'), res = document.getElementById('buscador-res');
+  if (!inp) return;
+  const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const items = [...document.querySelectorAll('#sidebar a[href]')].filter(a => a.getAttribute('href') !== '#')
+    .map(a => ({href: a.getAttribute('href'), txt: a.textContent.trim().replace(/\s+\d+$/, ''),
+                area: (a.closest('details') || {}).dataset?.area || ''}));
+  let sel = 0, vis = [];
+  function pintar() {
+    const q = norm(inp.value.trim());
+    vis = q ? items.filter(i => norm(i.txt + ' ' + i.area).includes(q)).slice(0, 8) : [];
+    sel = 0;
+    res.hidden = !vis.length;
+    res.innerHTML = vis.map((i, k) => `<a href="${i.href}" class="${k === sel ? 'sel' : ''}">${i.txt}<span>${i.area}</span></a>`).join('');
   }
-
-  let active = getSaved();
-  applyState(active);
-
-  window.toggleAccount = function(alias, idx) {
-    if (active.has(alias)) {
-      if (active.size === 1) return; // siempre al menos una activa
-      active.delete(alias);
-    } else {
-      active.add(alias);
-    }
-    localStorage.setItem(LS_KEY, JSON.stringify([...active]));
-    applyState(active);
-  };
-})();
-
-(function loadQuestionCounts() {
-  const aliases = [{% for acc in accounts %}{{ acc.alias | tojson }}{% if not loop.last %},{% endif %}{% endfor %}];
-  aliases.forEach(alias => {
-    const key = alias.replace(/\s+/g,'_');
-    fetch(`/api/preguntas-count/${encodeURIComponent(alias)}`)
-      .then(r => r.json())
-      .then(data => {
-        const badge = document.getElementById(`badge-${key}`);
-        if (badge && data.count > 0) {
-          badge.textContent = data.count;
-          badge.style.display = 'inline-block';
-        }
-      }).catch(() => {});
-    fetch(`/api/monitor-alertas-count/${encodeURIComponent(alias)}`)
-      .then(r => r.json())
-      .then(data => {
-        const mb = document.getElementById(`monitor-badge-${key}`);
-        if (mb && data.count > 0) {
-          mb.textContent = data.count;
-          mb.style.display = 'inline-block';
-        }
-      }).catch(() => {});
+  inp.addEventListener('input', pintar);
+  inp.addEventListener('keydown', e => {
+    if (!vis.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : vis.length - 1)) % vis.length;
+      [...res.children].forEach((a, k) => a.classList.toggle('sel', k === sel));
+    } else if (e.key === 'Enter') { location.href = vis[sel].href; }
+    else if (e.key === 'Escape') { inp.value = ''; pintar(); }
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('#buscador')) res.hidden = true; });
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); inp.focus(); }
   });
 })();
 
+// ── Contadores del menú ─────────────────────────────────────────────────
+function badge(id, txt, titulo) {
+  const b = document.getElementById(id);
+  if (!b || !txt) return;
+  b.textContent = txt; b.hidden = false;
+  if (titulo) b.title = titulo;
+}
+fetch('/api/alertas').then(r => r.json()).then(data => {
+  // Solo la cantidad de urgentes: el monto en $ todavía incluye márgenes estimados
+  if (data.urgentes > 0) badge('badge-alertas', data.urgentes, `${data.urgentes} urgentes · ${data.importantes} importantes`);
+}).catch(() => {});
+if (CUENTA_ACTUAL) {
+  fetch(`/api/preguntas-count/${encodeURIComponent(CUENTA_ACTUAL)}`).then(r => r.json())
+    .then(d => { if (d.count > 0) badge('badge-preguntas', d.count); }).catch(() => {});
+  fetch(`/api/monitor-alertas-count/${encodeURIComponent(CUENTA_ACTUAL)}`).then(r => r.json())
+    .then(d => { if (d.count > 0) badge('badge-monitor', d.count); }).catch(() => {});
+}
 
-// Mostrar última actualización al cargar
-fetch('/api/scheduler-status')
-  .then(r => r.json())
-  .then(d => {
-    const el = document.getElementById('nav-ultima-act-text');
-    if (!el) return;
-    if (d.last_run && d.last_run !== 'Nunca (desde el último reinicio del servidor)') {
-      el.textContent = 'Últ. act: ' + d.last_run.replace(' (ART)','');
-      el.parentElement.style.color = '#6b7280';
-    } else {
-      el.textContent = 'Sin actualizar aún';
-      el.parentElement.style.color = '#d97706';
-    }
-  })
-  .catch(() => {
-    const el = document.getElementById('nav-ultima-act-text');
-    if (el) el.textContent = 'estado desconocido';
-  });
+// ── Última actualización = estado de conexión ───────────────────────────
+fetch('/api/scheduler-status').then(r => r.json()).then(d => {
+  const el = document.getElementById('nav-ultima-act-text');
+  const ok = d.last_run && d.last_run !== 'Nunca (desde el último reinicio del servidor)';
+  if (el) el.textContent = ok ? 'Datos de ' + d.last_run.replace(' (ART)', '') : 'Sin actualizar aún';
+  const dot = document.getElementById('estado-dot'), st = document.getElementById('estado-txt');
+  if (dot && !ok) { dot.classList.add('warn'); if (st) st.textContent = 'sin datos nuevos'; }
+}).catch(() => {
+  const el = document.getElementById('nav-ultima-act-text');
+  if (el) el.textContent = 'estado desconocido';
+});
 
 function actualizarDatos() {
-  const btn  = document.getElementById('nav-actualizar');
-  const txt  = document.getElementById('nav-actualizar-text');
-  const sta  = document.getElementById('nav-actualizar-status');
+  const btn = document.getElementById('nav-actualizar');
+  const txt = document.getElementById('nav-actualizar-text');
   if (btn._running) return;
-  btn._running = true;
-  btn.disabled = true;
-  btn.style.opacity = '.7';
-  txt.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem;border-width:2px"></span> Actualizando…';
-  sta.style.display = 'none';
+  btn._running = true; btn.disabled = true;
+  txt.textContent = 'Actualizando…';
   fetch('/api/scheduler-run-now', {method: 'POST'})
     .then(r => r.json())
     .then(() => {
-      txt.innerHTML = '<i class="bi bi-check-circle-fill" style="color:#22c55e"></i> Iniciado — tarda ~3 min';
-      btn.style.borderColor = '#22c55e';
-      sta.style.display = '';
-      sta.innerHTML = 'Recargá la página cuando termine';
+      txt.textContent = 'Iniciado · tarda ~3 min';
       const ult = document.getElementById('nav-ultima-act-text');
-      if (ult) { ult.textContent = 'actualizando ahora…'; ult.parentElement.style.color = '#f59e0b'; }
-      setTimeout(() => {
-        txt.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos ahora';
-        btn.style.borderColor = '';
-        btn.style.opacity = '';
-        btn.disabled = false;
-        btn._running = false;
-        sta.style.display = 'none';
-      }, 8000);
+      if (ult) ult.textContent = 'actualizando ahora…';
+      setTimeout(() => { txt.textContent = 'Actualizar datos'; btn.disabled = false; btn._running = false; }, 8000);
     })
-    .catch(() => {
-      txt.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar datos ahora';
-      btn.style.opacity = '';
-      btn.disabled = false;
-      btn._running = false;
-    });
+    .catch(() => { txt.textContent = 'Actualizar datos'; btn.disabled = false; btn._running = false; });
 }
 
-// ── Banner global de permisos faltantes (Sprint 4.5) ──────────────────────────
-// Lee SOLO del cache del backend (endpoint summary) — sin penalizar carga.
-// Si la página actual ya es /settings/permisos, no se muestra (sería redundante).
+// ── Aviso global de permisos faltantes ──────────────────────────────────
 (function loadPermisosBanner() {
   if (location.pathname === '/settings/permisos') return;
-  const aliases = [{% for acc in accounts %}{{ acc.alias | tojson }}{% if not loop.last %},{% endif %}{% endfor %}];
+  const aliases = {{ _aliases | tojson }};
   if (!aliases.length) return;
   const cont = document.getElementById('permisos-global-banner');
   if (!cont) return;
-
   Promise.all(aliases.map(alias =>
     fetch(`/api/check-permisos/${encodeURIComponent(alias)}/summary`, { cache: 'no-store' })
       .then(r => r.json())
@@ -668,17 +521,10 @@ function actualizarDatos() {
         const cls = c > 0 ? 'permisos-banner perm-banner-critico' : 'permisos-banner';
         const txt = c > 0
           ? `<strong>${r.alias}</strong> · ${c} permiso${c>1?'s':''} crítico${c>1?'s':''} faltante${c>1?'s':''} bloquea${c>1?'n':''} acciones reales.`
-          : `<strong>${r.alias}</strong> · ${f} permiso${f>1?'s':''} faltante${f>1?'s':''} — algunas funciones están limitadas.`;
-        return `<div class="${cls}">
-                  <i class="bi bi-key-fill"></i>
-                  <div class="perm-msg">${txt}</div>
-                  <a href="/settings/permisos">Gestionar →</a>
-                </div>`;
+          : `<strong>${r.alias}</strong> · ${f} permiso${f>1?'s':''} faltante${f>1?'s':''}: algunas funciones están limitadas.`;
+        return `<div class="${cls}"><i class="bi bi-key-fill"></i><div class="perm-msg">${txt}</div><a href="/settings/permisos">Gestionar</a></div>`;
       });
-    if (banners.length) {
-      cont.innerHTML = banners.join('');
-      cont.style.display = 'block';
-    }
+    if (banners.length) { cont.innerHTML = banners.join(''); cont.style.display = 'block'; }
   });
 })();
 
@@ -686,7 +532,7 @@ function reiniciarServidor() {
   if (!confirm('¿Reiniciar el servidor para aplicar los últimos cambios?\nLa página se va a recargar automáticamente.')) return;
   fetch('/admin/restart', {method: 'POST'})
     .then(() => {
-      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:12px;font-family:sans-serif;color:#475569"><div class="spinner-border" style="width:2rem;height:2rem;color:#2563eb" role="status"></div><div style="font-weight:600">Reiniciando servidor…</div></div>';
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:12px;font-family:sans-serif;color:#94a3b8;background:#070e1d"><div class="spinner-border" style="width:2rem;height:2rem;color:#ffe600" role="status"></div><div style="font-weight:600">Reiniciando servidor…</div></div>';
       setTimeout(() => { location.reload(); }, 3000);
     })
     .catch(() => { alert('Error al reiniciar. Reiniciá manualmente.'); });

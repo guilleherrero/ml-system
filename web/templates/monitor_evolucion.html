@@ -1515,9 +1515,8 @@ loadMonitor().then(() => {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({alias: ALIAS})
   }).then(() => {
-    const key = ALIAS.replace(/\s+/g,'_');
-    const mb = document.getElementById(`monitor-badge-${key}`);
-    if (mb) mb.style.display = 'none';
+    const mb = document.getElementById('badge-monitor');
+    if (mb) mb.hidden = true;
   }).catch(() => {});
 });
 </script>

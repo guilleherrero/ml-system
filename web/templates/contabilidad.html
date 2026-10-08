@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Contabilidad{% endblock %}
 
 {% block content %}
@@ -323,7 +324,7 @@
       scales: {
         x: { grid: { display: false }, ticks: { color: gris, font: { size: 11 } } },
         y: {
-          grid: { color: '#f1f5f9' },
+          grid: { color: 'var(--color-neutral-100)' },
           border: { display: false },
           ticks: { color: gris, font: { size: 11 }, callback: fmt },
         },

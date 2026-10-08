@@ -25,15 +25,15 @@
 /* ═══ Cards ═══════════════════════════════════════════════════ */
 
 .app-card {
-  background: var(--color-neutral-0);
-  border: none;
-  border-radius: var(--radius-xl);                 /* 12px — match base.html */
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-sm);
 }
 
 .app-card-header {
   background: transparent;
-  border-bottom: 1px solid #f1f3f9;
+  border-bottom: 1px solid var(--app-border);
   font-weight: var(--font-weight-semibold);
   padding: 13px 18px;
   font-size: 0.9rem;
@@ -43,8 +43,9 @@
 /* ═══ Stat boxes (KPI grandes) ═══════════════════════════════ */
 
 .app-stat-box {
-  background: var(--color-neutral-0);
-  border-radius: var(--radius-xl);                 /* 12px — match base.html */
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-card);
   padding: var(--spacing-md) 18px;
   box-shadow: var(--shadow-sm);
 }
@@ -69,11 +70,11 @@
 
 /* ═══ Badges semánticos ══════════════════════════════════════ */
 
-.app-badge-ok      { background: var(--color-success-100);  color: #065f46; }
+.app-badge-ok      { background: var(--color-success-100);  color: var(--color-success-700); }
 .app-badge-warn    { background: var(--color-warning-100);  color: var(--color-warning-700); }
 .app-badge-crit    { background: var(--color-critical-100); color: var(--color-critical-700); }
 .app-badge-info    { background: var(--color-info-100);     color: var(--color-info-700); }
-.app-badge-neutral { background: #f3f4f6;                   color: var(--color-neutral-500); }
+.app-badge-neutral { background: var(--color-neutral-100);  color: var(--color-neutral-500); }
 
 
 /* ═══ Buttons ════════════════════════════════════════════════ */
@@ -181,18 +182,18 @@
 
 .app-alert-banner-crit {
   background: var(--color-critical-100);
-  border-color: #fca5a5;
+  border-color: var(--color-critical-400);
   color: var(--color-critical-700);
 }
 .app-alert-banner-warn {
   background: var(--color-warning-100);
-  border-color: #fcd34d;
+  border-color: var(--color-warning-400);
   color: var(--color-warning-700);
 }
 .app-alert-banner-success {
   background: var(--color-success-100);
-  border-color: #86efac;
-  color: #065f46;
+  border-color: var(--color-success-400);
+  color: var(--color-success-700);
 }
 .app-alert-banner-info {
   background: var(--color-info-100);
@@ -242,7 +243,7 @@
 
 .app-pos-top  {
   background: var(--color-success-100);
-  color: #065f46;
+  color: var(--color-success-700);
   border-radius: var(--radius-sm);
   padding: 1px 5px;
   font-weight: var(--font-weight-semibold);
@@ -263,3 +264,78 @@
   color: var(--color-neutral-200);
   font-size: 0.8rem;
 }
+
+
+
+/* ═══ Tema global (Stitch, 2026-10) ══════════════════════════════
+   Bootstrap toma los colores de los tokens: así tablas, formularios,
+   modales y alertas siguen el tema sin tocar cada pantalla.          */
+
+[data-bs-theme] {
+  --bs-body-bg: var(--app-bg);
+  --bs-body-color: var(--app-text);
+  --bs-secondary-color: var(--app-text-2);
+  --bs-tertiary-color: var(--app-muted);
+  --bs-emphasis-color: var(--app-text);
+  --bs-border-color: var(--app-border);
+  --bs-border-color-translucent: var(--app-border);
+  --bs-secondary-bg: var(--app-surface-2);
+  --bs-tertiary-bg: var(--app-surface-2);
+  --bs-heading-color: var(--app-text);
+  --bs-link-color: var(--color-info-500);
+  --bs-link-hover-color: var(--color-info-400);
+  --bs-link-color-rgb: 59,130,246;
+  --bs-border-radius: var(--radius-ctl);
+  --bs-border-radius-lg: var(--radius-card);
+  --bs-font-sans-serif: var(--font-base);
+}
+[data-theme="dark"] [data-bs-theme="dark"], [data-bs-theme="dark"] { --bs-link-color-rgb: 96,165,250; }
+
+body { background: var(--app-bg); color: var(--app-text); font-family: var(--font-base); }
+.legacy { background: var(--app-bg); color: var(--app-text); }
+
+.card { background: var(--app-surface); border: 1px solid var(--app-border); border-radius: var(--radius-card); box-shadow: var(--shadow-sm); color: var(--app-text); }
+.card-header, .card-footer { background: transparent; border-color: var(--app-border); }
+.modal-content, .dropdown-menu, .offcanvas, .popover, .toast { background: var(--app-surface); color: var(--app-text); border-color: var(--app-border); }
+.list-group-item { background: var(--app-surface); color: var(--app-text); border-color: var(--app-border); }
+
+.table { --bs-table-bg: transparent; --bs-table-color: var(--app-text); --bs-table-border-color: var(--app-border);
+         --bs-table-hover-bg: var(--app-surface-2); --bs-table-hover-color: var(--app-text);
+         --bs-table-striped-bg: var(--app-surface-2); --bs-table-striped-color: var(--app-text); }
+.table > thead th { color: var(--app-muted); border-bottom-color: var(--app-border); }
+
+.form-control, .form-select { background-color: var(--app-surface-2); color: var(--app-text); border-color: var(--app-border); border-radius: var(--radius-ctl); }
+.form-control:focus, .form-select:focus { background-color: var(--app-surface-2); color: var(--app-text);
+  border-color: var(--brand); box-shadow: 0 0 0 .2rem rgba(255,230,0,.18); }
+.form-control::placeholder { color: var(--app-muted); }
+.input-group-text { background: var(--app-surface); color: var(--app-text-2); border-color: var(--app-border); }
+.form-check-input { background-color: var(--app-surface-2); border-color: var(--color-neutral-400); }
+.form-check-input:checked { background-color: var(--brand); border-color: var(--brand); }
+[data-theme="dark"] .form-check-input:checked[type=checkbox] { --bs-form-check-bg-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23000' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e"); }
+
+/* Botón principal: amarillo ML con texto negro, en los dos temas */
+.btn { border-radius: var(--radius-ctl); font-weight: 600; }
+.btn-primary, .app-btn-primary { --bs-btn-bg: var(--brand); --bs-btn-border-color: var(--brand); --bs-btn-color: var(--brand-ink);
+  --bs-btn-hover-bg: #f5d900; --bs-btn-hover-border-color: #f5d900; --bs-btn-hover-color: var(--brand-ink);
+  --bs-btn-active-bg: #e6cc00; --bs-btn-active-border-color: #e6cc00; --bs-btn-active-color: var(--brand-ink);
+  --bs-btn-disabled-bg: var(--brand); --bs-btn-disabled-border-color: var(--brand); --bs-btn-disabled-color: var(--brand-ink);
+  background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.btn-outline-primary { --bs-btn-color: var(--app-text); --bs-btn-border-color: var(--brand); --bs-btn-hover-bg: var(--brand);
+  --bs-btn-hover-color: var(--brand-ink); --bs-btn-hover-border-color: var(--brand); --bs-btn-active-bg: var(--brand); --bs-btn-active-color: var(--brand-ink); }
+.btn-outline-secondary, .btn-light { --bs-btn-color: var(--app-text-2); --bs-btn-bg: transparent; --bs-btn-border-color: var(--app-border);
+  --bs-btn-hover-bg: var(--app-surface-2); --bs-btn-hover-color: var(--app-text); --bs-btn-hover-border-color: var(--color-neutral-400); }
+.btn-dark { --bs-btn-bg: var(--app-text); --bs-btn-color: var(--app-bg); --bs-btn-border-color: var(--app-text); }
+.text-primary { color: var(--brand-text) !important; }
+.bg-primary { background-color: var(--brand) !important; color: var(--brand-ink) !important; }
+.badge.bg-primary { color: var(--brand-ink) !important; }
+.text-muted { color: var(--app-muted) !important; }
+.text-secondary { color: var(--app-text-2) !important; }
+.border, .border-top, .border-bottom { border-color: var(--app-border) !important; }
+.bg-light, .bg-white { background-color: var(--app-surface-2) !important; }
+.table-success { --bs-table-bg: var(--color-success-100); --bs-table-color: var(--app-text); }
+.alert { border-radius: var(--radius-ctl); }
+
+/* Encabezado de pantalla, igual en todo el sistema */
+.page-header { margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.page-header h1 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.01em; color: var(--app-text); margin: 0; }
+.page-header .sub { font-size: .85rem; color: var(--app-text-2); margin-top: 3px; max-width: 75ch; }

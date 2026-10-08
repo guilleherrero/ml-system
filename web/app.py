@@ -409,6 +409,16 @@ def get_accounts():
     return get_permitted_accounts(all_accs)
 
 
+@app.context_processor
+def _ctx_menu():
+    """Cuentas para el selector del header en todas las pantallas, aunque la
+    vista no las pase."""
+    try:
+        return {'cuentas_menu': get_accounts()}
+    except Exception:
+        return {'cuentas_menu': []}
+
+
 # ── Auth middleware ────────────────────────────────────────────────────────────
 
 _AUTH_EXEMPT = {'/login', '/logout', '/setup',

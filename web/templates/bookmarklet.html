@@ -1,17 +1,18 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Capturar competidores{% endblock %}
 
 {% block content %}
 <style>
 .bk-drag{display:inline-block;padding:.7rem 1.4rem;border-radius:10px;
-  background:var(--color-info-500);color:#fff;font-weight:800;text-decoration:none;
+  background:var(--brand);color:var(--brand-ink);font-weight:800;text-decoration:none;
   box-shadow:var(--shadow-sm);cursor:grab;font-size:.95rem}
-.bk-drag:hover{color:#fff;opacity:.92}
+.bk-drag:hover{color:var(--brand-ink);opacity:.92}
 .bk-paso{display:flex;gap:.85rem;margin-bottom:1.1rem}
 .bk-n{flex:0 0 1.7rem;height:1.7rem;border-radius:50%;background:var(--color-neutral-200);
-  color:#0f172a;font-weight:800;display:flex;align-items:center;justify-content:center;
+  color:var(--app-text);font-weight:800;display:flex;align-items:center;justify-content:center;
   font-size:.82rem}
-.bk-paso .txt{font-size:.88rem;line-height:1.55;color:#1e293b}
+.bk-paso .txt{font-size:.88rem;line-height:1.55;color:var(--app-text)}
 .bk-code{font-family:ui-monospace,monospace;font-size:.78rem;background:var(--color-neutral-100);
   padding:1px 6px;border-radius:5px}
 </style>

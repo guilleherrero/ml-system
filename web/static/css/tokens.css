@@ -2,7 +2,7 @@
    tokens.css — Sistema ML Novara (design tokens)
    Sprint 5.2 / 2026-05-04
 
-   Variables CSS centralizadas. Todos los componentes (.app-*) y
+   Variables CSS centralizadas (temas claro y oscuro). Todos los componentes (.app-*) y
    templates deben referenciar estas variables — no hardcodear hex,
    tamaños o spacings.
 
@@ -20,63 +20,83 @@
    ============================================================ */
 
 :root {
+  /* ═══ Tema (Sistema ML · Stitch, 2026-10) ════════════════════
+     Dos temas: oscuro (por defecto) y claro, en <html data-theme>.
+     Las pantallas que todavía no migraron se marcan .legacy y
+     siguen en claro hasta su tanda (ver base.html).
+     ═══════════════════════════════════════════════════════════ */
+
+  /* App — superficies y texto (claro) */
+  --app-bg:        #f3f5f9;
+  --app-surface:   #ffffff;
+  --app-surface-2: #f7f8fb;
+  --app-border:    #e3e7ee;
+  --app-text:      #0f172a;
+  --app-text-2:    #475569;
+  --app-muted:     #64748b;
+  --app-shell:     #ffffff;        /* sidebar y header */
+  --app-shell-2:   #f1f4f9;        /* hover / activo en el menú */
+
+  /* Marca: amarillo ML con texto negro */
+  --brand:        #ffe600;
+  --brand-ink:    #000000;
+  --brand-text:   #8a6d00;          /* amarillo legible sobre fondo claro */
+
+  --radius-card: 16px;              /* rounded-2xl */
+  --radius-ctl:  12px;              /* rounded-xl */
 
   /* ═══ Colores semánticos ═══════════════════════════════════ */
 
-  /* Critical — red */
   --color-critical-50:  #fef2f2;
   --color-critical-100: #fee2e2;
-  --color-critical-400: #ef4444;   /* red-500 — KPIs, borders crit */
-  --color-critical-500: #dc2626;   /* red-600 — texto, badge */
-  --color-critical-700: #991b1b;   /* énfasis sobre fondo crit-100 */
+  --color-critical-400: #ef4444;
+  --color-critical-500: #dc2626;
+  --color-critical-700: #991b1b;
 
-  /* Warning — amber */
   --color-warning-50:   #fffbeb;
   --color-warning-100:  #fef3c7;
-  --color-warning-400:  #f59e0b;   /* amber-500 — KPIs */
-  --color-warning-500:  #d97706;   /* amber-600 — texto */
-  --color-warning-700:  #92400e;   /* énfasis sobre fondo warn-100 */
+  --color-warning-400:  #f59e0b;
+  --color-warning-500:  #d97706;
+  --color-warning-700:  #92400e;
 
-  /* Success — green */
   --color-success-50:   #f0fdf4;
   --color-success-100:  #dcfce7;
-  --color-success-400:  #10b981;   /* emerald-500 — KPIs */
-  --color-success-500:  #16a34a;   /* green-600 — texto */
-  --color-success-700:  #15803d;   /* énfasis sobre fondo success-100 */
+  --color-success-400:  #10b981;
+  --color-success-500:  #059669;
+  --color-success-700:  #047857;
 
-  /* Info / primario — blue */
   --color-info-100:     #dbeafe;
   --color-info-300:     #93c5fd;
   --color-info-400:     #60a5fa;
-  --color-info-500:     #3b82f6;   /* blue-500 — acento principal */
-  --color-info-600:     #2563eb;   /* blue-600 — acción primaria */
-  --color-info-700:     #1d4ed8;   /* blue-700 — pressed */
+  --color-info-500:     #3b82f6;
+  --color-info-600:     #2563eb;
+  --color-info-700:     #1d4ed8;
 
-  /* Neutral / grises */
+  /* Neutrales: 0 = superficie de tarjeta, 800 = texto fuerte */
   --color-neutral-0:    #ffffff;
-  --color-neutral-50:   #f8fafc;   /* slate-50 — fondo muy claro */
-  --color-neutral-100:  #f1f5f9;   /* slate-100 — fondo cards alt */
-  --color-neutral-200:  #e2e8f0;   /* slate-200 — bordes/dividers */
-  --color-neutral-400:  #94a3b8;   /* slate-400 — texto secundario */
-  --color-neutral-500:  #6b7280;   /* gray-500 — texto neutro */
-  --color-neutral-600:  #64748b;   /* slate-500 — texto neutro alt */
-  --color-neutral-700:  #374151;   /* gray-700 — texto oscuro */
-  --color-neutral-800:  #1e293b;   /* slate-800 — fondo oscuro */
-  --color-neutral-900:  #0f1117;   /* sidebar bg */
+  --color-neutral-50:   #f8fafc;
+  --color-neutral-100:  #f1f5f9;
+  --color-neutral-200:  #e2e8f0;
+  --color-neutral-300:  #cbd5e1;
+  --color-neutral-400:  #94a3b8;
+  --color-neutral-500:  #64748b;
+  --color-neutral-600:  #64748b;
+  --color-neutral-700:  #334155;
+  --color-neutral-800:  #1e293b;
+  --color-neutral-900:  #0f172a;
 
-  /* Sidebar (esquema oscuro propio) */
-  --color-sidebar-bg:               #0f1117;
-  --color-sidebar-bg-alt:           #161920;
-  --color-sidebar-border:           #1e2128;
-  --color-sidebar-text:             #6b7280;
-  --color-sidebar-text-hover:       #e5e7eb;
-  --color-sidebar-text-active:      #ffffff;
-  --color-sidebar-link-hover-bg:    #1a1d26;
-  --color-sidebar-link-active-bg:   #1a1d26;
-
+  /* Menú lateral (hereda del tema) */
+  --color-sidebar-bg:             var(--app-shell);
+  --color-sidebar-bg-alt:         var(--app-shell-2);
+  --color-sidebar-border:         var(--app-border);
+  --color-sidebar-text:           var(--app-text-2);
+  --color-sidebar-text-hover:     var(--app-text);
+  --color-sidebar-text-active:    var(--app-text);
+  --color-sidebar-link-hover-bg:  var(--app-shell-2);
+  --color-sidebar-link-active-bg: var(--app-shell-2);
   /* ═══ Tipografía ═══════════════════════════════════════════ */
 
-  --font-base: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-base: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   /* Escala calibrada al sistema actual (escala comprimida) */
   --text-xxs:    0.65rem;   /* leyendas diminutas */
@@ -113,8 +133,8 @@
 
   --radius-sm:   4px;     /* botones chicos, badges */
   --radius-md:   8px;     /* cajas, botones */
-  --radius-lg:   10px;    /* cards estándar (decisión Sprint 5.2) */
-  --radius-xl:   12px;    /* cards extra-redondeadas (base.html) */
+  --radius-lg:   12px;    /* cajas (rounded-xl) */
+  --radius-xl:   16px;    /* cards (rounded-2xl) */
   --radius-pill: 999px;   /* pills, avatares circulares */
 
   /* ═══ Sombras ═════════════════════════════════════════════ */
@@ -133,7 +153,8 @@
 
   /* ═══ Layout ═════════════════════════════════════════════ */
 
-  --sidebar-width: 240px;
+  --sidebar-width: 248px;
+  --header-height: 60px;
 
   /* ═══════════════════════════════════════════════════════════
      Aliases retrocompatibles
@@ -150,6 +171,81 @@
   --sb:      var(--color-sidebar-bg);     /* #0f1117 */
   --sb2:     var(--color-sidebar-bg-alt); /* #161920 */
   --sbw:     var(--sidebar-width);        /* 240px */
-  --accent:  var(--color-info-500);       /* #3b82f6 */
-  --accent2: #6366f1;                      /* indigo-500 — único uso (brand gradient) */
+  --accent:  var(--brand);
+  --accent2: var(--brand);
+}
+
+
+/* ═══ Tema oscuro ═══════════════════════════════════════════════
+   Mismos nombres, valores oscuros: toda pantalla que use tokens se
+   adapta sola. Fondo #070e1d, tarjetas #0c1322 / #141b2b.          */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --app-bg:        #070e1d;
+  --app-surface:   #0c1322;
+  --app-surface-2: #141b2b;
+  --app-border:    rgba(255,255,255,.07);
+  --app-text:      #f8fafc;
+  --app-text-2:    #94a3b8;
+  --app-muted:     #64748b;
+  --app-shell:     #0c1322;
+  --app-shell-2:   #141b2b;
+  --brand-text:    #ffe600;
+
+  --color-critical-50:  #1f0f14;
+  --color-critical-100: #2b1218;
+  --color-critical-400: #ef4444;
+  --color-critical-500: #f87171;
+  --color-critical-700: #fca5a5;
+
+  --color-warning-50:   #1f1809;
+  --color-warning-100:  #2b210b;
+  --color-warning-400:  #f59e0b;
+  --color-warning-500:  #fbbf24;
+  --color-warning-700:  #fcd34d;
+
+  --color-success-50:   #08201a;
+  --color-success-100:  #0b2a20;
+  --color-success-400:  #10b981;
+  --color-success-500:  #34d399;
+  --color-success-700:  #6ee7b7;
+
+  --color-info-100:     #111f3a;
+  --color-info-300:     #93c5fd;
+  --color-info-400:     #60a5fa;
+  --color-info-500:     #60a5fa;
+  --color-info-600:     #3b82f6;
+  --color-info-700:     #93c5fd;
+
+  --color-neutral-0:    #0c1322;
+  --color-neutral-50:   #141b2b;
+  --color-neutral-100:  #182033;
+  --color-neutral-200:  #1f293d;
+  --color-neutral-300:  #334155;
+  --color-neutral-400:  #64748b;
+  --color-neutral-500:  #94a3b8;
+  --color-neutral-600:  #94a3b8;
+  --color-neutral-700:  #cbd5e1;
+  --color-neutral-800:  #e2e8f0;
+  --color-neutral-900:  #f8fafc;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-md: 0 6px 18px rgba(0,0,0,.45);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,.55);
+}
+
+/* ═══ Pantallas sin migrar: claro hasta su tanda ════════════════
+   Repite los valores claros dentro de .legacy para que una pantalla
+   con colores escritos a mano no quede rota en oscuro.              */
+.legacy {
+  color-scheme: light;
+  --app-bg:#f3f5f9; --app-surface:#ffffff; --app-surface-2:#f7f8fb; --app-border:#e3e7ee;
+  --app-text:#0f172a; --app-text-2:#475569; --app-muted:#64748b; --brand-text:#8a6d00;
+  --color-critical-50:#fef2f2; --color-critical-100:#fee2e2; --color-critical-400:#ef4444; --color-critical-500:#dc2626; --color-critical-700:#991b1b;
+  --color-warning-50:#fffbeb; --color-warning-100:#fef3c7; --color-warning-400:#f59e0b; --color-warning-500:#d97706; --color-warning-700:#92400e;
+  --color-success-50:#f0fdf4; --color-success-100:#dcfce7; --color-success-400:#10b981; --color-success-500:#059669; --color-success-700:#047857;
+  --color-info-100:#dbeafe; --color-info-300:#93c5fd; --color-info-400:#60a5fa; --color-info-500:#3b82f6; --color-info-600:#2563eb; --color-info-700:#1d4ed8;
+  --color-neutral-0:#ffffff; --color-neutral-50:#f8fafc; --color-neutral-100:#f1f5f9; --color-neutral-200:#e2e8f0; --color-neutral-300:#cbd5e1;
+  --color-neutral-400:#94a3b8; --color-neutral-500:#64748b; --color-neutral-600:#64748b; --color-neutral-700:#334155; --color-neutral-800:#1e293b; --color-neutral-900:#0f172a;
+  --shadow-sm:0 1px 4px rgba(0,0,0,.07); --shadow-md:0 4px 12px rgba(0,0,0,.15); --shadow-lg:0 12px 32px rgba(0,0,0,.20);
 }
