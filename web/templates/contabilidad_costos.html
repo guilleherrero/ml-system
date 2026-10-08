@@ -9,6 +9,26 @@
 {% set subtitulo = "Sin costo de mercadería no hay ganancia, hay facturación." %}
 {% include "_contabilidad_tabs.html" %}
 
+{% if unificacion %}
+<div class="app-card mb-3" style="padding:14px 18px">
+  <div class="fw-bold mb-1"><i class="bi bi-check2-circle me-1" style="color:var(--color-success-400)"></i>Costos unificados</div>
+  <div class="small" style="color:var(--app-text-2)">
+    Esta es la única base de costos del sistema: Mis publicaciones, la Calculadora, Promociones y Alertas usan el costo vigente de acá.
+    Al unificar ({{ unificacion.fecha[:10] }}) se trajeron {{ unificacion.cargados }} costos que solo estaban en la carga rápida.
+  </div>
+  {% if unificacion.distintos %}
+  <div class="small mt-2"><b>{{ unificacion.distintos | length }} productos tenían un costo distinto en la carga rápida.</b> Quedó el de Contabilidad; si alguno no es correcto, cargalo de nuevo abajo.</div>
+  <table class="table table-sm small mt-1 mb-0">
+    <thead><tr><th>Publicación</th><th class="text-end">Carga rápida</th><th class="text-end">Contabilidad (quedó)</th></tr></thead>
+    <tbody>{% for d in unificacion.distintos %}
+      <tr><td>{{ d.titulo or d.item_id }} <span class="text-muted">{{ d.item_id }}</span></td>
+          <td class="text-end">{{ d.costo_json | pesos }}</td><td class="text-end"><b>{{ d.costo_tabla | pesos }}</b></td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if faltantes %}
 <div class="app-alert-banner app-alert-banner-crit mb-3">
   <i class="bi bi-exclamation-octagon-fill"></i>

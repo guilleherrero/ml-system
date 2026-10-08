@@ -53,7 +53,14 @@ def _load_costos() -> dict:
 
 
 def _save_costos(costos: dict):
-    db_save(COSTOS_PATH, costos)
+    """Guarda por la fuente única (modules/costos.py): costos.json es solo el
+    espejo del costo vigente."""
+    from modules import costos as fuente
+    actuales = _load_costos()
+    for iid, v in costos.items():
+        c = (v or {}).get('costo')
+        if c and float(c) > 0 and float((actuales.get(iid) or {}).get('costo') or 0) != float(c):
+            fuente.guardar(iid, c, titulo=v.get('titulo'), alias=v.get('alias'), origen='cli')
 
 
 # ── Ventas y fees reales ──────────────────────────────────────────────────────

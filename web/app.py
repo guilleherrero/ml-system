@@ -2916,29 +2916,23 @@ def api_costos_save():
         alias   = payload.get('alias', '')
         costos_in = payload.get('costos', [])  # [{id, titulo, precio, costo}]
 
-        costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
-        today = datetime.now().strftime('%Y-%m-%d')
+        # Una sola fuente: la tabla contable (modules/costos.py). costos.json
+        # se regenera solo como espejo del costo vigente.
+        from modules import costos as _costos
+        actuales = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
         saved = 0
         deleted = 0
-
         for entry in costos_in:
             item_id = entry['id']
             costo   = entry.get('costo')
             if costo is not None and float(costo) > 0:
-                costos_data[item_id] = {
-                    'alias':   alias,
-                    'titulo':  entry.get('titulo', ''),
-                    'costo':   float(costo),
-                    'updated': today,
-                }
+                if float((actuales.get(item_id) or {}).get('costo') or 0) != float(costo):
+                    _costos.guardar(item_id, costo, titulo=entry.get('titulo', ''), alias=alias, origen='panel')
                 saved += 1
             elif costo == 0 or costo is None:
-                # Si se envía 0 o vacío, borrar el costo
-                if item_id in costos_data:
-                    del costos_data[item_id]
+                if item_id in actuales:
+                    _costos.borrar(item_id)
                     deleted += 1
-
-        save_json(os.path.join(CONFIG_DIR, 'costos.json'), costos_data)
 
         return jsonify({'ok': True, 'saved': saved, 'deleted': deleted})
     except Exception as e:
@@ -3082,9 +3076,9 @@ def api_costos_limpiar_demo(alias):
     if not demo_ids:
         return jsonify({'ok': True, 'deleted': 0, 'mensaje': 'No hay costos demo para limpiar.'})
 
+    from modules import costos as _costos
     for cid in demo_ids:
-        costos_data.pop(cid, None)
-    save_json(costos_path, costos_data)
+        _costos.borrar(cid)
 
     _audit('LIMPIAR_COSTOS_DEMO', alias=alias, count=len(demo_ids), ids=','.join(demo_ids[:10]))
     return jsonify({
@@ -19978,6 +19972,10 @@ try:
     from web.db import init_db as _init_db
     _init_db()
     print('[db] tablas relacionales OK')
+    from modules import costos as _costos_boot
+    _mig = _costos_boot.unificar_una_vez()
+    if _mig:
+        print(f'[costos] unificados en la tabla contable: {_mig}')
 except Exception as _e:
     print(f'[db] ERROR inicializando tablas relacionales: {_e}')
 

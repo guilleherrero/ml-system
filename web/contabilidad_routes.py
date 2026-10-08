@@ -291,6 +291,17 @@ def gastos():
 # CARGA MASIVA DE COSTOS
 # ══════════════════════════════════════════════════════════════════════════════
 
+
+def _espejo_costos():
+    """Los costos de esta tabla son los de todo el sistema: después de
+    cargarlos se regenera el espejo (config/costos.json) que leen Mis
+    publicaciones, la Calculadora, Promociones y Alertas."""
+    try:
+        from modules import costos
+        costos.sincronizar_espejo()
+    except Exception as e:
+        flash(f'Los costos se guardaron, pero no se pudieron publicar al resto del sistema: {e}', 'warning')
+
 @bp.route('/traer-costos', methods=['POST'])
 def traer_costos():
     """
@@ -299,6 +310,8 @@ def traer_costos():
     """
     try:
         res = cierre.importar_costos_del_sistema()
+        if not res.get('error'):
+            _espejo_costos()
         if res.get('error'):
             flash(f'No se pudieron leer los costos del sistema: {res["error"]}',
                   'danger')
@@ -354,16 +367,24 @@ def costos():
                 hoy = date.today()
                 res_cmv = cierre.aplicar_cmv(date(hoy.year, 1, 1), hoy)
                 resultado['cmv'] = res_cmv
+                _espejo_costos()
             except Exception as e:
                 flash(f'Error procesando los costos: {e}', 'danger')
         else:
             flash('No pegaste ni subiste nada.', 'warning')
 
     faltantes = cierre.items_sin_costo()
+    try:
+        from core.db_storage import db_load
+        from modules import costos as _c
+        unificacion = db_load(_c.MARCA_MIGRACION)
+    except Exception:
+        unificacion = None
     return render_template(
         'contabilidad_costos.html',
         resultado=resultado,
         faltantes=faltantes,
+        unificacion=unificacion,
         mes_actual=date(date.today().year, 1, 1).isoformat(),
         **_ctx_base(),
     )
