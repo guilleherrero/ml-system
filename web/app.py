@@ -2922,6 +2922,7 @@ def api_costos_save():
         actuales = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
         saved = 0
         deleted = 0
+        protegidos = []   # costos contables: no se borran desde acá
         for entry in costos_in:
             item_id = entry['id']
             costo   = entry.get('costo')
@@ -2931,10 +2932,16 @@ def api_costos_save():
                 saved += 1
             elif costo == 0 or costo is None:
                 if item_id in actuales:
-                    _costos.borrar(item_id)
-                    deleted += 1
+                    if _costos.borrar(item_id):
+                        deleted += 1
+                    else:
+                        protegidos.append(item_id)
 
-        return jsonify({'ok': True, 'saved': saved, 'deleted': deleted})
+        resp = {'ok': True, 'saved': saved, 'deleted': deleted}
+        if protegidos:
+            resp['aviso'] = (f'{len(protegidos)} costo(s) no se borraron porque están cargados en '
+                             'Contabilidad. Corregilos en Finanzas → Contabilidad → Costos.')
+        return jsonify(resp)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
@@ -3032,39 +3039,24 @@ def api_costos_wizard_top10(alias):
 
 
 def _detectar_costos_demo(costos_data: dict, stock_items: list) -> list:
-    """Identifica entries en costos.json que probablemente son del seed demo.
+    """Costos del seed de demo: ids MLA001..MLA099 (formato de demo_data.py).
 
-    Criterios (cualquiera basta):
-      1. Patrón del seed: id match exacto a MLA001..MLA999 (3 dígitos cortos)
-         que es el formato que usa demo_data.py.
-      2. Huérfano: el id no aparece en stock_<alias>.json — si el sistema lo
-         leyó del seed pero el item nunca existió en la cuenta real.
+    Antes también marcaba como demo cualquier ítem ausente del stock actual
+    de la cuenta. Eso incluye publicaciones pausadas o terminadas y los
+    ítems de otras cuentas: con los costos unificados en la tabla contable,
+    borrarlos cambiaba el resultado de meses pasados. Ahora solo el seed.
     """
     import re as _re
-    seed_pattern = _re.compile(r'^MLA0\d{2}$')   # MLA001..MLA099 — 3 chars after MLA0
-    stock_ids    = {(it.get('id') or '').upper() for it in stock_items if it.get('id')}
-
-    demo_ids = []
-    for cost_id in costos_data.keys():
-        cid = (cost_id or '').strip().upper()
-        if not cid:
-            continue
-        # Criterio 1: patrón del seed
-        if seed_pattern.match(cid):
-            demo_ids.append(cost_id)
-            continue
-        # Criterio 2: huérfano (solo si tenemos stock cargado para comparar)
-        if stock_ids and cid not in stock_ids:
-            demo_ids.append(cost_id)
-    return demo_ids
+    seed_pattern = _re.compile(r'^MLA0\d{2}$')
+    return [cid for cid in costos_data.keys() if seed_pattern.match((cid or '').strip().upper())]
 
 
 @app.route('/api/costos-limpiar-demo/<alias>', methods=['POST'])
 def api_costos_limpiar_demo(alias):
-    """Elimina las entries identificadas como costos demo / huérfanos.
+    """Elimina los costos del seed de demo (MLA001..MLA099).
 
     Usa el mismo detector que api_costos_detectar_demo para identificar qué
-    borrar. Solo toca los entries del seed o huérfanos — los costos reales
+    borrar. Solo toca los ids del seed — los costos reales
     quedan intactos.
     """
     costos_path = os.path.join(CONFIG_DIR, 'costos.json')
@@ -3091,7 +3083,7 @@ def api_costos_limpiar_demo(alias):
 
 @app.route('/api/costos-detectar-demo/<alias>')
 def api_costos_detectar_demo(alias):
-    """Devuelve la lista detallada de costos identificados como demo/huérfanos."""
+    """Devuelve la lista detallada de costos del seed de demo."""
     costos_data = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
     stock_data  = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
     items       = stock_data.get('items', [])

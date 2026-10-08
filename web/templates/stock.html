@@ -1649,8 +1649,9 @@ async function saveCostos() {
     const data = await r.json();
     if (data.ok) {
       showToast(`✓ ${data.saved} costos guardados`, 'success');
+      if (data.aviso) showToast(data.aviso, 'warning');
       bootstrap.Modal.getInstance(document.getElementById('costosModal')).hide();
-      setTimeout(() => location.reload(), 1500);
+      setTimeout(() => location.reload(), data.aviso ? 4000 : 1500);
     } else {
       throw new Error(data.error);
     }

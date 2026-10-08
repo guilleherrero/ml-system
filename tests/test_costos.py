@@ -122,3 +122,31 @@ def test_costos_distintos_quedan_registrados_y_gana_la_tabla(entorno):
     res = costos.unificar_una_vez()
     assert res['distintos'] == [{'item_id': 'MLA1', 'titulo': 'Faja', 'costo_json': 9000.0, 'costo_tabla': 12000.0}]
     assert espejo(entorno)['MLA1']['costo'] == 12000.0
+
+
+def test_borrar_desde_el_panel_no_toca_costos_contables(entorno):
+    # Hallazgo de la revisión de seguridad: vaciar el campo en Mis
+    # publicaciones borraba la historia contable y cambiaba meses cerrados.
+    costos.unificar_una_vez()
+    from web.db import session_scope
+    from web.models_contabilidad import CostoProducto
+    with session_scope() as s:
+        s.add(CostoProducto(item_id='MLA9', variacion='', costo_unitario=5000,
+                            vigente_desde=date(HOY.year, 1, 1), origen_dato='excel'))
+    costos.sincronizar_espejo()
+    costos.guardar('MLA9', 5200, origen='panel')               # versión de hoy desde el panel
+    assert costos.borrar('MLA9') == 1                          # se va solo la del panel
+    assert espejo(entorno)['MLA9']['costo'] == 5000.0          # queda la contable
+
+
+def test_limpiar_demo_solo_toca_el_seed():
+    # Antes también marcaba "huérfanos" (ítems fuera del stock actual: pausados,
+    # terminados u otra cuenta) y con costos unificados eso borraba contabilidad.
+    # Se carga la función sola: importar web.app arranca el scheduler.
+    src = open(os.path.join(os.path.dirname(__file__), '..', 'web', 'app.py')).read()
+    i = src.index('def _detectar_costos_demo')
+    ns = {}
+    exec(src[i:src.index('\n\n\n', i)], ns)
+    detectar = ns['_detectar_costos_demo']
+    costos_json = {'MLA001': {}, 'MLA099': {}, 'MLA2570796766': {}, 'MLA1234': {}}
+    assert detectar(costos_json, [{'id': 'MLA1234'}]) == ['MLA001', 'MLA099']

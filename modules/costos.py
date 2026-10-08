@@ -68,7 +68,7 @@ def sincronizar_espejo() -> int:
 
 
 def guardar(item_id: str, costo, *, titulo: str | None = None, alias: str | None = None,
-            variacion: str = '', desde: date | None = None, origen: str = 'manual') -> None:
+            variacion: str = '', desde: date | None = None, origen: str = 'panel') -> None:
     """Carga o corrige el costo de una publicación.
 
     - Primer costo del ítem: rige desde el 1 de enero del año, para que
@@ -103,14 +103,23 @@ def guardar(item_id: str, costo, *, titulo: str | None = None, alias: str | None
             db_save(ESPEJO, esp)
 
 
+# Orígenes que se pueden borrar desde el panel. Lo cargado en Contabilidad
+# (manual, excel, calculadora) es historia contable: se corrige ahí.
+BORRABLES_DESDE_PANEL = ('panel', 'costos_json', 'cli')
+
+
 def borrar(item_id: str) -> int:
-    """Quita el costo de una publicación (todas sus vigencias): es lo que pide
-    el usuario al vaciar el campo. Devuelve cuántas filas borró."""
+    """Quita el costo de carga rápida de una publicación (lo que pide el
+    usuario al vaciar el campo). No toca costos cargados en Contabilidad:
+    borrarlos cambiaría el resultado de meses ya cerrados. Devuelve cuántas
+    filas borró."""
     _asegurar_migracion()
     session_scope, Costo = _modelo()
     item_id = str(item_id).strip().upper()
     with session_scope() as s:
-        n = s.query(Costo).filter_by(item_id=item_id).delete()
+        n = (s.query(Costo).filter(Costo.item_id == item_id,
+                                   Costo.origen_dato.in_(BORRABLES_DESDE_PANEL))
+             .delete(synchronize_session=False))
     sincronizar_espejo()
     return n
 
