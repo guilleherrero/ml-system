@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Mi perfil{% endblock %}
 
 {% block content %}
@@ -17,10 +18,10 @@
 .perfil-info-row .label { color:var(--color-neutral-600); min-width:130px; }
 .perfil-info-row .value { color:var(--color-neutral-800); font-weight:var(--font-weight-semibold); }
 .perfil-form-row { margin-bottom:1rem; }
-.perfil-form-row label { font-weight:var(--font-weight-semibold); color:#475569; font-size:.85rem; margin-bottom:.3rem; display:block; }
+.perfil-form-row label { font-weight:var(--font-weight-semibold); color:var(--app-text-2); font-size:.85rem; margin-bottom:.3rem; display:block; }
 .perfil-msg { padding:.75rem 1rem; border-radius:var(--radius-sm); margin-top:1rem; font-size:.88rem; }
-.perfil-msg.ok    { background:var(--color-success-100); color:#166534; border:1px solid #86efac; }
-.perfil-msg.error { background:var(--color-critical-100); color:var(--color-critical-700); border:1px solid #fca5a5; }
+.perfil-msg.ok    { background:var(--color-success-100); color:var(--color-success-700); border:1px solid var(--color-success-400); }
+.perfil-msg.error { background:var(--color-critical-100); color:var(--color-critical-700); border:1px solid var(--color-critical-400); }
 </style>
 
 <div class="page-header">
@@ -42,7 +43,7 @@
       <span class="label">Rol</span>
       <span class="value">
         {% if user.is_admin %}
-          <span class="badge" style="background:#1e3a8a">Administrador</span>
+          <span class="badge" style="background:var(--solid-info)">Administrador</span>
         {% else %}
           <span class="badge bg-secondary">Usuario estándar</span>
         {% endif %}

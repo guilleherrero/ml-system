@@ -1,33 +1,34 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Telegram{% endblock %}
 {% block content %}
 <style>
   .tg-card { background:var(--color-neutral-0); border-radius:12px; padding:20px 22px;
              box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:16px; }
-  .tg-card h2 { font-size:1rem; font-weight:700; color:#111827; margin:0 0 4px; }
-  .tg-card p  { font-size:.8125rem; color:#4b5563; margin:0 0 12px; line-height:1.55; max-width:72ch; }
+  .tg-card h2 { font-size:1rem; font-weight:700; color:var(--app-text); margin:0 0 4px; }
+  .tg-card p  { font-size:.8125rem; color:var(--app-text-2); margin:0 0 12px; line-height:1.55; max-width:72ch; }
 
   .tg-estado { display:flex; align-items:center; gap:10px; padding:12px 14px;
                border-radius:10px; margin-bottom:14px; font-size:.875rem; }
   .tg-ok   { background:var(--color-success-100); color:var(--color-success-500); }
-  .tg-mal  { background:var(--color-warning-100); color:#92400e; }
+  .tg-mal  { background:var(--color-warning-100); color:var(--color-warning-700); }
   .tg-estado i { font-size:1.15rem; }
 
-  .tg-paso { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid #f3f4f6; }
+  .tg-paso { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--color-neutral-100); }
   .tg-paso:last-child { border-bottom:none; }
   .tg-n { width:24px;height:24px;border-radius:50%;background:var(--color-info-100);
           color:var(--color-info-600);font-size:.75rem;font-weight:700;flex-shrink:0;
           display:flex;align-items:center;justify-content:center; }
   .tg-paso.hecho .tg-n { background:var(--color-success-100); color:var(--color-success-500); }
-  .tg-paso div:last-child { font-size:.8125rem; color:#374151; line-height:1.55; }
-  .tg-paso code { background:#f3f4f6; padding:1px 6px; border-radius:4px;
-                  font-size:.78rem; color:#111827; }
+  .tg-paso div:last-child { font-size:.8125rem; color:var(--color-neutral-700); line-height:1.55; }
+  .tg-paso code { background:var(--color-neutral-100); padding:1px 6px; border-radius:4px;
+                  font-size:.78rem; color:var(--app-text); }
 
   .tg-aviso { display:flex; align-items:center; justify-content:space-between;
-              padding:11px 0; border-bottom:1px solid #f3f4f6; gap:12px; }
+              padding:11px 0; border-bottom:1px solid var(--color-neutral-100); gap:12px; }
   .tg-aviso:last-child { border-bottom:none; }
-  .tg-aviso .n { font-size:.875rem; color:#111827; font-weight:600; }
-  .tg-aviso .d { font-size:.75rem; color:#6b7280; margin-top:2px; }
+  .tg-aviso .n { font-size:.875rem; color:var(--app-text); font-weight:600; }
+  .tg-aviso .d { font-size:.75rem; color:var(--color-neutral-500); margin-top:2px; }
   .tg-sw { flex-shrink:0; }
 </style>
 
@@ -86,7 +87,7 @@
       <i class="bi bi-send"></i> Mandar mensaje de prueba</button>
     <button class="btn btn-outline-secondary btn-sm" id="btnResumen">
       <i class="bi bi-list-check"></i> Mandar el resumen ahora</button>
-    <span id="tgMsg" style="font-size:.8125rem;color:#6b7280"></span>
+    <span id="tgMsg" style="font-size:.8125rem;color:var(--color-neutral-500)"></span>
   </div>
 </div>
 
@@ -125,7 +126,7 @@ const NOMBRES = {
 };
 
 function msg(t, err){ const e=document.getElementById('tgMsg');
-  e.textContent=t; e.style.color = err ? 'var(--color-critical-500)' : '#6b7280'; }
+  e.textContent=t; e.style.color = err ? 'var(--color-critical-500)' : 'var(--color-neutral-500)'; }
 
 function renderAvisos(avisos){
   document.getElementById('tgAvisos').innerHTML = Object.keys(NOMBRES).map(k=>{

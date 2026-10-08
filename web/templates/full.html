@@ -1,22 +1,23 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Mercado Envíos Full {{ alias }}{% endblock %}
 
 {% block content %}
 <style>
-.badge-sin    { background:#fef2f2; color:var(--color-critical-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-sin    { background:var(--color-critical-50); color:var(--color-critical-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-urg    { background:var(--color-critical-100); color:var(--color-critical-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-muerto { background:var(--color-warning-100); color:var(--color-warning-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.badge-sinmov { background:var(--color-neutral-100); color:#475569; font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+.badge-sinmov { background:var(--color-neutral-100); color:var(--app-text-2); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-escalar{ background:var(--color-success-100); color:var(--color-success-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
 .badge-ok     { background:var(--color-neutral-100); color:var(--color-neutral-600); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; white-space:nowrap; }
-.filter-pill  { border:1px solid #e5e7eb; border-radius:20px; padding:.3rem .85rem; font-size:.78rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0); transition:all .15s; white-space:nowrap; }
-.filter-pill:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
-.filter-pill.active { background:var(--color-info-600); border-color:var(--color-info-600); color:#fff; font-weight:600; }
+.filter-pill  { border:1px solid var(--color-neutral-200); border-radius:20px; padding:.3rem .85rem; font-size:.78rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0); transition:all .15s; white-space:nowrap; }
+.filter-pill:hover { border-color:var(--color-info-300); background:var(--color-info-100); color:var(--color-info-700); }
+.filter-pill.active { background:var(--solid-info); border-color:var(--color-info-600); color:#fff; font-weight:600; }
 .full-row { border-bottom:1px solid var(--color-neutral-100); transition:background .1s; }
 .full-row:hover { background:var(--color-neutral-50); }
 .dias-ok     { color:var(--color-success-500); font-weight:600; }
 .dias-warn   { color:var(--color-warning-500); font-weight:600; }
-.dias-orange { color:#ea580c; font-weight:600; }
+.dias-orange { color:var(--color-warning-500); font-weight:600; }
 .dias-red    { color:var(--color-critical-500); font-weight:600; }
 .section-title { font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-600); padding:.5rem 1rem; background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-200); }
 .pedido-card { border:1px solid var(--color-neutral-200); border-radius:10px; padding:1rem; margin-bottom:.75rem; }
@@ -28,7 +29,7 @@
 .estado-pill { font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; }
 .ep-pendiente   { background:var(--color-neutral-100); color:var(--color-neutral-600); }
 .ep-en_transito { background:var(--color-warning-100); color:var(--color-warning-500); }
-.ep-en_deposito { background:#ede9fe; color:#7c3aed; }
+.ep-en_deposito { background:var(--color-info-100); color:#7c3aed; }
 .ep-enviado_full{ background:var(--color-info-100); color:var(--color-info-700); }
 .ep-ingresado   { background:var(--color-success-100); color:var(--color-success-500); }
 </style>
@@ -119,7 +120,7 @@
     </div>
     <div class="card-body p-0">
       <table class="table mb-0" style="font-size:.84rem">
-        <thead style="background:#fffbeb;font-size:.73rem;color:var(--color-warning-700);font-weight:700;text-transform:uppercase">
+        <thead style="background:var(--color-warning-50);font-size:.73rem;color:var(--color-warning-700);font-weight:700;text-transform:uppercase">
           <tr>
             <th style="padding:.6rem 1rem">Publicación</th>
             <th class="text-end" style="padding:.6rem .7rem">Stock Full</th>
@@ -143,7 +144,7 @@
     </div>
     <div class="card-body p-0">
       <table class="table mb-0" style="font-size:.84rem">
-        <thead style="background:#f0fdf4;font-size:.73rem;color:#166534;font-weight:700;text-transform:uppercase">
+        <thead style="background:var(--color-success-50);font-size:.73rem;color:var(--color-success-700);font-weight:700;text-transform:uppercase">
           <tr>
             <th style="padding:.6rem 1rem">Publicación</th>
             <th class="text-end" style="padding:.6rem .7rem">Stock</th>
@@ -171,7 +172,7 @@
     </div>
     <div class="table-responsive">
       <table class="table mb-0" style="font-size:.84rem">
-        <thead style="background:#f0f9ff;font-size:.73rem;color:#0369a1;font-weight:700;text-transform:uppercase;letter-spacing:.04em">
+        <thead style="background:var(--color-info-100);font-size:.73rem;color:var(--color-info-700);font-weight:700;text-transform:uppercase;letter-spacing:.04em">
           <tr>
             <th style="padding:.65rem 1rem">Publicación</th>
             <th class="text-end" style="padding:.65rem .7rem;white-space:nowrap">Precio</th>
@@ -359,7 +360,7 @@ function renderCards(r) {
       </div>
     </div>
     <div class="col-6 col-md-2">
-      <div class="card text-center p-3" style="border-top:3px solid #f87171">
+      <div class="card text-center p-3" style="border-top:3px solid var(--color-critical-400)">
         <div style="font-size:2rem;font-weight:800;color:var(--color-critical-500)">${r.urgente}</div>
         <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600">REPONER YA</div>
       </div>
@@ -380,7 +381,7 @@ function renderCards(r) {
     </div>
     <div class="col-6 col-md-2">
       <div class="card text-center p-3" style="border-top:3px solid var(--color-success-400)">
-        <div style="font-size:1.1rem;font-weight:800;color:#059669;line-height:1.2">${fmt(r.revenue_30d_total)}</div>
+        <div style="font-size:1.1rem;font-weight:800;color:var(--color-success-500);line-height:1.2">${fmt(r.revenue_30d_total)}</div>
         <div style="font-size:.72rem;color:var(--color-neutral-600);font-weight:600;margin-top:.15rem">REVENUE 30D</div>
         <div style="font-size:.65rem;color:var(--color-neutral-400)">facturación estimada</div>
       </div>
@@ -391,11 +392,11 @@ function renderCards(r) {
 function renderFiltros(r) {
   document.getElementById('filtros-full').innerHTML = `
     <button class="filter-pill active" onclick="filtrar('todos',this)">Todos <span class="badge bg-secondary ms-1">${r.total}</span></button>
-    <button class="filter-pill" onclick="filtrar('SIN_STOCK',this)" style="border-color:#fecaca"><i class="bi bi-x-octagon me-1 text-danger"></i>Sin stock <span class="badge bg-danger ms-1">${r.sin_stock}</span></button>
-    <button class="filter-pill" onclick="filtrar('REPONER_URGENTE',this)" style="border-color:#fecaca"><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Reponer ya <span class="badge bg-danger ms-1">${r.urgente}</span></button>
-    <button class="filter-pill" onclick="filtrar('STOCK_MUERTO',this)" style="border-color:#fde68a"><i class="bi bi-archive me-1 text-warning"></i>Stock muerto Full <span class="badge bg-warning text-dark ms-1">${r.muerto}</span></button>
+    <button class="filter-pill" onclick="filtrar('SIN_STOCK',this)" style="border-color:var(--color-critical-100)"><i class="bi bi-x-octagon me-1 text-danger"></i>Sin stock <span class="badge bg-danger ms-1">${r.sin_stock}</span></button>
+    <button class="filter-pill" onclick="filtrar('REPONER_URGENTE',this)" style="border-color:var(--color-critical-100)"><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Reponer ya <span class="badge bg-danger ms-1">${r.urgente}</span></button>
+    <button class="filter-pill" onclick="filtrar('STOCK_MUERTO',this)" style="border-color:var(--color-warning-100)"><i class="bi bi-archive me-1 text-warning"></i>Stock muerto Full <span class="badge bg-warning text-dark ms-1">${r.muerto}</span></button>
     <button class="filter-pill" onclick="filtrar('SIN_MOVIMIENTO',this)" style="border-color:var(--color-neutral-200)"><i class="bi bi-pause-circle me-1 text-secondary"></i>Sin movimiento <span class="badge bg-secondary ms-1">${r.sin_movimiento || 0}</span></button>
-    <button class="filter-pill" onclick="filtrar('ESCALAR',this)" style="border-color:#bbf7d0"><i class="bi bi-rocket-takeoff me-1 text-success"></i>Escalar <span class="badge bg-success ms-1">${r.escalar}</span></button>
+    <button class="filter-pill" onclick="filtrar('ESCALAR',this)" style="border-color:var(--color-success-100)"><i class="bi bi-rocket-takeoff me-1 text-success"></i>Escalar <span class="badge bg-success ms-1">${r.escalar}</span></button>
     <button class="filter-pill" onclick="filtrar('OK',this)" style="border-color:var(--color-neutral-200)"><i class="bi bi-check-circle me-1 text-secondary"></i>OK <span class="badge bg-secondary ms-1">${r.ok}</span></button>`;
 }
 
@@ -461,7 +462,7 @@ function renderTabla(items) {
       </td>
       <td class="text-end" style="padding:.7rem .7rem">${it.en_transito > 0 ? `<span style="color:var(--color-warning-400);font-weight:600">${it.en_transito}</span><div style="font-size:.65rem;color:var(--color-neutral-400)">en camino</div>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.vel_30 > 0 ? it.vel_30.toFixed(1) : '<span class="text-muted">0</span>'}</td>
-      <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">${it.revenue_30d > 0 ? `<span style="font-weight:600;color:#059669">${fmtPeso(it.revenue_30d)}</span>` : '<span class="text-muted">—</span>'}</td>
+      <td class="text-end" style="padding:.7rem .7rem;white-space:nowrap">${it.revenue_30d > 0 ? `<span style="font-weight:600;color:var(--color-success-500)">${fmtPeso(it.revenue_30d)}</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${diasClass(it.dias_stock, it.lead_days)}</td>
       <td class="text-end" style="padding:.7rem .7rem;font-size:.82rem">${it.sin_ventas_dias != null ? `<span style="color:${it.sin_ventas_dias>=21?'var(--color-critical-500)':it.sin_ventas_dias>=10?'var(--color-warning-500)':'var(--color-neutral-600)'}">${it.sin_ventas_dias}d</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-end" style="padding:.7rem .7rem">${it.margen_pct !== null ? `<span style="color:${it.margen_pct>=15?'var(--color-success-500)':it.margen_pct>=0?'var(--color-warning-500)':'var(--color-critical-500)'};font-weight:600">${it.margen_pct}%</span>` : '<span class="text-muted">—</span>'}</td>
@@ -568,7 +569,7 @@ function renderSugeridos(items) {
           ? '<span style="color:var(--color-success-500);font-size:.8rem"><i class="bi bi-check-circle-fill"></i></span>'
           : '<span style="color:var(--color-critical-500);font-size:.8rem"><i class="bi bi-x-circle-fill"></i></span>'}
       </td>
-      <td style="padding:.65rem .7rem;font-size:.78rem;color:#475569">
+      <td style="padding:.65rem .7rem;font-size:.78rem;color:var(--app-text-2)">
         ${it.razones.map(r => `<div><i class="bi bi-arrow-right me-1 text-primary" style="font-size:.7rem"></i>${r}</div>`).join('')}
       </td>
       <td style="padding:.65rem .7rem">

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Calendario{% endblock %}
 
 {% block content %}
@@ -34,7 +35,7 @@
       <div class="small text-secondary">{{ ev.consejo }}</div>
 
       <div class="mt-3 pt-2 border-top">
-        <small class="fw-semibold text-uppercase" style="font-size:.68rem;letter-spacing:.05em;color:#9ca3af">Acción</small><br>
+        <small class="fw-semibold text-uppercase" style="font-size:.68rem;letter-spacing:.05em;color:var(--color-neutral-400)">Acción</small><br>
         <small class="{{ 'text-danger fw-semibold' if ev.dias <= 15 else ('text-warning fw-semibold' if ev.dias <= 30 else 'text-secondary') }}">
           {% if ev.dias <= 7 %}Revisá stock y precios AHORA
           {% elif ev.dias <= 15 %}Activar publicidad y revisar precios

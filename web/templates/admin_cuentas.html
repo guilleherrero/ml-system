@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Gestión de Cuentas{% endblock %}
 
 {% block content %}
@@ -8,10 +9,10 @@
   padding:1.1rem 1.3rem; margin-bottom:1rem; display:flex;
   gap:1.2rem; align-items:flex-start; flex-wrap:wrap;
 }
-.cuenta-card.paused { background:#fafafa; border-style:dashed; opacity:.85; }
+.cuenta-card.paused { background:var(--color-neutral-50); border-style:dashed; opacity:.85; }
 .cuenta-card-info { flex:1; min-width:240px; }
 .cuenta-card-titulo {
-  font-size:1.05rem; font-weight:700; color:#0f172a; display:flex;
+  font-size:1.05rem; font-weight:700; color:var(--app-text); display:flex;
   align-items:center; gap:.5rem; flex-wrap:wrap;
 }
 .cuenta-card-meta { font-size:.78rem; color:var(--color-neutral-600); margin-top:.3rem; line-height:1.5; }
@@ -20,7 +21,7 @@
   font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:10px;
   text-transform:uppercase; letter-spacing:.04em;
 }
-.cuenta-status.ok      { background:var(--color-success-100); color:#166534; }
+.cuenta-status.ok      { background:var(--color-success-100); color:var(--color-success-700); }
 .cuenta-status.warning { background:var(--color-warning-100); color:var(--color-warning-700); }
 .cuenta-status.error   { background:var(--color-critical-100); color:var(--color-critical-700); }
 .cuenta-status.paused  { background:var(--color-neutral-100); color:var(--color-neutral-600); }
@@ -28,14 +29,14 @@
   font-size:.74rem; padding:5px 11px; border-radius:6px; border:1px solid;
   background:transparent; cursor:pointer; font-weight:600;
 }
-.btn-cuenta-action.primary   { color:var(--color-info-600); border-color:#bfdbfe; background:#eff6ff; }
+.btn-cuenta-action.primary   { color:var(--color-info-600); border-color:var(--color-info-100); background:var(--color-info-100); }
 .btn-cuenta-action.primary:hover   { background:var(--color-info-100); }
-.btn-cuenta-action.warning   { color:var(--color-warning-700); border-color:#fde68a; background:var(--color-warning-100); }
-.btn-cuenta-action.warning:hover   { background:#fde68a; }
-.btn-cuenta-action.success   { color:#166534; border-color:#86efac; background:var(--color-success-100); }
-.btn-cuenta-action.success:hover   { background:#bbf7d0; }
-.btn-cuenta-action.danger    { color:var(--color-critical-700); border-color:#fca5a5; background:var(--color-critical-100); }
-.btn-cuenta-action.danger:hover    { background:#fecaca; }
+.btn-cuenta-action.warning   { color:var(--color-warning-700); border-color:var(--color-warning-100); background:var(--color-warning-100); }
+.btn-cuenta-action.warning:hover   { background:var(--color-warning-100); }
+.btn-cuenta-action.success   { color:var(--color-success-700); border-color:var(--color-success-400); background:var(--color-success-100); }
+.btn-cuenta-action.success:hover   { background:var(--color-success-100); }
+.btn-cuenta-action.danger    { color:var(--color-critical-700); border-color:var(--color-critical-400); background:var(--color-critical-100); }
+.btn-cuenta-action.danger:hover    { background:var(--color-critical-100); }
 .form-nueva {
   background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px;
   padding:1.5rem; margin-top:2rem;
@@ -43,10 +44,10 @@
 .form-nueva-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
 @media (max-width: 720px) { .form-nueva-grid { grid-template-columns:1fr; } }
 .form-help {
-  font-size:.78rem; color:#475569; background:#f0f9ff; border-left:3px solid #38bdf8;
+  font-size:.78rem; color:var(--app-text-2); background:var(--color-info-100); border-left:3px solid #38bdf8;
   padding:.7rem 1rem; border-radius:6px; margin-bottom:1rem; line-height:1.55;
 }
-.form-help a { color:#0284c7; font-weight:600; }
+.form-help a { color:var(--color-info-500); font-weight:600; }
 </style>
 
 <div class="page-header">
@@ -54,7 +55,7 @@
     <h1><i class="bi bi-shop-window me-2 text-primary"></i>Gestión de Cuentas ML</h1>
     <div class="sub">
       Administrá las cuentas de MercadoLibre conectadas al sistema.
-      <span class="badge ms-2" style="background:#1e3a8a;font-size:.7rem">Solo admin</span>
+      <span class="badge ms-2" style="background:var(--solid-info);font-size:.7rem">Solo admin</span>
     </div>
   </div>
 </div>
@@ -70,7 +71,7 @@
 </div>
 
 {% if cuentas %}
-<h5 class="mt-3 mb-2" style="font-size:1rem;color:#475569">
+<h5 class="mt-3 mb-2" style="font-size:1rem;color:var(--app-text-2)">
   <i class="bi bi-list-ul me-1"></i> Cuentas configuradas ({{ cuentas|length }})
 </h5>
 {% for c in cuentas %}
@@ -139,14 +140,14 @@
 
 <!-- ── Formulario para agregar nueva cuenta ─────────────────────────── -->
 <div class="form-nueva">
-  <h5 style="margin:0 0 1rem;color:#0f172a">
+  <h5 style="margin:0 0 1rem;color:var(--app-text)">
     <i class="bi bi-plus-circle me-2 text-primary"></i>Agregar nueva cuenta
   </h5>
-  <details style="margin-bottom:1.2rem;border:1px solid #bae6fd;background:#f0f9ff;border-radius:8px;padding:.7rem 1rem">
-    <summary style="cursor:pointer;font-weight:700;color:#0369a1">
+  <details style="margin-bottom:1.2rem;border:1px solid var(--color-info-100);background:var(--color-info-100);border-radius:8px;padding:.7rem 1rem">
+    <summary style="cursor:pointer;font-weight:700;color:var(--color-info-700)">
       <i class="bi bi-book me-1"></i> Instructivo paso a paso (click para expandir)
     </summary>
-    <div style="margin-top:.8rem;line-height:1.7;font-size:.85rem;color:#0c4a6e">
+    <div style="margin-top:.8rem;line-height:1.7;font-size:.85rem;color:var(--color-info-700)">
       <p><strong>Paso 1 — Crear app en developers ML</strong></p>
       <ol style="margin-bottom:.8rem">
         <li>Andá a <a href="https://developers.mercadolibre.com.ar/devcenter" target="_blank" rel="noopener"><strong>developers.mercadolibre.com.ar/devcenter</strong></a></li>
@@ -154,7 +155,7 @@
         <li>Click "Crear nueva app"</li>
         <li>Nombre y descripción (ej: "Sistema ML — [vendedor]")</li>
         <li><strong>Redirect URI</strong> (importantísimo, copiala exacta):
-          <pre style="background:var(--color-neutral-0);padding:.4rem .7rem;border-radius:4px;border:1px solid var(--color-neutral-200);margin:.3rem 0;font-size:.8rem;color:#0f172a;user-select:all">{{ request.host_url }}oauth/exchange</pre>
+          <pre style="background:var(--color-neutral-0);padding:.4rem .7rem;border-radius:4px;border:1px solid var(--color-neutral-200);margin:.3rem 0;font-size:.8rem;color:var(--app-text);user-select:all">{{ request.host_url }}oauth/exchange</pre>
         </li>
         <li>Activá los permisos (toggles): <strong>Items y búsqueda, Órdenes, Postventa, Publicidad Read, Publicidad Write</strong></li>
         <li>Guardá la app y copiá el <strong>Client ID</strong> y <strong>Client Secret</strong></li>
@@ -175,7 +176,7 @@
         <li>Volvés al sistema con la cuenta ya activa</li>
       </ul>
 
-      <p style="margin-top:.8rem;font-size:.78rem;color:#0369a1">
+      <p style="margin-top:.8rem;font-size:.78rem;color:var(--color-info-700)">
         <i class="bi bi-file-earmark-text me-1"></i>
         Documentación completa: <code>docs/INSTRUCTIVO_AGREGAR_CUENTA_ML.md</code> en el repo.
       </p>

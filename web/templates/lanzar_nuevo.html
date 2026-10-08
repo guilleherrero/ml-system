@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Lanzar Producto Nuevo{% endblock %}
 {% block content %}
 <style>
 /* ── Optimization Cards (same design system as optimizaciones.html) ─────── */
 .opt-card { border-radius:14px; box-shadow:0 2px 10px rgba(0,0,0,.07); border:1px solid var(--color-neutral-200); overflow:hidden; background:var(--color-neutral-0); margin-bottom:1.5rem; }
 .opt-card-hdr { padding:14px 20px; display:flex; align-items:center; gap:10px; background:var(--color-neutral-0); border-bottom:1px solid var(--color-neutral-100); flex-wrap:wrap; }
-.opt-card-title { font-size:.9rem; font-weight:600; color:#0f172a; flex:1; min-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.opt-card-title { font-size:.9rem; font-weight:600; color:var(--app-text); flex:1; min-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* Sections */
 .opt-sec { border-top:1px solid var(--color-neutral-100); }
@@ -18,29 +19,29 @@
 /* Title options */
 .t-opt { border-radius:9px; overflow:hidden; margin-bottom:8px; }
 .t-opt.rec { border:2px solid var(--color-success-500); box-shadow:0 1px 6px rgba(22,163,74,.15); }
-.t-opt.nor { border:1px solid #d1fae5; }
+.t-opt.nor { border:1px solid var(--color-success-100); }
 .t-opt-head { padding:10px 14px; display:flex; align-items:center; gap:10px; }
-.t-opt.rec .t-opt-head { background:#bbf7d0; }
-.t-opt.nor .t-opt-head { background:#f0fdf4; }
-.t-opt-num { font-size:.62rem; font-weight:800; text-transform:uppercase; color:#166534; flex-shrink:0; min-width:55px; }
-.t-opt-text { font-size:.9rem; font-weight:600; color:#14532d; flex:1; }
+.t-opt.rec .t-opt-head { background:var(--color-success-100); }
+.t-opt.nor .t-opt-head { background:var(--color-success-50); }
+.t-opt-num { font-size:.62rem; font-weight:800; text-transform:uppercase; color:var(--color-success-700); flex-shrink:0; min-width:55px; }
+.t-opt-text { font-size:.9rem; font-weight:600; color:var(--color-success-700); flex:1; }
 .t-opt-chars { font-size:.67rem; color:var(--color-neutral-500); flex-shrink:0; }
-.t-opt-strat { padding:6px 14px; font-size:.71rem; color:#475569; background:#f7fdf9; border-top:1px solid #d1fae5; display:flex; align-items:flex-start; gap:6px; }
-.t-opt-why   { padding:6px 14px; font-size:.72rem; color:#166534; background:var(--color-success-100); border-top:1px solid #a7f3d0; display:flex; align-items:flex-start; gap:6px; }
+.t-opt-strat { padding:6px 14px; font-size:.71rem; color:var(--app-text-2); background:var(--color-success-50); border-top:1px solid var(--color-success-100); display:flex; align-items:flex-start; gap:6px; }
+.t-opt-why   { padding:6px 14px; font-size:.72rem; color:var(--color-success-700); background:var(--color-success-100); border-top:1px solid var(--color-success-100); display:flex; align-items:flex-start; gap:6px; }
 
 /* Actions */
 .act-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
 .act-card { border-radius:10px; padding:14px 16px; }
-.act-card.catalog { background:#fef9c3; border:1px solid #fde68a; }
-.act-card.fix     { background:#eff6ff; border:1px solid #bfdbfe; }
-.act-card.price   { background:#f0fdf4; border:1px solid #bbf7d0; }
-.act-card.photos  { background:#fdf4ff; border:1px solid #e9d5ff; }
+.act-card.catalog { background:var(--color-warning-100); border:1px solid var(--color-warning-100); }
+.act-card.fix     { background:var(--color-info-100); border:1px solid var(--color-info-100); }
+.act-card.price   { background:var(--color-success-50); border:1px solid var(--color-success-100); }
+.act-card.photos  { background:var(--color-info-100); border:1px solid var(--color-info-100); }
 .act-lbl  { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
 .act-body { font-size:.82rem; line-height:1.65; white-space:pre-wrap; }
-.act-card.catalog .act-lbl { color:var(--color-warning-700); } .act-card.catalog .act-body { color:#78350f; }
-.act-card.fix     .act-lbl { color:#1e40af; } .act-card.fix     .act-body { color:#1e3a8a; }
-.act-card.price   .act-lbl { color:#14532d; } .act-card.price   .act-body { color:#166534; }
-.act-card.photos  .act-lbl { color:#6b21a8; } .act-card.photos  .act-body { color:#581c87; }
+.act-card.catalog .act-lbl { color:var(--color-warning-700); } .act-card.catalog .act-body { color:var(--color-warning-700); }
+.act-card.fix     .act-lbl { color:var(--color-info-700); } .act-card.fix     .act-body { color:var(--color-info-700); }
+.act-card.price   .act-lbl { color:var(--color-success-700); } .act-card.price   .act-body { color:var(--color-success-700); }
+.act-card.photos  .act-lbl { color:var(--color-info-700); } .act-card.photos  .act-body { color:var(--color-info-700); }
 
 /* Analysis accordion */
 .anl-item { border-radius:8px; overflow:hidden; border:1px solid var(--color-neutral-200); margin-bottom:8px; }
@@ -54,27 +55,27 @@
 /* Insights */
 .ins-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
 .ins-card { border-radius:10px; padding:14px 16px; }
-.ins-card.debil { background:#fef2f2; border:1px solid #fecaca; }
-.ins-card.dudas { background:#fef9c3; border:1px solid #fde68a; }
-.ins-card.valor { background:#f0fdf4; border:1px solid #bbf7d0; }
-.ins-card.leng  { background:#fdf4ff; border:1px solid #e9d5ff; }
+.ins-card.debil { background:var(--color-critical-50); border:1px solid var(--color-critical-100); }
+.ins-card.dudas { background:var(--color-warning-100); border:1px solid var(--color-warning-100); }
+.ins-card.valor { background:var(--color-success-50); border:1px solid var(--color-success-100); }
+.ins-card.leng  { background:var(--color-info-100); border:1px solid var(--color-info-100); }
 .ins-lbl  { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
 .ins-body { font-size:.8rem; line-height:1.6; white-space:pre-wrap; }
-.ins-card.debil .ins-lbl { color:var(--color-critical-700); } .ins-card.debil .ins-body { color:#7f1d1d; }
-.ins-card.dudas .ins-lbl { color:#854d0e; } .ins-card.dudas .ins-body { color:#78350f; }
-.ins-card.valor .ins-lbl { color:#14532d; } .ins-card.valor .ins-body { color:#166534; }
-.ins-card.leng  .ins-lbl { color:#6b21a8; } .ins-card.leng  .ins-body { color:#581c87; }
+.ins-card.debil .ins-lbl { color:var(--color-critical-700); } .ins-card.debil .ins-body { color:var(--color-critical-700); }
+.ins-card.dudas .ins-lbl { color:var(--color-warning-700); } .ins-card.dudas .ins-body { color:var(--color-warning-700); }
+.ins-card.valor .ins-lbl { color:var(--color-success-700); } .ins-card.valor .ins-body { color:var(--color-success-700); }
+.ins-card.leng  .ins-lbl { color:var(--color-info-700); } .ins-card.leng  .ins-body { color:var(--color-info-700); }
 
 /* Description */
-.desc-wrap { border:1px solid #86efac; border-radius:10px; overflow:hidden; }
-.desc-wrap-body { padding:14px 16px; white-space:pre-wrap; font-size:.86rem; max-height:280px; overflow-y:auto; line-height:1.75; background:#f0fdf4; }
-.desc-wrap-foot { padding:7px 14px; background:var(--color-success-100); border-top:1px solid #bbf7d0; display:flex; justify-content:space-between; align-items:center; }
+.desc-wrap { border:1px solid var(--color-success-400); border-radius:10px; overflow:hidden; }
+.desc-wrap-body { padding:14px 16px; white-space:pre-wrap; font-size:.86rem; max-height:280px; overflow-y:auto; line-height:1.75; background:var(--color-success-50); }
+.desc-wrap-foot { padding:7px 14px; background:var(--color-success-100); border-top:1px solid var(--color-success-100); display:flex; justify-content:space-between; align-items:center; }
 
 /* Stats */
 .opt-stats { display:flex; gap:12px; margin-bottom:1.25rem; }
 .opt-stat-box { flex:1; border-radius:10px; padding:14px 16px; text-align:center; }
-.opt-stat-box.blue  { background:#eff6ff; border:1px solid #bfdbfe; }
-.opt-stat-box.green { background:#f0fdf4; border:1px solid #bbf7d0; }
+.opt-stat-box.blue  { background:var(--color-info-100); border:1px solid var(--color-info-100); }
+.opt-stat-box.green { background:var(--color-success-50); border:1px solid var(--color-success-100); }
 .opt-stat-num { font-size:1.7rem; font-weight:800; line-height:1; }
 .opt-stat-box.blue  .opt-stat-num { color:var(--color-info-700); }
 .opt-stat-box.green .opt-stat-num { color:var(--color-success-500); }
@@ -83,7 +84,7 @@
 /* Hub nav */
 .hub-nav { display:flex; gap:8px; margin-bottom:1.5rem; flex-wrap:wrap; }
 .hub-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; font-size:.82rem; font-weight:600; text-decoration:none; transition:all .15s; border:2px solid transparent; }
-.hub-btn.active { background:var(--color-info-700); color:#fff; border-color:var(--color-info-700); }
+.hub-btn.active { background:var(--solid-info); color:#fff; border-color:var(--color-info-700); }
 .hub-btn.inactive { background:var(--color-neutral-0); color:var(--color-neutral-700); border-color:var(--color-neutral-200); }
 .hub-btn.inactive:hover { border-color:var(--color-info-300); color:var(--color-info-700); }
 </style>
@@ -145,10 +146,10 @@
       </div>
 
       <!-- Panel descubrimiento automático -->
-      <div style="background:#f0f9ff;border-bottom:1px solid #bae6fd;padding:12px 14px">
+      <div style="background:var(--color-info-100);border-bottom:1px solid var(--color-info-100);padding:12px 14px">
         <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
           <div style="flex:1;min-width:220px">
-            <div style="font-size:.8rem;font-weight:700;color:#0369a1;margin-bottom:2px">
+            <div style="font-size:.8rem;font-weight:700;color:var(--color-info-700);margin-bottom:2px">
               <i class="bi bi-stars me-1"></i>Descubrimiento automático
             </div>
             <div style="font-size:.73rem;color:var(--color-neutral-600);line-height:1.4">
@@ -156,14 +157,14 @@
             </div>
           </div>
           <button id="btnDescubrir" class="btn btn-sm fw-semibold flex-shrink-0"
-                  style="background:#0369a1;color:#fff;border:none;padding:.4rem 1rem"
+                  style="background:var(--solid-info);color:#fff;border:none;padding:.4rem 1rem"
                   onclick="analizarProducto()">
             <i class="bi bi-cpu me-1"></i>Analizar producto
           </button>
         </div>
 
         <!-- Panel de análisis Claude (paso intermedio con checkboxes) -->
-        <div id="analysisPanel" style="display:none;background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div id="analysisPanel" style="display:none;background:var(--color-warning-50);border:1px solid var(--color-warning-100);border-radius:8px;padding:12px 14px;margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <i class="bi bi-lightbulb-fill" style="color:var(--color-warning-500);font-size:.9rem"></i>
             <span style="font-size:.78rem;font-weight:700;color:var(--color-warning-700)">Análisis del producto — revisá y confirmá los términos</span>
@@ -171,15 +172,15 @@
                     style="margin-left:auto;background:none;border:none;color:var(--color-warning-700);cursor:pointer;font-size:1rem;line-height:1">&times;</button>
           </div>
 
-          <div style="background:var(--color-neutral-0);border-radius:6px;padding:8px 11px;margin-bottom:10px;border:1px solid #fde68a">
+          <div style="background:var(--color-neutral-0);border-radius:6px;padding:8px 11px;margin-bottom:10px;border:1px solid var(--color-warning-100)">
             <div id="analysisConcept" style="font-size:.78rem;color:var(--color-neutral-700);margin-bottom:6px"></div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span style="font-size:.73rem;color:#059669;font-weight:700;white-space:nowrap">
+              <span style="font-size:.73rem;color:var(--color-success-500);font-weight:700;white-space:nowrap">
                 <i class="bi bi-key-fill me-1"></i>Filtro diferenciador:
               </span>
               <input type="text" id="diferenciadorInput"
-                     style="flex:1;min-width:140px;font-size:.78rem;font-weight:600;color:#065f46;
-                            background:#f0fdf4;border:1px solid #6ee7b7;border-radius:5px;padding:3px 8px"
+                     style="flex:1;min-width:140px;font-size:.78rem;font-weight:600;color:var(--color-success-700);
+                            background:var(--color-success-50);border:1px solid var(--color-success-400);border-radius:5px;padding:3px 8px"
                      placeholder="ej: puntas"
                      oninput="_currentDiferenciador = this.value.trim()">
               <span style="font-size:.68rem;color:var(--color-neutral-500);line-height:1.3">
@@ -203,7 +204,7 @@
           </div>
 
           <button id="btnConfirmar" class="btn fw-semibold w-100"
-                  style="background:var(--color-warning-500);color:#fff;border:none;font-size:.85rem"
+                  style="background:var(--solid-warning);color:#fff;border:none;font-size:.85rem"
                   onclick="confirmarYDescubrir()">
             <i class="bi bi-search me-1"></i>Confirmar términos y buscar competidores
           </button>
@@ -215,7 +216,7 @@
         </div>
 
         <div id="kwsAnalizadas" style="display:none;margin-bottom:10px">
-          <div style="font-size:.68rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:5px;letter-spacing:.04em">
+          <div style="font-size:.68rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:5px;letter-spacing:.04em">
             <i class="bi bi-graph-up-arrow me-1"></i>Keywords usadas — ordenadas por popularidad en ML
           </div>
           <div id="kwsAnalizadasList" style="display:flex;flex-wrap:wrap;gap:4px"></div>
@@ -226,54 +227,54 @@
           <div class="spinner-border spinner-border-sm text-primary me-2"></div>
           Cruzando competidores en el mercado...
         </div>
-        <div id="discoveryError" style="display:none;padding:8px 10px;background:#fef2f2;border-radius:6px;font-size:.78rem;color:var(--color-critical-500)"></div>
+        <div id="discoveryError" style="display:none;padding:8px 10px;background:var(--color-critical-50);border-radius:6px;font-size:.78rem;color:var(--color-critical-500)"></div>
       </div>
 
       <!-- Bookmarklet banner -->
-      <div id="bookmarkletBanner" style="background:#f0fdf4;border-top:1px solid #bbf7d0;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div id="bookmarkletBanner" style="background:var(--color-success-50);border-top:1px solid var(--color-success-100);padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:200px">
           <div style="font-size:.78rem;font-weight:700;color:var(--color-success-700);margin-bottom:2px">
             <i class="bi bi-bookmark-star-fill me-1"></i>Capturar competidor directo desde ML
           </div>
-          <div style="font-size:.7rem;color:#4b7a5a;line-height:1.4">
+          <div style="font-size:.7rem;color:var(--color-success-700);line-height:1.4">
             Instalá el botón una vez → abrís la publicación del competidor en ML → clic en el botón → los datos llegan acá solos.
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          <div id="bookmarkletPing" style="display:none;background:var(--color-success-500);color:#fff;border-radius:20px;padding:3px 10px;font-size:.72rem;font-weight:700;animation:pulse 1s infinite">
+          <div id="bookmarkletPing" style="display:none;background:var(--solid-success);color:#fff;border-radius:20px;padding:3px 10px;font-size:.72rem;font-weight:700;animation:pulse 1s infinite">
             <i class="bi bi-arrow-down-circle me-1"></i><span id="bookmarkletPingText"></span>
           </div>
           <button onclick="toggleBookmarkletPanel()"
-                  style="background:var(--color-success-700);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
+                  style="background:var(--solid-success);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
             <i class="bi bi-download me-1"></i>Instalar botón
           </button>
         </div>
       </div>
 
       <!-- Panel instalación bookmarklet -->
-      <div id="bookmarkletPanel" style="display:none;background:#f8fffe;border-top:1px solid #6ee7b7;padding:14px">
-        <div style="font-size:.75rem;font-weight:700;color:#0f766e;margin-bottom:10px">
+      <div id="bookmarkletPanel" style="display:none;background:var(--color-success-50);border-top:1px solid var(--color-success-400);padding:14px">
+        <div style="font-size:.75rem;font-weight:700;color:var(--color-success-700);margin-bottom:10px">
           <i class="bi bi-info-circle me-1"></i>Cómo instalar — solo una vez
         </div>
         <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
+          <div style="background:var(--solid-success);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">1</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700)">Mostrá la <strong>barra de favoritos</strong> del navegador si no está visible <span style="color:var(--color-neutral-500)">(Ctrl+Shift+B en Chrome)</span></div>
         </div>
         <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
+          <div style="background:var(--solid-success);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">2</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700);flex:1">
             <div style="margin-bottom:5px">Arrastrá este botón a tu barra de favoritos:</div>
             <a id="bookmarkletLink" href="#"
-               style="display:inline-flex;align-items:center;gap:5px;background:#facc15;color:#0f172a;border-radius:6px;
+               style="display:inline-flex;align-items:center;gap:5px;background:#facc15;color:var(--app-text);border-radius:6px;
                       padding:6px 14px;font-size:.82rem;font-weight:800;text-decoration:none;cursor:grab;
-                      border:2px dashed #a16207;user-select:none"
+                      border:2px dashed var(--color-warning-700);user-select:none"
                title="Arrastrá este botón a tu barra de favoritos">
               <i class="bi bi-stars"></i> Enviar a Herramienta ML
             </a>
           </div>
         </div>
         <div style="display:flex;gap:10px;align-items:flex-start">
-          <div style="background:#0f766e;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
+          <div style="background:var(--solid-success);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:1px">3</div>
           <div style="font-size:.75rem;color:var(--color-neutral-700)">Abrí la publicación de un competidor en ML → clic en <strong>"Enviar a Herramienta ML"</strong> → volvé acá, el competidor aparece solo.</div>
         </div>
       </div>
@@ -281,7 +282,7 @@
       <!-- Búsqueda manual -->
       <div style="border-top:1px solid var(--color-neutral-200)">
         <div class="d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
-             style="background:#fafafa;cursor:pointer;user-select:none"
+             style="background:var(--color-neutral-50);cursor:pointer;user-select:none"
              onclick="toggleManualSearch()">
           <i class="bi bi-search" style="color:var(--color-neutral-600);font-size:.85rem"></i>
           <span style="font-size:.78rem;font-weight:600;color:var(--color-neutral-700)">Buscar competidores en MercadoLibre</span>
@@ -290,20 +291,20 @@
         </div>
 
         <div id="manualSearchSection" style="display:none;background:var(--color-neutral-50);border-top:1px solid var(--color-neutral-200)">
-          <div style="background:#0f172a;padding:12px 14px">
+          <div style="background:var(--app-text);padding:12px 14px">
             <div style="color:var(--color-neutral-400);font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px">
               <i class="bi bi-search me-1" style="color:#facc15"></i>Paso 1 — Buscá el producto en MercadoLibre
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="text" id="mlSearchQueryInput"
                      style="flex:1;font-size:.84rem;font-weight:600;background:var(--color-neutral-800);color:var(--color-neutral-100);
-                            border:1px solid #334155;border-radius:6px;padding:7px 11px;outline:none"
+                            border:1px solid var(--color-neutral-700);border-radius:6px;padding:7px 11px;outline:none"
                      placeholder="Ej: cortador de puntas cabello profesional..."
                      onkeydown="if(event.key==='Enter'){ const a=document.getElementById('btnBuscarEnML'); prepararBusquedaML(a) && a.click(); }"
-                     onfocus="this.style.borderColor='#facc15'" onblur="this.style.borderColor='#334155'">
+                     onfocus="this.style.borderColor='#facc15'" onblur="this.style.borderColor='var(--color-neutral-700)'">
               <a id="btnBuscarEnML" href="https://www.mercadolibre.com.ar" target="_blank"
                  onclick="return prepararBusquedaML(this)"
-                 style="background:#facc15;color:#0f172a;border-radius:6px;padding:7px 14px;
+                 style="background:#facc15;color:var(--app-text);border-radius:6px;padding:7px 14px;
                         font-size:.82rem;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px">
                 <i class="bi bi-box-arrow-up-right"></i>Buscar en ML
               </a>
@@ -313,13 +314,13 @@
             </div>
           </div>
 
-          <div style="padding:10px 12px;background:#f0f9ff;border-bottom:1px solid #bae6fd">
-            <div style="color:#0369a1;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+          <div style="padding:10px 12px;background:var(--color-info-100);border-bottom:1px solid var(--color-info-100)">
+            <div style="color:var(--color-info-700);font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
               <i class="bi bi-clipboard-plus me-1"></i>Paso 2 — Pegá el link del competidor
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="text" id="pasteUrlField" class="form-control"
-                     style="font-size:.82rem;border:2px dashed #0369a1;background:var(--color-neutral-0)"
+                     style="font-size:.82rem;border:2px dashed var(--color-info-700);background:var(--color-neutral-0)"
                      placeholder="Ctrl+V — URL de ML o ID directo (ej: MLA1234567890)"
                      onpaste="setTimeout(() => { procesarUrl(this.value); this.value=''; }, 60)"
                      onkeydown="if(event.key==='Enter'){ procesarUrl(this.value); this.value=''; }">
@@ -331,7 +332,7 @@
             <div id="addToast" style="display:none;margin-top:7px;border-radius:7px;padding:6px 12px;font-size:.78rem;text-align:center"></div>
           </div>
 
-          <div id="recentlyAdded" style="display:none;padding:8px 12px;background:#f0fdf4;border-bottom:1px solid #bbf7d0">
+          <div id="recentlyAdded" style="display:none;padding:8px 12px;background:var(--color-success-50);border-bottom:1px solid var(--color-success-100)">
             <div style="font-size:.69rem;font-weight:700;color:var(--color-success-700);margin-bottom:5px">
               <i class="bi bi-check2-circle me-1"></i>Agregados en esta sesión
             </div>
@@ -341,38 +342,38 @@
       </div>
 
       <!-- Lista de competidores seleccionados -->
-      <div id="compSelectedArea" style="display:none;border-top:2px solid #22c55e">
-        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap" style="background:#f0fdf4">
+      <div id="compSelectedArea" style="display:none;border-top:2px solid var(--color-success-400)">
+        <div class="px-3 py-2 d-flex align-items-center gap-2 flex-wrap" style="background:var(--color-success-50)">
           <i class="bi bi-check2-circle text-success"></i>
           <span class="fw-semibold text-success small" id="compSelectedLabel"></span>
           <button class="btn btn-xs btn-outline-danger ms-auto" onclick="limpiarSeleccion()">Limpiar todo</button>
         </div>
-        <div id="compSelectedCards" class="d-flex flex-wrap gap-2 p-3" style="background:#f0fdf4"></div>
+        <div id="compSelectedCards" class="d-flex flex-wrap gap-2 p-3" style="background:var(--color-success-50)"></div>
 
-        <div style="padding:0 12px 12px;background:#f0fdf4">
+        <div style="padding:0 12px 12px;background:var(--color-success-50)">
           <button id="btnReverseKw" class="btn fw-semibold w-100"
-                  style="background:#0f766e;color:#fff;border:none;font-size:.84rem"
+                  style="background:var(--solid-success);color:#fff;border:none;font-size:.84rem"
                   onclick="analizarKeywordsCompetidores()">
             <i class="bi bi-binoculars me-1"></i>Analizar keywords de los competidores seleccionados
           </button>
         </div>
 
-        <div id="reverseKwPanel" style="display:none;border-top:1px solid #6ee7b7;background:#f8fffe">
+        <div id="reverseKwPanel" style="display:none;border-top:1px solid var(--color-success-400);background:var(--color-success-50)">
           <div id="reverseKwLoading" style="display:none;text-align:center;padding:1.2rem;color:var(--color-neutral-600);font-size:.82rem">
-            <div class="spinner-border spinner-border-sm me-2" style="color:#0f766e"></div>
+            <div class="spinner-border spinner-border-sm me-2" style="color:var(--color-success-700)"></div>
             Extrayendo keywords de los competidores con autosuggest...
           </div>
-          <div id="reverseKwError" style="display:none;padding:8px 14px;background:#fef2f2;font-size:.78rem;color:var(--color-critical-500)"></div>
+          <div id="reverseKwError" style="display:none;padding:8px 14px;background:var(--color-critical-50);font-size:.78rem;color:var(--color-critical-500)"></div>
           <div id="reverseKwResults" style="display:none;padding:12px 14px">
-            <div id="reverseKwSummary" style="font-size:.75rem;color:var(--color-neutral-700);margin-bottom:10px;background:var(--color-neutral-0);border-radius:6px;padding:7px 10px;border:1px solid #d1fae5"></div>
+            <div id="reverseKwSummary" style="font-size:.75rem;color:var(--color-neutral-700);margin-bottom:10px;background:var(--color-neutral-0);border-radius:6px;padding:7px 10px;border:1px solid var(--color-success-100)"></div>
             <div id="reverseKwGapsSection" style="display:none;margin-bottom:12px">
-              <div style="font-size:.7rem;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+              <div style="font-size:.7rem;font-weight:800;color:var(--color-warning-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
                 <i class="bi bi-exclamation-triangle-fill me-1"></i>Gaps — keywords que tus competidores rankean y vos no tenés
               </div>
               <div id="reverseKwGapsList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
             </div>
             <div id="reverseKwSharedSection" style="display:none">
-              <div style="font-size:.7rem;font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+              <div style="font-size:.7rem;font-weight:800;color:var(--color-info-700);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
                 <i class="bi bi-check2-circle me-1"></i>Keywords confirmadas — ya están en tu análisis
               </div>
               <div id="reverseKwSharedList" style="display:flex;flex-wrap:wrap;gap:5px"></div>
@@ -384,27 +385,27 @@
 
     <!-- Panel autosuggest -->
     <div id="autosuggestPanel" style="display:none;border:2px solid var(--color-info-500);border-radius:8px;overflow:hidden;margin-bottom:12px">
-      <div style="background:#1e3a8a;padding:9px 14px;display:flex;align-items:center;gap:8px">
+      <div style="background:var(--solid-info);padding:9px 14px;display:flex;align-items:center;gap:8px">
         <i class="bi bi-graph-up-arrow" style="color:var(--color-info-300)"></i>
         <span style="color:#fff;font-size:.8rem;font-weight:700">Búsquedas reales en MercadoLibre — ordenadas por popularidad</span>
         <span style="color:var(--color-info-300);font-size:.7rem;margin-left:4px">estas son las frases que la gente escribe en ML para encontrar tu producto</span>
       </div>
-      <div style="padding:10px 14px;background:#eff6ff">
+      <div style="padding:10px 14px;background:var(--color-info-100)">
         <div id="autosuggestList" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
     </div>
 
     <!-- PASO 3: Investigar Keywords con IA -->
-    <div class="mb-3" style="border:1px solid #e0e7ff;border-radius:8px;overflow:hidden">
+    <div class="mb-3" style="border:1px solid var(--color-info-100);border-radius:8px;overflow:hidden">
       <div class="d-flex align-items-center gap-2 px-3 py-2 cursor-pointer"
-           style="background:#eef2ff;border-bottom:1px solid #e0e7ff;cursor:pointer"
+           style="background:var(--color-info-100);border-bottom:1px solid var(--color-info-100);cursor:pointer"
            onclick="toggleKwSection()">
         <span class="badge bg-primary me-1">3</span>
         <span class="fw-semibold">Investigar keywords con IA</span>
         <span class="text-muted ms-1" style="font-size:.78rem">(opcional — Claude analiza qué palabras buscan los compradores)</span>
         <i class="bi bi-chevron-down ms-auto" id="kwChevron"></i>
       </div>
-      <div id="kwSection" style="display:none;padding:12px 14px;background:#f8f9ff">
+      <div id="kwSection" style="display:none;padding:12px 14px;background:var(--color-neutral-50)">
         <div class="d-flex gap-2 mb-2">
           <input type="text" id="kwProductInput" class="form-control form-control-sm"
                  placeholder="Ej: faja embarazada, silla gaming, cargador inalámbrico..."
@@ -483,10 +484,10 @@
     </span>
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
       {% if item.get('categoria') %}
-      <span class="badge" style="background:#eff6ff;color:var(--color-info-700);font-size:.65rem">{{ item.categoria }}</span>
+      <span class="badge" style="background:var(--color-info-100);color:var(--color-info-700);font-size:.65rem">{{ item.categoria }}</span>
       {% endif %}
       {% if item.get('competidores_n') %}
-      <span class="badge" style="background:#f0fdf4;color:var(--color-success-700);font-size:.65rem">{{ item.competidores_n }} competidores</span>
+      <span class="badge" style="background:var(--color-success-50);color:var(--color-success-700);font-size:.65rem">{{ item.competidores_n }} competidores</span>
       {% endif %}
       {% if item.get('fecha') %}<span class="text-muted" style="font-size:.78rem">{{ item.fecha }}</span>{% endif %}
       <button class="btn btn-xs btn-outline-danger" onclick="borrarLanzamiento('{{ loop.index0 }}', this)" title="Eliminar">
@@ -500,7 +501,7 @@
   <div class="opt-sec">
     <div class="opt-sec-hdr">
       <i class="bi bi-check-circle-fill" style="color:var(--color-success-500);font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#166534">Títulos para tu nueva publicación — elegí y copiá</span>
+      <span class="opt-sec-lbl" style="color:var(--color-success-700)">Títulos para tu nueva publicación — elegí y copiá</span>
       {% if tr_n %}
       <span class="badge ms-auto" style="background:var(--color-success-500);font-size:.65rem;font-weight:700;flex-shrink:0">
         <i class="bi bi-stars me-1"></i>IA recomienda opción {{ tr_n }}
@@ -582,8 +583,8 @@
   {% if item.get('ficha_perfecta') %}
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.fchev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
-      <i class="bi bi-table" style="color:#9a3412;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#9a3412">Ficha técnica perfecta</span>
+      <i class="bi bi-table" style="color:var(--color-warning-700);font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:var(--color-warning-700)">Ficha técnica perfecta</span>
       <button class="btn btn-sm btn-warning fw-semibold ms-auto" onclick="event.stopPropagation();copyById('ficha-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
         <i class="bi bi-clipboard me-1"></i>Copiar
       </button>
@@ -591,7 +592,7 @@
     </div>
     <div style="display:none">
       <div id="ficha-{{ outer_idx }}"
-           style="padding:14px 20px;white-space:pre-wrap;font-size:.84rem;line-height:1.9;font-family:monospace;background:#fffbf0;max-height:320px;overflow-y:auto">{{ item.get('ficha_perfecta') }}</div>
+           style="padding:14px 20px;white-space:pre-wrap;font-size:.84rem;line-height:1.9;font-family:monospace;background:var(--color-warning-50);max-height:320px;overflow-y:auto">{{ item.get('ficha_perfecta') }}</div>
     </div>
   </div>
   {% endif %}
@@ -601,32 +602,32 @@
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.achev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
       <i class="bi bi-bar-chart-fill" style="color:#7c3aed;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#6b21a8">Análisis de mercado</span>
+      <span class="opt-sec-lbl" style="color:var(--color-info-700)">Análisis de mercado</span>
       <i class="bi bi-chevron-down achev ms-auto" style="font-size:.75rem;color:var(--color-neutral-400)"></i>
     </div>
-    <div style="display:none;padding:14px 20px;background:#fafafe">
+    <div style="display:none;padding:14px 20px;background:var(--color-neutral-50)">
       {% if item.get('resumen_mercado') %}
       <details class="anl-item">
         <summary><i class="bi bi-people-fill me-2" style="color:var(--color-info-700)"></i>Fortalezas de cada competidor<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#eff6ff">{{ item.get('resumen_mercado') }}</div>
+        <div class="anl-item-body" style="background:var(--color-info-100)">{{ item.get('resumen_mercado') }}</div>
       </details>
       {% endif %}
       {% if item.get('keywords_faltantes') %}
       <details class="anl-item">
-        <summary><i class="bi bi-key-fill me-2" style="color:#b45309"></i>Palabras clave del mercado<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#fef9c3">{{ item.get('keywords_faltantes') }}</div>
+        <summary><i class="bi bi-key-fill me-2" style="color:var(--color-warning-700)"></i>Palabras clave del mercado<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:var(--color-warning-100)">{{ item.get('keywords_faltantes') }}</div>
       </details>
       {% endif %}
       {% if item.get('analisis_ficha') %}
       <details class="anl-item">
-        <summary><i class="bi bi-clipboard-x me-2" style="color:#9a3412"></i>Análisis ficha técnica<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#fff7ed">{{ item.get('analisis_ficha') }}</div>
+        <summary><i class="bi bi-clipboard-x me-2" style="color:var(--color-warning-700)"></i>Análisis ficha técnica<i class="bi bi-chevron-down anl-chev"></i></summary>
+        <div class="anl-item-body" style="background:var(--color-warning-50)">{{ item.get('analisis_ficha') }}</div>
       </details>
       {% endif %}
       {% if item.get('puntaje_calidad') %}
       <details class="anl-item">
         <summary><i class="bi bi-speedometer2 me-2" style="color:#7c3aed"></i>Dificultad del mercado<i class="bi bi-chevron-down anl-chev"></i></summary>
-        <div class="anl-item-body" style="background:#fdf4ff;font-family:monospace">{{ item.get('puntaje_calidad') }}</div>
+        <div class="anl-item-body" style="background:var(--color-info-100);font-family:monospace">{{ item.get('puntaje_calidad') }}</div>
       </details>
       {% endif %}
     </div>
@@ -637,12 +638,12 @@
   {% if item.get('qa_insights') %}
   <div class="opt-sec">
     <div class="opt-sec-hdr cc" onclick="(function(h){var b=h.nextElementSibling;b.style.display=b.style.display==='none'?'block':'none';var c=h.querySelector('.ichev');c.classList.toggle('bi-chevron-down');c.classList.toggle('bi-chevron-up');})(this)">
-      <i class="bi bi-chat-quote-fill" style="color:#0284c7;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#0c4a6e">Insights de compradores reales</span>
+      <i class="bi bi-chat-quote-fill" style="color:var(--color-info-500);font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:var(--color-info-700)">Insights de compradores reales</span>
       <span style="font-size:.66rem;color:var(--color-neutral-600);font-weight:400;text-transform:none;letter-spacing:0">Q&amp;A y reseñas de competidores</span>
       <i class="bi bi-chevron-down ichev ms-auto" style="font-size:.75rem;color:var(--color-neutral-400)"></i>
     </div>
-    <div style="display:none;padding:14px 20px;background:#f0f9ff">
+    <div style="display:none;padding:14px 20px;background:var(--color-info-100)">
       <div class="ins-grid">
         {% set qa_sections = item.get('qa_insights', '').split('## ') %}
         {% for section in qa_sections %}
@@ -682,8 +683,8 @@
   {% if item.get('descripcion_nueva') %}
   <div class="opt-sec">
     <div class="opt-sec-hdr">
-      <i class="bi bi-file-richtext-fill" style="color:#14532d;font-size:.88rem"></i>
-      <span class="opt-sec-lbl" style="color:#14532d">Descripción — lista para pegar en ML</span>
+      <i class="bi bi-file-richtext-fill" style="color:var(--color-success-700);font-size:.88rem"></i>
+      <span class="opt-sec-lbl" style="color:var(--color-success-700)">Descripción — lista para pegar en ML</span>
       <div class="d-flex gap-2 ms-auto">
         <button class="btn btn-sm btn-success fw-semibold" onclick="copyById('desc-{{ outer_idx }}', this)" style="font-size:.73rem;padding:3px 10px">
           <i class="bi bi-clipboard me-1"></i>Copiar
@@ -792,7 +793,7 @@ function renderAnalysisPanel(data) {
       !t.recomendado ? '<span style="background:var(--color-neutral-100);color:var(--color-neutral-600);border-radius:4px;padding:1px 5px;font-size:.62rem">genérico</span>' : '',
     ].filter(Boolean).join(' ');
 
-    const borderColor = (t.recomendado && !t.ambiguo) ? '#bbf7d0' : '#e5e7eb';
+    const borderColor = (t.recomendado && !t.ambiguo) ? 'var(--color-success-100)' : 'var(--color-neutral-200)';
     const accentColor = (t.recomendado && !t.ambiguo) ? 'var(--color-success-500)' : 'var(--color-neutral-500)';
 
     list.innerHTML += `
@@ -802,7 +803,7 @@ function renderAnalysisPanel(data) {
                ${t.recomendado ? 'checked' : ''}
                style="margin-top:3px;accent-color:${accentColor};cursor:pointer;flex-shrink:0">
         <div style="flex:1;min-width:0">
-          <div style="font-size:.8rem;font-weight:600;color:#1f2937;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <div style="font-size:.8rem;font-weight:600;color:var(--app-text);display:flex;align-items:center;gap:5px;flex-wrap:wrap">
             ${t.termino} ${badges}
           </div>
           <div style="font-size:.7rem;color:var(--color-neutral-500);line-height:1.3;margin-top:2px">${t.razon || ''}</div>
@@ -822,11 +823,11 @@ function addCustomTerm() {
   const id   = 'term_custom_' + Date.now();
   list.innerHTML += `
     <label for="${id}" style="display:flex;align-items:flex-start;gap:8px;background:var(--color-neutral-0);border-radius:6px;
-           padding:7px 10px;cursor:pointer;border:1px solid #bfdbfe;margin:0">
+           padding:7px 10px;cursor:pointer;border:1px solid var(--color-info-100);margin:0">
       <input type="checkbox" id="${id}" value="${term}" checked
              style="margin-top:3px;accent-color:var(--color-info-600);cursor:pointer;flex-shrink:0">
       <div style="flex:1;min-width:0">
-        <div style="font-size:.8rem;font-weight:600;color:#1f2937;display:flex;align-items:center;gap:5px">
+        <div style="font-size:.8rem;font-weight:600;color:var(--app-text);display:flex;align-items:center;gap:5px">
           ${term}
           <span style="background:var(--color-info-100);color:var(--color-info-700);border-radius:4px;padding:1px 5px;font-size:.62rem;font-weight:700">propio</span>
         </div>
@@ -883,8 +884,8 @@ async function confirmarYDescubrir() {
       kwList.innerHTML = data.keywords.map((k, i) => {
         const barW  = k.weight;
         const color = i === 0 ? 'var(--color-info-600)' : i < 3 ? 'var(--color-info-500)' : 'var(--color-neutral-400)';
-        return `<div style="display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid #bae6fd;
-                     border-radius:6px;padding:3px 8px;font-size:.74rem;color:#0c4a6e">
+        return `<div style="display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid var(--color-info-100);
+                     border-radius:6px;padding:3px 8px;font-size:.74rem;color:var(--color-info-700)">
           <span style="font-weight:${i<3?'700':'400'}">${i+1}. ${k.keyword}</span>
           <div style="width:40px;background:var(--color-neutral-200);border-radius:3px;height:4px">
             <div style="width:${barW}%;background:${color};height:4px;border-radius:3px"></div>
@@ -901,7 +902,7 @@ async function confirmarYDescubrir() {
         const label = i === 0 ? ' — más buscada' : i === 1 ? ' — 2ª más buscada' : i === 2 ? ' — 3ª más buscada' : '';
         return `<div style="display:flex;align-items:center;gap:10px">
           <span style="min-width:20px;font-size:.72rem;color:var(--color-neutral-600);font-weight:700;text-align:right">${i+1}</span>
-          <span style="flex:1;font-size:.82rem;font-weight:${bold};color:#1e3a5f">${k.keyword}<span style="font-size:.68rem;color:var(--color-neutral-500);font-weight:400">${label}</span></span>
+          <span style="flex:1;font-size:.82rem;font-weight:${bold};color:var(--color-info-700)">${k.keyword}<span style="font-size:.68rem;color:var(--color-neutral-500);font-weight:400">${label}</span></span>
           <div style="width:120px;background:var(--color-info-100);border-radius:4px;height:7px;flex-shrink:0">
             <div style="width:${pct}%;background:${color};height:7px;border-radius:4px;transition:width .4s"></div>
           </div>
@@ -954,7 +955,7 @@ function renderDiscoveryResults(data) {
     html += `
     <div id="disc-card-${safeId}" onclick="toggleDiscoverySelection('${comp.id}')"
          style="cursor:pointer;border:2px solid ${isSelected ? 'var(--color-success-500)' : 'var(--color-neutral-200)'};
-                border-radius:10px;background:${isSelected ? '#f0fdf4' : 'var(--color-neutral-0)'};
+                border-radius:10px;background:${isSelected ? 'var(--color-success-50)' : 'var(--color-neutral-0)'};
                 padding:10px;transition:all .15s;position:relative">
       <div id="disc-check-${safeId}" style="position:absolute;top:8px;right:8px;
            width:22px;height:22px;border-radius:50%;background:var(--color-success-500);
@@ -981,9 +982,9 @@ function renderDiscoveryResults(data) {
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">
-        ${comp.sold_quantity ? `<span style="background:#eff6ff;color:var(--color-info-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">${comp.sold_quantity.toLocaleString('es-AR')} ventas</span>` : ''}
+        ${comp.sold_quantity ? `<span style="background:var(--color-info-100);color:var(--color-info-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">${comp.sold_quantity.toLocaleString('es-AR')} ventas</span>` : ''}
         ${comp.price ? `<span style="background:var(--color-neutral-50);color:var(--color-neutral-700);border-radius:5px;padding:2px 6px;font-size:.68rem">$${Math.round(comp.price).toLocaleString('es-AR')}</span>` : ''}
-        ${comp.is_premium ? `<span style="background:#fef9c3;color:var(--color-warning-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">Premium</span>` : ''}
+        ${comp.is_premium ? `<span style="background:var(--color-warning-100);color:var(--color-warning-700);border-radius:5px;padding:2px 6px;font-size:.68rem;font-weight:700">Premium</span>` : ''}
         ${comp.free_shipping ? `<span style="background:var(--color-success-100);color:var(--color-success-700);border-radius:5px;padding:2px 6px;font-size:.68rem">Envío gratis</span>` : ''}
         ${comp.photos_count ? `<span style="background:var(--color-neutral-50);color:var(--color-neutral-700);border-radius:5px;padding:2px 6px;font-size:.68rem">${comp.photos_count} fotos</span>` : ''}
       </div>
@@ -1018,7 +1019,7 @@ function toggleDiscoverySelection(compId) {
       id: compId, title: compId,
       thumbnail: '', attributes: [], description: '', main_features: []
     };
-    if (card)  { card.style.borderColor = 'var(--color-success-500)'; card.style.background = '#f0fdf4'; }
+    if (card)  { card.style.borderColor = 'var(--color-success-500)'; card.style.background = 'var(--color-success-50)'; }
     if (check) check.style.display = 'flex';
     const label = card ? card.querySelector('div[style*="margin-top:7px"]') : null;
     if (label) { label.style.color = 'var(--color-success-500)'; label.textContent = '✓ Seleccionado — clic para quitar'; }
@@ -1104,15 +1105,15 @@ function renderReverseKeywords(data) {
   document.getElementById('reverseKwSummary').innerHTML =
     `Se analizaron <strong>${totalComps}</strong> competidores → ` +
     `<strong>${data.total_kws}</strong> keywords únicas · ` +
-    `<span style="color:#b45309;font-weight:700">${gaps.length} gaps</span> de oportunidad · ` +
-    `<span style="color:#0369a1;font-weight:700">${shared.length} confirmadas</span>`;
+    `<span style="color:var(--color-warning-700);font-weight:700">${gaps.length} gaps</span> de oportunidad · ` +
+    `<span style="color:var(--color-info-700);font-weight:700">${shared.length} confirmadas</span>`;
 
   function kwChip(kw) {
-    const freqColor = kw.frequency >= 3 ? '#7c3aed' : kw.frequency >= 2 ? '#0369a1' : 'var(--color-neutral-700)';
-    const bgColor   = kw.is_gap ? '#fff7ed' : '#f0f9ff';
-    const border    = kw.is_gap ? '#fed7aa' : '#bae6fd';
+    const freqColor = kw.frequency >= 3 ? '#7c3aed' : kw.frequency >= 2 ? 'var(--color-info-700)' : 'var(--color-neutral-700)';
+    const bgColor   = kw.is_gap ? 'var(--color-warning-50)' : 'var(--color-info-100)';
+    const border    = kw.is_gap ? 'var(--color-warning-100)' : 'var(--color-info-100)';
     const descBadge = kw.from_desc
-      ? `<span style="background:#e0e7ff;color:#3730a3;border-radius:4px;padding:0 4px;font-size:.59rem;font-weight:700">desc</span>`
+      ? `<span style="background:var(--color-info-100);color:var(--color-info-700);border-radius:4px;padding:0 4px;font-size:.59rem;font-weight:700">desc</span>`
       : '';
     return `
       <div style="display:inline-flex;align-items:center;gap:4px;background:${bgColor};
@@ -1253,7 +1254,7 @@ function procesarUrl(rawUrl) {
 let toastTimer = null;
 function showToast(msg, type, duration) {
   const el = document.getElementById('addToast');
-  const styles = {ok:{bg:'#166534',color:'var(--color-success-100)'},warn:{bg:'var(--color-warning-700)',color:'#fef9c3'},info:{bg:'#1e3a5f',color:'var(--color-info-100)'}};
+  const styles = {ok:{bg:'var(--color-success-700)',color:'var(--color-success-100)'},warn:{bg:'var(--color-warning-700)',color:'var(--color-warning-100)'},info:{bg:'var(--color-info-700)',color:'var(--color-info-100)'}};
   const s = styles[type] || styles.info;
   el.style.background = s.bg; el.style.color = s.color;
   el.innerHTML = msg; el.style.display = 'block';
@@ -1271,10 +1272,10 @@ function updateRecentlyAdded(productId) {
   const shortTitle = (comp.title || productId).substring(0, 45);
   const chip = document.createElement('div');
   chip.id = 'recent-' + productId;
-  chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid #86efac;border-radius:20px;padding:2px 8px 2px 4px;font-size:.72rem;color:var(--color-success-700);max-width:200px';
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:var(--color-neutral-0);border:1px solid var(--color-success-400);border-radius:20px;padding:2px 8px 2px 4px;font-size:.72rem;color:var(--color-success-700);max-width:200px';
   chip.innerHTML = `
     ${comp.thumbnail
-      ? `<img src="${comp.thumbnail}" style="width:20px;height:20px;object-fit:contain;border-radius:50%;background:#f0fdf4;flex-shrink:0">`
+      ? `<img src="${comp.thumbnail}" style="width:20px;height:20px;object-fit:contain;border-radius:50%;background:var(--color-success-50);flex-shrink:0">`
       : `<i class="bi bi-check-circle-fill" style="font-size:.8rem;flex-shrink:0"></i>`}
     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${shortTitle}</span>
   `;
@@ -1317,14 +1318,14 @@ function renderSelectedSection() {
     const dispTitle = c._manualTitle || (noData ? '' : c.title);
     const dispDesc  = c._manualDesc  || c.description || '';
     return `
-    <div style="background:var(--color-neutral-0);border:1px solid ${noData ? '#fed7aa' : '#bbf7d0'};border-radius:8px;max-width:340px;overflow:hidden" id="comp-card-${safeId}">
+    <div style="background:var(--color-neutral-0);border:1px solid ${noData ? 'var(--color-warning-100)' : 'var(--color-success-100)'};border-radius:8px;max-width:340px;overflow:hidden" id="comp-card-${safeId}">
       <div class="d-flex align-items-start gap-2 p-2">
         ${c.thumbnail
           ? `<img src="${c.thumbnail}" style="width:44px;height:44px;object-fit:contain;border-radius:4px;flex-shrink:0;background:var(--color-neutral-50)">`
           : `<div style="width:44px;height:44px;background:var(--color-neutral-100);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--color-neutral-400)"><i class="bi bi-image"></i></div>`}
         <div style="min-width:0;flex:1">
-          <div class="fw-semibold text-truncate" style="font-size:.8rem;color:${noData?'#ea580c':'inherit'}" title="${dispTitle || c.id}">
-            ${dispTitle || `<em style="color:#ea580c">Sin datos — editá para agregar título</em>`}
+          <div class="fw-semibold text-truncate" style="font-size:.8rem;color:${noData?'var(--color-warning-500)':'inherit'}" title="${dispTitle || c.id}">
+            ${dispTitle || `<em style="color:var(--color-warning-500)">Sin datos — editá para agregar título</em>`}
           </div>
           <div class="text-muted" style="font-size:.68rem;margin-top:2px">${meta.join(' · ') || '—'}</div>
         </div>
@@ -1337,7 +1338,7 @@ function renderSelectedSection() {
           </button>
         </div>
       </div>
-      <div id="edit-comp-${safeId}" style="display:${noData?'block':'none'};border-top:1px solid #fed7aa;padding:8px 10px;background:#fff7ed">
+      <div id="edit-comp-${safeId}" style="display:${noData?'block':'none'};border-top:1px solid var(--color-warning-100);padding:8px 10px;background:var(--color-warning-50)">
         <div style="font-size:.73rem;color:var(--color-warning-700);font-weight:600;margin-bottom:6px">
           <i class="bi bi-pencil-fill me-1"></i>Pegá el título y descripción del competidor:
         </div>
@@ -1426,8 +1427,8 @@ function renderKwResults(data) {
   const el = document.getElementById('kwResults');
 
   function kwBadge(kw, type) {
-    const bg    = type === 'titulo' ? 'var(--color-warning-100)' : '#eff6ff';
-    const color = type === 'titulo' ? 'var(--color-warning-700)' : '#1e40af';
+    const bg    = type === 'titulo' ? 'var(--color-warning-100)' : 'var(--color-info-100)';
+    const color = type === 'titulo' ? 'var(--color-warning-700)' : 'var(--color-info-700)';
     const icon  = type === 'titulo' ? '!' : '+';
     return `<span style="display:inline-flex;align-items:center;gap:3px;background:${bg};color:${color};border-radius:12px;padding:2px 9px;font-size:.75rem;font-weight:600;margin:2px;cursor:default">${icon} ${kw}</span>`;
   }
@@ -1437,8 +1438,8 @@ function renderKwResults(data) {
   const mlSuggestions = data.ml_suggestions || [];
   if (mlSuggestions.length) {
     const total = mlSuggestions.length;
-    html += `<div style="margin-bottom:12px;padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px">
-      <div style="font-size:.7rem;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:8px">
+    html += `<div style="margin-bottom:12px;padding:10px 12px;background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:8px">
+      <div style="font-size:.7rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:8px">
         <i class="bi bi-graph-up-arrow me-1"></i>Búsquedas REALES en MercadoLibre Argentina — ordenadas por popularidad
       </div>`;
     mlSuggestions.forEach((s, i) => {
@@ -1463,18 +1464,18 @@ function renderKwResults(data) {
   }
   if (data.descripcion?.length) {
     html += `<div style="margin-bottom:8px">
-      <div style="font-size:.7rem;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:4px"><i class="bi bi-text-paragraph me-1"></i>Para DESCRIPCIÓN</div>
+      <div style="font-size:.7rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:4px"><i class="bi bi-text-paragraph me-1"></i>Para DESCRIPCIÓN</div>
       <div>${data.descripcion.map(k => kwBadge(k, 'desc')).join('')}</div>
     </div>`;
   }
   if (data.long_tail?.length) {
     html += `<div style="margin-bottom:8px">
-      <div style="font-size:.7rem;font-weight:700;color:#5b21b6;text-transform:uppercase;margin-bottom:4px"><i class="bi bi-bullseye me-1"></i>Long-tail</div>
+      <div style="font-size:.7rem;font-weight:700;color:var(--color-info-700);text-transform:uppercase;margin-bottom:4px"><i class="bi bi-bullseye me-1"></i>Long-tail</div>
       <div>${data.long_tail.map(k => kwBadge(k, 'desc')).join('')}</div>
     </div>`;
   }
   if (data.consejo) {
-    html += `<div style="margin-top:8px;padding:8px 10px;background:#fff7ed;border-radius:6px;font-size:.78rem;color:var(--color-warning-700);border-left:3px solid var(--color-warning-400)">
+    html += `<div style="margin-top:8px;padding:8px 10px;background:var(--color-warning-50);border-radius:6px;font-size:.78rem;color:var(--color-warning-700);border-left:3px solid var(--color-warning-400)">
       <i class="bi bi-lightbulb-fill me-1"></i>${data.consejo}
     </div>`;
   }
@@ -1599,17 +1600,17 @@ function copyById(elementId, btn) {
 
 function renderMd(text) {
   const sectionMeta = {
-    'KEYWORDS DEL MERCADO':          { bg:'#f0fdf4', border:'var(--color-success-500)', title:'#14532d', icon:'🔑' },
-    'FORTALEZAS DE CADA COMPETIDOR': { bg:'#eff6ff', border:'var(--color-info-500)', title:'var(--color-info-700)', icon:'🔍' },
-    'PUNTAJE DE CALIDAD ACTUAL':     { bg:'#fdf2f8', border:'#9333ea', title:'#6b21a8', icon:'📊' },
-    'PALABRAS CLAVE FALTANTES':      { bg:'#fef9c3', border:'#ca8a04', title:'#854d0e', icon:'🔑' },
-    'ANÁLISIS DE FICHA TÉCNICA':     { bg:'#fff7ed', border:'#f97316', title:'#9a3412', icon:'📋' },
-    'ANÁLISIS DE DESCRIPCIÓN':       { bg:'#fdf4ff', border:'#a855f7', title:'#7e22ce', icon:'✍️' },
-    'TÍTULO ALTERNATIVO 1':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
-    'TÍTULO ALTERNATIVO 2':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
-    'TÍTULO ALTERNATIVO 3':          { bg:'#f0fdf4', border:'#22c55e', title:'#166534', icon:'🏷️' },
-    'FICHA TÉCNICA PERFECTA':        { bg:'#fffbf0', border:'var(--color-warning-400)', title:'var(--color-warning-700)', icon:'📋' },
-    'DESCRIPCIÓN SUPERADORA':        { bg:'#f0fdf4', border:'var(--color-success-500)', title:'#14532d', icon:'📝' },
+    'KEYWORDS DEL MERCADO':          { bg:'var(--color-success-50)', border:'var(--color-success-500)', title:'var(--color-success-700)', icon:'🔑' },
+    'FORTALEZAS DE CADA COMPETIDOR': { bg:'var(--color-info-100)', border:'var(--color-info-500)', title:'var(--color-info-700)', icon:'🔍' },
+    'PUNTAJE DE CALIDAD ACTUAL':     { bg:'var(--color-critical-50)', border:'#9333ea', title:'var(--color-info-700)', icon:'📊' },
+    'PALABRAS CLAVE FALTANTES':      { bg:'var(--color-warning-100)', border:'var(--color-warning-500)', title:'var(--color-warning-700)', icon:'🔑' },
+    'ANÁLISIS DE FICHA TÉCNICA':     { bg:'var(--color-warning-50)', border:'#f97316', title:'var(--color-warning-700)', icon:'📋' },
+    'ANÁLISIS DE DESCRIPCIÓN':       { bg:'var(--color-info-100)', border:'#a855f7', title:'var(--color-info-700)', icon:'✍️' },
+    'TÍTULO ALTERNATIVO 1':          { bg:'var(--color-success-50)', border:'var(--color-success-400)', title:'var(--color-success-700)', icon:'🏷️' },
+    'TÍTULO ALTERNATIVO 2':          { bg:'var(--color-success-50)', border:'var(--color-success-400)', title:'var(--color-success-700)', icon:'🏷️' },
+    'TÍTULO ALTERNATIVO 3':          { bg:'var(--color-success-50)', border:'var(--color-success-400)', title:'var(--color-success-700)', icon:'🏷️' },
+    'FICHA TÉCNICA PERFECTA':        { bg:'var(--color-warning-50)', border:'var(--color-warning-400)', title:'var(--color-warning-700)', icon:'📋' },
+    'DESCRIPCIÓN SUPERADORA':        { bg:'var(--color-success-50)', border:'var(--color-success-500)', title:'var(--color-success-700)', icon:'📝' },
   };
 
   let out = '<div>';
@@ -1622,11 +1623,11 @@ function renderMd(text) {
     if (h2) {
       if (inSection) out += '</div></div>';
       const key = h2[1].trim();
-      const s = sectionMeta[key] || { bg:'var(--color-neutral-50)', border:'var(--color-neutral-400)', title:'#334155', icon:'▸' };
+      const s = sectionMeta[key] || { bg:'var(--color-neutral-50)', border:'var(--color-neutral-400)', title:'var(--color-neutral-700)', icon:'▸' };
       const needsCopy = copyableSections.has(key);
       currentSectionId = needsCopy ? 'sec_' + Math.random().toString(36).slice(2,8) : '';
       out += `<div style="background:${s.bg};border-left:4px solid ${s.border};border-radius:0 10px 10px 0;margin:14px 0 0;overflow:hidden">`;
-      out += `<div style="padding:8px 14px;background:${s.border}18;border-bottom:1px solid ${s.border}44;display:flex;justify-content:space-between;align-items:center">`;
+      out += `<div style="padding:8px 14px;background:color-mix(in srgb, ${s.border} 9%, transparent);border-bottom:1px solid color-mix(in srgb, ${s.border} 27%, transparent);display:flex;justify-content:space-between;align-items:center">`;
       out += `<strong style="color:${s.title};font-size:.88rem;letter-spacing:.03em">${s.icon} ${key}</strong>`;
       if (needsCopy) {
         out += `<button onclick="(function(b){var c=document.getElementById('${currentSectionId}');if(c){navigator.clipboard.writeText(c.innerText).then(function(){b.textContent='✓';setTimeout(function(){b.textContent='Copiar todo'},1400)})}})(this)" style="font-size:.72rem;padding:2px 8px;border:1px solid ${s.border};border-radius:4px;background:var(--color-neutral-0);cursor:pointer;color:${s.title};white-space:nowrap;flex-shrink:0">Copiar todo</button>`;

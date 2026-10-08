@@ -1,20 +1,21 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Historial {{ alias }}{% endblock %}
 {% block content %}
 <style>
 /* ── Trend badges ────────────────────────────────────────────────────────── */
-.trend-up   { background:#d1fae5; color:#065f46; border-radius:5px; padding:2px 8px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+.trend-up   { background:var(--color-success-100); color:var(--color-success-700); border-radius:5px; padding:2px 8px; font-size:.75rem; font-weight:700; white-space:nowrap; }
 .trend-down { background:var(--color-critical-100); color:var(--color-critical-700); border-radius:5px; padding:2px 8px; font-size:.75rem; font-weight:700; white-space:nowrap; }
-.trend-eq   { background:#f3f4f6; color:var(--color-neutral-500); border-radius:5px; padding:2px 8px; font-size:.75rem; white-space:nowrap; }
+.trend-eq   { background:var(--color-neutral-100); color:var(--color-neutral-500); border-radius:5px; padding:2px 8px; font-size:.75rem; white-space:nowrap; }
 
 /* ── Position badge ──────────────────────────────────────────────────────── */
 .pos-badge { display:inline-flex; align-items:center; justify-content:center;
   min-width:36px; height:36px; border-radius:8px; font-size:1rem; font-weight:800; }
-.pos-badge.top3  { background:#d1fae5; color:#065f46; border:2px solid #6ee7b7; }
-.pos-badge.top10 { background:var(--color-info-100); color:#1e40af; border:2px solid var(--color-info-300); }
-.pos-badge.top50 { background:var(--color-warning-100); color:var(--color-warning-700); border:2px solid #fcd34d; }
-.pos-badge.low   { background:#f3f4f6; color:var(--color-neutral-500); border:1px solid #e5e7eb; }
-.pos-badge.out   { background:var(--color-critical-100); color:var(--color-critical-700); border:1px solid #fca5a5; font-size:.65rem; }
+.pos-badge.top3  { background:var(--color-success-100); color:var(--color-success-700); border:2px solid var(--color-success-400); }
+.pos-badge.top10 { background:var(--color-info-100); color:var(--color-info-700); border:2px solid var(--color-info-300); }
+.pos-badge.top50 { background:var(--color-warning-100); color:var(--color-warning-700); border:2px solid var(--color-warning-400); }
+.pos-badge.low   { background:var(--color-neutral-100); color:var(--color-neutral-500); border:1px solid var(--color-neutral-200); }
+.pos-badge.out   { background:var(--color-critical-100); color:var(--color-critical-700); border:1px solid var(--color-critical-400); font-size:.65rem; }
 
 /* ── Publication row card ────────────────────────────────────────────────── */
 .pub-row { display:flex; align-items:center; gap:12px; padding:12px 16px;
@@ -32,7 +33,7 @@
 /* ── Reputation pills ────────────────────────────────────────────────────── */
 .rep-pill { display:inline-flex; align-items:center; gap:4px; border-radius:5px;
   padding:2px 8px; font-size:.75rem; font-weight:600; }
-.rep-ok   { background:#d1fae5; color:#065f46; }
+.rep-ok   { background:var(--color-success-100); color:var(--color-success-700); }
 .rep-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
 .rep-crit { background:var(--color-critical-100); color:var(--color-critical-700); }
 
@@ -40,11 +41,11 @@
 .rep-snap { border-radius:10px; padding:14px 16px; text-align:center; }
 .rep-snap .rs-num { font-size:1.6rem; font-weight:800; line-height:1; }
 .rep-snap .rs-lbl { font-size:.68rem; color:var(--color-neutral-600); font-weight:600; margin-top:3px; text-transform:uppercase; letter-spacing:.04em; }
-.rep-snap.ok   { background:#f0fdf4; border:1px solid #86efac; }
+.rep-snap.ok   { background:var(--color-success-50); border:1px solid var(--color-success-400); }
 .rep-snap.ok   .rs-num { color:var(--color-success-500); }
-.rep-snap.warn { background:#fefce8; border:1px solid #fde68a; }
-.rep-snap.warn .rs-num { color:#ca8a04; }
-.rep-snap.crit { background:#fef2f2; border:1px solid #fca5a5; }
+.rep-snap.warn { background:var(--color-warning-50); border:1px solid var(--color-warning-100); }
+.rep-snap.warn .rs-num { color:var(--color-warning-500); }
+.rep-snap.crit { background:var(--color-critical-50); border:1px solid var(--color-critical-400); }
 .rep-snap.crit .rs-num { color:var(--color-critical-500); }
 .rep-snap.dim  { background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); }
 .rep-snap.dim  .rs-num { color:var(--color-neutral-400); }
@@ -76,7 +77,7 @@
 <div class="card">
   <div class="card-body text-center py-5">
     <i class="bi bi-graph-up" style="font-size:2.5rem;color:var(--color-neutral-400);display:block;margin-bottom:1rem"></i>
-    <h3 style="font-size:1.1rem;font-weight:600;color:#475569">Sin datos todavía</h3>
+    <h3 style="font-size:1.1rem;font-weight:600;color:var(--app-text-2)">Sin datos todavía</h3>
     <p class="text-muted mb-4">
       Hacé clic en <strong>"Actualizar hoy"</strong> y volvé mañana a ver la evolución.<br>
       Cuantos más días seguidos lo corrás, más útil se vuelve.
@@ -133,7 +134,7 @@
   </div>
 
   <!-- Explicación rápida -->
-  <div style="padding:10px 16px;background:#f0f9ff;border-bottom:1px solid #bae6fd;font-size:.78rem;color:#0369a1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <div style="padding:10px 16px;background:var(--color-info-100);border-bottom:1px solid var(--color-info-100);font-size:.78rem;color:var(--color-info-700);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <i class="bi bi-info-circle-fill flex-shrink-0"></i>
     <span>
       El <strong>número de posición</strong> es el lugar donde aparece tu publicación cuando alguien busca ese producto en ML.
@@ -147,11 +148,11 @@
   <div style="padding:8px 16px;background:var(--color-neutral-50);border-bottom:1px solid var(--color-neutral-200);display:flex;gap:16px;flex-wrap:wrap;align-items:center">
     <span style="font-size:.68rem;color:var(--color-neutral-600);font-weight:700;text-transform:uppercase;letter-spacing:.04em">Cómo leer los colores:</span>
     <span style="display:inline-flex;align-items:center;gap:5px;font-size:.75rem">
-      <span style="background:#d1fae5;color:#065f46;border-radius:5px;padding:2px 8px;font-weight:700">#1–3</span>
+      <span style="background:var(--color-success-100);color:var(--color-success-700);border-radius:5px;padding:2px 8px;font-weight:700">#1–3</span>
       Primeros 3 resultados — excelente
     </span>
     <span style="display:inline-flex;align-items:center;gap:5px;font-size:.75rem">
-      <span style="background:var(--color-info-100);color:#1e40af;border-radius:5px;padding:2px 8px;font-weight:700">#4–10</span>
+      <span style="background:var(--color-info-100);color:var(--color-info-700);border-radius:5px;padding:2px 8px;font-weight:700">#4–10</span>
       Primera página — buena visibilidad
     </span>
     <span style="display:inline-flex;align-items:center;gap:5px;font-size:.75rem">
@@ -213,7 +214,7 @@
       <div style="flex-shrink:0;min-width:60px" title="Evolución de la posición en los últimos días — barra más alta = mejor posición">
         <div style="font-size:.6rem;color:var(--color-neutral-400);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Evolución</div>
         <div class="sparkline" id="spark-{{ loop.index }}"></div>
-        <div style="font-size:.55rem;color:#d1d5db;margin-top:2px">últimos días →</div>
+        <div style="font-size:.55rem;color:var(--color-neutral-300);margin-top:2px">últimos días →</div>
       </div>
 
       <!-- Tendencia -->
@@ -249,16 +250,16 @@
 
 <!-- ── Publicaciones sin posición visible ─────────────────────────────────── -->
 {% if items_sin_dato %}
-<div class="card mb-4" style="border-color:#fde68a">
-  <div class="card-header" style="background:#fefce8;border-bottom-color:#fde68a">
+<div class="card mb-4" style="border-color:var(--color-warning-100)">
+  <div class="card-header" style="background:var(--color-warning-50);border-bottom-color:var(--color-warning-100)">
     <i class="bi bi-eye-slash me-2 text-warning"></i>
     <span class="fw-semibold" style="color:var(--color-warning-700)">{{ items_sin_dato|length }} publicaciones fuera del top 200</span>
     <span class="text-muted small ms-2">— no aparecen en búsquedas orgánicas</span>
   </div>
   <div class="card-body p-0">
-    <div style="padding:10px 16px;background:#fff7ed;border-bottom:1px solid #fde68a;font-size:.8rem;color:var(--color-warning-700)">
+    <div style="padding:10px 16px;background:var(--color-warning-50);border-bottom:1px solid var(--color-warning-100);font-size:.8rem;color:var(--color-warning-700)">
       <i class="bi bi-lightbulb me-1"></i>
-      Usá <a href="/optimizaciones/{{ alias }}" style="color:#b45309;font-weight:600">Optimizar IA</a> para mejorar el título y recuperar posiciones.
+      Usá <a href="/optimizaciones/{{ alias }}" style="color:var(--color-warning-700);font-weight:600">Optimizar IA</a> para mejorar el título y recuperar posiciones.
     </div>
     {% for item in items_sin_dato %}
     <div class="pub-row">
@@ -288,7 +289,7 @@
 
     {% if not rep_snapshots %}
     <div class="no-data">
-      <i class="bi bi-shield" style="font-size:1.8rem;display:block;margin-bottom:8px;color:#d1d5db"></i>
+      <i class="bi bi-shield" style="font-size:1.8rem;display:block;margin-bottom:8px;color:var(--color-neutral-300)"></i>
       <div class="fw-semibold mb-1">Sin datos de reputación</div>
       <div class="small text-muted">Corré el módulo de reputación para empezar a trackear.</div>
     </div>
@@ -435,7 +436,7 @@
     if (pos <= 3) bar.style.background = 'var(--color-success-500)';
     else if (pos <= 10) bar.style.background = 'var(--color-info-500)';
     else if (pos <= 50) bar.style.background = 'var(--color-warning-400)';
-    else bar.style.background = '#d1d5db';
+    else bar.style.background = 'var(--color-neutral-300)';
     bar.title = '#' + pos;
     el.appendChild(bar);
   });

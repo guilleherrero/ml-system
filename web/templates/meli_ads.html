@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Meli ADS{% endblock %}
 {% block content %}
 
@@ -13,8 +14,8 @@
 /* ── Status bar ─────────────────────────────────────────────────────────────── */
 .status-bar    { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; }
 .stat-pill     { background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); border-radius:8px; padding:.4rem .8rem; font-size:.75rem; color:var(--color-neutral-700); display:flex; align-items:center; gap:.4rem; }
-.stat-pill.ok  { border-color:#bbf7d0; background:#f0fdf4; color:var(--color-success-500); }
-.stat-pill.err { border-color:#fecaca; background:#fef2f2; color:var(--color-critical-500); }
+.stat-pill.ok  { border-color:var(--color-success-100); background:var(--color-success-50); color:var(--color-success-500); }
+.stat-pill.err { border-color:var(--color-critical-100); background:var(--color-critical-50); color:var(--color-critical-500); }
 
 /* ── Campaign card ───────────────────────────────────────────────────────────── */
 .camp-card     { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:16px; margin-bottom:1.5rem; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06); }
@@ -42,30 +43,30 @@
 .acos-label    { font-size:.7rem; color:var(--color-neutral-600); display:flex; justify-content:space-between; }
 
 /* ── Claude analysis ─────────────────────────────────────────────────────────── */
-.claude-box    { background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%); border:1px solid #bae6fd; border-radius:12px; padding:1rem 1.1rem; margin-bottom:1.1rem; }
-.claude-box h4 { font-size:.7rem; font-weight:800; color:#0369a1; text-transform:uppercase; letter-spacing:.06em; margin-bottom:.5rem; display:flex; align-items:center; gap:.4rem; }
-.claude-text   { font-size:.82rem; color:#1e3a5f; line-height:1.55; white-space:pre-wrap; }
+.claude-box    { background:linear-gradient(135deg,var(--color-info-100) 0%,var(--color-info-100) 100%); border:1px solid var(--color-info-100); border-radius:12px; padding:1rem 1.1rem; margin-bottom:1.1rem; }
+.claude-box h4 { font-size:.7rem; font-weight:800; color:var(--color-info-700); text-transform:uppercase; letter-spacing:.06em; margin-bottom:.5rem; display:flex; align-items:center; gap:.4rem; }
+.claude-text   { font-size:.82rem; color:var(--color-info-700); line-height:1.55; white-space:pre-wrap; }
 
 /* ── Action panel ────────────────────────────────────────────────────────────── */
 .action-panel  { background:var(--color-neutral-50); border-radius:12px; padding:1rem 1.1rem; display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; }
 .action-label  { font-size:.72rem; font-weight:700; color:var(--color-neutral-700); flex-shrink:0; }
-.budget-input-wrap { display:flex; align-items:center; gap:.4rem; background:var(--color-neutral-0); border:1px solid #d1d5db; border-radius:8px; padding:.3rem .6rem; }
+.budget-input-wrap { display:flex; align-items:center; gap:.4rem; background:var(--color-neutral-0); border:1px solid var(--color-neutral-300); border-radius:8px; padding:.3rem .6rem; }
 .budget-input-wrap span { font-size:.8rem; color:var(--color-neutral-600); }
 .budget-input  { border:none; outline:none; width:90px; font-size:.85rem; font-weight:700; color:var(--color-neutral-800); background:transparent; }
 .btn-action    { display:inline-flex; align-items:center; gap:.35rem; padding:.38rem .85rem; border-radius:8px; font-size:.78rem; font-weight:700; cursor:pointer; border:none; transition:all .15s; }
-.btn-primary   { background:var(--color-info-600); color:#fff; }
-.btn-primary:hover { background:var(--color-info-700); }
-.btn-success   { background:var(--color-success-500); color:#fff; }
-.btn-success:hover { background:var(--color-success-700); }
-.btn-danger    { background:var(--color-critical-500); color:#fff; }
-.btn-danger:hover  { background:#b91c1c; }
-.btn-warning   { background:var(--color-warning-500); color:#fff; }
-.btn-warning:hover { background:#b45309; }
-.btn-ghost     { background:var(--color-neutral-100); color:var(--color-neutral-700); border:1px solid #d1d5db; }
+.btn-primary   { background:var(--solid-info); color:#fff; }
+.btn-primary:hover { background:var(--solid-info); }
+.btn-success   { background:var(--solid-success); color:#fff; }
+.btn-success:hover { background:var(--solid-success); }
+.btn-danger    { background:var(--solid-critical); color:#fff; }
+.btn-danger:hover  { background:var(--solid-critical); }
+.btn-warning   { background:var(--solid-warning); color:#fff; }
+.btn-warning:hover { background:var(--solid-warning); }
+.btn-ghost     { background:var(--color-neutral-100); color:var(--color-neutral-700); border:1px solid var(--color-neutral-300); }
 .btn-ghost:hover { background:var(--color-neutral-200); }
 
 /* ── Items list ──────────────────────────────────────────────────────────────── */
-.items-toggle  { font-size:.72rem; color:var(--color-info-600); cursor:pointer; margin-top:.75rem; display:inline-flex; align-items:center; gap:.3rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:.28rem .65rem; font-weight:600; }
+.items-toggle  { font-size:.72rem; color:var(--color-info-600); cursor:pointer; margin-top:.75rem; display:inline-flex; align-items:center; gap:.3rem; background:var(--color-info-100); border:1px solid var(--color-info-100); border-radius:6px; padding:.28rem .65rem; font-weight:600; }
 .items-toggle:hover { background:var(--color-info-100); }
 .items-list    { display:none; margin-top:.75rem; border:1px solid var(--color-neutral-200); border-radius:10px; overflow:hidden; }
 .items-list.open { display:block; }
@@ -76,7 +77,7 @@
 .item-row:last-child { border-bottom:none; }
 .item-row:hover { background:var(--color-neutral-50); }
 .item-thumb    { width:40px; height:40px; border-radius:6px; object-fit:cover; background:var(--color-neutral-100); flex-shrink:0; }
-.item-thumb-placeholder { width:40px; height:40px; border-radius:6px; background:var(--color-neutral-100); display:flex; align-items:center; justify-content:center; color:#cbd5e1; font-size:1.1rem; flex-shrink:0; }
+.item-thumb-placeholder { width:40px; height:40px; border-radius:6px; background:var(--color-neutral-100); display:flex; align-items:center; justify-content:center; color:var(--color-neutral-300); font-size:1.1rem; flex-shrink:0; }
 .item-main     { min-width:0; }
 .item-title    { font-size:.78rem; font-weight:600; color:var(--color-neutral-800); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .item-meta     { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.2rem; align-items:center; }
@@ -86,16 +87,16 @@
 /* Level badge */
 .lvl-badge     { display:inline-flex; align-items:center; gap:.25rem; padding:.15rem .5rem; border-radius:20px; font-size:.65rem; font-weight:700; }
 .lvl-green     { background:var(--color-success-100); color:var(--color-success-700); }
-.lvl-yellow    { background:#fef9c3; color:var(--color-warning-700); }
+.lvl-yellow    { background:var(--color-warning-100); color:var(--color-warning-700); }
 .lvl-red       { background:var(--color-critical-100); color:var(--color-critical-500); }
 .lvl-unknown   { background:var(--color-neutral-100); color:var(--color-neutral-600); }
 
 /* Mini buttons */
 .btn-mini      { display:inline-flex; align-items:center; gap:.2rem; padding:.22rem .55rem; border-radius:5px; font-size:.67rem; font-weight:700; cursor:pointer; border:1px solid transparent; transition:all .12s; white-space:nowrap; }
-.btn-mini-move { background:#eff6ff; border-color:#bfdbfe; color:var(--color-info-700); }
+.btn-mini-move { background:var(--color-info-100); border-color:var(--color-info-100); color:var(--color-info-700); }
 .btn-mini-move:hover { background:var(--color-info-100); }
-.btn-mini-del  { background:#fff1f2; border-color:#fecdd3; color:#be123c; }
-.btn-mini-del:hover { background:#ffe4e6; }
+.btn-mini-del  { background:var(--color-critical-50); border-color:var(--color-critical-100); color:var(--color-critical-700); }
+.btn-mini-del:hover { background:var(--color-critical-100); }
 
 /* Item suggestion */
 .item-suggest  { font-size:.67rem; color:var(--color-neutral-600); margin-top:.3rem; line-height:1.4; }
@@ -121,7 +122,7 @@
 #ads-toast.err { background:var(--color-critical-500); }
 
 /* ── Warnings ────────────────────────────────────────────────────────────────── */
-.warn-box      { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:.6rem 1rem; margin-bottom:1rem; font-size:.76rem; color:var(--color-warning-700); }
+.warn-box      { background:var(--color-warning-50); border:1px solid var(--color-warning-100); border-radius:10px; padding:.6rem 1rem; margin-bottom:1rem; font-size:.76rem; color:var(--color-warning-700); }
 
 /* ── Empty state ─────────────────────────────────────────────────────────────── */
 .empty-state   { text-align:center; padding:3rem 1rem; color:var(--color-neutral-400); }
@@ -138,7 +139,7 @@
     <button class="btn-action btn-ghost" onclick="location.reload()"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
     {% if account_alias %}
     <a class="btn-action" href="/oauth/connect/{{ account_alias }}"
-       style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:8px;padding:.4rem .85rem;font-size:.78rem;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem">
+       style="background:var(--color-warning-50);color:var(--color-warning-500);border:1px solid var(--color-warning-100);border-radius:8px;padding:.4rem .85rem;font-size:.78rem;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem">
       <i class="bi bi-key-fill"></i> Reconectar / Activar publicidad
     </a>
     {% endif %}
@@ -382,24 +383,24 @@
     {# Stock alerts #}
     {% set sa = camp.stock_alerts | default({}) %}
     {% if sa.count | default(0) > 0 %}
-    <div style="margin-bottom:1rem;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:.75rem 1rem">
-      <div style="font-size:.73rem;font-weight:700;color:#c2410c;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em">
+    <div style="margin-bottom:1rem;background:var(--color-warning-50);border:1px solid var(--color-warning-100);border-radius:10px;padding:.75rem 1rem">
+      <div style="font-size:.73rem;font-weight:700;color:var(--color-warning-500);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em">
         <i class="bi bi-box-seam"></i> {{ sa.count }} producto{{ 's' if sa.count > 1 else '' }} con stock crítico
       </div>
       {% for it in sa.alerts_list %}
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;{% if not loop.last %}border-bottom:1px solid #fed7aa;{% endif %}">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;{% if not loop.last %}border-bottom:1px solid var(--color-warning-100);{% endif %}">
         <div style="font-size:.75rem;color:var(--color-neutral-800);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ it.title }}">
           {{ it.title | truncate(50, true, '…') }}
         </div>
         <div style="flex-shrink:0;margin-left:.75rem;text-align:right">
-          <span style="font-size:.7rem;font-weight:700;color:#c2410c">{{ it.stock }} uds</span>
-          <span style="font-size:.68rem;color:#9a3412;margin-left:.3rem">
+          <span style="font-size:.7rem;font-weight:700;color:var(--color-warning-500)">{{ it.stock }} uds</span>
+          <span style="font-size:.68rem;color:var(--color-warning-700);margin-left:.3rem">
             {% if it.days_left < 1 %}sin stock{% elif it.days_left < 2 %}≈1 día{% else %}≈{{ it.days_left | round(0) | int }} días{% endif %}
           </span>
         </div>
       </div>
       {% endfor %}
-      <div style="font-size:.69rem;color:#9a3412;margin-top:.45rem">Al ritmo de ventas actual estos productos se quedarán sin stock pronto. Considerá pausar sus anuncios o reponer stock antes de seguir invirtiendo.</div>
+      <div style="font-size:.69rem;color:var(--color-warning-700);margin-top:.45rem">Al ritmo de ventas actual estos productos se quedarán sin stock pronto. Considerá pausar sus anuncios o reponer stock antes de seguir invirtiendo.</div>
     </div>
     {% endif %}
 
@@ -601,11 +602,11 @@ function loadItems(campId, btn) {
       }
       // Alerta si campaña tiene 1 solo producto → métricas exactas
       const exactNote = cm.items_count === 1
-        ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:.5rem .85rem;margin-bottom:.6rem;font-size:.73rem;color:var(--color-success-700)"><i class="bi bi-check-circle me-1"></i><strong>Campaña de 1 producto</strong> — las métricas de gasto y revenue son exactas para este producto.</div>`
+        ? `<div style="background:var(--color-success-50);border:1px solid var(--color-success-100);border-radius:8px;padding:.5rem .85rem;margin-bottom:.6rem;font-size:.73rem;color:var(--color-success-700)"><i class="bi bi-check-circle me-1"></i><strong>Campaña de 1 producto</strong> — las métricas de gasto y revenue son exactas para este producto.</div>`
         : `<div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.5rem .85rem;margin-bottom:.6rem;font-size:.72rem;color:var(--color-neutral-600)"><i class="bi bi-info-circle me-1"></i>Métricas estimadas proporcionalmente según ventas 30d de cada producto. <strong>Para métricas exactas: 1 producto por campaña.</strong></div>`;
       const legend = `
         <details style="margin-bottom:.6rem" id="legend-${campId}">
-          <summary style="font-size:.72rem;font-weight:700;color:var(--color-info-600);cursor:pointer;padding:.4rem .7rem;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;list-style:none;display:flex;align-items:center;gap:.4rem">
+          <summary style="font-size:.72rem;font-weight:700;color:var(--color-info-600);cursor:pointer;padding:.4rem .7rem;background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:8px;list-style:none;display:flex;align-items:center;gap:.4rem">
             <i class="bi bi-info-circle"></i> ¿Cómo se interpreta cada producto?
           </summary>
           <div style="background:var(--color-neutral-50);border:1px solid var(--color-neutral-200);border-radius:0 0 8px 8px;border-top:none;padding:.75rem 1rem;font-size:.72rem;color:var(--color-neutral-700);line-height:1.7">
@@ -624,7 +625,7 @@ function loadItems(campId, btn) {
             <div style="display:flex;flex-direction:column;gap:.25rem;margin-bottom:.75rem">
               <div><span style="background:var(--color-success-100);color:var(--color-success-700);font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Verde</span>
                 &nbsp;ML aprueba el listing para publicidad. Fotos, título, precio y reputación en buen estado.</div>
-              <div><span style="background:#fef9c3;color:var(--color-warning-700);font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Amarillo</span>
+              <div><span style="background:var(--color-warning-100);color:var(--color-warning-700);font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Amarillo</span>
                 &nbsp;ML está limitando la visibilidad del anuncio. Hay aspectos del listing que frenan el alcance.</div>
               <div><span style="background:var(--color-critical-100);color:var(--color-critical-500);font-weight:700;padding:.1rem .45rem;border-radius:20px;font-size:.67rem">● Rojo</span>
                 &nbsp;ML está frenando activamente el anuncio. Poca o ninguna impresión publicitaria.</div>
@@ -754,9 +755,9 @@ function renderItem(item, otherCampIds, otherCampNames) {
       ${thumb}
       <div class="item-main">
         <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.2rem">
-          <code style="font-size:.66rem;font-weight:700;color:var(--color-info-600);background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:.1rem .3rem;cursor:pointer;user-select:all;flex-shrink:0"
+          <code style="font-size:.66rem;font-weight:700;color:var(--color-info-600);background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:4px;padding:.1rem .3rem;cursor:pointer;user-select:all;flex-shrink:0"
                 title="Hacé click para copiar el ID"
-                onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='var(--color-success-100)';setTimeout(()=>this.style.background='#eff6ff',1200)})">${item.id}</code>
+                onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='var(--color-success-100)';setTimeout(()=>this.style.background='var(--color-info-100)',1200)})">${item.id}</code>
           <span style="font-size:.67rem;color:var(--color-neutral-600)">${item.ventas_30d > 0 ? `<strong>${item.ventas_30d}</strong> ventas 30d` : 'sin ventas 30d'}</span>
         </div>
         <div class="item-title" title="${item.title}">${item.title}</div>
@@ -870,7 +871,7 @@ function renderDistribution(d, body) {
     subir:   { bg:'var(--color-success-100)', color:'var(--color-success-700)', icon:'⬆', label:'Subir de campaña' },
     bajar:   { bg:'var(--color-warning-100)', color:'var(--color-warning-700)', icon:'⬇', label:'Bajar de campaña' },
     revisar: { bg:'var(--color-critical-100)', color:'var(--color-critical-500)', icon:'⚠', label:'Revisar publicación' },
-    ok:      { bg:'var(--color-neutral-100)', color:'#475569', icon:'✓', label:'Bien ubicado'       },
+    ok:      { bg:'var(--color-neutral-100)', color:'var(--app-text-2)', icon:'✓', label:'Bien ubicado'       },
   };
 
   // Summary pills
@@ -879,13 +880,13 @@ function renderDistribution(d, body) {
       <span style="background:var(--color-success-100);color:var(--color-success-700);padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">⬆ ${s.subir} para subir</span>
       <span style="background:var(--color-warning-100);color:var(--color-warning-700);padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">⬇ ${s.bajar} para bajar</span>
       <span style="background:var(--color-critical-100);color:var(--color-critical-500);padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">⚠ ${s.revisar} a revisar</span>
-      <span style="background:var(--color-neutral-100);color:#475569;padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">✓ ${s.ok} bien ubicados</span>
+      <span style="background:var(--color-neutral-100);color:var(--app-text-2);padding:.3rem .75rem;border-radius:20px;font-size:.75rem;font-weight:700">✓ ${s.ok} bien ubicados</span>
     </div>`;
 
   // Camp rank legend
   html += `<div style="font-size:.7rem;color:var(--color-neutral-600);margin-bottom:1rem">
     <strong>Jerarquía detectada por ventas:</strong>
-    ${d.camps_ranked.map((c,i) => `<span style="background:#e0f2fe;color:#0369a1;padding:.15rem .45rem;border-radius:4px;margin:0 .2rem;font-weight:700">${i+1}º ${c.name} (avg ${c.avg_sold} ventas)</span>`).join(' → ')}
+    ${d.camps_ranked.map((c,i) => `<span style="background:var(--color-info-100);color:var(--color-info-700);padding:.15rem .45rem;border-radius:4px;margin:0 .2rem;font-weight:700">${i+1}º ${c.name} (avg ${c.avg_sold} ventas)</span>`).join(' → ')}
   </div>`;
 
   // Group items by campaign (in rank order)
@@ -919,9 +920,9 @@ function renderDistribution(d, body) {
             <div style="flex:1;min-width:0">
               <!-- ID copiable -->
               <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.25rem">
-                <code style="font-size:.7rem;font-weight:700;color:var(--color-info-600);background:#eff6ff;border:1px solid #bfdbfe;border-radius:4px;padding:.1rem .35rem;cursor:pointer;user-select:all"
+                <code style="font-size:.7rem;font-weight:700;color:var(--color-info-600);background:var(--color-info-100);border:1px solid var(--color-info-100);border-radius:4px;padding:.1rem .35rem;cursor:pointer;user-select:all"
                       title="Hacé click para copiar"
-                      onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='var(--color-success-100)';setTimeout(()=>this.style.background='#eff6ff',1200)})">${item.id}</code>
+                      onclick="navigator.clipboard.writeText('${item.id}').then(()=>{this.style.background='var(--color-success-100)';setTimeout(()=>this.style.background='var(--color-info-100)',1200)})">${item.id}</code>
                 <span style="font-size:.65rem;color:var(--color-neutral-600)">· hacé click para copiar</span>
               </div>
               <!-- Título completo -->
@@ -959,20 +960,20 @@ function renderDistribution(d, body) {
 </script>
 
 <!-- ── Sección explicativa ──────────────────────────────────────────────────── -->
-<div style="margin-top:2.5rem;padding:2rem 2.25rem;background:linear-gradient(135deg,#f0f9ff 0%,var(--color-neutral-50) 100%);border:1px solid #bae6fd;border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
+<div style="margin-top:2.5rem;padding:2rem 2.25rem;background:linear-gradient(135deg,var(--color-info-100) 0%,var(--color-neutral-50) 100%);border:1px solid var(--color-info-100);border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
 
   <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1.5rem">
     <span style="font-size:1.4rem">📊</span>
     <div>
-      <div style="font-size:1.05rem;font-weight:800;color:#0c4a6e">¿Qué es Meli ADS y para qué sirve?</div>
-      <div style="font-size:.78rem;color:#0369a1;margin-top:.1rem">Guía de uso de esta sección</div>
+      <div style="font-size:1.05rem;font-weight:800;color:var(--color-info-700)">¿Qué es Meli ADS y para qué sirve?</div>
+      <div style="font-size:.78rem;color:var(--color-info-700);margin-top:.1rem">Guía de uso de esta sección</div>
     </div>
   </div>
 
   <!-- Qué es -->
   <div style="margin-bottom:1.5rem">
     <div style="font-size:.82rem;font-weight:700;color:var(--color-neutral-800);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.04em">¿Qué hace esta sección?</div>
-    <p style="font-size:.83rem;color:#334155;line-height:1.65;margin:0">
+    <p style="font-size:.83rem;color:var(--color-neutral-700);line-height:1.65;margin:0">
       Meli ADS te permite gestionar tus campañas de publicidad dentro de MercadoLibre directamente desde este panel. Podés ver en tiempo real el rendimiento de cada campaña —cuánto gastás, cuánto vendés y si tu inversión publicitaria es eficiente— sin tener que entrar al Centro de Vendedores. Cada campaña muestra métricas clave como el <strong>ACoS</strong> (porcentaje de gasto sobre ventas), las <strong>impresiones</strong>, los <strong>clics</strong> y la <strong>tasa de conversión</strong>, junto con un análisis redactado por <strong>Claude AI</strong> que interpreta esos números y te da una lectura directa del estado de la campaña.
     </p>
   </div>
@@ -982,28 +983,28 @@ function renderDistribution(d, body) {
     <div style="font-size:.82rem;font-weight:700;color:var(--color-neutral-800);margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.04em">¿Cómo se usa?</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.85rem">
 
-      <div style="background:var(--color-neutral-0);border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+      <div style="background:var(--color-neutral-0);border:1px solid var(--color-info-100);border-radius:12px;padding:.9rem 1rem">
         <div style="font-size:1rem;margin-bottom:.35rem">💰</div>
-        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Ajustar presupuesto</div>
-        <div style="font-size:.77rem;color:#475569;line-height:1.55">Ingresá el nuevo monto diario en el campo de presupuesto de cada campaña y hacé clic en <em>Aplicar</em>. El cambio se ejecuta directo en MercadoLibre vía API.</div>
+        <div style="font-size:.78rem;font-weight:700;color:var(--color-info-700);margin-bottom:.3rem">Ajustar presupuesto</div>
+        <div style="font-size:.77rem;color:var(--app-text-2);line-height:1.55">Ingresá el nuevo monto diario en el campo de presupuesto de cada campaña y hacé clic en <em>Aplicar</em>. El cambio se ejecuta directo en MercadoLibre vía API.</div>
       </div>
 
-      <div style="background:var(--color-neutral-0);border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+      <div style="background:var(--color-neutral-0);border:1px solid var(--color-info-100);border-radius:12px;padding:.9rem 1rem">
         <div style="font-size:1rem;margin-bottom:.35rem">⏸️</div>
-        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Pausar o activar</div>
-        <div style="font-size:.77rem;color:#475569;line-height:1.55">Usá el botón de estado (verde/amarillo) para pausar una campaña que esté gastando sin convertir, o reactivarla cuando tengas stock listo para vender.</div>
+        <div style="font-size:.78rem;font-weight:700;color:var(--color-info-700);margin-bottom:.3rem">Pausar o activar</div>
+        <div style="font-size:.77rem;color:var(--app-text-2);line-height:1.55">Usá el botón de estado (verde/amarillo) para pausar una campaña que esté gastando sin convertir, o reactivarla cuando tengas stock listo para vender.</div>
       </div>
 
-      <div style="background:var(--color-neutral-0);border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+      <div style="background:var(--color-neutral-0);border:1px solid var(--color-info-100);border-radius:12px;padding:.9rem 1rem">
         <div style="font-size:1rem;margin-bottom:.35rem">📦</div>
-        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Ver productos de la campaña</div>
-        <div style="font-size:.77rem;color:#475569;line-height:1.55">Abrí el desplegable <em>Ver publicaciones</em> en cualquier campaña para ver la calidad individual de cada producto: nivel (verde/amarillo/rojo), ventas, stock y sugerencias de mejora.</div>
+        <div style="font-size:.78rem;font-weight:700;color:var(--color-info-700);margin-bottom:.3rem">Ver productos de la campaña</div>
+        <div style="font-size:.77rem;color:var(--app-text-2);line-height:1.55">Abrí el desplegable <em>Ver publicaciones</em> en cualquier campaña para ver la calidad individual de cada producto: nivel (verde/amarillo/rojo), ventas, stock y sugerencias de mejora.</div>
       </div>
 
-      <div style="background:var(--color-neutral-0);border:1px solid #e0f2fe;border-radius:12px;padding:.9rem 1rem">
+      <div style="background:var(--color-neutral-0);border:1px solid var(--color-info-100);border-radius:12px;padding:.9rem 1rem">
         <div style="font-size:1rem;margin-bottom:.35rem">🔀</div>
-        <div style="font-size:.78rem;font-weight:700;color:#0369a1;margin-bottom:.3rem">Optimizar distribución</div>
-        <div style="font-size:.77rem;color:#475569;line-height:1.55">El botón <em>Optimizar distribución</em> analiza todos tus productos y detecta cuáles están mal ubicados: productos que venden mucho pero están en IMPULSO, o productos que apenas convierten pero ocupan presupuesto de TOP.</div>
+        <div style="font-size:.78rem;font-weight:700;color:var(--color-info-700);margin-bottom:.3rem">Optimizar distribución</div>
+        <div style="font-size:.77rem;color:var(--app-text-2);line-height:1.55">El botón <em>Optimizar distribución</em> analiza todos tus productos y detecta cuáles están mal ubicados: productos que venden mucho pero están en IMPULSO, o productos que apenas convierten pero ocupan presupuesto de TOP.</div>
       </div>
 
     </div>
@@ -1038,15 +1039,15 @@ function renderDistribution(d, body) {
   </div>
 
   <!-- Indicadores clave -->
-  <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid #bae6fd">
-    <div style="font-size:.75rem;font-weight:700;color:#0369a1;margin-bottom:.65rem;text-transform:uppercase;letter-spacing:.04em">Glosario rápido de métricas</div>
+  <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--color-info-100)">
+    <div style="font-size:.75rem;font-weight:700;color:var(--color-info-700);margin-bottom:.65rem;text-transform:uppercase;letter-spacing:.04em">Glosario rápido de métricas</div>
     <div style="display:flex;flex-wrap:wrap;gap:.5rem">
-      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>ACoS</strong> — Gasto publicitario ÷ Ventas generadas. Menor es mejor.</span>
-      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Impresiones</strong> — Cuántas veces apareció tu anuncio en los resultados.</span>
-      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Clics</strong> — Cuántas personas entraron a tu publicación desde el anuncio.</span>
-      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>CTR</strong> — Tasa de clics: Clics ÷ Impresiones × 100.</span>
-      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Conversión</strong> — Porcentaje de clics que terminan en venta.</span>
-      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:#334155"><strong>Nivel (verde/amarillo/rojo)</strong> — Calidad de la publicación según ML: fotos, descripción, precio y reputación.</span>
+      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:var(--color-neutral-700)"><strong>ACoS</strong> — Gasto publicitario ÷ Ventas generadas. Menor es mejor.</span>
+      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:var(--color-neutral-700)"><strong>Impresiones</strong> — Cuántas veces apareció tu anuncio en los resultados.</span>
+      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:var(--color-neutral-700)"><strong>Clics</strong> — Cuántas personas entraron a tu publicación desde el anuncio.</span>
+      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:var(--color-neutral-700)"><strong>CTR</strong> — Tasa de clics: Clics ÷ Impresiones × 100.</span>
+      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:var(--color-neutral-700)"><strong>Conversión</strong> — Porcentaje de clics que terminan en venta.</span>
+      <span style="background:var(--color-neutral-0);border:1px solid var(--color-neutral-200);border-radius:8px;padding:.3rem .65rem;font-size:.72rem;color:var(--color-neutral-700)"><strong>Nivel (verde/amarillo/rojo)</strong> — Calidad de la publicación según ML: fotos, descripción, precio y reputación.</span>
     </div>
   </div>
 
