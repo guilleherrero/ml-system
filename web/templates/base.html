@@ -388,6 +388,35 @@ function runComando(comando, alias) {
   });
 }
 </script>
+<script>
+/* Gráficos y tema: el canvas no entiende var(--token). Antes de dibujar, se
+   traducen los tokens al color real de la pantalla (#main: las pantallas sin
+   migrar redefinen los tokens en claro), y textos/grillas toman el tema. */
+(function () {
+  if (!window.Chart) return;
+  const base = () => getComputedStyle(document.getElementById('main') || document.documentElement);
+  const color = v => {
+    if (typeof v !== 'string' || !v.includes('var(--')) return v;
+    return v.replace(/var\((--[\w-]+)\)/g, (m, n) => base().getPropertyValue(n).trim() || m);
+  };
+  const recorrer = o => {
+    if (!o || typeof o !== 'object') return;
+    for (const k of Object.keys(o)) {
+      const v = o[k];
+      if (typeof v === 'string') o[k] = color(v);
+      else if (Array.isArray(v)) o[k] = v.map(x => typeof x === 'string' ? color(x) : (recorrer(x), x));
+      else if (v && typeof v === 'object' && !(v instanceof CanvasGradient) && !(v instanceof CanvasPattern)) recorrer(v);
+    }
+  };
+  Chart.register({id: 'temaTokens', beforeInit(chart) {
+    recorrer(chart.config.options);
+    (chart.config.data.datasets || []).forEach(recorrer);
+  }});
+  Chart.defaults.color = base().getPropertyValue('--app-text-2').trim() || Chart.defaults.color;
+  Chart.defaults.borderColor = base().getPropertyValue('--app-border').trim() || Chart.defaults.borderColor;
+  Chart.defaults.font.family = base().getPropertyValue('--font-base').trim() || Chart.defaults.font.family;
+})();
+</script>
 {% block scripts %}{% endblock %}
 <script>
 const CUENTA_ACTUAL = {{ cur | tojson }};

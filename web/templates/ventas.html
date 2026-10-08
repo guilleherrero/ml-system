@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Ventas por producto {{ alias }}{% endblock %}
 
 {% block content %}
@@ -9,24 +10,24 @@
 .rank-3 { color:#cd7c3a; }
 .ing-bar { height:6px; border-radius:3px; background:var(--color-neutral-200); overflow:hidden; margin-top:4px; }
 .ing-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,var(--color-info-600),#7c3aed); }
-.margen-ok   { color:#059669; font-weight:700; }
+.margen-ok   { color:var(--color-success-500); font-weight:700; }
 .margen-bajo { color:var(--color-warning-500); font-weight:700; }
 .margen-neg  { color:var(--color-critical-500); font-weight:700; }
-.pill-7d { background:#ede9fe; color:#5b21b6; font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:20px; white-space:nowrap; }
+.pill-7d { background:var(--color-info-100); color:var(--color-info-700); font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:20px; white-space:nowrap; }
 .summary-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; padding:1rem 1.25rem; text-align:center; }
 .summary-val { font-size:1.6rem; font-weight:800; line-height:1.1; }
 .summary-lbl { font-size:.68rem; font-weight:700; color:var(--color-neutral-600); text-transform:uppercase; letter-spacing:.05em; margin-top:.2rem; }
 .prod-row { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:10px; padding:.85rem 1rem; margin-bottom:.6rem; display:flex; gap:.85rem; align-items:center; }
-.prod-row:hover { border-color:var(--color-info-300); background:#f8faff; }
+.prod-row:hover { border-color:var(--color-info-300); background:var(--color-neutral-50); }
 .prod-info { flex:1; min-width:0; }
 .prod-title { font-weight:600; font-size:.88rem; color:var(--color-neutral-800); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .prod-meta { font-size:.72rem; color:var(--color-neutral-600); margin-top:.2rem; }
 .prod-nums { display:flex; flex-direction:column; align-items:flex-end; gap:.2rem; flex-shrink:0; text-align:right; }
 .ing-val { font-size:1.05rem; font-weight:800; color:var(--color-info-700); }
 .ing-lbl { font-size:.65rem; color:var(--color-neutral-400); }
-.period-pill { border:1px solid #e5e7eb; border-radius:20px; padding:.28rem .85rem; font-size:.78rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0); transition:all .15s; font-weight:500; }
-.period-pill:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
-.period-pill.active { background:var(--color-info-600); border-color:var(--color-info-600); color:#fff; font-weight:700; }
+.period-pill { border:1px solid var(--color-neutral-200); border-radius:20px; padding:.28rem .85rem; font-size:.78rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0); transition:all .15s; font-weight:500; }
+.period-pill:hover { border-color:var(--color-info-300); background:var(--color-info-100); color:var(--color-info-700); }
+.period-pill.active { background:var(--solid-info); border-color:var(--color-info-600); color:#fff; font-weight:700; }
 .badge-total { background:var(--color-warning-100); color:var(--color-warning-700); font-size:.65rem; font-weight:700; padding:1px 6px; border-radius:10px; }
 .skel { background:linear-gradient(90deg,var(--color-neutral-100) 25%,var(--color-neutral-200) 50%,var(--color-neutral-100) 75%); background-size:200% 100%; animation:shimmer 1.3s infinite; border-radius:6px; }
 @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }

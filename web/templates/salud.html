@@ -1,15 +1,16 @@
 {% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
 {% block title %} — Salud de catálogo {{ alias }}{% endblock %}
 
 {% block content %}
 <style>
 .filter-pill {
-  border:1px solid #e5e7eb; border-radius:20px; padding:.3rem .85rem;
+  border:1px solid var(--color-neutral-200); border-radius:20px; padding:.3rem .85rem;
   font-size:.78rem; cursor:pointer; color:var(--color-neutral-700); background:var(--color-neutral-0);
   transition:all .15s; white-space:nowrap;
 }
-.filter-pill:hover { border-color:var(--color-info-300); background:#eff6ff; color:var(--color-info-700); }
-.filter-pill.active { background:var(--color-info-600); border-color:var(--color-info-600); color:#fff; font-weight:600; }
+.filter-pill:hover { border-color:var(--color-info-300); background:var(--color-info-100); color:var(--color-info-700); }
+.filter-pill.active { background:var(--solid-info); border-color:var(--color-info-600); color:#fff; font-weight:600; }
 .cat-row { border-bottom:1px solid var(--color-neutral-100); transition:background .1s; }
 .cat-row:hover { background:var(--color-neutral-50); }
 .badge-win  { background:var(--color-success-100); color:var(--color-success-500); font-size:.7rem; font-weight:700; padding:2px 9px; border-radius:20px; }
@@ -23,7 +24,7 @@
 .rango-edit-icon { opacity:0; transition:opacity .15s; font-size:.65rem; color:var(--color-neutral-400); margin-left:3px; }
 .rango-form { display:none; gap:4px; align-items:center; }
 .rango-form input {
-  width:80px; font-size:.72rem; padding:2px 5px; border:1px solid #cbd5e1;
+  width:80px; font-size:.72rem; padding:2px 5px; border:1px solid var(--color-neutral-300);
   border-radius:5px; text-align:right;
 }
 .rango-form input:focus { outline:none; border-color:var(--color-info-600); }
@@ -58,7 +59,7 @@
       <i class="bi bi-search me-1"></i>Sin catálogo
       <span class="badge bg-secondary ms-1">{{ resumen.no_catalogo }}</span>
       {% if resumen.no_catalogo_trafico %}
-        <span class="badge ms-1" style="background:#fef3c7;color:#d97706">{{ resumen.no_catalogo_trafico }} con tráfico</span>
+        <span class="badge ms-1" style="background:var(--color-warning-100);color:var(--color-warning-500)">{{ resumen.no_catalogo_trafico }} con tráfico</span>
       {% endif %}
     </button>
   </li>
@@ -76,14 +77,14 @@
 {# Banner perdiendo buy box #}
 {% if resumen.perdiendo and resumen.perdiendo > 0 %}
 <div class="alert d-flex align-items-center justify-content-between gap-3 mb-4"
-     style="border:1px solid #fecaca;background:linear-gradient(90deg,#fef2f2 0%,#fff7ed 100%);">
+     style="border:1px solid var(--color-critical-100);background:linear-gradient(90deg,var(--color-critical-50) 0%,var(--color-warning-50) 100%);">
   <div class="d-flex align-items-center gap-3">
     <i class="bi bi-exclamation-triangle-fill" style="font-size:1.6rem;color:var(--color-critical-500)"></i>
     <div>
       <div style="font-weight:700;color:var(--color-critical-700)">
         Perdés el Buy Box en {{ resumen.perdiendo }} publicación{{ 'es' if resumen.perdiendo != 1 else '' }}
       </div>
-      <div style="font-size:.82rem;color:#7c2d12">
+      <div style="font-size:.82rem;color:var(--color-warning-700)">
         {% if resumen.perdiendo_precio %}
           <span class="me-3">💰 {{ resumen.perdiendo_precio }} por precio más alto</span>
         {% endif %}
@@ -91,7 +92,7 @@
           <span class="me-3">⭐ {{ resumen.perdiendo_reputacion }} por reputación u otro factor</span>
         {% endif %}
         {% if resumen.perdiendo_oportunidad %}
-          <span style="color:#15803d">🟢 {{ resumen.perdiendo_oportunidad }} con ganador sin stock — oportunidad</span>
+          <span style="color:var(--color-success-700)">🟢 {{ resumen.perdiendo_oportunidad }} con ganador sin stock — oportunidad</span>
         {% endif %}
       </div>
     </div>
@@ -110,7 +111,7 @@
     <div style="font-size:.68rem;color:var(--color-neutral-400)">publicaciones activas</div>
   </div></div>
   <div><div class="card text-center p-3 h-100" style="border-top:3px solid var(--color-success-400)">
-    <div style="font-size:2rem;font-weight:800;color:#059669">{{ resumen.ganando }}</div>
+    <div style="font-size:2rem;font-weight:800;color:var(--color-success-500)">{{ resumen.ganando }}</div>
     <div style="font-size:.75rem;color:var(--color-neutral-600);font-weight:600">GANANDO</div>
     <div style="font-size:.68rem;color:var(--color-neutral-400)">buy box activo</div>
   </div></div>
@@ -140,11 +141,11 @@
   <button class="filter-pill active" onclick="filtrar('todos',this)">
     Todos <span class="ms-1 badge bg-secondary">{{ resumen.total }}</span>
   </button>
-  <button class="filter-pill" onclick="filtrar('perdiendo',this)" style="border-color:#fecaca">
+  <button class="filter-pill" onclick="filtrar('perdiendo',this)" style="border-color:var(--color-critical-100)">
     <i class="bi bi-arrow-down-circle me-1 text-danger"></i>Perdiendo
     <span class="ms-1 badge bg-danger">{{ resumen.perdiendo }}</span>
   </button>
-  <button class="filter-pill" onclick="filtrar('ganando',this)" style="border-color:#bbf7d0">
+  <button class="filter-pill" onclick="filtrar('ganando',this)" style="border-color:var(--color-success-100)">
     <i class="bi bi-trophy me-1 text-success"></i>Ganando
     <span class="ms-1 badge bg-success">{{ resumen.ganando }}</span>
   </button>
@@ -216,18 +217,18 @@
           {% if it.we_win == true %}
             {% if it.ganador_propio %}
               <span class="badge-win"><i class="bi bi-trophy-fill me-1"></i>Ganando</span>
-              <div style="font-size:.65rem;color:#6b7280;margin-top:2px">otra pub. tuya tiene BB</div>
+              <div style="font-size:.65rem;color:var(--color-neutral-500);margin-top:2px">otra pub. tuya tiene BB</div>
             {% else %}
               <span class="badge-win"><i class="bi bi-trophy-fill me-1"></i>Ganando</span>
             {% endif %}
           {% elif it.we_win == false %}
             <span class="badge-lose"><i class="bi bi-x-circle me-1"></i>Perdiendo</span>
             {% if it.razon_perdida == 'precio' %}
-              <div style="font-size:.65rem;color:#dc2626;margin-top:2px">💰 precio más alto</div>
+              <div style="font-size:.65rem;color:var(--color-critical-500);margin-top:2px">💰 precio más alto</div>
             {% elif it.razon_perdida == 'ganador_sin_stock' %}
-              <div style="font-size:.65rem;color:#16a34a;margin-top:2px">🟢 ganador sin stock</div>
+              <div style="font-size:.65rem;color:var(--color-success-500);margin-top:2px">🟢 ganador sin stock</div>
             {% elif it.razon_perdida == 'reputacion' %}
-              <div style="font-size:.65rem;color:#d97706;margin-top:2px">⭐ reputación / otro</div>
+              <div style="font-size:.65rem;color:var(--color-warning-500);margin-top:2px">⭐ reputación / otro</div>
             {% endif %}
           {% else %}
             <span class="badge-nd">Sin datos</span>
@@ -244,12 +245,12 @@
               <span style="color:var(--color-success-500);font-size:.75rem">sin competidores</span>
             {% endif %}
           {% elif it.winner_stock is not none %}
-            <span style="font-weight:600;color:{% if it.winner_stock <= 3 %}#16a34a{% else %}var(--color-neutral-800){% endif %}">{{ it.winner_stock }}</span>
+            <span style="font-weight:600;color:{% if it.winner_stock <= 3 %}var(--color-success-500){% else %}var(--color-neutral-800){% endif %}">{{ it.winner_stock }}</span>
             <div style="font-size:.68rem;color:var(--color-neutral-400)">stock ganador{% if it.winner_stock <= 3 %} ⚠️{% endif %}</div>
             {% if it.catalog_product_id %}
             <div style="margin-top:3px">
               <a href="https://www.mercadolibre.com.ar/p/{{ it.catalog_product_id }}"
-                 target="_blank" style="font-size:.65rem;color:#2563eb;text-decoration:none">
+                 target="_blank" style="font-size:.65rem;color:var(--color-info-600);text-decoration:none">
                 <i class="bi bi-people"></i> Ver todos los vendedores
               </a>
             </div>
@@ -259,7 +260,7 @@
             {% if it.catalog_product_id %}
             <div style="margin-top:3px">
               <a href="https://www.mercadolibre.com.ar/p/{{ it.catalog_product_id }}"
-                 target="_blank" style="font-size:.65rem;color:#2563eb;text-decoration:none">
+                 target="_blank" style="font-size:.65rem;color:var(--color-info-600);text-decoration:none">
                 <i class="bi bi-people"></i> Ver todos los vendedores
               </a>
             </div>
@@ -365,7 +366,7 @@
 <div id="tab-sin-catalogo" style="display:none">
 
 <div class="d-flex align-items-center justify-content-between mb-3 gap-3 flex-wrap">
-  <div style="font-size:.85rem;color:#6b7280">
+  <div style="font-size:.85rem;color:var(--color-neutral-500)">
     Publicaciones fuera de catálogo ML. Para las que tienen tráfico significativo
     podés detectar si existe un catálogo donde convendría participar.
   </div>
@@ -495,25 +496,25 @@ async function iniciarScan() {
       cell.dataset.catalogo = res.catalog_existe ? '1' : '0';
       if (res.catalog_existe) {
         const confianza = res.metodo === 'ean'
-          ? `<span style="background:#dcfce7;color:#16a34a;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px">EAN ✓</span>`
-          : `<span style="background:#f3f4f6;color:#6b7280;font-size:.62rem;padding:1px 6px;border-radius:10px;margin-left:5px">por título</span>`;
-        const eanLabel  = res.ean ? `<div style="font-size:.62rem;color:#9ca3af;margin-top:1px">EAN: ${res.ean}</div>` : '';
+          ? `<span style="background:var(--color-success-100);color:var(--color-success-500);font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px">EAN ✓</span>`
+          : `<span style="background:var(--color-neutral-100);color:var(--color-neutral-500);font-size:.62rem;padding:1px 6px;border-radius:10px;margin-left:5px">por título</span>`;
+        const eanLabel  = res.ean ? `<div style="font-size:.62rem;color:var(--color-neutral-400);margin-top:1px">EAN: ${res.ean}</div>` : '';
         const soldLabel = res.sold_quantity
-          ? `<div style="font-size:.62rem;color:#6b7280;margin-top:1px">~${res.sold_quantity.toLocaleString('es-AR')} vendidos (vendedor principal)</div>` : '';
+          ? `<div style="font-size:.62rem;color:var(--color-neutral-500);margin-top:1px">~${res.sold_quantity.toLocaleString('es-AR')} vendidos (vendedor principal)</div>` : '';
         const catLink   = res.catalog_product_id
           ? `<a href="https://www.mercadolibre.com.ar/p/${res.catalog_product_id}" target="_blank"
-               style="font-size:.68rem;color:#2563eb;text-decoration:none;display:inline-flex;align-items:center;gap:3px;margin-top:4px">
+               style="font-size:.68rem;color:var(--color-info-600);text-decoration:none;display:inline-flex;align-items:center;gap:3px;margin-top:4px">
                <i class="bi bi-box-arrow-up-right"></i> Ver catálogo en ML
              </a>` : '';
         cell.innerHTML = `
-          <span style="background:#fef3c7;color:#d97706;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:12px">
+          <span style="background:var(--color-warning-100);color:var(--color-warning-500);font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:12px">
             ⚠️ Catálogo disponible
           </span>${confianza}
-          <div style="font-size:.65rem;color:#6b7280;margin-top:3px">${res.catalog_titulo || ''}</div>
+          <div style="font-size:.65rem;color:var(--color-neutral-500);margin-top:3px">${res.catalog_titulo || ''}</div>
           ${eanLabel}${soldLabel}${catLink}`;
       } else {
         const metodoLabel = res.metodo === 'ean' ? ` (EAN: ${res.ean})` : '';
-        cell.innerHTML = `<span style="color:#6b7280;font-size:.75rem">Sin catálogo detectado${metodoLabel}</span>`;
+        cell.innerHTML = `<span style="color:var(--color-neutral-500);font-size:.75rem">Sin catálogo detectado${metodoLabel}</span>`;
       }
     });
 
