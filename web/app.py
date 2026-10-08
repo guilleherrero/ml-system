@@ -4946,9 +4946,10 @@ def api_reclamo_reputacion():
 
 @app.route('/mensajes/<alias>')
 def mensajes(alias):
-    all_accs = get_accounts()
-    account  = next((a for a in all_accs if a.get('alias') == alias), None)
-    return render_template('mensajes.html', alias=alias, account=account, accounts=all_accs)
+    # La pantalla vieja leía /messages/orders, que ML ya no responde: mostraba
+    # 0 conversaciones con mensajes sin leer (verificado 08/10/2026). Los
+    # mensajes se leen y responden en Reputación y reclamos.
+    return redirect(f'/reputacion/{alias}')
 
 
 _MENS_CFG_DEFAULT = ('Hola {nombre}, gracias por tu compra de "{producto}" '
@@ -11353,13 +11354,18 @@ def api_alertas():
         })
 
     def _calc_margen_pct(precio, costo, fee):
-        """Devuelve margen_pct estimado (0-100). Si falta costo, asume 30%."""
+        """Margen % (0-100), o None si falta el costo.
+
+        Antes asumía 30% sin costo y con eso calculaba la "plata en juego":
+        un monto inventado (el $1,1M del menú). Sin costo, la alerta sigue
+        pero sin monto: cae en "sin impacto $ cuantificado".
+        """
         if not precio or precio <= 0:
             return 0.0
         if costo and costo > 0:
             neto = precio * (1 - (fee or 0))
             return max(0.0, round((neto - costo) / precio * 100, 2))
-        return 30.0  # supuesto conservador cuando no hay costo cargado
+        return None
 
     fees_cache = get_fee_rates()  # lee de config/fees.json (sin refrescar)
 
@@ -11437,7 +11443,7 @@ def api_alertas():
 
             if ast == 'SIN_STOCK':
                 # 30 días sin stock = ventas perdidas todo el mes
-                imp = impacto_stock_critico(vel_dia, 0, precio, margen_pct_eff)
+                imp = impacto_stock_critico(vel_dia, 0, precio, margen_pct_eff) if margen_pct_eff is not None else None
                 bdown = {
                     'formula': 'velocidad/día × 30 días sin stock × precio × margen',
                     'componentes': {
@@ -11452,7 +11458,7 @@ def api_alertas():
                     'La publicación está pausada en ML. Reponé urgente.', lk, 'Ver stock',
                     item_id, tipo='stock_sin_stock', score_impacto_ars=imp, score_breakdown=bdown)
             elif ast == 'CRITICO':
-                imp = impacto_stock_critico(vel_dia, dias or 0, precio, margen_pct_eff)
+                imp = impacto_stock_critico(vel_dia, dias or 0, precio, margen_pct_eff) if margen_pct_eff is not None else None
                 bdown = {
                     'formula': 'velocidad/día × días sin stock proyectados × precio × margen',
                     'componentes': {
@@ -11468,7 +11474,7 @@ def api_alertas():
                     lk, 'Ver stock', item_id, tipo='stock_critico',
                     score_impacto_ars=imp, score_breakdown=bdown)
             elif ast == 'ADVERTENCIA':
-                imp = impacto_stock_critico(vel_dia, dias or 0, precio, margen_pct_eff)
+                imp = impacto_stock_critico(vel_dia, dias or 0, precio, margen_pct_eff) if margen_pct_eff is not None else None
                 bdown = {
                     'formula': 'velocidad/día × días sin stock proyectados × precio × margen',
                     'componentes': {
@@ -11629,7 +11635,7 @@ def api_alertas():
             # ventas_perdidas_mes = (delta × 10%) × velocidad_mensual × margen
             _vel_mensual = _vel_p * 30
             _pct_perdido = min(0.5, delta * 0.10)  # cap al 50%
-            _imp_pos = _vel_mensual * _pct_perdido * _precio_p * (_margen_p / 100.0)
+            _imp_pos = (_vel_mensual * _pct_perdido * _precio_p * (_margen_p / 100.0)) if _margen_p is not None else None
             _bdown_pos = {
                 'formula': 'posiciones_perdidas × 10%/posición × velocidad_mensual × precio × margen',
                 'componentes': {
@@ -11645,13 +11651,13 @@ def api_alertas():
                     f'Caída fuerte de posición: {d.get("title","")[:48]}',
                     f'Bajó {delta} posiciones: {pos_prev} → {pos_hoy} {detalle_fecha}',
                     f'/posiciones/{alias}', 'Ver posiciones', item_id, tipo='posicion_caida_fuerte',
-                    score_impacto_ars=round(_imp_pos, 2), score_breakdown=_bdown_pos)
+                    score_impacto_ars=(round(_imp_pos, 2) if _imp_pos is not None else None), score_breakdown=_bdown_pos)
             elif delta >= 3:
                 add(I, alias, 'Posiciones', 'bi-arrow-down',
                     f'Bajó posición: {d.get("title","")[:50]}',
                     f'Bajó {delta} posiciones: {pos_prev} → {pos_hoy} {detalle_fecha}',
                     f'/posiciones/{alias}', 'Ver posiciones', item_id, tipo='posicion_bajo',
-                    score_impacto_ars=round(_imp_pos, 2), score_breakdown=_bdown_pos)
+                    score_impacto_ars=(round(_imp_pos, 2) if _imp_pos is not None else None), score_breakdown=_bdown_pos)
 
         # ── Reputación ─────────────────────────────────────────────────────
         rep_data = load_json(os.path.join(DATA_DIR, f'reputacion_{s}.json'))
@@ -11726,7 +11732,7 @@ def api_alertas():
                             _costo_p2 = _ce_p2.get('costo') if _ce_p2 else _it_p.get('costo')
                             _fee_p2 = _it_p.get('fee_rate') or get_rate(_it_p.get('listing_type', ''), fees_cache)
                             _margen_p2 = _calc_margen_pct(_precio_p2, _costo_p2, _fee_p2)
-                            _imp_paused = impacto_stock_critico(_vel_p_dia, 0, _precio_p2, _margen_p2)
+                            _imp_paused = impacto_stock_critico(_vel_p_dia, 0, _precio_p2, _margen_p2) if _margen_p2 is not None else None
                             _bdown_paused = {
                                 'formula': 'velocidad/día × 30 días pausada × precio × margen',
                                 'componentes': {
@@ -19971,6 +19977,9 @@ try:
     _rep = _costos_boot.reparar_miles_una_vez()
     if _rep:
         print(f"[costos] reparados ×1000: {len(_rep['reparados'])} · a revisar: {len(_rep['revisar'])} · cmv: {_rep['cmv']}")
+    _conf = _costos_boot.aplicar_confirmados_una_vez()
+    if _conf:
+        print(f'[costos] confirmados por el usuario: {_conf}')
 except Exception as _e:
     print(f'[db] ERROR inicializando tablas relacionales: {_e}')
 

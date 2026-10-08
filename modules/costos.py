@@ -214,3 +214,38 @@ def reparar_miles_una_vez() -> dict | None:
            'revisar': revisar, 'sospechosos': sospechosos, 'cmv': cmv}
     db_save(MARCA_REPARACION, res)
     return res
+
+
+# Costos confirmados por el usuario: reemplazan toda la historia del ítem.
+# Guille confirmó el 08/10/2026 que los Cortadores cuestan $13.000 (la
+# planilla decía $22.000).
+CONFIRMADOS = {
+    'MLA1932975847': 13000,
+    'MLA2570796766': 13000,
+}
+MARCA_CONFIRMADOS = os.path.join(RAIZ, 'data', '_costos_confirmados.json')
+
+
+def aplicar_confirmados_una_vez() -> dict | None:
+    """Pone el costo confirmado en todas las vigencias del ítem y recalcula el
+    CMV del año. Una sola vez por lista (la marca guarda qué se aplicó)."""
+    hecho = db_load(MARCA_CONFIRMADOS) or {}
+    pendientes = {k: v for k, v in CONFIRMADOS.items() if hecho.get(k) != v}
+    if not pendientes:
+        return None
+    session_scope, Costo = _modelo()
+    with session_scope() as s:
+        for iid, valor in pendientes.items():
+            for f in s.query(Costo).filter_by(item_id=iid).all():
+                f.costo_unitario = Decimal(str(valor))
+                f.notas = ((f.notas or '') + f' | confirmado por el usuario: ${valor} (08/10/2026)').strip(' |')
+    sincronizar_espejo()
+    try:
+        from modules.contabilidad_cierre import aplicar_cmv
+        hoy = date.today()
+        aplicar_cmv(date(hoy.year, 1, 1), hoy)
+    except Exception:
+        pass
+    hecho.update(pendientes)
+    db_save(MARCA_CONFIRMADOS, hecho)
+    return pendientes

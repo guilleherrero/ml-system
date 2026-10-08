@@ -28,7 +28,7 @@ def impacto_buybox_perdido(
     bb_lift=0.40 — supuesto conservador: ganar BB sube las ventas un 40%
     (estudios de ML sugieren 30-60% según categoría).
     """
-    if precio <= 0 or margen_pct <= 0 or velocidad_mensual <= 0:
+    if precio <= 0 or not margen_pct or margen_pct <= 0 or velocidad_mensual <= 0:
         return 0.0
     margen_unit = precio * (margen_pct / 100.0)
     ventas_extra = velocidad_mensual * bb_lift
@@ -57,7 +57,7 @@ def impacto_trafico_desperdiciado(
              impacto         = ventas_objetivo * margen_unitario
 
     Threshold mínimo: 50 visitas/30d para evitar ruido."""
-    if visitas_30d < 50 or precio <= 0 or margen_pct <= 0:
+    if visitas_30d < 50 or precio <= 0 or not margen_pct or margen_pct <= 0:
         return 0.0
     margen_unit = precio * (margen_pct / 100.0)
     ventas_objetivo = visitas_30d * conversion_objetivo
@@ -78,7 +78,7 @@ def impacto_stock_critico(
              impacto        = dias_sin_stock * velocidad * margen_unit
 
     Threshold: velocidad >= 0.5 unid/día (15+ ventas/mes) para evitar ruido."""
-    if velocidad_diaria < 0.5 or precio <= 0 or margen_pct <= 0:
+    if velocidad_diaria < 0.5 or precio <= 0 or not margen_pct or margen_pct <= 0:
         return 0.0
     if dias_hasta_quiebre is None or dias_hasta_quiebre >= horizonte_dias:
         return 0.0

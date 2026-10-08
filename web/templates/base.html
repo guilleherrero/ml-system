@@ -202,9 +202,7 @@
      ('Calculadora · producto nuevo', '/pricing/nuevo', 'bi-plus-square', p == '/pricing/nuevo', ''),
   ]),
   ('Clientes', 'bi-chat-square-heart', [
-     ('Reputación y reclamos', '/reputacion/' ~ ca, 'bi-shield-check', p.startswith('/reputacion/'), ''),
-     ('Preguntas', '/preguntas/' ~ ca, 'bi-chat-dots', p.startswith('/preguntas/'), 'badge-preguntas'),
-     ('Mensajes', '/mensajes/' ~ ca, 'bi-envelope', p.startswith('/mensajes/'), ''),
+     ('Reputación y reclamos', '/reputacion/' ~ ca, 'bi-shield-check', p.startswith('/reputacion/') or p.startswith('/preguntas/'), 'badge-preguntas'),
   ]),
   ('Crecimiento', 'bi-rocket-takeoff', [
      ('Lanzar producto', '/lanzar-nuevo', 'bi-rocket-takeoff', p in ['/lanzar-nuevo', '/lanzamientos', '/evaluar-producto'], ''),
@@ -237,7 +235,8 @@
   {% set items = items | select | list %}
   {% if items | length == 1 %}
     {% set it = items[0] %}
-    <a href="{{ it[1] }}" class="nav-link-solo {{ 'active' if it[3] }}"><i class="bi {{ icono }}"></i>{{ nombre }}</a>
+    <a href="{{ it[1] }}" class="nav-link-solo {{ 'active' if it[3] }}"><i class="bi {{ icono }}"></i>{{ nombre }}
+      {% if it[4] %}<span class="nav-badge" id="{{ it[4] }}" hidden></span>{% endif %}</a>
   {% else %}
     {% set activo = items | selectattr(3) | list | length > 0 %}
     <details class="nav-area {{ 'has-active' if activo }}" {{ 'open' if activo }} data-area="{{ nombre }}">

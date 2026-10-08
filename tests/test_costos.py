@@ -184,3 +184,21 @@ def test_reparacion_multiplica_por_mil_y_respeta_los_que_no_cierran(entorno, mon
     with session_scope() as s:                                              # ventas pasadas: la planilla ×1000
         assert float(costo_vigente(s, 'MLA2', date(HOY.year, 1, 2)).costo_unitario) == 22000.0
     assert costos.reparar_miles_una_vez() is None
+
+
+def test_confirmados_pisan_toda_la_historia_una_vez(entorno, monkeypatch):
+    from web.db import session_scope
+    from web.models_contabilidad import CostoProducto
+    import modules.contabilidad_cierre as cc
+    monkeypatch.setattr(cc, 'aplicar_cmv', lambda d, h: {})
+    monkeypatch.setattr(costos, 'CONFIRMADOS', {'MLA7': 13000})
+    with session_scope() as s:
+        s.add(CostoProducto(item_id='MLA7', variacion='', costo_unitario=22000,
+                            vigente_desde=date(HOY.year, 1, 1), origen_dato='excel'))
+        s.add(CostoProducto(item_id='MLA7', variacion='', costo_unitario=13000,
+                            vigente_desde=HOY, origen_dato='panel'))
+    assert costos.aplicar_confirmados_una_vez() == {'MLA7': 13000}
+    from modules.contabilidad_cierre import costo_vigente
+    with session_scope() as s:
+        assert float(costo_vigente(s, 'MLA7', date(HOY.year, 1, 2)).costo_unitario) == 13000.0
+    assert costos.aplicar_confirmados_una_vez() is None
