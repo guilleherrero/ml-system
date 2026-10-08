@@ -361,7 +361,10 @@ function pintarCabecera() {
   $('p-aviso').innerHTML = P.modo === 'aceptar'
     ? 'En este tipo el descuento lo define Mercado Libre: solo elegís qué productos entran.'
     : (P.tipo === 'DOD' || P.tipo === 'LIGHTNING')
-      ? '<span class="text-warning">Ojo: una vez activa, la oferta no se puede quitar.</span>' : '';
+      ? '<span class="text-warning">Ojo: una vez activa, la oferta no se puede quitar.</span>' +
+        (P.tipo === 'LIGHTNING' ? ` <label class="ms-2" for="lgh-dia">Día de la oferta</label>
+          <input id="lgh-dia" type="date" class="form-control form-control-sm d-inline-block w-auto ms-1" min="${manana()}" value="${manana()}">
+          <span class="text-muted">de 12:00 a 23:59</span>` : '') : '';
   $('masivo-wrap').style.display = P.modo === 'aceptar' ? 'none' : '';
   $('btn-quitar').style.display = P.propia ? 'none' : '';
 }
@@ -428,6 +431,7 @@ function pintarResumen() {
 
 const buscar = id => P.items.find(x => x.id === id);
 function setPrecio(id, v) { buscar(id)._precio = +v || null; pintar(); }
+function manana() { const d = new Date(Date.now() + 864e5); return d.toLocaleDateString('sv'); }
 function setStock(id, v) { buscar(id)._stock = +v || ''; }
 function toggleSel(id, on) { on ? P.sel.add(id) : P.sel.delete(id); pintarResumen(); }
 function selTodos(on) { visibles().forEach(it => on ? P.sel.add(it.id) : P.sel.delete(it.id)); pintar(); }
@@ -467,6 +471,12 @@ async function sumarSeleccionados() {
   const items = P.items.filter(it => P.sel.has(it.id) && !ADENTRO.includes(it.status));
   if (P.modo !== 'aceptar' && items.some(it => !it._precio)) return alert('Hay productos seleccionados sin precio de promo. Usá "Aplicar a seleccionados" o completalos.');
   if (P.tipo === 'LIGHTNING' && items.some(it => !it._stock)) return alert('La oferta relámpago necesita el stock reservado de cada producto.');
+  if (P.tipo === 'LIGHTNING') {
+    // ML no asigna el horario a los candidatos: lo elige el vendedor (mismo bloque que usa ML: 12:00 a 23:59)
+    const dia = ($('lgh-dia') || {}).value;
+    if (!dia) return alert('Elegí el día de la oferta relámpago.');
+    items.forEach(it => { it.start_date = `${dia}T12:00:00`; it.finish_date = `${dia}T23:59:59`; });
+  }
   if (P.tipo === 'PRICE_DISCOUNT') {
     const malos = items.filter(it => { const d = descPct(it); return d < 5 || d > 80; }).length;
     if (malos) return alert(`${malos} productos tienen un descuento fuera del rango permitido (5% a 80%).`);
