@@ -20283,7 +20283,8 @@ def api_promociones_sumar():
         try:
             body = pm.body_para_sumar(tipo, pid, deal_price=it.get('deal_price'),
                                       stock=it.get('stock'), offer_id=it.get('offer_id'),
-                                      desde=desde, hasta=hasta)
+                                      desde=desde, hasta=hasta,
+                                      start_date=it.get('start_date'), finish_date=it.get('finish_date'))
             r = pm.sumar_item(client, iid, body)
             resultados.append({'id': iid, 'ok': True, 'price': (r or {}).get('price')})
             _audit('PROMO_SUMAR', alias=alias, item_id=iid, tipo=tipo, promo=pid,

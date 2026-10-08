@@ -201,6 +201,10 @@ def enriquecer(items: list[dict], detalles: dict, costos: dict, fee_rate_de) -> 
             'catalogo': bool(d.get('catalog_listing')),
             'status': it.get('status'),
             'offer_id': it.get('offer_id') or it.get('ref_id'),
+            # Relámpago / oferta del día: ML asigna el horario por ítem y
+            # exige que vuelva en el POST (sin esto: START_DATE cannot be null)
+            'start_date': it.get('start_date'),
+            'finish_date': it.get('finish_date'),
             'original_price': original,
             'price': float(it.get('price') or 0),
             'min_price': it.get('min_discounted_price'),
@@ -229,7 +233,8 @@ def precio_con_descuento(original: float, descuento_pct: float) -> int:
 
 
 def body_para_sumar(tipo: str, promo_id: str | None, *, deal_price=None,
-                    stock=None, offer_id=None, desde=None, hasta=None) -> dict:
+                    stock=None, offer_id=None, desde=None, hasta=None,
+                    start_date=None, finish_date=None) -> dict:
     """Arma el body del POST /seller-promotions/items/{id} según el tipo.
 
     Lanza ValueError si falta algo que ML va a rechazar igual.
@@ -251,6 +256,8 @@ def body_para_sumar(tipo: str, promo_id: str | None, *, deal_price=None,
         if not stock or int(stock) <= 0:
             raise ValueError('La oferta relámpago necesita stock reservado')
         body['stock'] = int(stock)
+    if start_date and finish_date and tipo != 'PRICE_DISCOUNT':
+        body['start_date'], body['finish_date'] = start_date, finish_date
     if tipo == 'PRICE_DISCOUNT':
         if not (desde and hasta):
             raise ValueError('El descuento individual necesita fechas')

@@ -64,6 +64,10 @@ def test_relampago_exige_stock():
     with pytest.raises(ValueError):
         pm.body_para_sumar('LIGHTNING', 'LGH-1', deal_price=100)
     assert pm.body_para_sumar('LIGHTNING', 'LGH-1', deal_price=100, stock=3)['stock'] == 3
+    # El horario que ML asigna al ítem tiene que volver en el POST
+    b = pm.body_para_sumar('LIGHTNING', 'LGH-1', deal_price=100, stock=3,
+                           start_date='2026-10-10T12:00:00', finish_date='2026-10-10T18:00:00')
+    assert (b['start_date'], b['finish_date']) == ('2026-10-10T12:00:00', '2026-10-10T18:00:00')
 
 
 def test_descuento_individual_sin_promo_id_y_con_fechas():

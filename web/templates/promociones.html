@@ -451,7 +451,7 @@ async function enTandas(url, items, extra) {
   for (let i = 0; i < items.length; i += LOTE) {
     $('resumen').innerHTML = `Procesando ${Math.min(i + LOTE, items.length)} de ${items.length}…`;
     const lote = items.slice(i, i + LOTE);
-    const j = await api(url, {...extra, items: lote.map(it => ({id: it.id, deal_price: it._precio, stock: it._stock, offer_id: it.offer_id}))});
+    const j = await api(url, {...extra, items: lote.map(it => ({id: it.id, deal_price: it._precio, stock: it._stock, offer_id: it.offer_id, start_date: it.start_date, finish_date: it.finish_date}))});
     const res = j.ok ? j.resultados : lote.map(it => ({id: it.id, ok: false, error: j.error}));
     for (const r of res) {
       const it = buscar(r.id); if (!it) continue;
