@@ -1787,6 +1787,17 @@ def _envio_gratis_probe(client, it):
         out['free_options'] = client._get(f"/users/{it.get('seller_id')}/shipping_options/free", params={'item_id': it['id']})
     except Exception as e:
         out['free_options_error'] = str(e)[:300]
+    try:
+        ords = client._get('/orders/search', params={'seller': it.get('seller_id'), 'item': it['id'],
+                                                      'sort': 'date_desc', 'limit': 3}).get('results') or []
+        out['ultimos_envios'] = []
+        for o in ords:
+            sid = (o.get('shipping') or {}).get('id')
+            if sid:
+                c = client._get(f'/shipments/{sid}/costs')
+                out['ultimos_envios'].append({'fecha': o.get('date_created', '')[:10], 'costs': c})
+    except Exception as e:
+        out['envios_error'] = str(e)[:300]
     return out
 
 
