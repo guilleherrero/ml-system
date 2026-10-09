@@ -30,3 +30,17 @@ def test_margen_usa_primero_la_comision_actual_del_item():
     assert (m['fee_rate'], m['fee_source']) == (0.2809, 'real')
     m = _calcular_margen(68724, 12000, 'gold_pro', real_fee_rate=0.30, fees={'gold_pro': 0.397})
     assert m['fee_source'] == 'real'
+
+
+def test_envio_gratis_suma_al_costo():
+    from core.fees import costo_envio_item
+    class C:
+        def _get(self, path, params=None):
+            assert params == {'item_id': 'MLA1'}
+            return {'coverage': {'all_country': {'list_cost': 7990}}}
+    assert costo_envio_item(C(), {'id': 'MLA1', 'seller_id': 5, 'shipping': {'free_shipping': True}}) == 7990
+    assert costo_envio_item(C(), {'id': 'MLA1', 'shipping': {'free_shipping': False}}) == 0
+    # Cortador $48.000: 16% de comisión + $7.990 de envío = 32,6% del precio
+    m = _calcular_margen(48000, 13000, 'gold_special', item_fee_rate=0.16, envio=7990)
+    assert m['fee_rate'] == round(0.16 + 7990 / 48000, 4) and m['comision_rate'] == 0.16
+    assert round(m['ganancia']) == round(48000 - 48000 * m['fee_rate'] - 13000)

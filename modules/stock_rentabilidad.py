@@ -27,7 +27,7 @@ from rich import box
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from core.db_storage import db_load, db_save
 from core.ml_client import MLClient
-from core.fees import get_fee_rates, get_rate, comision_item, cuotas_de_item
+from core.fees import get_fee_rates, get_rate, comision_item, cuotas_de_item, costo_envio_item
 from modules.monitor_posicionamiento import _get_all_active_items
 from modules.seo_optimizer import _tokenize
 
@@ -224,6 +224,8 @@ def _get_items_with_stock(client: MLClient) -> list[dict]:
             "category_id":   item.get("category_id", ""),
             "family_id":     item.get("family_id"),
             "tags":          item.get("tags") or [],
+            "shipping":      item.get("shipping") or {},
+            "seller_id":     item.get("seller_id"),
         })
     return result
 
@@ -238,6 +240,7 @@ def _calcular_margen(
     real_fee_rate: float | None = None,
     fees: dict | None = None,
     item_fee_rate: float | None = None,
+    envio: float | None = None,
 ) -> dict:
     """
     Calcula fee real (comisión + IVA + envío incluido) y margen.
@@ -259,7 +262,13 @@ def _calcular_margen(
         fee_rate = get_rate(listing_type, fees)
         fee_source = "api" if fees and "_updated_at" in fees else "estimado"
 
-    # El fee_rate cubre comisión + IVA + envío → todo en uno
+    # fee_rate = comisión (con cuotas) + envío gratis que paga el vendedor, como
+    # % del precio actual: todo el sistema lo usa así, como un solo costo de ML.
+    # ponytail: el envío es un monto fijo; pasado a % vale para precios cercanos al actual
+    comision_rate = fee_rate
+    envio = envio or 0.0
+    if envio and precio > 0:
+        fee_rate = round(fee_rate + envio / precio, 4)
     total_fee = round(precio * fee_rate, 2)
     ingresos_netos = precio - total_fee
 
@@ -274,7 +283,8 @@ def _calcular_margen(
         "comision":     total_fee,   # renombrado conceptualmente: todo el costo ML
         "fee_rate":     fee_rate,
         "fee_source":   fee_source,
-        "envio_est":    0,           # ya incluido en fee_rate
+        "comision_rate": comision_rate,
+        "envio_est":    envio,       # ya incluido en fee_rate
         "neto":         ingresos_netos,
         "ganancia":     ganancia,
         "margen_pct":   margen_pct,
@@ -399,6 +409,7 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             fees=fees,
             item_fee_rate=comision_item(client, precio, item["listing_type"],
                                         item["category_id"], item["tags"]),
+            envio=costo_envio_item(client, item),
         )
 
         # Nivel de alerta
@@ -443,7 +454,8 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             "ganancia":     margen_data["ganancia"],
             "margen_pct":   margen_data["margen_pct"],
             "comision":     margen_data["comision"],
-            "envio_est":    0,
+            "envio_est":    margen_data["envio_est"],
+            "comision_rate": margen_data["comision_rate"],
             "alerta_stock":      alerta_stock,
             "alerta_margen":     alerta_margen,
             "seo_gaps":          seo_gaps,

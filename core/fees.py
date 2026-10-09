@@ -133,3 +133,20 @@ def comision_item(client, precio: float, listing_type: str, category_id: str = "
     data = raw[0] if isinstance(raw, list) and raw else (raw if isinstance(raw, dict) else {})
     fee = data.get("sale_fee_amount")
     return round(float(fee) / precio, 4) if fee else None
+
+
+def costo_envio_item(client, item: dict) -> float | None:
+    """Lo que paga el vendedor por cada envío gratis de la publicación (0 si no ofrece).
+
+    ML lo informa por ítem (peso facturable, logística, reputación). Comparado con
+    envíos reales queda igual o un poco arriba: nunca muestra un margen mejor.
+    """
+    sh = item.get("shipping") or {}
+    if not sh.get("free_shipping"):
+        return 0.0
+    uid = item.get("seller_id") or getattr(getattr(client, "account", None), "user_id", None)
+    try:
+        data = client._get(f"/users/{uid}/shipping_options/free", params={"item_id": item["id"]})
+        return float(((data.get("coverage") or {}).get("all_country") or {}).get("list_cost") or 0)
+    except Exception:
+        return None

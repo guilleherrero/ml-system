@@ -1757,7 +1757,7 @@ def hoy():
 @app.route('/api/comision-item/<alias>/<item_id>')
 def api_comision_item(alias, item_id):
     """Comisión que ML cobra hoy a la publicación, con su nivel de cuotas."""
-    from core.fees import comision_item, cuotas_de_item, CUOTA_TAGS
+    from core.fees import comision_item, cuotas_de_item, costo_envio_item, CUOTA_TAGS
     item_id = (item_id or '').strip().upper()
     if not re.fullmatch(r'ML[A-Z]\d+', item_id):
         return jsonify({'ok': False, 'error': 'item_id inválido'}), 400
@@ -1776,29 +1776,7 @@ def api_comision_item(alias, item_id):
                     'comision_hoy': comision_item(client, precio, lt, cat, tags),
                     'comision_sin_tag': comision_item(client, precio, lt, cat, []),
                     'comision_guardada': guardado.get('fee_rate'), 'fuente_guardada': guardado.get('fee_source'),
-                    'envio': _envio_gratis_probe(client, it)})
-
-
-def _envio_gratis_probe(client, it):
-    # ponytail: diagnóstico temporal del costo de envío gratis, se reemplaza por core.fees
-    sh = it.get('shipping') or {}
-    out = {'free_shipping': sh.get('free_shipping'), 'mode': sh.get('mode'), 'logistic_type': sh.get('logistic_type')}
-    try:
-        out['free_options'] = client._get(f"/users/{it.get('seller_id')}/shipping_options/free", params={'item_id': it['id']})
-    except Exception as e:
-        out['free_options_error'] = str(e)[:300]
-    try:
-        ords = client._get('/orders/search', params={'seller': it.get('seller_id'), 'item': it['id'],
-                                                      'sort': 'date_desc', 'limit': 3}).get('results') or []
-        out['ultimos_envios'] = []
-        for o in ords:
-            sid = (o.get('shipping') or {}).get('id')
-            if sid:
-                c = client._get(f'/shipments/{sid}/costs')
-                out['ultimos_envios'].append({'fecha': o.get('date_created', '')[:10], 'costs': c})
-    except Exception as e:
-        out['envios_error'] = str(e)[:300]
-    return out
+                    'envio_gratis': costo_envio_item(client, it)})
 
 
 @app.route('/publicacion/<alias>/<item_id>')

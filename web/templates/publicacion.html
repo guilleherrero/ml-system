@@ -153,7 +153,9 @@
     <div class="fp-card"><h3>Precio y ganancia</h3>
       <div class="fp-fila"><span>Precio</span><b>{{ pesos(it.precio) }}</b></div>
       <div class="fp-fila"><span>Costo vigente</span><b>{{ pesos(costo.costo) if costo.costo else 'sin cargar' }}</b></div>
-      <div class="fp-fila"><span>Comisión + envío de ML</span><b>{{ '%.1f%%' | format(it.fee_rate * 100) if it.fee_rate else '—' }}</b></div>
+      <div class="fp-fila"><span>Comisión de ML{% if it.cuotas and it.cuotas > 1 %} ({{ it.cuotas }} cuotas sin interés){% endif %}</span><b>{{ '%.1f%%' | format((it.comision_rate or it.fee_rate) * 100) if it.fee_rate else '—' }}</b></div>
+      <div class="fp-fila"><span>Envío gratis que pagás</span><b>{{ pesos(it.envio_est) if it.envio_est else ('no ofrece' if it.comision_rate else '—') }}</b></div>
+      <div class="fp-fila"><span>Total que se queda ML</span><b>{{ pesos(it.comision) if it.comision else '—' }}{% if it.fee_rate %} ({{ '%.1f%%' | format(it.fee_rate * 100) }}){% endif %}</b></div>
       <div class="fp-fila"><span>Te queda por venta</span><b>{{ pesos(it.ganancia) if it.ganancia is not none else '—' }}</b></div>
       <div class="fp-fila"><span>Margen</span><b>{{ '%.1f%%' | format(margen * 100) if margen is not none else '—' }}</b></div>
       <div class="mt-2 d-flex gap-2 flex-wrap">
