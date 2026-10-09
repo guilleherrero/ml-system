@@ -20235,6 +20235,8 @@ def api_promociones_items(alias):
         client = _promo_client(alias)
         crudos = (pm.mis_items_activos(client) if pid == 'nueva'
                   else pm.items_de_promocion(client, pid, tipo))
+        if tipo in ('LIGHTNING', 'DOD'):
+            pm.completar_limites(client, crudos, tipo)
         detalles = pm.detalles_items(client, [i['id'] for i in crudos if i.get('id')])
     except Exception as e:
         return jsonify({'ok': False, 'error': pm.error_legible(e)}), 502

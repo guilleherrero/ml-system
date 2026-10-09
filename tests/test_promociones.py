@@ -208,3 +208,20 @@ def test_ids_con_path_injection_se_rechazan_antes_de_llamar_a_ml(malo):
     with pytest.raises(ValueError):
         pm.items_de_promocion(c, malo, 'DEAL')
     assert c.posts == [] and c.get_calls == []
+
+
+def test_completar_limites_toma_tope_y_sugerido_del_item():
+    class C:
+        def _get(self, path, params=None):
+            return [{'type': 'DEAL', 'max_discounted_price': 1},
+                    {'type': 'LIGHTNING', 'max_discounted_price': 67500,
+                     'suggested_discounted_price': 63750, 'original_price': 75000}]
+    crudos = [{'id': 'MLA1', 'status': 'candidate', 'price': 68480, 'original_price': 72000},
+              {'id': 'MLA2', 'status': 'pending', 'price': 14250}]
+    pm.completar_limites(C(), crudos, 'LIGHTNING')
+    assert crudos[0]['max_discounted_price'] == 67500
+    assert crudos[0]['original_price'] == 75000
+    assert 'max_discounted_price' not in crudos[1]
+    # el precio por defecto pasa a ser el sugerido de ML, no el "price" de la lista
+    e = pm.enriquecer(crudos[:1], {}, {}, lambda lt: 0.2)[0]
+    assert e['sugerido'] == 63750 and e['max_price'] == 67500

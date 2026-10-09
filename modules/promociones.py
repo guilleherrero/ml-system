@@ -159,6 +159,24 @@ def promos_del_item(client, item_id: str) -> list[dict]:
     return data if isinstance(data, list) else (data or {}).get('results') or []
 
 
+LIMITES = ('min_discounted_price', 'max_discounted_price',
+           'suggested_discounted_price', 'original_price')
+
+
+def completar_limites(client, crudos: list[dict], tipo: str, max_items: int = 60) -> None:
+    """Relámpago / oferta del día: la lista de la promo no trae el tope ni el
+    sugerido de cada candidato (y su "price" es más alto de lo que ML acepta).
+    Los toma de /seller-promotions/items/{id}, que sí los tiene."""
+    for it in [c for c in crudos if c.get('status') == 'candidate'][:max_items]:
+        try:
+            p = next((x for x in promos_del_item(client, it['id']) if x.get('type') == tipo), None)
+        except Exception:
+            continue
+        for k in LIMITES:
+            if p and p.get(k):
+                it[k] = p[k]
+
+
 def promo_activa_del_item(client, item_id: str) -> dict | None:
     """La primera promoción en la que el ítem está adentro (activa o programada)."""
     for p in promos_del_item(client, item_id):
