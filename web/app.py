@@ -1763,7 +1763,7 @@ def api_comision_item(alias, item_id):
         return jsonify({'ok': False, 'error': 'item_id inválido'}), 400
     try:
         client = _promo_client(alias)
-        it = client._get(f'/items/{item_id}', params={'attributes': 'id,price,listing_type_id,category_id,tags'})
+        it = client._get(f'/items/{item_id}', params={'attributes': 'id,price,listing_type_id,category_id,tags,shipping,seller_id'})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 502
     lt, cat, tags = it.get('listing_type_id', ''), it.get('category_id', ''), it.get('tags') or []
@@ -1775,7 +1775,19 @@ def api_comision_item(alias, item_id):
                     'tags_cuotas': [t for t in tags if t in CUOTA_TAGS or 'cuota' in t or '_campaign' in t],
                     'comision_hoy': comision_item(client, precio, lt, cat, tags),
                     'comision_sin_tag': comision_item(client, precio, lt, cat, []),
-                    'comision_guardada': guardado.get('fee_rate'), 'fuente_guardada': guardado.get('fee_source')})
+                    'comision_guardada': guardado.get('fee_rate'), 'fuente_guardada': guardado.get('fee_source'),
+                    'envio': _envio_gratis_probe(client, it)})
+
+
+def _envio_gratis_probe(client, it):
+    # ponytail: diagnóstico temporal del costo de envío gratis, se reemplaza por core.fees
+    sh = it.get('shipping') or {}
+    out = {'free_shipping': sh.get('free_shipping'), 'mode': sh.get('mode'), 'logistic_type': sh.get('logistic_type')}
+    try:
+        out['free_options'] = client._get(f"/users/{it.get('seller_id')}/shipping_options/free", params={'item_id': it['id']})
+    except Exception as e:
+        out['free_options_error'] = str(e)[:300]
+    return out
 
 
 @app.route('/publicacion/<alias>/<item_id>')
