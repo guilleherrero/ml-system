@@ -20280,6 +20280,7 @@ def api_promociones_sumar():
     resultados = []
     for it in items:
         iid = str(it.get('id', ''))
+        body = {}
         try:
             body = pm.body_para_sumar(tipo, pid, deal_price=it.get('deal_price'),
                                       stock=it.get('stock'), offer_id=it.get('offer_id'),
@@ -20290,7 +20291,12 @@ def api_promociones_sumar():
             _audit('PROMO_SUMAR', alias=alias, item_id=iid, tipo=tipo, promo=pid,
                    deal_price=body.get('deal_price'))
         except Exception as e:
-            resultados.append({'id': iid, 'ok': False, 'error': pm.error_legible(e)})
+            # Tipo y fecha enviada en el mensaje: sin eso no se distingue un
+            # rechazo de ML de un pedido que salió incompleto desde el panel
+            enviado = f" (fecha enviada {body['start_date']})" if body.get('start_date') else ' (sin fecha)'
+            resultados.append({'id': iid, 'ok': False, 'error': f'{pm.error_legible(e)} · {tipo}{enviado}'})
+            _audit('PROMO_SUMAR_ERROR', alias=alias, item_id=iid, tipo=tipo, promo=pid,
+                   body=body, error=str(e)[:300])
         _time_module.sleep(0.15)
     return jsonify({'ok': True, 'resultados': resultados})
 
