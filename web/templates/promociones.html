@@ -137,6 +137,8 @@
       <label class="form-check-label small" for="f-stock">Con stock</label>
     </div>
     <div class="input-group input-group-sm ms-auto" style="width:auto" id="masivo-wrap">
+      <button class="btn btn-outline-primary" onclick="aplicarRef('max_price')" title="El menor descuento que Mercado Libre acepta en cada producto">Mínimo ML</button>
+      <button class="btn btn-outline-primary me-2" onclick="aplicarRef('sugerido')" title="El descuento que sugiere Mercado Libre para cada producto">Sugerido ML</button>
       <label class="input-group-text" for="pct-masivo">% desc.</label>
       <input id="pct-masivo" type="number" min="1" max="80" step="0.5" class="form-control" style="width:80px" value="10">
       <button class="btn btn-outline-primary" onclick="aplicarPctMasivo()">Aplicar a seleccionados</button>
@@ -391,7 +393,10 @@ function pintar() {
   const editable = it => P.modo !== 'aceptar' && !ADENTRO.includes(it.status);
   $('tbody').innerHTML = vs.length ? vs.map(it => {
     const m = margen(it, it._precio), s = semaforo(it, m), d = descPct(it);
-    const rango = (it.min_price || it.max_price) ? `<div class="sub">permitido ${money(it.min_price)} – ${money(it.max_price)}</div>` : '';
+    const off = v => it.original_price ? ` (−${Math.round(100 * (1 - v / it.original_price))}%)` : '';
+    const rango = [it.max_price ? `mín. ML ${money(it.max_price)}${off(it.max_price)}` : '',
+                   it.sugerido && it.sugerido !== it.max_price ? `sugerido ${money(it.sugerido)}${off(it.sugerido)}` : '']
+                  .filter(Boolean).map(t => `<div class="sub">${t}</div>`).join('');
     const precioCell = editable(it)
       ? `<input class="form-control form-control-sm precio" type="number" min="1" aria-label="Precio promo" value="${it._precio || ''}" onchange="setPrecio('${esc(it.id)}', this.value)">${rango}
          ${fueraDeRango(it) ? '<div class="pr-fuera">fuera del rango de ML</div>' : ''}
@@ -435,6 +440,18 @@ function manana() { const d = new Date(Date.now() + 864e5); return d.toLocaleDat
 function setStock(id, v) { buscar(id)._stock = +v || ''; }
 function toggleSel(id, on) { on ? P.sel.add(id) : P.sel.delete(id); pintarResumen(); }
 function selTodos(on) { visibles().forEach(it => on ? P.sel.add(it.id) : P.sel.delete(it.id)); pintar(); }
+
+// Precio de referencia de ML por producto (cada uno tiene el suyo): mínimo = tope de precio, sugerido = el de ML
+function aplicarRef(campo) {
+  let n = 0, sin = 0;
+  P.items.forEach(it => {
+    if (!P.sel.has(it.id) || ADENTRO.includes(it.status)) return;
+    if (it[campo]) { it._precio = Math.round(it[campo]); n++; } else sin++;
+  });
+  if (!n && !sin) return alert('Seleccioná productos para sumar primero.');
+  if (sin) alert(`${sin} producto(s) no traen ese dato de Mercado Libre: quedaron con el precio que tenían.`);
+  pintar();
+}
 
 function aplicarPctMasivo() {
   const pct = +$('pct-masivo').value;
