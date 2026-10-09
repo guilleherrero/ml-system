@@ -22,8 +22,11 @@ def test_comision_item_pide_con_el_tag_de_cuotas():
 
 
 def test_margen_usa_primero_la_comision_actual_del_item():
-    m = _calcular_margen(68724, 12000, 'gold_pro', real_fee_rate=0.30, fees={'gold_pro': 0.397},
+    m = _calcular_margen(68724, 12000, 'gold_pro', real_fee_rate=0.20, fees={'gold_pro': 0.397},
                          item_fee_rate=0.249)
     assert (m['fee_rate'], m['fee_source']) == (0.249, 'ml_item')
+    # si las ventas reales pagaron más que la tarifa de hoy, manda lo real
+    m = _calcular_margen(48000, 13000, 'gold_special', real_fee_rate=0.2809, item_fee_rate=0.16)
+    assert (m['fee_rate'], m['fee_source']) == (0.2809, 'real')
     m = _calcular_margen(68724, 12000, 'gold_pro', real_fee_rate=0.30, fees={'gold_pro': 0.397})
     assert m['fee_source'] == 'real'

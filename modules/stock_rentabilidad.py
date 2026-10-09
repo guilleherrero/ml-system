@@ -245,10 +245,11 @@ def _calcular_margen(
     Si no, usa las tasas de core/fees.py (obtenidas de la API de ML).
     El fee_rate cubre TODO (comisión ML, IVA, costo de envío a cargo del vendedor).
     """
-    # 1º lo que ML cobra HOY a esta publicación (precio, categoría y cuotas);
-    # 2º el promedio de las ventas (puede venir de otra configuración de cuotas);
-    # 3º la tasa genérica por tipo de publicación.
-    if item_fee_rate and item_fee_rate > 0:
+    # Lo que ML cobra HOY a esta publicación (precio, categoría y cuotas) contra
+    # lo que cobró de verdad en las ventas: se toma el mayor, para no mostrar un
+    # margen mejor que el real (hay ventas que pagan más que la tarifa de lista).
+    # Sin ninguno de los dos, la tasa genérica por tipo de publicación.
+    if item_fee_rate and item_fee_rate > 0 and not (real_fee_rate and real_fee_rate > item_fee_rate):
         fee_rate = item_fee_rate
         fee_source = "ml_item"
     elif real_fee_rate and real_fee_rate > 0:
