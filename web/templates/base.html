@@ -160,6 +160,12 @@
     .permisos-banner a { background: var(--brand); color: var(--brand-ink); border-radius: 8px; padding: .4rem .85rem; font-size: .78rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
     .permisos-banner.perm-banner-critico { background: var(--color-critical-100); border-color: var(--color-critical-400); }
     .permisos-banner.perm-banner-critico .perm-msg { color: var(--color-critical-700); }
+    .area-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--app-border); margin: -4px 0 18px; scrollbar-width: thin; }
+    .area-tabs a { display: flex; align-items: center; gap: 6px; padding: 8px 12px; white-space: nowrap; font-size: .85rem; font-weight: 600;
+                   color: var(--app-text-2); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .area-tabs a:hover { color: var(--app-text); }
+    .area-tabs a.on { color: var(--app-text); border-bottom-color: var(--brand); }
+    #main.legacy .area-tabs { --app-border: #dee2e6; --app-text: #212529; --app-text-2: #6c757d; }
   </style>
 </head>
 <body>
@@ -200,13 +206,13 @@
      ('Repricing', '/repricing/' ~ ca, 'bi-arrow-repeat', p.startswith('/repricing/') and not p.startswith('/repricing/wizard'), ''),
      ('Configurar repricing', '/repricing/wizard?alias=' ~ ca, 'bi-magic', p == '/repricing/wizard', ''),
      ('Calculadora de precios', '/pricing/existente', 'bi-calculator', p == '/pricing/existente', ''),
-     ('Calculadora · producto nuevo', '/pricing/nuevo', 'bi-plus-square', p == '/pricing/nuevo', ''),
   ]),
   ('Clientes', 'bi-chat-square-heart', [
      ('Reputación y reclamos', '/reputacion/' ~ ca, 'bi-shield-check', p.startswith('/reputacion/') or p.startswith('/preguntas/'), 'badge-preguntas'),
   ]),
   ('Crecimiento', 'bi-rocket-takeoff', [
      ('Lanzar producto', '/lanzar-nuevo', 'bi-rocket-takeoff', p in ['/lanzar-nuevo', '/lanzamientos', '/evaluar-producto'], ''),
+     ('Precio de producto nuevo', '/pricing/nuevo', 'bi-plus-square', p == '/pricing/nuevo', ''),
      ('Meli Ads', '/meli-ads', 'bi-megaphone', p == '/meli-ads', ''),
      ('Calendario comercial', '/calendario', 'bi-calendar-event', p == '/calendario', ''),
      ('Capturar competidores', '/bookmarklet/' ~ ca, 'bi-bookmark-star', p.startswith('/bookmarklet/'), ''),
@@ -232,9 +238,17 @@
   ]),
 ] %}
 
+{# Áreas que son una sola página con pestañas: en el menú, una entrada #}
+{% set con_pestanas = ['Precios y promos', 'Crecimiento', 'Configuración'] %}
+
 {% macro area(nombre, icono, items) %}
   {% set items = items | select | list %}
-  {% if items | length == 1 %}
+  {% if nombre in con_pestanas and items | length > 1 %}
+    {% set activo = items | selectattr(3) | list | length > 0 %}
+    <a href="{{ items[0][1] }}" class="nav-link-solo {{ 'active' if activo }}"><i class="bi {{ icono }}"></i>{{ nombre }}</a>
+    {# Las pestañas siguen en el buscador "Ir a…" #}
+    <details hidden data-area="{{ nombre }}">{% for it in items %}<a href="{{ it[1] }}">{{ it[0] }}</a>{% endfor %}</details>
+  {% elif items | length == 1 %}
     {% set it = items[0] %}
     <a href="{{ it[1] }}" class="nav-link-solo {{ 'active' if it[3] }}"><i class="bi {{ icono }}"></i>{{ nombre }}
       {% if it[4] %}<span class="nav-badge" id="{{ it[4] }}" hidden></span>{% endif %}</a>
@@ -335,6 +349,16 @@
   {% endwith %}
 
   <div id="permisos-global-banner" style="display:none"></div>
+
+  {% for a in areas + areas_bajo if a[0] in con_pestanas %}
+    {% set its = a[2] | select | list %}
+    {% if its | selectattr(3) | list %}
+    <nav class="area-tabs" aria-label="{{ a[0] }}">
+      {% for it in its %}<a href="{{ it[1] }}" class="{{ 'on' if it[3] }}" {% if it[3] %}aria-current="page"{% endif %}><i class="bi {{ it[2] }}"></i>{{ it[0] }}</a>{% endfor %}
+    </nav>
+    <script>(document.querySelector('.area-tabs a.on') || {}).scrollIntoView?.({inline: 'center', block: 'nearest'});</script>
+    {% endif %}
+  {% endfor %}
 
   {% block content %}{% endblock %}
 </main>
