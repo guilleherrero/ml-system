@@ -20287,11 +20287,12 @@ def api_promociones_sumar():
             body = pm.body_para_sumar(tipo, pid, deal_price=it.get('deal_price'),
                                       stock=it.get('stock'), offer_id=it.get('offer_id'),
                                       desde=desde, hasta=hasta,
-                                      start_date=it.get('start_date'), finish_date=it.get('finish_date'))
+                                      start_date=it.get('start_date'), finish_date=it.get('finish_date'),
+                                      top_deal_price=it.get('top_deal_price'))
             r = pm.sumar_item(client, iid, body)
             resultados.append({'id': iid, 'ok': True, 'price': (r or {}).get('price')})
             _audit('PROMO_SUMAR', alias=alias, item_id=iid, tipo=tipo, promo=pid,
-                   deal_price=body.get('deal_price'))
+                   deal_price=body.get('deal_price'), top_deal_price=body.get('top_deal_price'))
         except Exception as e:
             # Tipo y fecha enviada en el mensaje: sin eso no se distingue un
             # rechazo de ML de un pedido que salió incompleto desde el panel

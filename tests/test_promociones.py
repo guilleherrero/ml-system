@@ -225,3 +225,12 @@ def test_completar_limites_toma_tope_y_sugerido_del_item():
     # el precio por defecto pasa a ser el sugerido de ML, no el "price" de la lista
     e = pm.enriquecer(crudos[:1], {}, {}, lambda lt: 0.2)[0]
     assert e['sugerido'] == 63750 and e['max_price'] == 67500
+
+
+def test_precio_meli_mas_bajo_que_la_promo():
+    b = pm.body_para_sumar('DEAL', 'P-MLA1', deal_price=45600, top_deal_price=43200)
+    assert b['top_deal_price'] == 43200
+    with pytest.raises(ValueError):
+        pm.body_para_sumar('DEAL', 'P-MLA1', deal_price=45600, top_deal_price=45600)
+    # la relámpago no tiene precio Meli+: se ignora
+    assert 'top_deal_price' not in pm.body_para_sumar('LIGHTNING', 'L', deal_price=10, stock=1, top_deal_price=9)

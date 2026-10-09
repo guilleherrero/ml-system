@@ -143,6 +143,11 @@
       <input id="pct-masivo" type="number" min="1" max="80" step="0.5" class="form-control" style="width:80px" value="10">
       <button class="btn btn-outline-primary" onclick="aplicarPctMasivo()">Aplicar a seleccionados</button>
     </div>
+    <div class="input-group input-group-sm" style="width:auto" id="meli-wrap" title="Precio aparte, más bajo, para compradores Meli+. Se calcula solo sobre el precio de la promo.">
+      <div class="input-group-text"><input class="form-check-input mt-0 me-1" type="checkbox" id="meli-on" onchange="guardarMeli()"><label for="meli-on">Meli+</label></div>
+      <label class="input-group-text" for="meli-extra">% extra</label>
+      <input id="meli-extra" type="number" min="1" max="50" step="0.5" class="form-control" style="width:70px" value="5" onchange="guardarMeli()">
+    </div>
   </div>
 
   <div class="app-card p-0" style="overflow-x:auto">
@@ -368,6 +373,7 @@ function pintarCabecera() {
           <input id="lgh-dia" type="date" class="form-control form-control-sm d-inline-block w-auto ms-1" min="${manana()}" value="${manana()}">
           <span class="text-muted">de 12:00 a 23:59</span>` : '') : '';
   $('masivo-wrap').style.display = P.modo === 'aceptar' ? 'none' : '';
+  $('meli-wrap').style.display = CON_MELI.includes(P.tipo) ? '' : 'none';
   $('btn-quitar').style.display = P.propia ? 'none' : '';
 }
 
@@ -397,8 +403,10 @@ function pintar() {
     const rango = [it.max_price ? `mín. ML ${money(it.max_price)}${off(it.max_price)}` : '',
                    it.sugerido && it.sugerido !== it.max_price ? `sugerido ${money(it.sugerido)}${off(it.sugerido)}` : '']
                   .filter(Boolean).map(t => `<div class="sub">${t}</div>`).join('');
+    const pm = editable(it) ? precioMeli(it) : null, mm = pm ? margen(it, pm) : null;
+    const meli = pm ? `<div class="sub" style="color:var(--color-info-500)">Meli+ ${money(pm)}${off(pm)}${mm != null ? ' · margen ' + Math.round(mm * 100) + '%' : ''}</div>` : '';
     const precioCell = editable(it)
-      ? `<input class="form-control form-control-sm precio" type="number" min="1" aria-label="Precio promo" value="${it._precio || ''}" onchange="setPrecio('${esc(it.id)}', this.value)">${rango}
+      ? `<input class="form-control form-control-sm precio" type="number" min="1" aria-label="Precio promo" value="${it._precio || ''}" onchange="setPrecio('${esc(it.id)}', this.value)">${rango}${meli}
          ${fueraDeRango(it) ? '<div class="pr-fuera">fuera del rango de ML</div>' : ''}
          ${P.tipo === 'LIGHTNING' ? `<input class="form-control form-control-sm stockr mt-1" type="number" min="1" aria-label="Stock reservado" placeholder="stock" value="${it._stock}" onchange="setStock('${esc(it.id)}', this.value)"><div class="sub">stock ${it.stock_min ?? '?'}–${it.stock_max ?? '?'}</div>` : ''}`
       : `${money(it._precio)}${it.meli_pct != null ? `<div class="sub">ML ${it.meli_pct}% · vos ${it.seller_pct}%</div>` : ''}`;
@@ -442,6 +450,18 @@ function toggleSel(id, on) { on ? P.sel.add(id) : P.sel.delete(id); pintarResume
 function selTodos(on) { visibles().forEach(it => on ? P.sel.add(it.id) : P.sel.delete(it.id)); pintar(); }
 
 // Precio de referencia de ML por producto (cada uno tiene el suyo): mínimo = tope de precio, sugerido = el de ML
+// Meli+: precio de la promo menos X puntos extra de descuento, nunca por debajo del piso de ML
+const CON_MELI = ['DEAL', 'SELLER_CAMPAIGN', 'PRICE_DISCOUNT'];
+try { const m = JSON.parse(localStorage.getItem('promo_meli') || 'null'); if (m) { $('meli-on').checked = m.on; $('meli-extra').value = m.extra; } } catch (e) {}
+function guardarMeli() { try { localStorage.setItem('promo_meli', JSON.stringify({on: $('meli-on').checked, extra: +$('meli-extra').value})); } catch (e) {} pintar(); }
+function precioMeli(it) {
+  const extra = +$('meli-extra').value;
+  if (!CON_MELI.includes(P.tipo) || !$('meli-on').checked || !(extra > 0) || !it._precio || !it.original_price) return null;
+  let v = Math.round(it._precio - it.original_price * extra / 100);
+  if (it.min_price && v < it.min_price) v = Math.ceil(it.min_price);
+  return v < it._precio ? v : null;
+}
+
 function aplicarRef(campo) {
   let n = 0, sin = 0;
   P.items.forEach(it => {
@@ -472,7 +492,7 @@ async function enTandas(url, items, extra) {
   for (let i = 0; i < items.length; i += LOTE) {
     $('resumen').innerHTML = `Procesando ${Math.min(i + LOTE, items.length)} de ${items.length}…`;
     const lote = items.slice(i, i + LOTE);
-    const j = await api(url, {...extra, items: lote.map(it => ({id: it.id, deal_price: it._precio, stock: it._stock, offer_id: it.offer_id, start_date: it.start_date, finish_date: it.finish_date}))});
+    const j = await api(url, {...extra, items: lote.map(it => ({id: it.id, deal_price: it._precio, top_deal_price: precioMeli(it), stock: it._stock, offer_id: it.offer_id, start_date: it.start_date, finish_date: it.finish_date}))});
     const res = j.ok ? j.resultados : lote.map(it => ({id: it.id, ok: false, error: j.error}));
     for (const r of res) {
       const it = buscar(r.id); if (!it) continue;

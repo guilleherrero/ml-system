@@ -50,6 +50,8 @@ TIPOS = {
 }
 
 # Tipos que Mercado Libre permite crear al vendedor (y por lo tanto "clonar")
+# Tipos que aceptan un precio aparte, más bajo, para compradores Meli+ (top_deal_price)
+TIPOS_CON_MELI = ('DEAL', 'SELLER_CAMPAIGN', 'PRICE_DISCOUNT')
 DIAS_MAX_PROPIA = 14            # SELLER_CAMPAIGN y PRICE_DISCOUNT: plazo máximo
 DESCUENTO_MIN_PCT = 5           # PRICE_DISCOUNT: rango permitido por ML
 DESCUENTO_MAX_PCT = 80
@@ -252,7 +254,7 @@ def precio_con_descuento(original: float, descuento_pct: float) -> int:
 
 def body_para_sumar(tipo: str, promo_id: str | None, *, deal_price=None,
                     stock=None, offer_id=None, desde=None, hasta=None,
-                    start_date=None, finish_date=None) -> dict:
+                    start_date=None, finish_date=None, top_deal_price=None) -> dict:
     """Arma el body del POST /seller-promotions/items/{id} según el tipo.
 
     Lanza ValueError si falta algo que ML va a rechazar igual.
@@ -270,6 +272,10 @@ def body_para_sumar(tipo: str, promo_id: str | None, *, deal_price=None,
     if not deal_price or float(deal_price) <= 0:
         raise ValueError('Falta el precio de la promoción')
     body['deal_price'] = round(float(deal_price), 2)
+    if top_deal_price and tipo in TIPOS_CON_MELI:
+        if float(top_deal_price) >= body['deal_price']:
+            raise ValueError('El precio Meli+ tiene que ser menor que el de la promo')
+        body['top_deal_price'] = round(float(top_deal_price), 2)
     if modo == 'precio_stock':
         if not stock or int(stock) <= 0:
             raise ValueError('La oferta relámpago necesita stock reservado')
