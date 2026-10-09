@@ -408,7 +408,7 @@ function pintar() {
       <td>${precioCell}</td>
       <td class="text-end">${d !== null ? d.toFixed(1) + '%' : '—'}</td>
       <td><span class="pr-m ${s}" title="${it.costo ? 'costo ' + money(it.costo) + ' · comisión+envío ' + Math.round((it.fee_rate || 0) * 100) + '%' : 'Cargá el costo en Cargar costos'}">${s === 'sin_costo' ? 'sin costo' : m === null ? '—' : m.toFixed(1) + '%'}</span></td>
-      <td>${esc(ESTADOS[it.status] || it.status)}${res}</td></tr>`;
+      <td>${esc(ESTADOS[it.status] || it.status)}${it.status === 'pending' && it.start_date ? `<div class="sub">arranca ${esc(it.start_date.slice(8, 10) + '/' + it.start_date.slice(5, 7) + ' ' + it.start_date.slice(11, 16))}</div>` : ''}${res}</td></tr>`;
   }).join('') : '<tr><td colspan="9" class="pr-vacio">Ningún producto con esos filtros.</td></tr>';
   $('sel-todos').checked = vs.length > 0 && vs.every(it => P.sel.has(it.id));
   pintarResumen();
