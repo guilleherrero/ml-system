@@ -223,6 +223,8 @@ def enriquecer(items: list[dict], detalles: dict, costos: dict, fee_rate_de) -> 
             'offer_id': it.get('offer_id') or it.get('ref_id'),
             # Relámpago / oferta del día: ML asigna el horario por ítem y
             # exige que vuelva en el POST (sin esto: START_DATE cannot be null)
+            # Meli+: ML puede informar tope/sugerido del precio para compradores Meli+
+            'meli_raw': {k: v for k, v in it.items() if 'top' in k} or None,
             'start_date': it.get('start_date'),
             'finish_date': it.get('finish_date'),
             'original_price': original,
