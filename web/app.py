@@ -10505,7 +10505,10 @@ def api_repricing_simulate(alias):
 
             # Calcular nuevo precio usando comisión real de la API de ML
             listing_type = item_data.get('listing_type_id', 'gold_special') if item_data else 'gold_special'
-            fee_rate = get_rate(listing_type, fees)
+            from core.fees import comision_item
+            fee_rate = ((comision_item(client, current_price, listing_type, item_data.get('category_id', ''),
+                                       item_data.get('tags')) if item_data else None)
+                        or get_rate(listing_type, fees))
             if costo:
                 min_p = max(min_p, round(costo / (1 - fee_rate), 2))
 
@@ -20266,7 +20269,10 @@ def api_promociones_items(alias):
         return jsonify({'ok': False, 'error': pm.error_legible(e)}), 502
     costos = load_json(os.path.join(CONFIG_DIR, 'costos.json')) or {}
     fees = get_fee_rates()
-    items = pm.enriquecer(crudos, detalles, costos, lambda lt: get_rate(lt, fees))
+    # Comisión de cada publicación (con sus cuotas) guardada por el análisis diario
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(_resolve_alias(alias))}.json')) or {}
+    fees_item = {x['id']: x['fee_rate'] for x in stock.get('items', []) if x.get('fee_rate')}
+    items = pm.enriquecer(crudos, detalles, costos, lambda lt: get_rate(lt, fees), fees_item)
     return jsonify({'ok': True, 'items': items, 'modo': pm.tipo_info(tipo)['modo']})
 
 

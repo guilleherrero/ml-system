@@ -27,7 +27,7 @@ from rich import box
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from core.db_storage import db_load, db_save
 from core.ml_client import MLClient
-from core.fees import get_fee_rates, get_rate
+from core.fees import get_fee_rates, get_rate, comision_item, cuotas_de_item
 from modules.monitor_posicionamiento import _get_all_active_items
 from modules.seo_optimizer import _tokenize
 
@@ -223,6 +223,7 @@ def _get_items_with_stock(client: MLClient) -> list[dict]:
             "free_shipping": free_shipping,
             "category_id":   item.get("category_id", ""),
             "family_id":     item.get("family_id"),
+            "tags":          item.get("tags") or [],
         })
     return result
 
@@ -236,6 +237,7 @@ def _calcular_margen(
     listing_type: str,
     real_fee_rate: float | None = None,
     fees: dict | None = None,
+    item_fee_rate: float | None = None,
 ) -> dict:
     """
     Calcula fee real (comisión + IVA + envío incluido) y margen.
@@ -243,7 +245,13 @@ def _calcular_margen(
     Si no, usa las tasas de core/fees.py (obtenidas de la API de ML).
     El fee_rate cubre TODO (comisión ML, IVA, costo de envío a cargo del vendedor).
     """
-    if real_fee_rate and real_fee_rate > 0:
+    # 1º lo que ML cobra HOY a esta publicación (precio, categoría y cuotas);
+    # 2º el promedio de las ventas (puede venir de otra configuración de cuotas);
+    # 3º la tasa genérica por tipo de publicación.
+    if item_fee_rate and item_fee_rate > 0:
+        fee_rate = item_fee_rate
+        fee_source = "ml_item"
+    elif real_fee_rate and real_fee_rate > 0:
         fee_rate = real_fee_rate
         fee_source = "real"
     else:
@@ -388,6 +396,8 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             precio, costo, item["listing_type"],
             real_fee_rate=real_fee_rate,
             fees=fees,
+            item_fee_rate=comision_item(client, precio, item["listing_type"],
+                                        item["category_id"], item["tags"]),
         )
 
         # Nivel de alerta
@@ -423,6 +433,7 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             "dias_stock":   dias_stock,
             "fee_rate":      margen_data["fee_rate"],
             "fee_source":    margen_data["fee_source"],
+            "cuotas":        cuotas_de_item(item["listing_type"], item["tags"]),
             "ventas_30d":    ventas_30d,
             "facturado_30d": facturado_30d,
             "visitas_30d":   visitas_30d,

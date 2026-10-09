@@ -189,7 +189,8 @@ def promo_activa_del_item(client, item_id: str) -> dict | None:
 
 # ── Margen ───────────────────────────────────────────────────────────────────
 
-def enriquecer(items: list[dict], detalles: dict, costos: dict, fee_rate_de) -> list[dict]:
+def enriquecer(items: list[dict], detalles: dict, costos: dict, fee_rate_de,
+               fees_item: dict | None = None) -> list[dict]:
     """Suma título, stock, SKU, costo y margen estimado con el precio de la promo.
 
     fee_rate_de(listing_type) -> tasa total de ML (comisión + IVA + envío),
@@ -205,7 +206,7 @@ def enriquecer(items: list[dict], detalles: dict, costos: dict, fee_rate_de) -> 
                     or it.get('max_discounted_price'))
         precio_promo = float(it.get('price') or 0) or float(sugerido or 0) or None
         costo = (costos.get(iid) or {}).get('costo')
-        fee = fee_rate_de(d.get('listing_type_id') or '')
+        fee = (fees_item or {}).get(iid) or fee_rate_de(d.get('listing_type_id') or '')
         m_lista = margen_pct(original, costo, fee)
         # Co-fondeada: ML pone su parte; el vendedor cobra lista menos SU %
         if precio_promo and it.get('seller_percentage') is not None and original:

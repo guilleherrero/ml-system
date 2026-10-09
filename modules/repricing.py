@@ -24,7 +24,7 @@ from rich import box
 
 from core.db_storage import db_load, db_save
 from core.ml_client import MLClient
-from core.fees import get_fee_rates, get_rate
+from core.fees import get_fee_rates, get_rate, comision_item
 from modules.monitor_posicionamiento import _get_all_active_items
 
 console = Console()
@@ -585,7 +585,8 @@ def run(client: MLClient, alias: str, dry_run: bool = True):
 
         # Calcular nuevo precio usando comisión real de la API de ML
         listing_type = item_data.get("listing_type_id", "gold_special")
-        fee_rate = get_rate(listing_type, fees)
+        fee_rate = (comision_item(client, current_price, listing_type, item_data.get("category_id", ""),
+                                  item_data.get("tags")) or get_rate(listing_type, fees))
         new_price, reason = _calculate_new_price(current_price, competitor_price, min_p, max_p, costo, fee_rate)
 
         # ── Sprint 4.3: Circuit breaker post-cálculo (max drop por iteración) ──
