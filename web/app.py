@@ -2192,8 +2192,9 @@ def _salud_datos(alias):
     # IDs propios para detectar cuando el "competidor" es otra publicación nuestra
     our_ids = {it['id'] for it in catalog_items}
 
-    # 3 — Para cada item de catálogo, obtener el buy box actual + stock del ganador
-    for it in catalog_items:
+    # 3 — Para cada item de catálogo, obtener el buy box actual + stock del ganador.
+    # En paralelo: de a uno tardaba ~22 s y con un solo worker trababa todo el sistema.
+    def _buy_box(it):
         try:
             r = req_lib.get(f'{ML}/products/{it["catalog_product_id"]}/items',
                             headers=heads, params={'limit': 10}, timeout=8)
@@ -2248,7 +2249,6 @@ def _salud_datos(alias):
                             it['razon_perdida'] = 'reputacion'
         except Exception:
             pass
-        _time_module.sleep(0.1)
 
         # Stock del ganador (solo si no somos nosotros — ni con otra publicación propia)
         winner_id = it.get('buy_box_winner_id')
@@ -2265,7 +2265,10 @@ def _salud_datos(alias):
                         it['razon_perdida'] = 'ganador_sin_stock'
             except Exception:
                 pass
-            _time_module.sleep(0.1)
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(_buy_box, catalog_items))
 
     # 4 — Join no_catalog_items con stock data para visitas/ventas/conv
     stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
