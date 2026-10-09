@@ -41,6 +41,7 @@
   display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;z-index:5}
 .pr-footer .resumen{flex:1;min-width:14rem;font-size:.82rem}
 .pr-vacio{padding:2rem;text-align:center;color:var(--color-neutral-600)}
+.sin-meli .meli-col{display:none}
 </style>
 
 <div class="page-header">
@@ -143,21 +144,21 @@
       <input id="pct-masivo" type="number" min="1" max="80" step="0.5" class="form-control" style="width:80px" value="10">
       <button class="btn btn-outline-primary" onclick="aplicarPctMasivo()">Aplicar a seleccionados</button>
     </div>
-    <div class="input-group input-group-sm" style="width:auto" id="meli-wrap" title="Precio aparte, más bajo, para compradores Meli+. Se calcula solo sobre el precio de la promo.">
-      <div class="input-group-text"><input class="form-check-input mt-0 me-1" type="checkbox" id="meli-on" onchange="guardarMeli()"><label for="meli-on">Meli+</label></div>
-      <label class="input-group-text" for="meli-extra">% extra</label>
-      <input id="meli-extra" type="number" min="1" max="50" step="0.5" class="form-control" style="width:70px" value="5" onchange="guardarMeli()">
+    <div class="input-group input-group-sm" style="width:auto" id="meli-wrap" title="Precio para compradores Meli+: el de la promo con un descuento extra. Cada producto se calcula sobre su propio precio.">
+      <label class="input-group-text" for="meli-extra">Meli+ % extra</label>
+      <input id="meli-extra" type="number" min="0" max="50" step="0.5" class="form-control" style="width:70px" value="5" onchange="guardarMeli()">
+      <button class="btn btn-outline-primary" onclick="aplicarMeliMasivo()">Aplicar a seleccionados</button>
     </div>
   </div>
 
   <div class="app-card p-0" style="overflow-x:auto">
-    <table class="table table-hover pr-table mb-0">
+    <table class="table table-hover pr-table mb-0" id="tabla-promo">
       <thead><tr>
         <th><input type="checkbox" class="form-check-input" id="sel-todos" aria-label="Seleccionar todos los visibles" onchange="selTodos(this.checked)"></th>
         <th></th><th>Producto</th><th class="text-end">Stock</th><th class="text-end">Precio hoy</th>
-        <th>Precio promo</th><th class="text-end">Desc.</th><th>Margen</th><th>Estado</th>
+        <th>Precio promo</th><th class="meli-col">Precio Meli+</th><th class="text-end">Desc.</th><th>Margen</th><th>Estado</th>
       </tr></thead>
-      <tbody id="tbody"><tr><td colspan="9" class="pr-vacio">Cargando productos…</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="10" class="pr-vacio">Cargando productos…</td></tr></tbody>
     </table>
   </div>
 
@@ -333,11 +334,11 @@ async function abrirPanel(cfg, prefill) {
   P = {...cfg, items: [], sel: new Set(), prefill: prefill || null};
   $('vista-lista').style.display = 'none'; $('vista-panel').style.display = '';
   $('q').value = ''; $('f-estado').value = ''; $('f-margen').value = ''; $('f-stock').checked = false;
-  $('tbody').innerHTML = '<tr><td colspan="9" class="pr-vacio">Cargando productos…</td></tr>';
+  $('tbody').innerHTML = '<tr><td colspan="10" class="pr-vacio">Cargando productos…</td></tr>';
   pintarCabecera();
   const id = P.promo ? P.promo.id : 'nueva';
   const j = await api(`/api/promociones/${encodeURIComponent(ALIAS)}/items?id=${encodeURIComponent(id)}&tipo=${P.tipo}`);
-  if (!j.ok) { $('tbody').innerHTML = `<tr><td colspan="9" class="pr-vacio text-danger">${esc(j.error)}</td></tr>`; return; }
+  if (!j.ok) { $('tbody').innerHTML = `<tr><td colspan="10" class="pr-vacio text-danger">${esc(j.error)}</td></tr>`; return; }
   P.items = j.items;
   for (const it of P.items) {
     it._stock = it.stock_min || '';
@@ -345,7 +346,8 @@ async function abrirPanel(cfg, prefill) {
     if (ADENTRO.includes(it.status)) it._precio = it.price || null;
     else if (pct !== undefined && P.modo !== 'aceptar') it._precio = Math.round(it.original_price * (1 - pct / 100));
     else if (P.modo === 'aceptar') it._precio = it.price || it.sugerido || null;
-    else it._precio = it.sugerido || null;
+    else it._precio = it.max_price || it.sugerido || null;
+    if (!ADENTRO.includes(it.status)) recalcMeli(it, true);
     if (pct !== undefined && !ADENTRO.includes(it.status)) P.sel.add(it.id);
   }
   if (P.prefill) {
@@ -374,6 +376,7 @@ function pintarCabecera() {
           <span class="text-muted">de 12:00 a 23:59</span>` : '') : '';
   $('masivo-wrap').style.display = P.modo === 'aceptar' ? 'none' : '';
   $('meli-wrap').style.display = CON_MELI.includes(P.tipo) ? '' : 'none';
+  document.querySelector('#tabla-promo') && document.querySelector('#tabla-promo').classList.toggle('sin-meli', !CON_MELI.includes(P.tipo));
   $('btn-quitar').style.display = P.propia ? 'none' : '';
 }
 
@@ -403,10 +406,15 @@ function pintar() {
     const rango = [it.max_price ? `mín. ML ${money(it.max_price)}${off(it.max_price)}` : '',
                    it.sugerido && it.sugerido !== it.max_price ? `sugerido ${money(it.sugerido)}${off(it.sugerido)}` : '']
                   .filter(Boolean).map(t => `<div class="sub">${t}</div>`).join('');
-    const pm = editable(it) ? precioMeli(it) : null, mm = pm ? margen(it, pm) : null;
-    const meli = pm ? `<div class="sub" style="color:var(--color-info-500)">Meli+ ${money(pm)}${off(pm)}${mm != null ? ' · margen ' + Math.round(mm * 100) + '%' : ''}</div>` : '';
+    const mm = it._meli ? margen(it, it._meli) : null;
+    const meliCell = !CON_MELI.includes(P.tipo) ? '' : editable(it)
+      ? `<input class="form-control form-control-sm precio" type="number" min="1" aria-label="Precio Meli+" placeholder="sin Meli+" value="${it._meli || ''}" onchange="setMeli('${esc(it.id)}', this.value)">
+         ${it._meli ? `<div class="sub">${off(it._meli).trim()}${mm != null ? ' · margen ' + mm.toFixed(1) + '%' : ''}</div>` : ''}
+         ${it._meli && it._precio && it._meli >= it._precio ? '<div class="pr-fuera">tiene que ser menor que la promo</div>' : ''}
+         ${it._meli && it.min_price && it._meli < it.min_price ? '<div class="pr-fuera">debajo del piso de ML</div>' : ''}`
+      : '—';
     const precioCell = editable(it)
-      ? `<input class="form-control form-control-sm precio" type="number" min="1" aria-label="Precio promo" value="${it._precio || ''}" onchange="setPrecio('${esc(it.id)}', this.value)">${rango}${meli}
+      ? `<input class="form-control form-control-sm precio" type="number" min="1" aria-label="Precio promo" value="${it._precio || ''}" onchange="setPrecio('${esc(it.id)}', this.value)">${rango}
          ${fueraDeRango(it) ? '<div class="pr-fuera">fuera del rango de ML</div>' : ''}
          ${P.tipo === 'LIGHTNING' ? `<input class="form-control form-control-sm stockr mt-1" type="number" min="1" aria-label="Stock reservado" placeholder="stock" value="${it._stock}" onchange="setStock('${esc(it.id)}', this.value)"><div class="sub">stock ${it.stock_min ?? '?'}–${it.stock_max ?? '?'}</div>` : ''}`
       : `${money(it._precio)}${it.meli_pct != null ? `<div class="sub">ML ${it.meli_pct}% · vos ${it.seller_pct}%</div>` : ''}`;
@@ -419,10 +427,11 @@ function pintar() {
       <td class="text-end">${it.stock ?? '—'}</td>
       <td class="text-end">${money(it.original_price)}</td>
       <td>${precioCell}</td>
+      <td class="meli-col">${meliCell}</td>
       <td class="text-end">${d !== null ? d.toFixed(1) + '%' : '—'}</td>
       <td><span class="pr-m ${s}" title="${it.costo ? 'costo ' + money(it.costo) + ' · comisión+envío ' + Math.round((it.fee_rate || 0) * 100) + '%' : 'Cargá el costo en Cargar costos'}">${s === 'sin_costo' ? 'sin costo' : m === null ? '—' : m.toFixed(1) + '%'}</span></td>
       <td>${esc(ESTADOS[it.status] || it.status)}${it.status === 'pending' && it.start_date ? `<div class="sub">arranca ${esc(it.start_date.slice(8, 10) + '/' + it.start_date.slice(5, 7) + ' ' + it.start_date.slice(11, 16))}</div>` : ''}${res}</td></tr>`;
-  }).join('') : '<tr><td colspan="9" class="pr-vacio">Ningún producto con esos filtros.</td></tr>';
+  }).join('') : '<tr><td colspan="10" class="pr-vacio">Ningún producto con esos filtros.</td></tr>';
   $('sel-todos').checked = vs.length > 0 && vs.every(it => P.sel.has(it.id));
   pintarResumen();
 }
@@ -443,7 +452,8 @@ function pintarResumen() {
 }
 
 const buscar = id => P.items.find(x => x.id === id);
-function setPrecio(id, v) { buscar(id)._precio = +v || null; pintar(); }
+function setPrecio(id, v) { const it = buscar(id); it._precio = +v || null; recalcMeli(it); pintar(); }
+function setMeli(id, v) { const it = buscar(id); it._meli = +v || null; it._meliManual = true; pintar(); }
 function manana() { const d = new Date(Date.now() + 864e5); return d.toLocaleDateString('sv'); }
 function setStock(id, v) { buscar(id)._stock = +v || ''; }
 function toggleSel(id, on) { on ? P.sel.add(id) : P.sel.delete(id); pintarResumen(); }
@@ -452,21 +462,30 @@ function selTodos(on) { visibles().forEach(it => on ? P.sel.add(it.id) : P.sel.d
 // Precio de referencia de ML por producto (cada uno tiene el suyo): mínimo = tope de precio, sugerido = el de ML
 // Meli+: precio de la promo menos X puntos extra de descuento, nunca por debajo del piso de ML
 const CON_MELI = ['DEAL', 'SELLER_CAMPAIGN', 'PRICE_DISCOUNT'];
-try { const m = JSON.parse(localStorage.getItem('promo_meli') || 'null'); if (m) { $('meli-on').checked = m.on; $('meli-extra').value = m.extra; } } catch (e) {}
-function guardarMeli() { try { localStorage.setItem('promo_meli', JSON.stringify({on: $('meli-on').checked, extra: +$('meli-extra').value})); } catch (e) {} pintar(); }
+try { const m = JSON.parse(localStorage.getItem('promo_meli') || 'null'); if (m && m.extra !== undefined) $('meli-extra').value = m.extra; } catch (e) {}
+function guardarMeli() { try { localStorage.setItem('promo_meli', JSON.stringify({extra: +$('meli-extra').value})); } catch (e) {} }
 function precioMeli(it) {
   const extra = +$('meli-extra').value;
-  if (!CON_MELI.includes(P.tipo) || !$('meli-on').checked || !(extra > 0) || !it._precio || !it.original_price) return null;
+  if (!CON_MELI.includes(P.tipo) || !(extra > 0) || !it._precio || !it.original_price) return null;
   let v = Math.round(it._precio - it.original_price * extra / 100);
   if (it.min_price && v < it.min_price) v = Math.ceil(it.min_price);
   return v < it._precio ? v : null;
+}
+// Si el Meli+ de la fila no se editó a mano, acompaña al precio de la promo
+function recalcMeli(it, forzar) { if (forzar || !it._meliManual) { it._meli = precioMeli(it); if (forzar) it._meliManual = false; } }
+function aplicarMeliMasivo() {
+  guardarMeli();
+  const sel = P.items.filter(it => P.sel.has(it.id) && !ADENTRO.includes(it.status));
+  if (!sel.length) return alert('Seleccioná productos primero.');
+  sel.forEach(it => recalcMeli(it, true));
+  pintar();
 }
 
 function aplicarRef(campo) {
   let n = 0, sin = 0;
   P.items.forEach(it => {
     if (!P.sel.has(it.id) || ADENTRO.includes(it.status)) return;
-    if (it[campo]) { it._precio = Math.round(it[campo]); n++; } else sin++;
+    if (it[campo]) { it._precio = Math.round(it[campo]); recalcMeli(it); n++; } else sin++;
   });
   if (!n && !sin) return alert('Seleccioná productos para sumar primero.');
   if (sin) alert(`${sin} producto(s) no traen ese dato de Mercado Libre: quedaron con el precio que tenían.`);
@@ -479,7 +498,7 @@ function aplicarPctMasivo() {
   let n = 0;
   P.items.forEach(it => {
     if (P.sel.has(it.id) && !ADENTRO.includes(it.status) && it.original_price) {
-      it._precio = Math.round(it.original_price * (1 - pct / 100)); n++;
+      it._precio = Math.round(it.original_price * (1 - pct / 100)); recalcMeli(it); n++;
     }
   });
   if (!n) alert('Seleccioná productos para sumar primero.');
@@ -492,7 +511,7 @@ async function enTandas(url, items, extra) {
   for (let i = 0; i < items.length; i += LOTE) {
     $('resumen').innerHTML = `Procesando ${Math.min(i + LOTE, items.length)} de ${items.length}…`;
     const lote = items.slice(i, i + LOTE);
-    const j = await api(url, {...extra, items: lote.map(it => ({id: it.id, deal_price: it._precio, top_deal_price: precioMeli(it), stock: it._stock, offer_id: it.offer_id, start_date: it.start_date, finish_date: it.finish_date}))});
+    const j = await api(url, {...extra, items: lote.map(it => ({id: it.id, deal_price: it._precio, top_deal_price: CON_MELI.includes(P.tipo) ? it._meli : null, stock: it._stock, offer_id: it.offer_id, start_date: it.start_date, finish_date: it.finish_date}))});
     const res = j.ok ? j.resultados : lote.map(it => ({id: it.id, ok: false, error: j.error}));
     for (const r of res) {
       const it = buscar(r.id); if (!it) continue;
