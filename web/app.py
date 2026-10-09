@@ -1754,6 +1754,30 @@ def hoy():
                            cuentas=[a['alias'] for a in get_accounts() if a.get('alias')])
 
 
+@app.route('/api/comision-item/<alias>/<item_id>')
+def api_comision_item(alias, item_id):
+    """Comisión que ML cobra hoy a la publicación, con su nivel de cuotas."""
+    from core.fees import comision_item, cuotas_de_item, CUOTA_TAGS
+    item_id = (item_id or '').strip().upper()
+    if not re.fullmatch(r'ML[A-Z]\d+', item_id):
+        return jsonify({'ok': False, 'error': 'item_id inválido'}), 400
+    try:
+        client = _promo_client(alias)
+        it = client._get(f'/items/{item_id}', params={'attributes': 'id,price,listing_type_id,category_id,tags'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+    lt, cat, tags = it.get('listing_type_id', ''), it.get('category_id', ''), it.get('tags') or []
+    precio = float(it.get('price') or 0)
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(_resolve_alias(alias))}.json')) or {}
+    guardado = next((x for x in stock.get('items', []) if x.get('id') == item_id), {})
+    return jsonify({'ok': True, 'precio': precio, 'listing_type': lt, 'category_id': cat,
+                    'cuotas': cuotas_de_item(lt, tags),
+                    'tags_cuotas': [t for t in tags if t in CUOTA_TAGS or 'cuota' in t or '_campaign' in t],
+                    'comision_hoy': comision_item(client, precio, lt, cat, tags),
+                    'comision_sin_tag': comision_item(client, precio, lt, cat, []),
+                    'comision_guardada': guardado.get('fee_rate'), 'fuente_guardada': guardado.get('fee_source')})
+
+
 @app.route('/publicacion/<alias>/<item_id>')
 def ficha_publicacion(alias, item_id):
     """Ficha de una publicación: todo lo del producto en un lugar (etapa 3).

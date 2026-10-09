@@ -95,3 +95,41 @@ def get_rate(listing_type: str, fees: dict | None = None) -> float:
     if fees is None:
         fees = _load() or _FALLBACK
     return fees.get(listing_type, fees.get("_default", _FALLBACK["_default"]))
+
+
+# ── Comisión por publicación (cuotas incluidas) ──────────────────────────────
+# En MLA las cuotas sin interés se activan con un tag del ítem, solo en Premium
+# (gold_pro): sin tag = 6 cuotas; 3x/9x/12x_campaign = 3, 9 o 12 cuotas. Cada
+# nivel tiene otro costo, así que la tasa por tipo de publicación (calculada a
+# $10.000, sin categoría ni cuotas) no alcanza para una publicación puntual.
+CUOTA_TAGS = {"3x_campaign": 3, "9x_campaign": 9, "12x_campaign": 12}
+
+
+def cuotas_de_item(listing_type: str, tags: list | None) -> int:
+    """Cuotas sin interés que ofrece la publicación (1 = sin cuotas)."""
+    if listing_type != "gold_pro":
+        return 1
+    for t in tags or []:
+        if t in CUOTA_TAGS:
+            return CUOTA_TAGS[t]
+    return 6
+
+
+def comision_item(client, precio: float, listing_type: str, category_id: str = "",
+                  tags: list | None = None) -> float | None:
+    """Tasa que ML cobra hoy a ESTA publicación: su precio, categoría y cuotas."""
+    if not precio or precio <= 0:
+        return None
+    params = {"price": precio, "listing_type_id": listing_type}
+    if category_id:
+        params["category_id"] = category_id
+    tag = next((t for t in tags or [] if t in CUOTA_TAGS), None)
+    if tag:
+        params["tags"] = tag
+    try:
+        raw = client._get("/sites/MLA/listing_prices", params=params)
+    except Exception:
+        return None
+    data = raw[0] if isinstance(raw, list) and raw else (raw if isinstance(raw, dict) else {})
+    fee = data.get("sale_fee_amount")
+    return round(float(fee) / precio, 4) if fee else None
