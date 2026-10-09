@@ -2090,17 +2090,30 @@ def stock(alias):
 @app.route('/salud/<alias>')
 def salud(alias):
     """Publicaciones en catálogo ML: precio propio vs precio del buy box."""
-    all_accs = get_accounts()
-    account  = next((a for a in all_accs if a.get('alias') == alias), None)
-    if not account:
+    if not any(a.get('alias') == alias for a in get_accounts()):
         return render_template('salud.html', alias=alias, items=[], no_catalog=[],
-                               resumen={}, accounts=get_accounts())
+                               resumen={}, errores=['Cuenta inexistente o sin permiso'], accounts=get_accounts())
+    d = _salud_datos(alias)
+    return render_template('salud.html', alias=alias, items=d['items'], no_catalog=d['no_catalog'],
+                           resumen=d['resumen'], errores=d['errores'], accounts=get_accounts())
 
+
+@app.route('/api/salud/<alias>')
+def api_salud(alias):
+    d = _salud_datos(alias)
+    return jsonify({'ok': not d['errores'] or bool(d['items'] or d['no_catalog']), **d})
+
+
+def _salud_datos(alias):
+    """Catálogo vs buy box. Los errores de ML se devuelven en vez de tragarse:
+    antes una falla dejaba la pantalla vacía como si no hubiera catálogo."""
+    errores = []
+    vacio = {'items': [], 'no_catalog': [], 'resumen': {}, 'errores': errores}
     try:
         token, user_id, heads = _ml_auth(alias)
-    except Exception:
-        return render_template('salud.html', alias=alias, items=[], no_catalog=[],
-                               resumen={}, accounts=get_accounts())
+    except Exception as e:
+        errores.append(f'No se pudo conectar con la cuenta: {e}')
+        return vacio
     ML = 'https://api.mercadolibre.com'
 
     # 1 — Recolectar todos los IDs (activos + pausados, catálogo puede quedar paused)
@@ -2112,6 +2125,7 @@ def salud(alias):
                             params={'status': status, 'limit': 100, 'offset': offset},
                             timeout=12)
             if not r.ok:
+                errores.append(f'Listado de publicaciones ({status}): HTTP {r.status_code} {r.text[:150]}')
                 break
             ids   = r.json().get('results', [])
             total = r.json().get('paging', {}).get('total', 0)
@@ -2169,8 +2183,10 @@ def salud(alias):
                             'ventas_30d':     0,
                             'conv_pct':       0.0,
                         })
-        except Exception:
-            pass
+            else:
+                errores.append(f'Detalle de publicaciones: HTTP {r.status_code} {r.text[:150]}')
+        except Exception as e:
+            errores.append(f'Detalle de publicaciones: {e}')
         _time_module.sleep(0.1)
 
     # IDs propios para detectar cuando el "competidor" es otra publicación nuestra
@@ -2294,10 +2310,7 @@ def salud(alias):
         it['precio_min'] = rc.get('precio_min')
         it['precio_max'] = rc.get('precio_max')
     resumen['configurados'] = sum(1 for i in catalog_items if i.get('precio_min') is not None)
-
-    return render_template('salud.html', alias=alias, items=catalog_items,
-                           no_catalog=no_catalog_items,
-                           resumen=resumen, accounts=get_accounts())
+    return {'items': catalog_items, 'no_catalog': no_catalog_items, 'resumen': resumen, 'errores': errores}
 
 
 @app.route('/api/item-siblings/<alias>')

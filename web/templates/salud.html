@@ -68,9 +68,15 @@
 <!-- ══ TAB: EN CATÁLOGO ══════════════════════════════════════════════ -->
 <div id="tab-catalogo">
 
+{% if errores %}
+<div class="alert alert-warning small">
+  <b>Mercado Libre no respondió bien, así que la lista puede estar incompleta:</b>
+  <ul class="mb-0">{% for e in errores[:5] %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
 {% if not items %}
 <div class="alert alert-info">
-  No se encontraron publicaciones en catálogo para esta cuenta, o no se pudo conectar.
+  {{ 'No se pudo leer el catálogo (ver el aviso de arriba).' if errores else 'Ninguna de tus publicaciones compite en una ficha de catálogo.' }}
 </div>
 {% else %}
 
