@@ -12529,8 +12529,11 @@ def api_cerebro_guardar_grupo():
     items = body.get('items') or []
     if not alias or not items:
         return jsonify({'ok': False, 'error': 'Faltan alias o items'}), 400
-    g = gp.guardar_grupo(alias, grupo_id=(body.get('grupo_id') or None),
-                         nombre=(body.get('nombre') or '').strip(), items=items)
+    try:
+        g = gp.guardar_grupo(alias, grupo_id=(body.get('grupo_id') or None),
+                             nombre=(body.get('nombre') or '').strip(), items=items)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
     _audit('CEREBRO_GUARDAR_GRUPO', alias=alias, grupo=g.get('id'), items=len(items))
     return jsonify({'ok': True, 'grupo': g})
 

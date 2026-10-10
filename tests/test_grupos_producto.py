@@ -100,3 +100,13 @@ def test_el_mismo_competidor_en_dos_hermanas_se_cuenta_una_vez():
     comps = gp.competidores_del_grupo(a, 'MLA1')
     assert len(comps) == 1
     assert comps[0]['puntaje'] == 0.9, 'se queda con el mejor puntaje'
+
+
+def test_guardar_grupo_rechaza_ids_que_no_son_publicaciones(monkeypatch):
+    import pytest
+    from modules import grupos_producto as gp
+    monkeypatch.setattr(gp, 'listar_grupos', lambda alias: [])
+    monkeypatch.setattr(gp, 'guardar_grupos', lambda alias, g: True)
+    with pytest.raises(ValueError):
+        gp.guardar_grupo('X', grupo_id=None, nombre='n', items=["MLA1');alert(1);('"])
+    assert gp.guardar_grupo('X', grupo_id=None, nombre='<b>Cubre</b>', items=['mla123'])['nombre'] == 'bCubre/b'

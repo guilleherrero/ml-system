@@ -83,8 +83,11 @@ const ITEMS = {{ items | tojson }};
 const S = {bandeja: [], acciones: [], aprendizajes: [], resumen: null, cands: [],
            competidores: [], grupos: [], items: ITEMS};
 
-const esc = t => String(t ?? '').replace(/[&<>"]/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Valor para un argumento de onclick="…": el navegador decodifica las entidades
+// HTML antes de correr el JS, así que esc() solo no alcanza; va como string JSON.
+const js = v => esc(JSON.stringify(String(v ?? '')));
 const fecha = t => (t || '').slice(0, 16).replace('T', ' ');
 const pct = v => (v > 0 ? '+' : '') + Number(v).toFixed(1) + '%';
 
@@ -194,9 +197,9 @@ function pintar(tab) {
     }
     el.innerHTML = S.bandeja.map(a => tarjetaAccion(a, `
       <div class="cb-acciones">
-        <button class="app-btn app-btn-xs" onclick="decidir('aprobar','${a.id}')">
+        <button class="app-btn app-btn-xs" onclick="decidir('aprobar',${js(a.id)})">
           <i class="bi bi-check2"></i> Aprobar</button>
-        <button class="app-btn app-btn-xs app-btn-ghost" onclick="decidir('rechazar','${a.id}')">
+        <button class="app-btn app-btn-xs app-btn-ghost" onclick="decidir('rechazar',${js(a.id)})">
           <i class="bi bi-x"></i> Rechazar</button>
       </div>`)).join('')
       + (S.cands.length ? `<div class="cb-card"><div class="cb-fila">
@@ -368,7 +371,7 @@ function pintarGrupos() {
           return `<div style="display:flex;gap:.4rem;align-items:center">${esc(m ? m.titulo.slice(0, 55) : id)}
             <span class="cb-meta">${esc(id)}</span>
             <button class="app-btn app-btn-xs app-btn-ghost" style="margin-left:auto" title="Sacar del grupo"
-              onclick="quitarDeGrupo(${sug ? 1 : 0}, ${k}, '${esc(id)}')">×</button></div>`;
+              onclick="quitarDeGrupo(${sug ? 1 : 0}, ${k}, ${js(id)})">×</button></div>`;
         }).join('')}
         <select class="form-select form-select-sm mt-2" aria-label="Sumar una publicación al grupo"
           onchange="sumarAGrupo(${sug ? 1 : 0}, ${k}, this.value)">
@@ -377,10 +380,10 @@ function pintarGrupos() {
       </div>
       <div class="cb-acciones">
         ${sug ? `<button class="app-btn app-btn-xs"
-            onclick='confirmarGrupo(${JSON.stringify(g).replace(/'/g, "&apos;")})'>
+            onclick="confirmarGrupo(GR.sugeridos[${k}])">
             <i class="bi bi-check2"></i> Confirmar grupo</button>`
           : `<button class="app-btn app-btn-xs app-btn-ghost"
-            onclick="borrarGrupo('${g.id}')"><i class="bi bi-trash"></i> Deshacer</button>`}
+            onclick="borrarGrupo(${js(g.id)})"><i class="bi bi-trash"></i> Deshacer</button>`}
       </div>
     </div>`;
 
@@ -486,13 +489,13 @@ function tarjetaCompetidor(c) {
             var on = c.clase === x;
             return `<button class="app-btn app-btn-xs ${on ? '' : 'app-btn-ghost'}"
               ${on ? 'disabled' : ''}
-              onclick="clasificar('${esc(c.clave)}','${x}')">${x}</button>`;
+              onclick="clasificar(${js(c.clave)},${js(x)})">${x}</button>`;
           }).join('')}
           <button class="app-btn app-btn-xs app-btn-ghost"
-            onclick="reasociar('${esc(c.clave)}')" title="Cambiar a qué publicación tuya compite">
+            onclick="reasociar(${js(c.clave)})" title="Cambiar a qué publicación tuya compite">
             <i class="bi bi-arrow-left-right"></i></button>
           <button class="app-btn app-btn-xs app-btn-ghost"
-            onclick="borrarComp('${esc(c.clave)}')"><i class="bi bi-trash"></i></button>
+            onclick="borrarComp(${js(c.clave)})"><i class="bi bi-trash"></i></button>
         </div>
       </div>
     </div>`;

@@ -167,7 +167,11 @@ def guardar_grupo(alias: str, *, grupo_id: str | None, nombre: str,
                   items: list[str]) -> dict:
     """Crea o actualiza un grupo. Un item pertenece a UN solo grupo."""
     grupos = listar_grupos(alias)
-    items = [i.strip().upper() for i in items if i and i.strip()]
+    # Solo IDs de publicación: se muestran en pantalla y no pueden traer otra cosa
+    items = [i.strip().upper() for i in items if isinstance(i, str) and i.strip()]
+    if not items or not all(re.fullmatch(r'ML[A-Z]\d+', i) for i in items):
+        raise ValueError('IDs de publicación inválidos')
+    nombre = re.sub(r'[<>]', '', nombre or '')[:80]
 
     # Sacar estos items de cualquier otro grupo: pertenecer a dos grupos haria
     # que el mismo producto se analice contra dos conjuntos de competidores.
