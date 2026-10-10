@@ -437,7 +437,7 @@ def _get_request_aliases() -> list[str]:
     body = request.get_json(force=True, silent=True)
     if isinstance(body, dict):
         vistos.append(body.get('alias'))
-    return [str(a).strip() for a in vistos if isinstance(a, str) and a.strip()]
+    return [a for a in vistos if isinstance(a, str) and a]
 
 
 
@@ -483,7 +483,14 @@ def require_login():
     if not session.get('is_admin'):
         from core.auth import user_can_access
         for alias in _get_request_aliases():
-            if not user_can_access(alias):
+            # Se compara el alias tal como lo va a usar el endpoint: _resolve_alias
+            # ignora mayúsculas, así que "NOVARA" es la cuenta "Novara" y se le
+            # pide permiso a esa. Un alias que no existe se compara tal cual.
+            try:
+                canonico = _resolve_alias(alias)
+            except ValueError:
+                canonico = alias
+            if not user_can_access(canonico):
                 app.logger.warning(
                     'Acceso denegado: user=%s alias=%s path=%s',
                     session.get('username'), alias, request.path,
@@ -8341,8 +8348,17 @@ def api_meli_ads_analista(alias):
     datos = ads_analista.leer(client.account.access_token, dias=dias)
     if datos.get('error'):
         return jsonify({'ok': False, 'error': datos['error']})
-    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(_resolve_alias(alias))}.json')) or {}
-    out = ads_analista.analizar(datos, {x['id']: x for x in stock.get('items', []) if x.get('id')})
+    alias = _resolve_alias(alias)
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    from modules import grupos_producto as gp
+
+    def competencia(item_id):
+        precios = [float(c['price']) for c in gp.competidores_del_grupo(alias, item_id)
+                   if c.get('clase') in ('directo', 'candidato') and c.get('price')]
+        return min(precios) if precios else None
+
+    out = ads_analista.analizar(datos, {x['id']: x for x in stock.get('items', []) if x.get('id')},
+                                competencia=competencia, dias=dias)
     if request.args.get('crudo') == '1':     # para revisar qué devuelve ML
         out['_muestra_anuncio'] = (datos.get('anuncios') or [None])[0]
     return jsonify({'ok': True, **out})
@@ -8350,6 +8366,15 @@ def api_meli_ads_analista(alias):
 
 @app.route('/meli-ads')
 def meli_ads():
+    """Analista de Meli Ads: qué hacer con la publicidad (los datos los trae el JS)."""
+    permitidas = [a.get('alias') for a in get_accounts()]
+    elegida = request.args.get('alias') or request.cookies.get('ml_cuenta')
+    alias = elegida if elegida in permitidas else (permitidas[0] if permitidas else '')
+    return render_template('meli_ads.html', alias=alias, accounts=get_accounts())
+
+
+@app.route('/meli-ads/anterior')
+def meli_ads_anterior():
     from modules.meli_ads_engine import build_campaigns_from_api
     from datetime import date, timedelta
 
@@ -8395,7 +8420,7 @@ def meli_ads():
         api_status['warnings'].append(f'Error al cargar campañas: {_e}')
         account_alias = None
 
-    return render_template('meli_ads.html', campaigns=campaigns, api_status=api_status,
+    return render_template('meli_ads_anterior.html', campaigns=campaigns, api_status=api_status,
                            account_alias=account_alias, accounts=get_accounts())
 
 
@@ -16632,7 +16657,7 @@ ML_REDIRECT_URI = os.environ.get('ML_REDIRECT_URI', 'http://localhost:8080/oauth
 @app.route('/api/cuenta-nueva', methods=['POST'])
 def api_cuenta_nueva():
     """Crea una nueva cuenta en accounts.json con las credenciales ingresadas."""
-    body         = request.get_json(force=True)
+    body         = request.get_json(silent=True) or {}  # solo JSON: un form de otro sitio no llega
     alias        = body.get('alias', '').strip()
     client_id    = body.get('client_id', '').strip()
     client_secret= body.get('client_secret', '').strip()
@@ -16945,7 +16970,7 @@ def api_notificaciones_config():
         safe_cfg['tiene_pass'] = bool(cfg.get('smtp_pass'))
         return jsonify({'ok': True, 'config': safe_cfg})
 
-    body = request.get_json(force=True)
+    body = request.get_json(silent=True) or {}  # solo JSON: un form de otro sitio no llega
     cfg  = _load_notif_config()
     for key in ('smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'email_to', 'activo'):
         if key in body:

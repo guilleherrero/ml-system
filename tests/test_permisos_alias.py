@@ -26,11 +26,9 @@ def test_alias_ajeno_se_rechaza_en_cualquier_lugar(monkeypatch):
                   content_type='text/plain').status_code == 403
 
 
-def test_alias_propio_con_otras_mayusculas_pasa_el_permiso():
-    import core.auth as a
-    orig = a.get_current_user
-    a.get_current_user = lambda: {'is_admin': False, 'accounts': ['Mia']}
-    try:
-        assert a.user_can_access('MIA ') and not a.user_can_access('Ajena')
-    finally:
-        a.get_current_user = orig
+def test_mayusculas_no_esquivan_el_permiso(monkeypatch):
+    # "AJENA" se resuelve a la cuenta "Ajena": se le pide permiso a esa
+    c = _cliente(monkeypatch)
+    monkeypatch.setattr(webapp, '_resolve_alias', lambda a: {'ajena': 'Ajena', 'mia': 'Mia'}[a.lower()])
+    assert c.get('/api/pending-competidores?alias=AJENA').status_code == 403
+    assert c.get('/api/pending-competidores?alias=MIA').status_code != 403
