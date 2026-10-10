@@ -454,6 +454,10 @@ def require_login():
     # protege con el secreto del path, que se valida dentro del endpoint.
     if request.path.startswith('/api/telegram/webhook/'):
         return
+    # La lee el capturador desde mercadolibre.com.ar (sin la cookie del sistema):
+    # se protege con el token del bookmarklet dentro del endpoint.
+    if request.path.startswith('/api/mis-publicaciones-cors/'):
+        return
     # Auto-actualizar datos si no corrió hoy (resuelve el problema de Render durmiendo)
     if request.path not in _AUTH_EXEMPT and not request.path.startswith('/static'):
         try:
@@ -12391,6 +12395,9 @@ def api_mis_publicaciones_cors(alias):
         resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
         resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Cerebro-Token'
         return resp
+    token_ok = os.environ.get('CEREBRO_BOOKMARKLET_TOKEN', '').strip()
+    if token_ok and (request.headers.get('X-Cerebro-Token') or request.args.get('token') or '').strip() != token_ok:
+        return _cors(jsonify({'ok': False, 'error': 'Token invalido'})), 403
     from modules import grupos_producto as gp
     propios = _items_propios(alias)
     por_id = {i['id']: i for i in propios}
@@ -12411,7 +12418,34 @@ def api_mis_publicaciones_cors(alias):
         if i['id'] not in agrupados:
             items.append({'id': i['id'], 'titulo': i.get('titulo', ''), 'grupo': False})
     items.sort(key=lambda i: (not i['grupo'], i['titulo']))
-    return _cors(jsonify({'ok': True, 'items': items}))
+    # La publicación abierta en Optimizar con IA: el capturador la propone primero
+    actual = None
+    try:
+        ses = load_json(_sesion_optimizar_path(alias)) or {}
+        if ses.get('item_id') in por_id and _time_module.time() - float(ses.get('ts', 0)) < 6 * 3600:
+            actual = {'id': ses['item_id'], 'titulo': por_id[ses['item_id']].get('titulo', '')}
+    except (TypeError, ValueError):
+        pass
+    return _cors(jsonify({'ok': True, 'items': items, 'actual': actual}))
+
+
+def _sesion_optimizar_path(alias):
+    return os.path.join(DATA_DIR, f'sesion_optimizar_{safe(_resolve_alias(alias))}.json')
+
+
+@app.route('/api/optimizar/sesion', methods=['POST'])
+def api_optimizar_sesion():
+    """Optimizar con IA avisa qué publicación tiene abierta, para que el
+    capturador de competidores la elija sola."""
+    body = request.get_json(silent=True) or {}
+    item_id = (body.get('item_id') or '').strip().upper()
+    if not re.fullmatch(r'ML[A-Z]\d+', item_id):
+        return jsonify({'ok': False, 'error': 'item_id inválido'}), 400
+    try:
+        save_json(_sesion_optimizar_path(body.get('alias', '')), {'item_id': item_id, 'ts': _time_module.time()})
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 404
+    return jsonify({'ok': True})
 
 
 @app.route('/api/pending-competidores', methods=['GET'])
@@ -12799,6 +12833,8 @@ def bookmarklet(alias):
     # Se inyecta la config y se manda todo como una sola URL javascript:
     bm = 'javascript:' + quote(f'(function(){{window.__CEREBRO_CFG__={cfg};{codigo}}})();',
                                safe='')
+    if request.args.get('formato') == 'json':   # Optimizar con IA instala el mismo botón
+        return jsonify({'ok': bool(codigo), 'href': bm})
     return render_template('bookmarklet.html', alias=alias, bookmarklet=bm,
                            accounts=get_accounts())
 

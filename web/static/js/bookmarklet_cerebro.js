@@ -126,13 +126,27 @@
   panel.appendChild(pie);
   document.body.appendChild(panel);
 
-  fetch(BASE + '/api/mis-publicaciones-cors/' + encodeURIComponent(ALIAS))
+  // Sin el token la pedía como visitante: el sistema la mandaba al login y el
+  // selector quedaba vacío sin decir nada.
+  fetch(BASE + '/api/mis-publicaciones-cors/' + encodeURIComponent(ALIAS),
+        {headers: {'X-Cerebro-Token': TOKEN}})
     .then(function (r) { return r.json(); })
     .then(function (j) {
+      if (!j.ok) throw new Error(j.error || 'sin respuesta');
       (j.items || []).forEach(function (it) {
         sel.appendChild(new Option(it.titulo.slice(0, 70), it.id));
       });
-    }).catch(function () {});
+      // La que está abierta en Optimizar con IA va primera y elegida
+      if (j.actual) {
+        var o = new Option('▶ Optimizando ahora: ' + j.actual.titulo.slice(0, 55), j.actual.id);
+        sel.insertBefore(o, sel.options[1] || null);
+        sel.value = j.actual.id;
+        ACTUAL = j.actual.id;
+      }
+    }).catch(function (e) {
+      sel.options[0].text = 'No pude cargar tus publicaciones (' + e.message + ')';
+    });
+  var ACTUAL = '';
 
   var filas = [], marcados = {};
 
@@ -203,7 +217,8 @@
         m += ' Vos estás en el puesto ' +
           j.mis_posiciones.map(function (p) { return p.posicion; }).join(' y ') + '.';
       }
-      sub.textContent = m + ' Miralos en Cerebro → Competidores.';
+      sub.textContent = m + (sel.value && sel.value === ACTUAL
+        ? ' Ya aparecen en Optimizar con IA.' : ' Miralos en Cerebro → Competidores.');
       btnGuardar.textContent = 'Guardado ✓';
       btnGuardar.style.background = '#16a34a';
     }).catch(function (e) {
