@@ -512,6 +512,7 @@
             Instalá el botón una vez → buscá tu producto en Mercado Libre → tocá el botón → tildá los competidores. Llegan acá solos para esta publicación.
             Es el mismo botón de Crecimiento → Capturar competidores.
           </div>
+          <div id="grupoInfo" style="font-size:.72rem;color:var(--color-success-700);margin-top:4px"></div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
           <!-- Indicador de llegada -->
@@ -3228,6 +3229,11 @@ async function _pollPendingCompetitors() {
     // Al cambiar de publicación se sacan los que se habían cargado solos para la anterior
     const cambio = _autoItem !== item;
     if (cambio) {
+      const gi = document.getElementById('grupoInfo');
+      if (gi) gi.innerHTML = (d.grupo && d.grupo.n > 1
+        ? `<i class="bi bi-collection me-1"></i>Grupo <b>${_escapeHtml(d.grupo.nombre)}</b>: ${d.grupo.n} publicaciones comparten estos competidores. `
+        : 'Esta publicación no está agrupada con otras del mismo producto. ')
+        + `<a href="/cerebro/${encodeURIComponent(ALIAS_OPT)}#grupos" target="_blank">${d.grupo ? 'Editar grupo' : 'Agrupar'}</a>`;
       Object.keys(selectedCompetitors).forEach(k => { if (selectedCompetitors[k]._auto) delete selectedCompetitors[k]; });
       _autoItem = item;
       renderSelectedSection();

@@ -12477,6 +12477,9 @@ def api_pending_competidores():
             pendientes = sorted((c for c in gp.competidores_del_grupo(alias, item_id)
                                  if c.get('clase') in orden),
                                 key=lambda c: orden[c['clase']])
+            g = gp.grupo_de(alias, item_id)
+            return jsonify({'ok': True, 'competitors': pendientes, 'total': len(pendientes),
+                            'grupo': {'nombre': g.get('nombre', ''), 'n': len(g.get('items') or [])} if g else None})
         else:
             pendientes = cerebro.candidatos_pendientes(alias)
         return jsonify({'ok': True, 'competitors': pendientes,

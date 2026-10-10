@@ -340,10 +340,22 @@ function bloqueGrupo(nombre, items, comps, grupoId) {
 
 // ── Grupos de producto ──────────────────────────────────────────────────────
 
+let GR = {grupos: [], sugeridos: []};
 async function verGrupos() {
-  const j = await (await fetch(`/api/cerebro/grupos/${ALIAS}`)).json();
+  GR = await (await fetch(`/api/cerebro/grupos/${ALIAS}`)).json();
+  pintarGrupos();
+}
+
+// Opciones para sumar a un grupo: las propias que no están ya en él
+function opcionesAgregar(g) {
+  return S.items.filter(i => !g.items.includes(i.id))
+    .map(i => `<option value="${esc(i.id)}">${esc(i.titulo.slice(0, 60))} · ${esc(i.id)}</option>`).join('');
+}
+
+function pintarGrupos() {
+  const j = GR;
   const el = document.getElementById('cb-panel');
-  const fila = (g, sug) => `
+  const fila = (g, sug, k) => `
     <div class="cb-card ${sug ? 'pendiente' : 'funciono'}">
       <div class="cb-fila">
         <span class="cb-pill ${sug ? 'neutra' : 'tipo'}">${sug ? 'propuesto' : 'confirmado'}</span>
@@ -353,8 +365,15 @@ async function verGrupos() {
       <div class="cb-detalle">
         ${g.items.map(id => {
           const m = S.items.filter(i => i.id === id)[0];
-          return esc(m ? m.titulo.slice(0, 55) : id);
-        }).join('<br>')}
+          return `<div style="display:flex;gap:.4rem;align-items:center">${esc(m ? m.titulo.slice(0, 55) : id)}
+            <span class="cb-meta">${esc(id)}</span>
+            <button class="app-btn app-btn-xs app-btn-ghost" style="margin-left:auto" title="Sacar del grupo"
+              onclick="quitarDeGrupo(${sug ? 1 : 0}, ${k}, '${esc(id)}')">×</button></div>`;
+        }).join('')}
+        <select class="form-select form-select-sm mt-2" aria-label="Sumar una publicación al grupo"
+          onchange="sumarAGrupo(${sug ? 1 : 0}, ${k}, this.value)">
+          <option value="">+ Sumar otra publicación de este producto…</option>${opcionesAgregar(g)}
+        </select>
       </div>
       <div class="cb-acciones">
         ${sug ? `<button class="app-btn app-btn-xs"
@@ -377,11 +396,47 @@ async function verGrupos() {
         vos, porque agrupar mal significa compararte contra otro producto.
       </div>
     </div>
-    ${(j.grupos || []).map(g => fila(g, false)).join('')}
-    ${(j.sugeridos || []).filter(g => g.items.length > 1).map(g => fila(g, true)).join('')}
+    <div class="cb-card">
+      <div class="cb-fila"><span class="t">Crear un grupo</span></div>
+      <select class="form-select form-select-sm mt-2" aria-label="Primera publicación del grupo nuevo" onchange="crearGrupo(this.value)">
+        <option value="">Elegí la primera publicación del producto…</option>${opcionesAgregar({items: []})}
+      </select>
+    </div>
+    ${(j.grupos || []).map((g, k) => fila(g, false, k)).join('')}
+    ${(j.sugeridos || []).map((g, k) => g.items.length > 1 ? fila(g, true, k) : '').join('')}
     ${!(j.grupos || []).length && !(j.sugeridos || []).some(g => g.items.length > 1)
       ? `<div class="cb-card"><div class="cb-vacio">No encontré publicaciones que
          parezcan el mismo producto.</div></div>` : ''}`;
+}
+
+// Un grupo confirmado se guarda al instante; uno propuesto se edita y después se confirma
+async function guardarGrupo(g) {
+  await fetch('/api/cerebro/grupo/guardar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({alias: ALIAS, grupo_id: g.id || null, nombre: g.nombre, items: g.items}),
+  });
+  await cargar();
+  verGrupos();
+}
+function sumarAGrupo(sug, k, id) {
+  if (!id) return;
+  const g = (sug ? GR.sugeridos : GR.grupos)[k];
+  g.items.push(id);
+  sug ? pintarGrupos() : guardarGrupo(g);
+}
+function quitarDeGrupo(sug, k, id) {
+  const g = (sug ? GR.sugeridos : GR.grupos)[k];
+  g.items = g.items.filter(x => x !== id);
+  if (sug) return pintarGrupos();
+  if (!g.items.length) return borrarGrupo(g.id);
+  guardarGrupo(g);
+}
+function crearGrupo(id) {
+  if (!id) return;
+  const m = S.items.find(i => i.id === id);
+  const nombre = prompt('Nombre del producto (ej: Cubre camilla lycra)', m ? m.titulo.slice(0, 40) : '');
+  if (nombre === null) return;
+  guardarGrupo({nombre: nombre.trim() || (m ? m.titulo.slice(0, 40) : id), items: [id]});
 }
 
 async function confirmarGrupo(g) {
@@ -487,6 +542,7 @@ document.getElementById('cb-tabs').addEventListener('click', e => {
   document.querySelectorAll('.cb-tab').forEach(x => x.classList.toggle('on', x === b));
   pintar(b.dataset.t);
 });
-cargar();
+// /cerebro/<alias>#grupos abre directo la administración de grupos (link desde Optimizar con IA)
+cargar().then(() => { if (location.hash === '#grupos') verGrupos(); });
 </script>
 {% endblock %}
