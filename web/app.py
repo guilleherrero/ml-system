@@ -423,7 +423,6 @@ def _ctx_menu():
 
 _AUTH_EXEMPT = {'/login', '/logout', '/setup',
                 '/api/capturar-competidor',
-                '/api/pending-competidores',
                 '/api/list-aliases',
                 '/api/ping'}
 
@@ -12168,18 +12167,10 @@ def api_capturar_competidor():
     if not alias:
         return _cors(jsonify({'ok': False, 'error': 'Falta alias'})), 400
 
-    # El endpoint es publico por CORS (el bookmarklet corre en mercadolibre.com.ar).
-    # Si hay token configurado se exige; si no, se acepta para no romper el
-    # bookmarklet ya instalado, pero queda avisado en el log.
-    token_ok = os.environ.get('CEREBRO_BOOKMARKLET_TOKEN', '').strip()
-    if token_ok:
-        enviado = (request.headers.get('X-Cerebro-Token')
-                   or body.get('token') or '').strip()
-        if enviado != token_ok:
-            return _cors(jsonify({'ok': False, 'error': 'Token invalido'})), 403
-    else:
-        app.logger.info('[cerebro] captura de competidor sin token '
-                        '(definir CEREBRO_BOOKMARKLET_TOKEN para cerrarlo)')
+    # El endpoint es publico por CORS (el bookmarklet corre en mercadolibre.com.ar):
+    # se exige siempre el token que el sistema puso dentro del botón.
+    if not _token_bookmarklet_ok(alias, request.headers.get('X-Cerebro-Token') or body.get('token')):
+        return _cors(jsonify({'ok': False, 'error': 'Token invalido: volvé a instalar el botón'})), 403
 
     # Modo lote: una pagina de resultados trae 20-50 publicaciones y mandarlas de
     # a una es un POST por fila. La captura tiene que costar un clic, no cincuenta.
@@ -12395,9 +12386,8 @@ def api_mis_publicaciones_cors(alias):
         resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
         resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Cerebro-Token'
         return resp
-    token_ok = os.environ.get('CEREBRO_BOOKMARKLET_TOKEN', '').strip()
-    if token_ok and (request.headers.get('X-Cerebro-Token') or request.args.get('token') or '').strip() != token_ok:
-        return _cors(jsonify({'ok': False, 'error': 'Token invalido'})), 403
+    if not _token_bookmarklet_ok(alias, request.headers.get('X-Cerebro-Token') or request.args.get('token')):
+        return _cors(jsonify({'ok': False, 'error': 'Token invalido: volvé a instalar el botón'})), 403
     from modules import grupos_producto as gp
     propios = _items_propios(alias)
     por_id = {i['id']: i for i in propios}
@@ -12427,6 +12417,21 @@ def api_mis_publicaciones_cors(alias):
     except (TypeError, ValueError):
         pass
     return _cors(jsonify({'ok': True, 'items': items, 'actual': actual}))
+
+
+def _token_bookmarklet(alias: str) -> str:
+    """Token del capturador. Si no hay uno configurado, se deriva de la clave del
+    sistema y la cuenta: antes, sin la variable, los endpoints quedaban abiertos."""
+    fijo = os.environ.get('CEREBRO_BOOKMARKLET_TOKEN', '').strip()
+    if fijo:
+        return fijo
+    import hmac, hashlib
+    return hmac.new(app.secret_key.encode(), f'bookmarklet:{alias}'.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _token_bookmarklet_ok(alias: str, enviado: str) -> bool:
+    import hmac
+    return bool(alias) and hmac.compare_digest((enviado or '').strip(), _token_bookmarklet(alias))
 
 
 def _sesion_optimizar_path(alias):
@@ -12828,7 +12833,7 @@ def bookmarklet(alias):
     cfg = json.dumps({
         'base':  request.url_root.rstrip('/'),
         'alias': alias,
-        'token': os.environ.get('CEREBRO_BOOKMARKLET_TOKEN', '').strip(),
+        'token': _token_bookmarklet(alias),
     })
     # Se inyecta la config y se manda todo como una sola URL javascript:
     bm = 'javascript:' + quote(f'(function(){{window.__CEREBRO_CFG__={cfg};{codigo}}})();',
