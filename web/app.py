@@ -12326,6 +12326,12 @@ def _capturar_lote(alias: str, body: dict):
             'seller': f.get('seller', '-'), 'free_ship': bool(f.get('free_ship')),
             'senal_stock': f.get('senal_stock') or '',
             'sold_quantity': f.get('sold_quantity'),
+            # Leído de la página del competidor por el capturador
+            'description': (f.get('description') or '')[:4000],
+            'attributes': [a for a in (f.get('attributes') or [])[:60] if isinstance(a, dict)],
+            'photos_count': f.get('photos_count'), 'premium': bool(f.get('premium')),
+            'full_ship': bool(f.get('full_ship')), 'ficha_leida': bool(f.get('ficha_leida')),
+            'reviews_rating': f.get('reviews_rating'), 'reviews_total': f.get('reviews_total'),
         }
         try:
             if forzado:
@@ -12819,13 +12825,13 @@ def _competidores_para_optimizar(alias: str, item_id: str) -> list:
             'seller':        c.get('seller', '-'),
             'sold_quantity': c.get('sold_quantity') or 0,
             'price':         float(c.get('price') or 0),
-            'listing_type':  '',
-            'premium':       False,
+            'listing_type':  'gold_pro' if c.get('premium') else '',
+            'premium':       bool(c.get('premium')),
             'free_ship':     bool(c.get('free_ship')),
-            'full_ship':     False,
-            'photos_count':  0,
+            'full_ship':     bool(c.get('full_ship')),
+            'photos_count':  c.get('photos_count') or 0,
             'attributes':    c.get('attributes') or [],
-            'description':   '',
+            'description':   c.get('description') or '',
         })
     return out
 

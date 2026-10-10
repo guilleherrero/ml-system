@@ -89,6 +89,89 @@
     return filas;
   }
 
+  // ── Ficha completa de cada competidor ────────────────────────────────────
+  // ML cerró la API de publicaciones ajenas: descripción, características y
+  // fotos solo se ven en la página. Se leen desde acá, que está en el mismo
+  // sitio, y viajan con la captura para que Optimizar con IA las use.
+  // ponytail: depende del HTML de ML; si cambia, se guarda lo que haya (nunca rompe la captura)
+  function datosDeFicha(doc) {
+    function t(sel) { return txt(doc.querySelector(sel)); }
+    var cuerpo = txt(doc.body).slice(0, 60000);
+    var attrs = [];
+    doc.querySelectorAll('.andes-table__row, [class*="specs__row"]').forEach(function (row) {
+      var c = row.querySelectorAll('th, td');
+      if (c.length >= 2 && txt(c[0]) && txt(c[1])) attrs.push({name: txt(c[0]).slice(0, 80), value: txt(c[1]).slice(0, 120)});
+    });
+    doc.querySelectorAll('[class*="highlighted-specs__key-value"]').forEach(function (kv) {
+      var m = txt(kv).match(/^([^:]{2,60}):\s*(.+)$/);
+      if (m) attrs.push({name: m[1], value: m[2].slice(0, 120)});
+    });
+    var desc = t('.ui-pdp-description__content') || t('[class*="description__content"]');
+    var fotos = doc.querySelectorAll('.ui-pdp-gallery__column .ui-pdp-gallery__figure, [data-testid="picture-thumbnail"], .ui-pdp-thumbnail__picture').length;
+    var sub = t('.ui-pdp-subtitle');
+    var mv = sub.match(/\+?\s*([\d.]+)\s*(mil)?\s*vendid/i);
+    var vendidos = mv ? parseInt(mv[1].replace(/\./g, ''), 10) * (mv[2] ? 1000 : 1) : null;
+    var vend = t('.ui-pdp-seller__link-trigger-button span') || t('[class*="seller__header__title"]') ||
+               ((cuerpo.match(/Vendido por\s+([^|]{2,40}?)(?:\s+MercadoL[ií]der|\s+\+|$)/i) || [])[1] || '');
+    var rating = parseFloat((t('.ui-pdp-review__rating') || '').replace(',', '.')) || null;
+    var nRev = parseInt((t('.ui-pdp-review__amount') || '').replace(/[^\d]/g, ''), 10) || null;
+    return {
+      description: desc.slice(0, 4000),
+      attributes: attrs.slice(0, 60),
+      photos_count: fotos || null,
+      premium: /mismo precio en \d+ cuotas|cuotas sin inter[eé]s/i.test(cuerpo),
+      full_ship: /\bFULL\b/.test(t('.ui-pdp-container__row--shipping-summary') + ' ' + t('[class*="shipping"]')),
+      free_ship_ficha: /env[íi]o gratis|llega gratis/i.test(cuerpo),
+      sold_quantity_ficha: vendidos,
+      seller_ficha: vend.slice(0, 60),
+      reviews_rating: rating, reviews_total: nRev,
+      ficha_leida: !!(desc || attrs.length),
+    };
+  }
+
+  function leerFicha(f) {
+    if (!f.permalink) return Promise.resolve(f);
+    return fetch(f.permalink, {credentials: 'include'})
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        var d = datosDeFicha(new DOMParser().parseFromString(html, 'text/html'));
+        var out = Object.assign({}, f, d);
+        if (d.sold_quantity_ficha && !f.sold_quantity) out.sold_quantity = d.sold_quantity_ficha;
+        if (d.seller_ficha && (!f.seller || f.seller === '-')) out.seller = d.seller_ficha;
+        if (d.free_ship_ficha) out.free_ship = true;
+        return out;
+      })
+      .catch(function () { return f; });
+  }
+
+  // De a 3 a la vez: más rápido que de a una sin parecer un ataque a ML
+  function leerFichas(filas, alAvanzar) {
+    var out = new Array(filas.length), i = 0, hechas = 0;
+    function siguiente() {
+      if (i >= filas.length) return Promise.resolve();
+      var k = i++;
+      return leerFicha(filas[k]).then(function (r) { out[k] = r; alAvanzar(++hechas, filas.length); return siguiente(); });
+    }
+    return Promise.all([siguiente(), siguiente(), siguiente()]).then(function () { return out; });
+  }
+
+  // Parado en la página de UNA publicación (no en una búsqueda): se captura esa
+  function filaDePaginaActual() {
+    var m = location.href.match(/(MLA)-?(\d{7,12})/i);
+    var h1 = document.querySelector('h1.ui-pdp-title') || document.querySelector('h1');
+    if (!m || !h1) return null;
+    var img = document.querySelector('.ui-pdp-gallery__figure img, [class*="gallery"] img');
+    var pf = document.querySelector('.ui-pdp-price__second-line [class*="money-amount__fraction"]') ||
+             document.querySelector('[class*="money-amount__fraction"]');
+    return Object.assign({
+      id: 'MLA' + m[2], es_ficha: false, catalog_product_id: null, title: txt(h1),
+      price: pf ? parseFloat(txt(pf).replace(/[^\d]/g, '')) || 0 : 0,
+      permalink: location.href.split('#')[0].split('?')[0],
+      thumbnail: img ? (img.getAttribute('data-zoom') || img.src || '') : '',
+      seller: '-', free_ship: false, sold_quantity: null, senal_stock: '', posicion: null,
+    }, datosDeFicha(document));
+  }
+
   // ── Panel ─────────────────────────────────────────────────────────────────
   var panel = el('div', 'position:fixed;z-index:2147483647;top:0;right:0;height:100vh;' +
     'width:420px;max-width:92vw;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.28);' +
@@ -194,7 +277,7 @@
     var elegidas = filas.filter(function (_, i) { return marcados[i]; });
     if (!elegidas.length) { sub.textContent = 'No marcaste ninguna.'; return; }
     btnGuardar.disabled = true;
-    btnGuardar.textContent = 'Guardando…';
+    btnGuardar.textContent = 'Leyendo fichas…';
     var q = '';
     try {
       q = new URLSearchParams(location.search).get('q') || '';
@@ -204,15 +287,25 @@
       }
     } catch (e) {}
 
-    fetch(BASE + '/api/capturar-competidor', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Cerebro-Token': TOKEN},
-      body: JSON.stringify({alias: ALIAS, query: q, token: TOKEN,
-                            item_propio: sel.value || '', competidores: elegidas}),
-    }).then(function (r) { return r.json(); }).then(function (j) {
+    var completas = elegidas.every(function (f) { return f.ficha_leida !== undefined; });
+    (completas ? Promise.resolve(elegidas) : leerFichas(elegidas, function (n, tot) {
+      sub.textContent = 'Leyendo descripción y características ' + n + ' de ' + tot + '…';
+    })).then(function (conFicha) {
+      btnGuardar.textContent = 'Guardando…';
+      var leidas = conFicha.filter(function (f) { return f.ficha_leida; }).length;
+      return fetch(BASE + '/api/capturar-competidor', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Cerebro-Token': TOKEN},
+        body: JSON.stringify({alias: ALIAS, query: q, token: TOKEN,
+                              item_propio: sel.value || '', competidores: conFicha}),
+      }).then(function (r) { return r.json(); }).then(function (j) { j._leidas = leidas; j._total = conFicha.length; return j; });
+    }).then(function (j) {
       btnGuardar.disabled = false;
       if (!j.ok) { sub.textContent = 'No se pudo: ' + (j.error || ''); actualizar(); return; }
-      var m = j.guardados + ' guardados.';
+      var m = j.guardados + ' guardados (' + j._leidas + ' de ' + j._total + ' con descripción y características).';
+      if (j._leidas < j._total) {
+        m += ' Para completar los que faltan, abrí la publicación de cada uno y tocá el botón ahí.';
+      }
       if (j.mis_posiciones && j.mis_posiciones.length) {
         m += ' Vos estás en el puesto ' +
           j.mis_posiciones.map(function (p) { return p.posicion; }).join(' y ') + '.';
@@ -249,6 +342,13 @@
   // todavia no hay nada que leer.
   var intentos = 0;
   (function esperar() {
+    var unica = !leer().length && filaDePaginaActual();
+    if (unica) {
+      filas = [unica]; marcados = {0: true};
+      sub.textContent = 'Esta publicación' + (unica.ficha_leida ? ' (con descripción y características)' : '') + '. Elegí de cuál tuya es competencia y guardá.';
+      pintar(); actualizar();
+      return;
+    }
     if (!leer().length) {
       if (++intentos > 12) {
         sub.textContent = 'No encontré publicaciones. Esperá a que cargue la página de resultados.';
