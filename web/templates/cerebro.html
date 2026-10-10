@@ -455,6 +455,9 @@ async function confirmarGrupo(g) {
 }
 
 async function borrarGrupo(id) {
+  const g = (GR.grupos || []).find(x => x.id === id);
+  if (!confirm(`¿Deshacer el grupo "${g ? g.nombre : ''}"${g ? ` (${g.items.length} publicaciones)` : ''}?\n\n` +
+               'Los competidores no se borran, pero cada publicación deja de compartirlos con las otras.')) return;
   await fetch('/api/cerebro/grupo/eliminar', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({alias: ALIAS, grupo_id: id}),
