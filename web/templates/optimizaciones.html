@@ -2021,6 +2021,7 @@ function toggleDiscoverySelection(compId) {
 
   if (selectedCompetitors[compId]) {
     // Deseleccionar
+    if (selectedCompetitors[compId]._auto) _descartados.add(_autoItem + compId);
     delete selectedCompetitors[compId];
     if (card)  { card.style.borderColor = 'var(--color-neutral-200)'; card.style.background = 'var(--color-neutral-0)'; }
     if (check) check.style.display = 'none';
@@ -2367,6 +2368,7 @@ function updateRecentlyAdded(productId) {
 }
 
 function removeCompetidor(id) {
+  if (selectedCompetitors[id] && selectedCompetitors[id]._auto) _descartados.add(_autoItem + id);
   delete selectedCompetitors[id];
   renderSelectedSection();
 }
@@ -2448,7 +2450,10 @@ function renderSelectedSection() {
 }
 
 function limpiarSeleccion() {
-  Object.keys(selectedCompetitors).forEach(id => delete selectedCompetitors[id]);
+  Object.keys(selectedCompetitors).forEach(id => {
+    if (selectedCompetitors[id]._auto) _descartados.add(_autoItem + id);
+    delete selectedCompetitors[id];
+  });
   renderSelectedSection();
 }
 
@@ -3199,6 +3204,8 @@ function _avisarSesion() {
 
 // ── Polling: detecta competidores enviados desde el bookmarklet ───────────────
 let _pollingInterval = null;
+let _autoItem = null;              // publicación para la que se cargaron los guardados
+const _descartados = new Set();    // los que el usuario sacó a mano: no volver a agregarlos
 
 function _startPolling() {
   if (_pollingInterval) return;
@@ -3218,11 +3225,18 @@ async function _pollPendingCompetitors() {
     // Solo los capturados para ESTA publicación, no los de toda la cuenta
     const r = await fetch(`/api/pending-competidores?alias=${encodeURIComponent(ALIAS_OPT)}&item_id=${encodeURIComponent(item)}`);
     const d = await r.json();
+    // Al cambiar de publicación se sacan los que se habían cargado solos para la anterior
+    const cambio = _autoItem !== item;
+    if (cambio) {
+      Object.keys(selectedCompetitors).forEach(k => { if (selectedCompetitors[k]._auto) delete selectedCompetitors[k]; });
+      _autoItem = item;
+      renderSelectedSection();
+    }
     if (!d.ok || !d.competitors?.length) return;
-
     // Los competidores quedan persistidos, asi que el polling los devuelve
     // siempre: solo avisamos por los que todavia no teniamos en pantalla.
-    const nuevos = d.competitors.filter(comp => !selectedCompetitors[comp.id]);
+    const nuevos = d.competitors.filter(comp => !selectedCompetitors[comp.id] && !_descartados.has(item + comp.id));
+    nuevos.forEach(comp => { comp._auto = true; });
     nuevos.forEach(comp => {
       selectedCompetitors[comp.id] = comp;
       updateRecentlyAdded(comp.id);
@@ -3234,7 +3248,9 @@ async function _pollPendingCompetitors() {
     const ping     = document.getElementById('bookmarkletPing');
     const pingText = document.getElementById('bookmarkletPingText');
     const names    = nuevos.map(c => (c.title || '').substring(0,30)).join(', ');
-    pingText.textContent = `${nuevos.length} competidor${nuevos.length>1?'es':''} recibido${nuevos.length>1?'s':''}: ${names}`;
+    pingText.textContent = cambio
+      ? `${nuevos.length} competidor${nuevos.length>1?'es':''} que ya tenías guardado${nuevos.length>1?'s':''} para esta publicación`
+      : `${nuevos.length} competidor${nuevos.length>1?'es':''} recibido${nuevos.length>1?'s':''}: ${names}`;
     ping.style.display = 'block';
     setTimeout(() => { ping.style.display = 'none'; }, 5000);
 
@@ -3244,6 +3260,12 @@ async function _pollPendingCompetitors() {
 // Arrancar el polling cuando la página esté lista
 document.addEventListener('DOMContentLoaded', () => {
   _startPolling();
+  // Al elegir la publicación, traer enseguida los competidores que ya tenía
+  ['pubSelect', 'pubIdInput', 'customIdOpt'].forEach(id => {
+    const e = document.getElementById(id);
+    if (e) e.addEventListener('change', () => setTimeout(_pollPendingCompetitors, 50));
+  });
+  setTimeout(_pollPendingCompetitors, 300);
   _buildBookmarkletLink();  // pre-generar el link
 });
 

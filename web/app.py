@@ -12467,7 +12467,18 @@ def api_pending_competidores():
     try:
         from modules import cerebro
         item_id = (request.args.get('item_id') or '').strip().upper() or None
-        pendientes = cerebro.candidatos_pendientes(alias, item_propio=item_id)
+        if item_id:
+            # Optimizar con IA: todos los que ya se eligieron para ese producto
+            # (confirmados en Cerebro y capturados, en cualquier publicación del
+            # grupo). Antes solo llegaban los candidatos de esa publicación exacta
+            # y había que volver a elegirlos cada vez.
+            from modules import grupos_producto as gp
+            orden = {cerebro.CLASE_DIRECTO: 0, cerebro.CLASE_CANDIDATO: 1}
+            pendientes = sorted((c for c in gp.competidores_del_grupo(alias, item_id)
+                                 if c.get('clase') in orden),
+                                key=lambda c: orden[c['clase']])
+        else:
+            pendientes = cerebro.candidatos_pendientes(alias)
         return jsonify({'ok': True, 'competitors': pendientes,
                         'total': len(pendientes)})
     except Exception as e:
