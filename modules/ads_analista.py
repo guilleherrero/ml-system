@@ -72,7 +72,7 @@ def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30) -> dict
 
     stock: {item_id: fila del análisis diario} (precio, margen_pct, stock, dias_stock,
     ventas_30d, visitas_30d, conversion_pct, titulo).
-    competencia(item_id) -> precio del competidor más barato que tenés cargado (o None).
+    competencia(item_id) -> precio típico (mediana) de los competidores cargados (o None).
     """
     camps = {c.get('id'): c for c in datos.get('campanias', [])}
     productos, acciones = [], []
@@ -191,10 +191,10 @@ def _por_que_no_vende(p: dict, st: dict, competencia) -> list[str]:
     """Causas probables cuando la gente hace clic y no compra, con lo que se sabe."""
     out = []
     precio = st.get('precio') or p['precio']
-    barato = competencia(p['item_id']) if competencia else None
-    if barato and precio and precio > barato * 1.05:
-        out.append(f"Tu precio ({_plata(precio)}) está {round((precio / barato - 1) * 100)}% arriba del competidor "
-                   f"más barato que tenés cargado ({_plata(barato)}).")
+    medio = competencia(p['item_id']) if competencia else None
+    if medio and precio and precio > medio * 1.05:
+        out.append(f"Tu precio ({_plata(precio)}) está {round((precio / medio - 1) * 100)}% arriba del precio típico "
+                   f"de tus competidores cargados ({_plata(medio)}, la mitad vende más barato).")
     if st and not st.get('free_shipping') and precio and precio >= 33000:
         out.append('No ofrece envío gratis y la competencia en ese precio sí.')
     if st and (st.get('conversion_pct') is not None) and st.get('conversion_pct') < 1:
@@ -256,7 +256,7 @@ def _accion_campania(k: dict, dias: int = 30) -> dict | None:
     if (k['resultado'] or 0) < 0:
         return {**base, 'tipo': 'campania_pierde', 'prioridad': 1, 'plata': -k['resultado'],
                 'que': f"La campaña «{k['nombre']}» pierde plata",
-                'porque': (f"Gastó {_plata(k['gasto'])} y vendió {_plata(k['ventas_ads'])}: después de pagar la "
-                           f"publicidad quedan {_plata(k['resultado'])}. {k['pierden']} de sus {k['productos']} "
-                           "productos pierden; revisalos abajo.")}
+                'porque': (f"Gastó {_plata(k['gasto'])} y vendió {_plata(k['ventas_ads'])}: después de pagar producto, "
+                           f"comisión, envío y publicidad, perdió {_plata(-k['resultado'])}. {k['pierden']} de sus "
+                           f"{k['productos']} productos pierden plata; revisalos abajo.")}
     return None

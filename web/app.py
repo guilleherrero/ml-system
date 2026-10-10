@@ -8355,7 +8355,10 @@ def api_meli_ads_analista(alias):
     def competencia(item_id):
         precios = [float(c['price']) for c in gp.competidores_del_grupo(alias, item_id)
                    if c.get('clase') in ('directo', 'candidato') and c.get('price')]
-        return min(precios) if precios else None
+        # La mediana y no el mínimo: entre los cargados suele haber alguno que no es
+        # exactamente el mismo producto, y el más barato exagera la diferencia.
+        import statistics
+        return statistics.median(precios) if precios else None
 
     out = ads_analista.analizar(datos, {x['id']: x for x in stock.get('items', []) if x.get('id')},
                                 competencia=competencia, dias=dias)
