@@ -8328,6 +8328,25 @@ def _cuentas_ads(mgr):
     return [a for a in mgr.list_accounts() if a.alias == alias]
 
 
+@app.route('/api/meli-ads/<alias>/analista')
+def api_meli_ads_analista(alias):
+    """Analista de Meli Ads: qué hacer con la publicidad de la cuenta."""
+    from modules import ads_analista
+    try:
+        client = _promo_client(alias)
+        client._ensure_token()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    datos = ads_analista.leer(client.account.access_token)
+    if datos.get('error'):
+        return jsonify({'ok': False, 'error': datos['error']})
+    stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(_resolve_alias(alias))}.json')) or {}
+    out = ads_analista.analizar(datos, {x['id']: x for x in stock.get('items', []) if x.get('id')})
+    if request.args.get('crudo') == '1':     # para revisar qué devuelve ML
+        out['_muestra_anuncio'] = (datos.get('anuncios') or [None])[0]
+    return jsonify({'ok': True, **out})
+
+
 @app.route('/meli-ads')
 def meli_ads():
     from modules.meli_ads_engine import build_campaigns_from_api
