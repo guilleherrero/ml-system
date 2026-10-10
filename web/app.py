@@ -8337,7 +8337,11 @@ def api_meli_ads_analista(alias):
         client._ensure_token()
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 400
-    datos = ads_analista.leer(client.account.access_token)
+    try:
+        dias = max(1, min(90, int(request.args.get('dias', 30))))
+    except ValueError:
+        dias = 30
+    datos = ads_analista.leer(client.account.access_token, dias=dias)
     if datos.get('error'):
         return jsonify({'ok': False, 'error': datos['error']})
     stock = load_json(os.path.join(DATA_DIR, f'stock_{safe(_resolve_alias(alias))}.json')) or {}
