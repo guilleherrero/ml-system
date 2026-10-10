@@ -8367,6 +8367,44 @@ def meli_ads():
                            account_alias=account_alias, accounts=get_accounts())
 
 
+@app.route('/api/meli-ads/diag')
+def api_meli_ads_diag():
+    # ponytail: diagnóstico temporal de endpoints de Product Ads (solo lectura), se borra al migrar
+    import requests as _rq
+    from datetime import date as _d, timedelta as _td
+    alias = request.args.get('alias') or (get_accounts() or [{}])[0].get('alias') or 'Novara'
+    tok = _promo_client(alias)
+    tok._ensure_token()
+    h = {'Authorization': f'Bearer {tok.account.access_token}'}
+    out = {}
+    def probar(nombre, url, params=None, ver=None):
+        hh = dict(h)
+        if ver:
+            hh['api-version'] = ver
+        try:
+            r = _rq.get('https://api.mercadolibre.com' + url, headers=hh, params=params or {}, timeout=12)
+            out[nombre] = {'status': r.status_code, 'body': r.text[:700]}
+        except Exception as e:
+            out[nombre] = {'error': str(e)}
+        return out[nombre]
+    a = probar('advertisers_v1', '/advertising/advertisers', {'product_id': 'PADS'}, '1')
+    adv = None
+    try:
+        adv = (json.loads(a['body']).get('advertisers') or [{}])[0].get('advertiser_id')
+    except Exception:
+        pass
+    probar('campaigns_viejo', '/advertising/product_ads/campaigns')
+    if adv:
+        hoy = _d.today(); desde = (hoy - _td(days=30)).isoformat()
+        q = {'limit': 50, 'offset': 0, 'date_from': desde, 'date_to': hoy.isoformat(),
+             'metrics': 'clicks,prints,cost,acos,total_amount,units_quantity'}
+        probar('mkt_campaigns_v2', f'/marketplace/advertising/MLA/advertisers/{adv}/product_ads/campaigns/search', q, '2')
+        probar('adv_campaigns_v2', f'/advertising/MLA/advertisers/{adv}/product_ads/campaigns/search', q, '2')
+        probar('adv_campaigns_v1', f'/advertising/advertisers/{adv}/product_ads/campaigns', q, '1')
+        probar('mkt_ads_v2', f'/marketplace/advertising/MLA/advertisers/{adv}/product_ads/ads/search', q, '2')
+    return jsonify({'advertiser_id': adv, 'resultados': out})
+
+
 @app.route('/api/meli-ads/campaign/<int:camp_id>/analysis')
 def api_meli_ads_campaign_analysis(camp_id: int):
     """Genera análisis Claude para una campaña (llamada lazy desde el frontend)."""
