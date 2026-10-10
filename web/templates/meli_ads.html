@@ -43,6 +43,10 @@
 .ma-filtros button.on{border-color:var(--brand);color:var(--app-text)}
 .ma-mut{color:var(--app-muted);font-size:.8rem}
 .ma-wrap{overflow-x:auto}
+.ma-mini{display:inline-flex;gap:.3rem;align-items:center;flex-wrap:wrap}
+.ma-mini input,.ma-mini select{background:var(--app-surface-2);border:1px solid var(--app-border);color:var(--app-text);border-radius:8px;padding:.2rem .45rem;font-size:.8rem;max-width:150px}
+.ma-toast{position:fixed;right:16px;bottom:16px;z-index:2000;max-width:420px;padding:.7rem .9rem;border-radius:10px;font-size:.85rem;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.ma-toast.ok{background:var(--solid-success)}.ma-toast.err{background:var(--solid-critical)}
 </style>
 
 <div class="ma-head">
@@ -50,6 +54,7 @@
     <h1><i class="bi bi-megaphone me-1"></i>Meli Ads</h1>
     <div class="sub">Tu analista de publicidad: qué funciona, qué te hace perder plata y qué hacer ahora · {{ alias }}</div>
   </div>
+  <button class="btn btn-sm btn-primary" onclick="abrirNueva()"><i class="bi bi-plus-lg me-1"></i>Nueva campaña</button>
   <div class="ma-per" role="group" aria-label="Período">
     <button data-d="7" class="on">Últimos 7 días</button><button data-d="30">30 días</button>
   </div>
@@ -57,6 +62,24 @@
 
 <div id="ma-cargando" class="ma-card ma-mut">Leyendo tus campañas en Mercado Libre…</div>
 <div id="ma-error" class="alert alert-warning" hidden></div>
+
+<div id="ma-permiso" class="alert alert-warning small" hidden></div>
+
+<div id="ma-nueva" class="ma-card" hidden>
+  <h2>Nueva campaña</h2>
+  <div class="row g-2">
+    <div class="col-md-4"><label class="form-label small" for="nc-nombre">Nombre</label><input id="nc-nombre" class="form-control form-control-sm" maxlength="60" placeholder="Ej: Cortadores rentables"></div>
+    <div class="col-md-2"><label class="form-label small" for="nc-ppto">Presupuesto por día</label><input id="nc-ppto" type="number" min="100" class="form-control form-control-sm" value="3000"></div>
+    <div class="col-md-2"><label class="form-label small" for="nc-acos">ACoS objetivo %</label><input id="nc-acos" type="number" min="1" max="100" class="form-control form-control-sm" value="15"></div>
+    <div class="col-md-4"><label class="form-label small" for="nc-estr">Estrategia</label>
+      <select id="nc-estr" class="form-select form-select-sm"><option value="PROFITABILITY">Rentabilidad (gastar sin perder margen)</option>
+        <option value="INCREASE">Crecimiento (más ventas)</option><option value="VISIBILITY">Visibilidad (que te vean)</option></select></div>
+  </div>
+  <div class="ma-mut mt-2">Productos que se mueven a esta campaña (salen de la que tienen ahora). Sugerencia: el ACoS objetivo tiene que ser menor que el margen de los productos que elijas.</div>
+  <div id="nc-prods" style="max-height:260px;overflow:auto;margin-top:.4rem"></div>
+  <div class="mt-2 d-flex gap-2"><button class="btn btn-sm btn-primary" onclick="crearCampania()">Crear campaña</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="$('ma-nueva').hidden=true">Cancelar</button></div>
+</div>
 
 <div id="ma-cuerpo" hidden>
   <div class="ma-card">
@@ -74,7 +97,7 @@
     <h2>Tus campañas</h2>
     <div class="ma-wrap"><table class="ma-tabla"><thead><tr>
       <th>Campaña</th><th>Estado</th><th class="r">Presupuesto/día</th><th class="r">Invertido</th>
-      <th class="r">Vendido por publicidad</th><th class="r">ACoS (objetivo)</th><th class="r">Te dejó</th><th>Productos</th>
+      <th class="r">Vendido por publicidad</th><th class="r">ACoS (objetivo)</th><th class="r">Te dejó</th><th>Productos</th><th></th>
     </tr></thead><tbody id="ma-camps"></tbody></table></div>
     <div class="ma-mut mt-2">Tocá una campaña para ver solo sus productos abajo.</div>
   </div>
@@ -84,7 +107,7 @@
     <div class="ma-filtros" id="ma-filtros"></div>
     <div class="ma-wrap"><table class="ma-tabla"><thead><tr>
       <th>Producto</th><th>Campaña</th><th class="r">Invertido</th><th class="r">Clics</th><th class="r">Ventas</th>
-      <th class="r">ACoS</th><th class="r">Tu margen</th><th>Veredicto</th>
+      <th class="r">ACoS</th><th class="r">Tu margen</th><th>Veredicto</th><th></th>
     </tr></thead><tbody id="ma-prods"></tbody></table></div>
     <div class="ma-mut mt-2" id="ma-sin-gasto"></div>
   </div>
@@ -106,16 +129,94 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const money = n => (n || n === 0) ? (n < 0 ? '−$' : '$') + Math.abs(Math.round(n)).toLocaleString('es-AR') : '—';
 const pct = n => n == null ? '—' : Math.round(n * 100) + '%';
 const VERED = {gana: 'Gana', pierde: 'Pierde plata', justo: 'Gana poco', sin_datos: 'Falta el costo', sin_gasto: 'Sin gasto', pausada: 'Pausada'};
-const COMO = {
-  sacar: 'En Mercado Libre: Publicidad → tu campaña → buscá el producto y pausalo. Antes, abrí su ficha y fijate precio y fotos contra la competencia.',
-  perdida: 'En Mercado Libre: Publicidad → la campaña → bajá el ACoS objetivo, o pausá este producto.',
-  pausar_stock: 'En Mercado Libre: Publicidad → la campaña → pausá este producto hasta reponer.',
-  presupuesto: 'En Mercado Libre: Publicidad → la campaña → Presupuesto diario.',
-  campania_pierde: 'Revisá abajo los productos de esta campaña marcados «Pierde plata».',
-  potenciar: 'En Mercado Libre: Publicidad → movelo a tu campaña con más presupuesto, o subí el ACoS objetivo de la suya.',
-  sumar: 'En Mercado Libre: Publicidad → sumalo a una campaña con ACoS objetivo menor a su margen.',
-};
-let D = null, FILTRO = 'gasto', CAMP = null, DIAS = 7;
+
+let D = null, FILTRO = 'gasto', CAMP = null, DIAS = 7, EDIT = null;
+
+function toast(msg, ok) {
+  const t = document.createElement('div'); t.className = 'ma-toast ' + (ok ? 'ok' : 'err'); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), ok ? 4000 : 9000);
+}
+// Ejecuta en Mercado Libre, siempre con confirmación
+async function hacer(accion, pregunta) {
+  if (!confirm(pregunta)) return false;
+  let r;
+  try {
+    r = await (await fetch(`/api/meli-ads/${encodeURIComponent(ALIAS)}/accion`, {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(accion)})).json();
+  } catch (e) { r = {ok: false, error: 'No se pudo conectar con el sistema.'}; }
+  if (r.sin_permiso) { $('ma-permiso').textContent = r.error; $('ma-permiso').hidden = false; $('ma-permiso').scrollIntoView({behavior: 'smooth'}); }
+  toast(r.ok ? ('Listo en Mercado Libre. ' + (r.aviso || '')) : (r.error || 'No se pudo'), r.ok);
+  if (r.ok) setTimeout(cargar, 1200);
+  return r.ok;
+}
+const nombreCamp = id => (D.campanias.find(c => c.id === id) || {}).nombre || id;
+const pausar = (item, tit) => hacer({tipo: 'anuncio_estado', item_id: item, estado: 'paused'}, `¿Pausar la publicidad de «${tit}»?\n\nDeja de gastar enseguida. La publicación sigue a la venta.`);
+const activar = (item, tit) => hacer({tipo: 'anuncio_estado', item_id: item, estado: 'active'}, `¿Volver a activar la publicidad de «${tit}»?`);
+function mover(item, tit, sel) {
+  const cid = +sel.value; sel.value = '';
+  if (cid) hacer({tipo: 'anuncio_campania', item_id: item, campania_id: cid}, `¿Mover «${tit}» a la campaña «${nombreCamp(cid)}»?`);
+}
+async function cambiarPrecio(item, tit, actual) {
+  const v = prompt(`Nuevo precio para «${tit}»\n(hoy $${Math.round(actual || 0).toLocaleString('es-AR')})`, Math.round(actual || 0));
+  if (v === null) return;
+  const precio = parseFloat(String(v).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'));
+  if (!(precio > 0)) return toast('Precio inválido', false);
+  if (!confirm(`¿Cambiar el precio de «${tit}» a $${Math.round(precio).toLocaleString('es-AR')} en Mercado Libre?`)) return;
+  const r = await (await fetch(`/api/aplicar-precio/${encodeURIComponent(ALIAS)}`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({item_id: item, precio, hipotesis: 'cambio de precio desde el analista de Meli Ads'})})).json().catch(() => ({ok: false}));
+  toast(r.ok ? 'Precio cambiado en Mercado Libre.' : 'No se pudo cambiar el precio: ' + ((r.detalle || [])[0] || {}).error, r.ok);
+  if (r.ok) setTimeout(cargar, 1200);
+}
+function presupuesto(cid, actual) {
+  const v = prompt(`Nuevo presupuesto diario para «${nombreCamp(cid)}» (hoy $${actual})`, Math.round(actual * 1.5));
+  if (v === null) return;
+  hacer({tipo: 'campania', campania_id: cid, presupuesto: +v}, `¿Cambiar el presupuesto de «${nombreCamp(cid)}» a $${(+v).toLocaleString('es-AR')} por día?`);
+}
+const objetivo = (cid, pct) => hacer({tipo: 'campania', campania_id: cid, acos_objetivo: pct}, `¿Bajar el ACoS objetivo de «${nombreCamp(cid)}» a ${pct}%?\n\nMercado Libre va a gastar menos por venta; puede mostrarse algo menos.`);
+const selCamp = (item, tit, excluir) => `<select aria-label="Mover a campaña" onchange="mover(${jsq(item)}, ${jsq(tit)}, this)"><option value="">Mover a…</option>${
+  D.campanias.filter(c => c.id !== excluir).map(c => `<option value="${Number(c.id)}">${esc(c.nombre)}${c.estado !== 'active' ? ' (pausada)' : ''}</option>`).join('')}</select>`;
+// Argumento seguro para onclick="…"
+const jsq = v => esc(JSON.stringify(String(v ?? '')));
+
+function botonesAccion(a) {
+  const it = a.item_id ? jsq(a.item_id) : '', tt = jsq(a.titulo || ''), b = [];
+  if (['sacar', 'pausar_stock', 'perdida', 'dejo_de_vender', 'acos_sube'].includes(a.tipo)) b.push(`<button class="btn btn-sm btn-primary" onclick="pausar(${it}, ${tt})">Pausar su publicidad</button>`);
+  if (['sacar', 'perdida', 'dejo_de_vender', 'acos_sube'].includes(a.tipo) && a.precio) b.push(`<button class="btn btn-sm btn-outline-secondary" onclick="cambiarPrecio(${it}, ${tt}, ${Number(a.precio)})">Cambiar precio</button>`);
+  if (a.tipo === 'presupuesto') b.push(`<button class="btn btn-sm btn-primary" onclick="presupuesto(${Number(a.campania_id)}, ${Number(a.presupuesto_actual)})">Subir presupuesto</button>`);
+  if (a.tipo === 'objetivo_alto') b.push(`<button class="btn btn-sm btn-primary" onclick="objetivo(${Number(a.campania_id)}, ${Number(a.acos_sugerido)})">Bajar ACoS objetivo a ${Number(a.acos_sugerido)}%</button>`);
+  if (['potenciar', 'sumar', 'se_dejo_de_mostrar'].includes(a.tipo) && a.item_id) b.push(`<span class="ma-mini">${selCamp(a.item_id, a.titulo, a.campania_id)}</span>`);
+  if (['campania_pierde', 'se_dejo_de_mostrar'].includes(a.tipo) && a.campania_id) b.push(`<button class="btn btn-sm btn-outline-secondary" onclick="elegirCamp(${Number(a.campania_id)})">Ver sus productos</button>`);
+  if (a.item_id) b.push(`<a class="btn btn-sm btn-outline-secondary" href="/publicacion/${encodeURIComponent(ALIAS)}/${esc(a.item_id)}">Ver la ficha</a>`);
+  if (['sacar', 'perdida', 'dejo_de_vender'].includes(a.tipo) && a.item_id) b.push(`<a class="btn btn-sm btn-outline-secondary" href="/optimizaciones/${encodeURIComponent(ALIAS)}?item=${esc(a.item_id)}">Mejorar la publicación</a>`);
+  return b.length ? `<div class="btns">${b.join('')}</div>` : '';
+}
+
+// Editar campaña en la fila
+function editarCamp(id) { EDIT = EDIT === id ? null : id; pintar(); }
+function guardarCamp(id) {
+  const ppto = $('ec-ppto').value, acos = $('ec-acos').value, est = $('ec-est').value;
+  hacer({tipo: 'campania', campania_id: id, presupuesto: ppto, acos_objetivo: acos, estado: est},
+        `¿Guardar «${nombreCamp(id)}»?\nPresupuesto $${(+ppto).toLocaleString('es-AR')}/día · ACoS objetivo ${acos}% · ${est === 'active' ? 'activa' : 'pausada'}`)
+    .then(ok => { if (ok) EDIT = null; });
+}
+
+// Nueva campaña
+function abrirNueva() {
+  const ps = (D ? D.productos : []).slice().sort((a, b) => (b.margen ?? -1) - (a.margen ?? -1));
+  $('nc-prods').innerHTML = ps.length ? ps.map(p => `<label class="d-flex gap-2 align-items-center small py-1" style="border-bottom:1px solid var(--app-border)">
+      <input type="checkbox" class="form-check-input mt-0" value="${esc(p.item_id)}">
+      <span style="flex:1">${esc(p.titulo.slice(0, 60))} <span class="ma-mut">${esc(p.item_id)} · hoy en ${esc(p.campania)}</span></span>
+      <span class="ma-mut">margen ${pct(p.margen)}</span></label>`).join('') : '<div class="ma-mut">Esperá a que carguen tus productos.</div>';
+  $('ma-nueva').hidden = false; $('ma-nueva').scrollIntoView({behavior: 'smooth'});
+}
+function crearCampania() {
+  const items = [...document.querySelectorAll('#nc-prods input:checked')].map(i => i.value);
+  const a = {tipo: 'campania_nueva', nombre: $('nc-nombre').value.trim(), presupuesto: $('nc-ppto').value,
+             acos_objetivo: $('nc-acos').value, estrategia: $('nc-estr').value, items};
+  if (!a.nombre) return toast('Poné un nombre para la campaña', false);
+  hacer(a, `¿Crear la campaña «${a.nombre}» con $${(+a.presupuesto).toLocaleString('es-AR')}/día, ACoS objetivo ${a.acos_objetivo}%` +
+           (items.length ? ` y mover ${items.length} productos a ella?` : '?')).then(ok => { if (ok) $('ma-nueva').hidden = true; });
+}
 
 async function cargar() {
   $('ma-cargando').hidden = false; $('ma-cuerpo').hidden = true; $('ma-error').hidden = true;
@@ -147,11 +248,8 @@ function pintar() {
       ${a.titulo ? `<div class="prod">${esc(a.titulo)}${a.campania ? ` · campaña ${esc(a.campania)}` : ''}</div>` : ''}
       <div class="porque">${esc(a.porque)}</div>
       ${(a.causas || []).length ? `<ul>${a.causas.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
-      <div class="como">${esc(COMO[a.tipo] || '')}</div>
-      ${a.item_id ? `<div class="btns">
-        <a class="btn btn-sm btn-outline-secondary" href="/publicacion/${encodeURIComponent(ALIAS)}/${esc(a.item_id)}">Ver la ficha</a>
-        ${['sacar', 'perdida'].includes(a.tipo) ? `<a class="btn btn-sm btn-outline-secondary" href="/optimizaciones/${encodeURIComponent(ALIAS)}?item=${esc(a.item_id)}">Mejorar la publicación</a>` : ''}
-      </div>` : ''}
+
+      ${botonesAccion(a)}
     </div></div>`).join('')
     : '<div class="ma-mut">No hay nada urgente: la publicidad está dejando ganancia en todos los productos con datos.</div>';
 
@@ -163,7 +261,14 @@ function pintar() {
       <td class="r">${money(c.gasto)}</td><td class="r">${money(c.ventas_ads)}<div class="ma-mut">${c.unidades_ads} u.</div></td>
       <td class="r">${pct(c.acos)} <span class="ma-mut">(${pct(c.objetivo_acos)})</span></td>
       <td class="r" style="color:${(c.resultado || 0) < 0 ? 'var(--color-critical-500)' : 'inherit'}">${money(c.resultado)}</td>
-      <td>${c.productos}${c.pierden ? ` · <span style="color:var(--color-critical-500)">${c.pierden} pierden</span>` : ''}</td></tr>`).join('');
+      <td>${c.productos}${c.pierden ? ` · <span style="color:var(--color-critical-500)">${c.pierden} pierden</span>` : ''}</td>
+      <td onclick="event.stopPropagation()"><button class="btn btn-sm btn-outline-secondary" onclick="editarCamp(${Number(c.id)})">Editar</button></td></tr>
+      ${EDIT === c.id ? `<tr><td colspan="9" onclick="event.stopPropagation()"><span class="ma-mini">
+        Presupuesto/día <input id="ec-ppto" type="number" min="100" value="${Number(c.presupuesto)}">
+        ACoS objetivo % <input id="ec-acos" type="number" min="1" max="100" value="${c.objetivo_acos != null ? Math.round(c.objetivo_acos * 100) : ''}">
+        ${c.margen_tipico != null ? `<span class="ma-mut">(margen típico de sus productos: ${pct(c.margen_tipico)})</span>` : ''}
+        <select id="ec-est"><option value="active" ${c.estado === 'active' ? 'selected' : ''}>Activa</option><option value="paused" ${c.estado !== 'active' ? 'selected' : ''}>Pausada</option></select>
+        <button class="btn btn-sm btn-primary" onclick="guardarCamp(${Number(c.id)})">Guardar en Mercado Libre</button></span></td></tr>` : ''}`).join('');
 
   const base = D.productos.filter(p => CAMP == null || p.campania_id === CAMP);
   const grupos = {gasto: ['Con gasto', p => p.gasto > 0], pierde: ['Pierden plata', p => p.veredicto === 'pierde'],
@@ -179,8 +284,14 @@ function pintar() {
       <td>${esc(p.campania)}</td><td class="r">${money(p.gasto)}</td><td class="r">${p.clics}</td>
       <td class="r">${p.unidades_ads}<div class="ma-mut">${money(p.ventas_ads)}</div></td>
       <td class="r">${pct(p.acos)}</td><td class="r">${pct(p.margen)}</td>
-      <td><span class="ma-pill ${p.veredicto}">${VERED[p.veredicto] || p.veredicto}</span><div class="ma-mut">${esc(p.motivo)}</div></td></tr>`).join('')
-    : '<tr><td colspan="8" class="ma-mut">Nada en este filtro.</td></tr>';
+      <td><span class="ma-pill ${p.veredicto}">${VERED[p.veredicto] || p.veredicto}</span><div class="ma-mut">${esc(p.motivo)}</div></td>
+      <td><span class="ma-mini">
+        ${p.estado === 'active' ? `<button class="btn btn-sm btn-outline-secondary" onclick="pausar(${jsq(p.item_id)}, ${jsq(p.titulo)})">Pausar</button>`
+                                : `<button class="btn btn-sm btn-outline-secondary" onclick="activar(${jsq(p.item_id)}, ${jsq(p.titulo)})">Activar</button>`}
+        ${selCamp(p.item_id, p.titulo, p.campania_id)}
+        <button class="btn btn-sm btn-outline-secondary" onclick="cambiarPrecio(${jsq(p.item_id)}, ${jsq(p.titulo)}, ${Number(p.precio) || 0})">Precio</button>
+      </span></td></tr>`).join('')
+    : '<tr><td colspan="9" class="ma-mut">Nada en este filtro.</td></tr>';
   const cero = base.filter(p => !p.gasto).length;
   $('ma-sin-gasto').textContent = cero ? `${cero} anuncios no gastaron en el período (Mercado Libre no los mostró o están pausados): mirá el filtro «Todos».` : '';
 }

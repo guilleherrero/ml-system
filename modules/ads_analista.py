@@ -36,9 +36,12 @@ def _f(v) -> float:
         return 0.0
 
 
-def leer(token: str, dias: int = 30) -> dict:
-    """Campañas y anuncios (con métricas) de Product Ads v2."""
-    hoy = date.today()
+def leer(token: str, dias: int = 30, atras: int = 0) -> dict:
+    """Campañas y anuncios (con métricas) de Product Ads v2.
+
+    atras: cuántos días antes de hoy termina el período (para comparar con el anterior).
+    """
+    hoy = date.today() - timedelta(days=atras)
     desde, hasta = (hoy - timedelta(days=dias)).isoformat(), hoy.isoformat()
     r = eng._ads_get('/advertising/advertisers', token, params={'product_id': 'PADS'}, api_version='1')
     if r['status'] in (401, 403):
@@ -67,7 +70,7 @@ def _ventas(m: dict) -> tuple[float, int]:
     return monto, unid
 
 
-def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30) -> dict:
+def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30, previo: dict | None = None) -> dict:
     """Arma resumen, acciones, campañas y productos.
 
     stock: {item_id: fila del análisis diario} (precio, margen_pct, stock, dias_stock,
@@ -76,6 +79,8 @@ def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30) -> dict
     """
     camps = {c.get('id'): c for c in datos.get('campanias', [])}
     productos, acciones = [], []
+    # Período anterior, para avisar cuando algo EMPIEZA a ir mal
+    antes = {str(a.get('item_id')): a.get('metrics') or {} for a in (previo or {}).get('anuncios', [])}
     con_ads = set()
 
     for ad in datos.get('anuncios', []):
@@ -103,8 +108,14 @@ def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30) -> dict
         p['en_stock'] = bool(st)
         p['por_que'] = _por_que_no_vende(p, st, competencia) if p['clics'] >= 10 and \
             (p['unidades_ads'] == 0 or p['unidades_ads'] / p['clics'] < 0.015) else []
+        ant = antes.get(iid)
+        if ant is not None:
+            v_ant, u_ant = _ventas(ant)
+            p['antes'] = {'vistas': int(_f(ant.get('prints'))), 'clics': int(_f(ant.get('clicks'))),
+                          'gasto': round(_f(ant.get('cost'))), 'unidades': u_ant,
+                          'acos': _f(ant.get('cost')) / v_ant if v_ant else None}
         productos.append(p)
-        a = _accion_producto(p, dias)
+        a = _accion_producto(p, dias) or _alerta_temprana(p, dias)
         if a:
             acciones.append(a)
 
@@ -130,6 +141,8 @@ def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30) -> dict
         k['veredicto'] = ('pausada' if k['estado'] != 'active' else
                           'pierde' if (k['resultado'] or 0) < 0 else
                           'gana' if (k['resultado'] or 0) > 0 else 'sin_datos')
+        margenes = sorted(p['margen'] for p in sus if p['margen'] is not None)
+        k['margen_tipico'] = margenes[len(margenes) // 2] if margenes else None
         campanias.append(k)
         a = _accion_campania(k, dias)
         if a:
@@ -144,6 +157,7 @@ def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30) -> dict
                 and (st.get('dias_stock') or 999) >= 30:
             acciones.append({
                 'tipo': 'sumar', 'prioridad': 3, 'item_id': iid, 'titulo': st.get('titulo', iid),
+                'precio': st.get('precio'),
                 'que': 'Sumalo a publicidad',
                 'porque': (f"Tiene {mg * 100:.0f}% de margen y convierte {st.get('conversion_pct'):.1f}% de las visitas, "
                            f"con stock para {int(st.get('dias_stock') or 0)} días. Puede pagar publicidad "
@@ -213,7 +227,8 @@ def _plata(n: float) -> str:
 
 
 def _accion_producto(p: dict, dias: int = 30) -> dict | None:
-    base = {'item_id': p['item_id'], 'titulo': p['titulo'], 'campania': p['campania']}
+    base = {'item_id': p['item_id'], 'titulo': p['titulo'], 'campania': p['campania'],
+            'campania_id': p['campania_id'], 'precio': p['precio']}
     if p['gasto'] > 0 and p['stock'] is not None and (p['stock'] <= 0 or (p['dias_stock'] or 999) < DIAS_STOCK_MIN):
         return {**base, 'tipo': 'pausar_stock', 'prioridad': 1, 'plata': p['gasto'],
                 'que': 'Pausá el anuncio: se está quedando sin stock',
@@ -243,10 +258,47 @@ def _accion_producto(p: dict, dias: int = 30) -> dict | None:
     return None
 
 
+def _alerta_temprana(p: dict, dias: int) -> dict | None:
+    """Algo que empezó a ir mal respecto del período anterior, antes de que cueste caro."""
+    a = p.get('antes')
+    if not a or p['estado'] != 'active':
+        return None
+    base = {'item_id': p['item_id'], 'titulo': p['titulo'], 'campania': p['campania'],
+            'campania_id': p['campania_id'], 'precio': p['precio'], 'prioridad': 2}
+    if a['unidades'] >= 2 and p['unidades_ads'] == 0 and p['clics'] >= 10:
+        return {**base, 'tipo': 'dejo_de_vender', 'plata': p['gasto'],
+                'que': 'Dejó de vender por publicidad',
+                'porque': (f"Los {dias} días anteriores vendió {a['unidades']} por publicidad; ahora tuvo {p['clics']} "
+                           "clics y ninguna venta. Algo cambió: precio de la competencia, stock, opiniones o la publicación."),
+                'causas': p['por_que']}
+    if a['vistas'] >= 1000 and p['vistas'] < a['vistas'] * 0.4:
+        return {**base, 'tipo': 'se_dejo_de_mostrar', 'plata': a['gasto'],
+                'que': 'Mercado Libre lo está mostrando mucho menos',
+                'porque': (f"Pasó de {a['vistas']:,} a {p['vistas']:,} vistas en publicidad "
+                           f"({round((1 - p['vistas'] / a['vistas']) * 100)}% menos) respecto de los {dias} días anteriores. "
+                           "Suele pasar cuando el ACoS objetivo de la campaña es bajo para la competencia, cuando se "
+                           "agota el presupuesto o cuando sube el precio.").replace(',', '.')}
+    if a['acos'] and p['acos'] and p['margen'] and p['acos'] > a['acos'] * 1.4 and p['acos'] > p['margen'] * 0.7:
+        return {**base, 'tipo': 'acos_sube', 'plata': p['gasto'],
+                'que': 'Cada venta por publicidad le está costando más',
+                'porque': (f"El ACoS pasó de {a['acos'] * 100:.0f}% a {p['acos'] * 100:.0f}% (su margen es "
+                           f"{p['margen'] * 100:.0f}%). Si sigue así, en poco tiempo pierde plata."),
+                'causas': p['por_que']}
+    return None
+
+
 def _accion_campania(k: dict, dias: int = 30) -> dict | None:
-    base = {'campania': k['nombre'], 'campania_id': k['id']}
+    base = {'campania': k['nombre'], 'campania_id': k['id'], 'presupuesto_actual': k['presupuesto']}
     if k['estado'] != 'active':
         return None
+    obj, mt = k.get('objetivo_acos'), k.get('margen_tipico')
+    if obj and mt and obj > mt:
+        sugerido = max(1, round(mt * 0.8 * 100))
+        return {**base, 'tipo': 'objetivo_alto', 'prioridad': 2, 'plata': k['gasto'], 'acos_sugerido': sugerido,
+                'que': f"El ACoS objetivo de «{k['nombre']}» es más alto que lo que ganan sus productos",
+                'porque': (f"Le pediste a Mercado Libre gastar hasta {obj * 100:.0f}% de lo que vendés, y el margen típico "
+                           f"de sus productos es {mt * 100:.0f}%: puede gastar más de lo que ganás. "
+                           f"Conviene bajarlo a {sugerido}%.")}
     if k['presupuesto'] and k['gasto_hoy'] >= k['presupuesto'] * PRESUPUESTO_AGOTADO and (k['resultado'] or 0) > 0:
         return {**base, 'tipo': 'presupuesto', 'prioridad': 2, 'plata': k['resultado'],
                 'que': f"Subí el presupuesto de «{k['nombre']}»",
@@ -260,3 +312,107 @@ def _accion_campania(k: dict, dias: int = 30) -> dict | None:
                            f"comisión, envío y publicidad, perdió {_plata(-k['resultado'])}. {k['pierden']} de sus "
                            f"{k['productos']} productos pierden plata; revisalos abajo.")}
     return None
+
+
+# ── Acciones: hacer los cambios desde el panel ───────────────────────────────
+# Product Ads v2: cada campaña y cada anuncio tienen su recurso bajo el sitio
+# (confirmado con GET en producción); las campañas nuevas se crean bajo el
+# anunciante. Escribir requiere que la app tenga Publicidad en "lectura y
+# escritura" en el panel de developers de ML; sin eso ML responde 401.
+
+import re as _re
+
+ESTRATEGIAS = {'PROFITABILITY': 'Rentabilidad', 'INCREASE': 'Crecimiento', 'VISIBILITY': 'Visibilidad'}
+SIN_PERMISO = ('Mercado Libre no deja que el sistema cambie tu publicidad: la aplicación tiene permiso de '
+               'Publicidad solo de lectura. Habilitalo en developers.mercadolibre.com.ar → tu aplicación → '
+               'Permisos → Publicidad: «lectura y escritura», y después reconectá la cuenta desde '
+               'Configuración → Cuentas.')
+
+
+def _escribir(metodo: str, path: str, token: str, body: dict) -> dict:
+    import requests
+    try:
+        r = requests.request(metodo, eng._ML_BASE + path, json=body, timeout=15,
+                             headers={**eng._ads_headers(token), 'api-version': '2'})
+    except requests.RequestException as e:
+        return {'ok': False, 'error': f'No se pudo conectar con Mercado Libre: {e}'}
+    if r.ok:
+        try:
+            return {'ok': True, 'data': r.json()}
+        except ValueError:
+            return {'ok': True, 'data': None}
+    if r.status_code in (401, 403):
+        return {'ok': False, 'error': SIN_PERMISO, 'sin_permiso': True}
+    try:
+        msg = r.json().get('message') or r.text[:200]
+    except ValueError:
+        msg = r.text[:200]
+    return {'ok': False, 'error': f'Mercado Libre rechazó el cambio (HTTP {r.status_code}): {msg}'}
+
+
+def _item(v) -> str:
+    v = str(v or '').strip().upper()
+    if not _re.fullmatch(r'ML[A-Z]\d+', v):
+        raise ValueError('Publicación inválida')
+    return v
+
+
+def _num(v, minimo, maximo, que) -> float:
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        raise ValueError(f'{que} inválido')
+    if not (minimo <= n <= maximo):
+        raise ValueError(f'{que} fuera de rango ({minimo:g} a {maximo:g})')
+    return n
+
+
+def ejecutar(token: str, a: dict, advertiser_id=None, site: str = 'MLA') -> dict:
+    """Aplica una acción en Mercado Libre. Lanza ValueError si los datos no sirven."""
+    tipo = a.get('tipo')
+    if tipo == 'anuncio_estado':
+        estado = a.get('estado')
+        if estado not in ('active', 'paused'):
+            raise ValueError('Estado inválido')
+        return _escribir('PUT', f'/marketplace/advertising/{site}/product_ads/ads/{_item(a.get("item_id"))}',
+                         token, {'status': estado})
+    if tipo == 'anuncio_campania':
+        cid = int(_num(a.get('campania_id'), 1, 1e12, 'Campaña'))
+        return _escribir('PUT', f'/marketplace/advertising/{site}/product_ads/ads/{_item(a.get("item_id"))}',
+                         token, {'campaign_id': cid, 'status': 'active'})
+    if tipo == 'campania':
+        cid = int(_num(a.get('campania_id'), 1, 1e12, 'Campaña'))
+        body = {}
+        if a.get('presupuesto') not in (None, ''):
+            body['budget'] = round(_num(a['presupuesto'], 100, 10_000_000, 'Presupuesto'), 2)
+        if a.get('acos_objetivo') not in (None, ''):
+            body['acos_target'] = round(_num(a['acos_objetivo'], 1, 100, 'ACoS objetivo'), 1)
+        if a.get('estado') in ('active', 'paused'):
+            body['status'] = a['estado']
+        if a.get('nombre'):
+            body['name'] = str(a['nombre']).strip()[:60]
+        if not body:
+            raise ValueError('No hay nada para cambiar')
+        return _escribir('PUT', f'/marketplace/advertising/{site}/product_ads/campaigns/{cid}', token, body)
+    if tipo == 'campania_nueva':
+        if not advertiser_id:
+            raise ValueError('No se encontró el anunciante de la cuenta')
+        nombre = str(a.get('nombre') or '').strip()[:60]
+        if not nombre:
+            raise ValueError('Poné un nombre para la campaña')
+        estrategia = a.get('estrategia') if a.get('estrategia') in ESTRATEGIAS else 'PROFITABILITY'
+        body = {'name': nombre, 'status': 'active', 'channel': 'marketplace', 'strategy': estrategia,
+                'budget': round(_num(a.get('presupuesto'), 100, 10_000_000, 'Presupuesto'), 2),
+                'acos_target': round(_num(a.get('acos_objetivo'), 1, 100, 'ACoS objetivo'), 1)}
+        items = [_item(i) for i in (a.get('items') or [])][:200]
+        r = _escribir('POST', f'/marketplace/advertising/{site}/advertisers/{int(advertiser_id)}/product_ads/campaigns',
+                      token, body)
+        if not r['ok'] or not items:
+            return r
+        cid = (r.get('data') or {}).get('id')
+        if not cid:
+            return {'ok': True, 'aviso': 'La campaña se creó, pero Mercado Libre no devolvió su número: sumá los productos desde la tabla.'}
+        fallos = [i for i in items if not ejecutar(token, {'tipo': 'anuncio_campania', 'item_id': i, 'campania_id': cid}, site=site)['ok']]
+        return {'ok': True, 'data': r.get('data'),
+                'aviso': f'{len(items) - len(fallos)} de {len(items)} productos sumados.' + (f' No se pudo: {", ".join(fallos)}' if fallos else '')}
+    raise ValueError('Acción desconocida')

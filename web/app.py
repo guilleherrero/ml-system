@@ -2487,6 +2487,8 @@ def api_aplicar_precio(alias):
     heads_json = {**heads, 'Content-Type': 'application/json'}
 
     def _aplicar_uno(iid, precio):
+        if not re.fullmatch(r'ML[A-Z]\d+', iid or ''):
+            return {'id': iid, 'ok': False, 'error': 'Publicación inválida'}
         g = req_lib.get(
             f'https://api.mercadolibre.com/items/{iid}',
             headers=heads,
@@ -8360,11 +8362,41 @@ def api_meli_ads_analista(alias):
         import statistics
         return statistics.median(precios) if precios else None
 
+    previo = ads_analista.leer(client.account.access_token, dias=dias, atras=dias)
     out = ads_analista.analizar(datos, {x['id']: x for x in stock.get('items', []) if x.get('id')},
-                                competencia=competencia, dias=dias)
+                                competencia=competencia, dias=dias,
+                                previo=None if previo.get('error') else previo)
+    out['campanias_lista'] = [{'id': c['id'], 'nombre': c['nombre'], 'estado': c['estado']} for c in out['campanias']]
     if request.args.get('crudo') == '1':     # para revisar qué devuelve ML
         out['_muestra_anuncio'] = (datos.get('anuncios') or [None])[0]
     return jsonify({'ok': True, **out})
+
+
+@app.route('/api/meli-ads/<alias>/accion', methods=['POST'])
+def api_meli_ads_accion(alias):
+    """Ejecuta en Mercado Libre una acción del analista (pausar, mover, presupuesto…)."""
+    from modules import ads_analista
+    from modules import meli_ads_engine as eng
+    a = request.get_json(silent=True)
+    if not isinstance(a, dict):
+        return jsonify({'ok': False, 'error': 'Pedido inválido'}), 400
+    try:
+        client = _promo_client(alias)
+        client._ensure_token()
+        token = client.account.access_token
+        adv = None
+        if a.get('tipo') == 'campania_nueva':
+            r = eng._ads_get('/advertising/advertisers', token, params={'product_id': 'PADS'}, api_version='1')
+            adv = (((r['data'] or {}).get('advertisers') or [{}])[0]).get('advertiser_id') if r['ok'] else None
+        res = ads_analista.ejecutar(token, a, advertiser_id=adv)
+    except ValueError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo: {e}'}), 502
+    _audit('MELI_ADS_ACCION', alias=alias, tipo=a.get('tipo'), item=a.get('item_id'),
+           campania=a.get('campania_id'), ok=res.get('ok'),
+           cambios={k: a.get(k) for k in ('estado', 'presupuesto', 'acos_objetivo', 'nombre') if a.get(k) not in (None, '')})
+    return jsonify(res), (200 if res.get('ok') else 409)
 
 
 @app.route('/meli-ads')

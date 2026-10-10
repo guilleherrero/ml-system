@@ -37,3 +37,41 @@ def test_presupuesto_agotado_y_rentable_pide_subirlo():
     d['gasto_hoy'] = {1: 950}
     out = aa.analizar(d, st)
     assert any(a['tipo'] == 'presupuesto' for a in out['acciones'])
+
+
+def test_alerta_temprana_dejo_de_vender_y_se_dejo_de_mostrar():
+    st = {'MLA1': {'precio': 1000, 'margen_pct': 0.4, 'stock': 50, 'dias_stock': 60},
+          'MLA2': {'precio': 1000, 'margen_pct': 0.4, 'stock': 50, 'dias_stock': 60}}
+    ahora = [{'item_id': 'MLA1', 'campaign_id': 1, 'status': 'active', 'metrics': {'cost': 900, 'clicks': 15, 'prints': 3000}},
+             {'item_id': 'MLA2', 'campaign_id': 1, 'status': 'active', 'metrics': {'cost': 50, 'clicks': 2, 'prints': 300, 'total_amount': 1000, 'units_quantity': 1}}]
+    antes = {'anuncios': [{'item_id': 'MLA1', 'metrics': {'cost': 800, 'clicks': 14, 'prints': 3000, 'total_amount': 3000, 'units_quantity': 3}},
+                          {'item_id': 'MLA2', 'metrics': {'cost': 400, 'clicks': 30, 'prints': 5000, 'total_amount': 4000, 'units_quantity': 4}}]}
+    out = aa.analizar(_datos(ahora), st, dias=7, previo=antes)
+    tipos = {a.get('item_id'): a['tipo'] for a in out['acciones'] if a.get('item_id')}
+    assert tipos == {'MLA1': 'dejo_de_vender', 'MLA2': 'se_dejo_de_mostrar'}
+
+
+def test_objetivo_de_acos_mayor_al_margen():
+    st = {'MLA1': {'precio': 1000, 'margen_pct': 0.15, 'stock': 50, 'dias_stock': 60}}
+    ads = [{'item_id': 'MLA1', 'campaign_id': 1, 'metrics': {'cost': 50, 'total_amount': 1000, 'units_quantity': 1}}]
+    d = _datos(ads, [{'id': 1, 'name': 'C', 'status': 'active', 'daily_budget': 1000, 'acos_target': 25,
+                      'metrics': {'cost': 50, 'total_amount': 1000}}])
+    a = next(x for x in aa.analizar(d, st)['acciones'] if x['tipo'] == 'objetivo_alto')
+    assert a['acos_sugerido'] == 12
+
+
+def test_ejecutar_valida_antes_de_tocar_mercado_libre(monkeypatch):
+    import pytest
+    llamadas = []
+    monkeypatch.setattr(aa, '_escribir', lambda m, path, t, body: llamadas.append((m, path, body)) or {'ok': True})
+    for mala in ({'tipo': 'anuncio_estado', 'item_id': "MLA1/../../x", 'estado': 'paused'},
+                 {'tipo': 'campania', 'campania_id': 5, 'presupuesto': -3},
+                 {'tipo': 'campania', 'campania_id': 5, 'acos_objetivo': 500},
+                 {'tipo': 'borrar_todo'}):
+        with pytest.raises(ValueError):
+            aa.ejecutar('t', mala)
+    assert llamadas == []
+    aa.ejecutar('t', {'tipo': 'anuncio_estado', 'item_id': 'mla1568967243', 'estado': 'paused'})
+    aa.ejecutar('t', {'tipo': 'campania', 'campania_id': 357067839, 'presupuesto': 3750})
+    assert llamadas == [('PUT', '/marketplace/advertising/MLA/product_ads/ads/MLA1568967243', {'status': 'paused'}),
+                        ('PUT', '/marketplace/advertising/MLA/product_ads/campaigns/357067839', {'budget': 3750.0})]
