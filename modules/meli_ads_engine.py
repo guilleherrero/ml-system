@@ -1417,7 +1417,7 @@ def _ads_headers(token: str) -> dict:
 
 
 def _ads_get(path: str, token: str, params: dict | None = None,
-             base: str = _ML_BASE) -> dict:
+             base: str = _ML_BASE, api_version: str | None = None) -> dict:
     """
     GET al endpoint dado. Devuelve dict con:
       ok     — bool
@@ -1428,8 +1428,10 @@ def _ads_get(path: str, token: str, params: dict | None = None,
     import requests
     url = f'{base}{path}'
     try:
-        r = requests.get(url, headers=_ads_headers(token),
-                         params=params or {}, timeout=10)
+        h = _ads_headers(token)
+        if api_version:
+            h['api-version'] = api_version
+        r = requests.get(url, headers=h, params=params or {}, timeout=15)
         try:
             body = r.json()
         except Exception:
@@ -1544,6 +1546,11 @@ def _discover_campaign_ids(token: str, user_id: int) -> dict[int, list[str]]:
     """
     import time
     result: dict[int, list[str]] = {}
+
+    # Product Ads v2: una sola consulta trae todos los anuncios con su campaña
+    v2 = _anuncios_por_campania(token)
+    if v2:
+        return v2
 
     r = _ads_get(f'/users/{user_id}/items/search', token,
                  params={'status': 'active', 'limit': 100})
@@ -2248,6 +2255,47 @@ def _get_today_spend(token: str, camp_id: int) -> float:
     return 0.0
 
 
+# Product Ads v2. ML retiró /advertising/product_ads/campaigns (404 desde 2026):
+# el listado y las métricas viven ahora bajo el advertiser, en /marketplace/…
+# con el header api-version: 2. Una consulta trae todas las campañas con sus
+# métricas y otra todos los anuncios (publicación → campaña).
+_MKT_METRICAS = ('clicks,prints,ctr,cost,cpc,acos,roas,units_quantity,total_amount,'
+                 'direct_amount,indirect_amount,direct_units_quantity,indirect_units_quantity')
+
+
+def _mkt_paginado(path: str, token: str, params: dict) -> tuple[list, int]:
+    """Todas las páginas de un /search de Product Ads v2. Devuelve (resultados, status)."""
+    out, offset, status = [], 0, 0
+    while True:
+        r = _ads_get(path, token, params={**params, 'limit': 50, 'offset': offset}, api_version='2')
+        status = r['status']
+        if not r['ok']:
+            break
+        data = r['data'] or {}
+        res = data.get('results') or []
+        out.extend(res)
+        offset += len(res)
+        if not res or offset >= ((data.get('paging') or {}).get('total') or 0) or offset >= 2000:
+            break
+    return out, status
+
+
+def _anuncios_por_campania(token: str) -> dict[int, list[str]]:
+    """{campaign_id: [item_id, …]} desde Product Ads v2 ({} si no responde)."""
+    r = _ads_get('/advertising/advertisers', token, params={'product_id': 'PADS'}, api_version='1')
+    advs = ((r['data'] or {}).get('advertisers') or []) if r['ok'] else []
+    if not advs:
+        return {}
+    a = advs[0]
+    ads, _ = _mkt_paginado(f"/marketplace/advertising/{a.get('site_id') or 'MLA'}/advertisers/"
+                           f"{a.get('advertiser_id')}/product_ads/ads/search", token, {})
+    out: dict[int, list[str]] = {}
+    for ad in ads:
+        if ad.get('campaign_id') and ad.get('item_id'):
+            out.setdefault(int(ad['campaign_id']), []).append(str(ad['item_id']))
+    return out
+
+
 def build_campaigns_from_api(token: str, date_from: str, date_to: str) -> tuple[list, dict]:
     """
     Construye lista de campañas con métricas reales para la vista de campañas.
@@ -2255,167 +2303,84 @@ def build_campaigns_from_api(token: str, date_from: str, date_to: str) -> tuple[
 
     Cada campaign_dict tiene:
       id, name, status, budget, strategy, acos_target,
-      items_count, item_ids, items (lista [{id, title, price}]),
+      items_count, item_ids, products (lista [{id, title, price}]),
       metrics {impressions, clicks, spend, revenue_ads, conversions, ctr, cpc, acos, roas},
       today_spend, today_pct,
       stock_alerts {count, items [{id, title, stock, days_left, sold_daily}]}
     """
-    import time
+    from datetime import date as _date
+    meta: dict = {'advertiser_id': None, 'campaigns_count': 0, 'ads_count': 0,
+                  'warnings': [], 'auth_error': False}
 
-    meta: dict = {
-        'advertiser_id':   None,
-        'campaigns_count': 0,
-        'ads_count':       0,
-        'warnings':        [],
-    }
-
-    user_id, api_reached, warnings = _get_user_id(token)
-    meta['warnings'].extend(warnings)
-    if not user_id:
-        if not api_reached:
-            meta['warnings'].append('Sin conexión con la API.')
-        return [], meta
-
-    # ── Test rápido de permisos de Publicidad ────────────────────────────────
-    # Antes de escanear todos los ítems verificamos si el token tiene acceso
-    # al endpoint de advertising. Si devuelve 401 mostramos un mensaje claro.
-    _perm_test = _ads_get('/advertising/product_ads/campaigns', token)
-    if _perm_test['status'] == 401:
+    r_adv = _ads_get('/advertising/advertisers', token, params={'product_id': 'PADS'}, api_version='1')
+    if r_adv['status'] in (401, 403):
         meta['auth_error'] = True
         meta['warnings'].append(
-            'El token no tiene permisos de Publicidad (HTTP 401). '
-            'Reconectá tu cuenta desde el botón "Reconectar / Activar publicidad" '
-            'para habilitar el acceso a métricas de campañas.'
-        )
+            f'El token no tiene permisos de Publicidad (HTTP {r_adv["status"]}). '
+            'Reconectá tu cuenta desde el botón "Reconectar / Activar publicidad".')
         return [], meta
-
-    # ── Intento directo: listar campañas sin escanear ítem por ítem ──────────
-    campaign_map: dict[int, list[str]] = {}
-    _direct_ok = False
-    if _perm_test['ok'] and _perm_test['data']:
-        _direct_data = _perm_test['data']
-        _direct_camps = _direct_data if isinstance(_direct_data, list) else _direct_data.get('results', [])
-        for _c in _direct_camps:
-            _cid = _c.get('id')
-            if _cid:
-                campaign_map[int(_cid)] = []
-        if campaign_map:
-            _direct_ok = True
-            # Obtener ítems por campaña
-            import time as _t2
-            for _camp_id in list(campaign_map.keys()):
-                _ri = _ads_get('/advertising/product_ads/items', token,
-                                params={'campaign_id': _camp_id, 'limit': 100})
-                if _ri['ok'] and _ri['data']:
-                    _items_raw = _ri['data']
-                    _items_list = _items_raw if isinstance(_items_raw, list) else _items_raw.get('results', [])
-                    campaign_map[_camp_id] = [
-                        str(i.get('item_id') or i.get('id', ''))
-                        for i in _items_list
-                        if i.get('item_id') or i.get('id')
-                    ]
-                _t2.sleep(0.05)
-
-    # ── Fallback: escanear ítems activos ─────────────────────────────────────
-    if not _direct_ok:
-        campaign_map = _discover_campaign_ids(token, user_id)
-
-    if not campaign_map:
-        meta['warnings'].append('No se encontraron campañas con Product Ads activos.')
+    advs = ((r_adv['data'] or {}).get('advertisers') or []) if r_adv['ok'] else []
+    if not advs:
+        meta['warnings'].append('La cuenta no tiene Product Ads (no es anunciante).' if r_adv['ok']
+                                else f'No se pudo leer el anunciante (HTTP {r_adv["status"]}).')
         return [], meta
+    adv_id, site = advs[0].get('advertiser_id'), advs[0].get('site_id') or 'MLA'
+    meta['advertiser_id'] = adv_id
+    base = f'/marketplace/advertising/{site}/advertisers/{adv_id}/product_ads'
 
-    meta['campaigns_count'] = len(campaign_map)
-    meta['ads_count']       = sum(len(ids) for ids in campaign_map.values())
+    camps, st = _mkt_paginado(f'{base}/campaigns/search', token,
+                              {'date_from': date_from, 'date_to': date_to, 'metrics': _MKT_METRICAS})
+    if not camps:
+        meta['warnings'].append('No hay campañas de Product Ads.' if st == 200
+                                else f'No se pudieron leer las campañas (HTTP {st}).')
+        return [], meta
+    ads, st_ads = _mkt_paginado(f'{base}/ads/search', token,
+                                {'date_from': date_from, 'date_to': date_to})
+    if st_ads != 200:
+        meta['warnings'].append(f'No se pudieron leer los anuncios de cada campaña (HTTP {st_ads}).')
+    hoy = _date.today().strftime('%Y-%m-%d')
+    hoy_camps, _ = _mkt_paginado(f'{base}/campaigns/search', token,
+                                 {'date_from': hoy, 'date_to': hoy, 'metrics': 'cost'})
+    gasto_hoy = {c.get('id'): _float((c.get('metrics') or {}).get('cost', 0)) for c in hoy_camps}
+
+    por_camp: dict = {}
+    for a in ads:
+        por_camp.setdefault(a.get('campaign_id'), []).append(a)
 
     campaigns: list[dict] = []
-
-    for camp_id, item_ids in campaign_map.items():
-        detail = _get_campaign_detail(token, camp_id)
-
-        if not meta['advertiser_id'] and detail.get('advertiser_id'):
-            meta['advertiser_id'] = detail['advertiser_id']
-
-        # Métricas del período
-        r = _ads_get(
-            f'/advertising/product_ads/campaigns/{camp_id}/metrics',
-            token,
-            params={'date_from': date_from, 'date_to': date_to},
-        )
-
-        metrics: dict = {}
-        if r['ok'] and r['data']:
-            body        = r['data'] or {}
-            clicks      = _int(body.get('clicks', 0))
-            impressions = _int(body.get('impressions', 0))
-            spend       = _float(body.get('cost', 0.0))
-            revenue_ads = _float(body.get('amount_total', 0.0))
-            conversions = _int(body.get('sold_quantity_total', 0))
-            cpc         = _float(body.get('cpc', 0.0))
-
-            # CTR siempre se recalcula desde clicks/impressions (ver nota en
-            # get_metrics). La API ML lo expone en unidad de porcentaje.
-            ctr = round(clicks / impressions, 4) if impressions > 0 else 0.0
-            if not cpc and clicks > 0:
-                cpc = round(spend / clicks, 2)
-
-            acos = round(spend / revenue_ads, 4) if revenue_ads > 0 else None
-            roas = round(revenue_ads / spend, 2)  if spend > 0       else None
-
-            metrics = {
-                'impressions': impressions,
-                'clicks':      clicks,
-                'spend':       spend,
-                'revenue_ads': revenue_ads,
-                'conversions': conversions,
-                'ctr':         ctr,
-                'cpc':         cpc,
-                'acos':        acos,
-                'roas':        roas,
-            }
-        else:
-            meta['warnings'].append(f'Métricas no disponibles para campaña {camp_id}.')
-
-        # Gasto de hoy vs presupuesto diario
-        daily_budget = _float(detail.get('budget', 0.0))
-        today_spend  = _get_today_spend(token, camp_id)
-        today_pct    = round(today_spend / daily_budget * 100, 1) if daily_budget > 0 else 0.0
-        time.sleep(0.05)
-
-        # Stock alerts: productos con stock bajo en relación a su ritmo de ventas
-        sales_data   = _batch_fetch_items_sales(token, list(item_ids))
-        stock_alerts = _calc_stock_alerts(sales_data, date_from, date_to)
-
-        # Detalle de items (primeros 8 para mostrar)
-        items: list[dict] = []
-        for item_id in item_ids[:8]:
-            r_item = _ads_get(f'/items/{item_id}', token)
-            if r_item['ok'] and r_item['data']:
-                d = r_item['data'] or {}
-                items.append({
-                    'id':    item_id,
-                    'title': _str(d.get('title', '')),
-                    'price': _float(d.get('price', 0.0)),
-                })
-            time.sleep(0.05)
-
+    for c in camps:
+        cid = c.get('id')
+        m = c.get('metrics') or {}
+        clicks, prints = _int(m.get('clicks', 0)), _int(m.get('prints', 0))
+        spend = _float(m.get('cost', 0))
+        revenue = _float(m.get('total_amount') or (_float(m.get('direct_amount', 0)) + _float(m.get('indirect_amount', 0))))
+        conv = _int(m.get('units_quantity') or (_int(m.get('direct_units_quantity', 0)) + _int(m.get('indirect_units_quantity', 0))))
+        metrics = {
+            'impressions': prints, 'clicks': clicks, 'spend': spend, 'revenue_ads': revenue,
+            'conversions': conv,
+            'ctr': round(clicks / prints, 4) if prints else 0.0,
+            'cpc': round(spend / clicks, 2) if clicks else 0.0,
+            'acos': round(spend / revenue, 4) if revenue else None,
+            'roas': round(revenue / spend, 2) if spend else None,
+        }
+        sus_ads = por_camp.get(cid, [])
+        item_ids = [str(a.get('item_id')) for a in sus_ads if a.get('item_id')]
+        budget = _float(c.get('daily_budget') or c.get('budget') or 0)
+        hoy_gasto = gasto_hoy.get(cid, 0.0)
+        sales_data = _batch_fetch_items_sales(token, item_ids)
         campaigns.append({
-            'id':          camp_id,
-            'name':        detail.get('name', f'Campaña {camp_id}'),
-            'status':      detail.get('status', ''),
-            'budget':      daily_budget,
-            'strategy':    detail.get('strategy', ''),
-            'acos_target': detail.get('acos_target', 0.0),
-            'items_count': len(item_ids),
-            'item_ids':    list(item_ids),
-            'products':    items,
-            'metrics':     metrics,
-            'today_spend': today_spend,
-            'today_pct':   today_pct,
-            'stock_alerts': stock_alerts,
+            'id': cid, 'name': c.get('name') or f'Campaña {cid}', 'status': c.get('status', ''),
+            'budget': budget, 'strategy': c.get('strategy', ''), 'acos_target': c.get('acos_target', 0.0),
+            'items_count': len(item_ids), 'item_ids': item_ids,
+            'products': [{'id': str(a.get('item_id')), 'title': _str(a.get('title', '')),
+                          'price': _float(a.get('price', 0))} for a in sus_ads[:8]],
+            'metrics': metrics,
+            'today_spend': hoy_gasto,
+            'today_pct': round(hoy_gasto / budget * 100, 1) if budget else 0.0,
+            'stock_alerts': _calc_stock_alerts(sales_data, date_from, date_to),
         })
-
-        time.sleep(0.1)
-
+    meta['campaigns_count'] = len(campaigns)
+    meta['ads_count'] = len(ads)
     return campaigns, meta
 
 

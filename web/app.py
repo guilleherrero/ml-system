@@ -8318,6 +8318,16 @@ Máximo 120 palabras. Sin asteriscos ni markdown."""
         return f'Error al conectar con Claude: {e}'
 
 
+def _cuentas_ads(mgr):
+    """La cuenta de Meli Ads: la elegida en el selector, solo entre las que el
+    usuario puede ver. Antes todas las rutas de Ads tomaban la primera cuenta
+    del sistema, fuera de quien fuera el usuario."""
+    permitidas = [a.get('alias') for a in get_accounts()]
+    elegida = request.args.get('alias') or request.cookies.get('ml_cuenta')
+    alias = elegida if elegida in permitidas else (permitidas[0] if permitidas else None)
+    return [a for a in mgr.list_accounts() if a.alias == alias]
+
+
 @app.route('/meli-ads')
 def meli_ads():
     from modules.meli_ads_engine import build_campaigns_from_api
@@ -8337,7 +8347,9 @@ def meli_ads():
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr      = AccountManager()
-        _accounts = _mgr.list_accounts()
+        # La cuenta elegida en el selector, y solo entre las que el usuario puede ver
+        # (antes tomaba siempre la primera cuenta del sistema, fuera de quien fuera)
+        _accounts = _cuentas_ads(_mgr)
         if _accounts:
             _client = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
             _client._ensure_token()          # auto-refresh si está vencido
@@ -8367,44 +8379,6 @@ def meli_ads():
                            account_alias=account_alias, accounts=get_accounts())
 
 
-@app.route('/api/meli-ads/diag')
-def api_meli_ads_diag():
-    # ponytail: diagnóstico temporal de endpoints de Product Ads (solo lectura), se borra al migrar
-    import requests as _rq
-    from datetime import date as _d, timedelta as _td
-    alias = request.args.get('alias') or (get_accounts() or [{}])[0].get('alias') or 'Novara'
-    tok = _promo_client(alias)
-    tok._ensure_token()
-    h = {'Authorization': f'Bearer {tok.account.access_token}'}
-    out = {}
-    def probar(nombre, url, params=None, ver=None):
-        hh = dict(h)
-        if ver:
-            hh['api-version'] = ver
-        try:
-            r = _rq.get('https://api.mercadolibre.com' + url, headers=hh, params=params or {}, timeout=12)
-            out[nombre] = {'status': r.status_code, 'body': r.text[:700]}
-        except Exception as e:
-            out[nombre] = {'error': str(e)}
-        return out[nombre]
-    a = probar('advertisers_v1', '/advertising/advertisers', {'product_id': 'PADS'}, '1')
-    adv = None
-    try:
-        adv = (json.loads(a['body']).get('advertisers') or [{}])[0].get('advertiser_id')
-    except Exception:
-        pass
-    probar('campaigns_viejo', '/advertising/product_ads/campaigns')
-    if adv:
-        hoy = _d.today(); desde = (hoy - _td(days=30)).isoformat()
-        q = {'limit': 50, 'offset': 0, 'date_from': desde, 'date_to': hoy.isoformat(),
-             'metrics': 'clicks,prints,cost,acos,total_amount,units_quantity'}
-        probar('mkt_campaigns_v2', f'/marketplace/advertising/MLA/advertisers/{adv}/product_ads/campaigns/search', q, '2')
-        probar('adv_campaigns_v2', f'/advertising/MLA/advertisers/{adv}/product_ads/campaigns/search', q, '2')
-        probar('adv_campaigns_v1', f'/advertising/advertisers/{adv}/product_ads/campaigns', q, '1')
-        probar('mkt_ads_v2', f'/marketplace/advertising/MLA/advertisers/{adv}/product_ads/ads/search', q, '2')
-    return jsonify({'advertiser_id': adv, 'resultados': out})
-
-
 @app.route('/api/meli-ads/campaign/<int:camp_id>/analysis')
 def api_meli_ads_campaign_analysis(camp_id: int):
     """Genera análisis Claude para una campaña (llamada lazy desde el frontend)."""
@@ -8414,7 +8388,7 @@ def api_meli_ads_campaign_analysis(camp_id: int):
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr      = AccountManager()
-        _accounts = _mgr.list_accounts()
+        _accounts = _cuentas_ads(_mgr)
         if not _accounts:
             return jsonify({'ok': False, 'analysis': 'Sin cuentas conectadas.'})
         _client = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
@@ -8455,7 +8429,7 @@ def api_meli_ads_update_budget():
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr = AccountManager()
-        _accounts = _mgr.list_accounts()
+        _accounts = _cuentas_ads(_mgr)
         if not _accounts:
             return jsonify({'ok': False, 'mensaje': 'Sin cuenta de MercadoLibre conectada.'})
         _client = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
@@ -8489,7 +8463,7 @@ def api_meli_ads_update_status():
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr = AccountManager()
-        _accounts = _mgr.list_accounts()
+        _accounts = _cuentas_ads(_mgr)
         if not _accounts:
             return jsonify({'ok': False, 'mensaje': 'Sin cuenta de MercadoLibre conectada.'})
         _client = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
@@ -8512,7 +8486,7 @@ def api_meli_ads_campaign_items(camp_id: int):
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr     = AccountManager()
-        _accounts = _mgr.list_accounts()
+        _accounts = _cuentas_ads(_mgr)
         if not _accounts:
             return jsonify({'ok': False, 'mensaje': 'Sin cuenta conectada.'})
         _client  = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
@@ -8769,7 +8743,7 @@ def api_meli_ads_item_move():
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr     = AccountManager()
-        _accounts = _mgr.list_accounts()
+        _accounts = _cuentas_ads(_mgr)
         if not _accounts:
             return jsonify({'ok': False, 'mensaje': 'Sin cuenta conectada.'})
         _client  = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
@@ -8799,7 +8773,7 @@ def api_meli_ads_item_remove():
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr     = AccountManager()
-        _accounts = _mgr.list_accounts()
+        _accounts = _cuentas_ads(_mgr)
         if not _accounts:
             return jsonify({'ok': False, 'mensaje': 'Sin cuenta conectada.'})
         _client  = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
@@ -8824,7 +8798,7 @@ def api_meli_ads_distribution():
         from core.account_manager import AccountManager
         from core.ml_client import MLClient
         _mgr      = AccountManager()
-        _accounts = _mgr.list_accounts()
+        _accounts = _cuentas_ads(_mgr)
         if not _accounts:
             return jsonify({'ok': False, 'mensaje': 'Sin cuenta conectada.'})
         _client   = MLClient(_accounts[0], on_token_refresh=_mgr._on_token_refresh)
