@@ -8386,6 +8386,11 @@ def api_meli_ads_sondeo(alias):
     }.items():
         r = _rq.get('https://api.mercadolibre.com' + u, headers=h, timeout=12)
         out[n] = {'status': r.status_code, 'body': r.text[:400]}
+    if request.args.get('put_mismo') == '1' and camp:
+        r0 = _rq.get(f'https://api.mercadolibre.com/marketplace/advertising/MLA/product_ads/campaigns/{camp}', headers=h, timeout=12).json()
+        r = _rq.put(f'https://api.mercadolibre.com/marketplace/advertising/MLA/product_ads/campaigns/{camp}',
+                    headers=h, json={'budget': r0.get('budget')}, timeout=12)
+        out['put_mismo_presupuesto'] = {'status': r.status_code, 'body': r.text[:400], 'enviado': r0.get('budget')}
     return jsonify(out)
 
 
