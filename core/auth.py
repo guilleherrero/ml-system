@@ -120,8 +120,10 @@ def user_can_access(alias: str) -> bool:
         return False
     if user.get('is_admin'):
         return True
-    permitted = user.get('accounts', [])
-    return alias in permitted
+    # Sin distinguir mayúsculas: el sistema resuelve los alias así
+    # (_resolve_alias), y el permiso tiene que mirar lo mismo que se usa.
+    permitted = {str(a).strip().lower() for a in user.get('accounts', [])}
+    return str(alias or '').strip().lower() in permitted
 
 
 def get_permitted_accounts(all_accounts: list) -> list:

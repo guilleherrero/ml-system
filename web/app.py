@@ -427,20 +427,18 @@ _AUTH_EXEMPT = {'/login', '/logout', '/setup',
                 '/api/ping'}
 
 
-def _get_request_alias() -> str | None:
-    """Extrae el alias del request: URL primero, luego JSON body (para POST)."""
-    alias = (request.view_args or {}).get('alias')
-    if alias:
-        return alias
-    if request.method in ('POST', 'PUT', 'PATCH'):
-        try:
-            body = request.get_json(silent=True) or {}
-            a = body.get('alias', '').strip() if isinstance(body, dict) else ''
-            if a:
-                return a
-        except Exception:
-            pass
-    return None
+def _get_request_aliases() -> list[str]:
+    """Todos los alias que trae el request, de cualquier lugar donde un endpoint
+    pueda leerlo: ruta, ?alias=, cuerpo JSON (aunque no diga Content-Type JSON)
+    y formulario. Antes solo se miraban ruta y JSON, y 13 endpoints leen
+    ?alias=: un usuario sin permiso sobre una cuenta podía consultarla igual."""
+    vistos = [(request.view_args or {}).get('alias'), request.args.get('alias'),
+              request.form.get('alias') if request.form else None]
+    body = request.get_json(force=True, silent=True)
+    if isinstance(body, dict):
+        vistos.append(body.get('alias'))
+    return [str(a).strip() for a in vistos if isinstance(a, str) and a.strip()]
+
 
 
 @app.before_request
@@ -483,9 +481,8 @@ def require_login():
         return redirect(f'/login?next={request.path}')
     # Verificar acceso al alias si el usuario no es admin
     if not session.get('is_admin'):
-        alias = _get_request_alias()
-        if alias:
-            from core.auth import user_can_access
+        from core.auth import user_can_access
+        for alias in _get_request_aliases():
             if not user_can_access(alias):
                 app.logger.warning(
                     'Acceso denegado: user=%s alias=%s path=%s',
