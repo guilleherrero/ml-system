@@ -67,11 +67,12 @@ def _ventas(m: dict) -> tuple[float, int]:
     return monto, unid
 
 
-def analizar(datos: dict, stock: dict) -> dict:
+def analizar(datos: dict, stock: dict, competencia=None, dias: int = 30) -> dict:
     """Arma resumen, acciones, campañas y productos.
 
     stock: {item_id: fila del análisis diario} (precio, margen_pct, stock, dias_stock,
     ventas_30d, visitas_30d, conversion_pct, titulo).
+    competencia(item_id) -> precio del competidor más barato que tenés cargado (o None).
     """
     camps = {c.get('id'): c for c in datos.get('campanias', [])}
     productos, acciones = [], []
@@ -99,8 +100,11 @@ def analizar(datos: dict, stock: dict) -> dict:
             'stock': st.get('stock'), 'dias_stock': st.get('dias_stock'),
         }
         p['veredicto'], p['motivo'] = _veredicto(p)
+        p['en_stock'] = bool(st)
+        p['por_que'] = _por_que_no_vende(p, st, competencia) if p['clics'] >= 10 and \
+            (p['unidades_ads'] == 0 or p['unidades_ads'] / p['clics'] < 0.015) else []
         productos.append(p)
-        a = _accion_producto(p)
+        a = _accion_producto(p, dias)
         if a:
             acciones.append(a)
 
@@ -127,7 +131,7 @@ def analizar(datos: dict, stock: dict) -> dict:
                           'pierde' if (k['resultado'] or 0) < 0 else
                           'gana' if (k['resultado'] or 0) > 0 else 'sin_datos')
         campanias.append(k)
-        a = _accion_campania(k)
+        a = _accion_campania(k, dias)
         if a:
             acciones.append(a)
 
@@ -157,7 +161,8 @@ def analizar(datos: dict, stock: dict) -> dict:
             'resultado': round(sum(res_t)) if res_t else None,
             'sin_margen': sum(1 for p in productos if p['margen'] is None),
             'campanias_activas': sum(1 for c in campanias if c['estado'] == 'active'),
-            'productos': len(productos), 'desde': datos.get('desde'), 'hasta': datos.get('hasta'),
+            'productos': len(productos), 'activos': sum(1 for p in productos if p['gasto'] > 0),
+            'desde': datos.get('desde'), 'hasta': datos.get('hasta'), 'dias': dias,
         },
         'acciones': acciones,
         'campanias': sorted(campanias, key=lambda c: -c['gasto']),
@@ -182,11 +187,32 @@ def _veredicto(p: dict) -> tuple[str, str]:
                     f"{p['margen'] * 100:.0f}%: la publicidad deja ganancia")
 
 
+def _por_que_no_vende(p: dict, st: dict, competencia) -> list[str]:
+    """Causas probables cuando la gente hace clic y no compra, con lo que se sabe."""
+    out = []
+    precio = st.get('precio') or p['precio']
+    barato = competencia(p['item_id']) if competencia else None
+    if barato and precio and precio > barato * 1.05:
+        out.append(f"Tu precio ({_plata(precio)}) está {round((precio / barato - 1) * 100)}% arriba del competidor "
+                   f"más barato que tenés cargado ({_plata(barato)}).")
+    if st and not st.get('free_shipping') and precio and precio >= 33000:
+        out.append('No ofrece envío gratis y la competencia en ese precio sí.')
+    if st and (st.get('conversion_pct') is not None) and st.get('conversion_pct') < 1:
+        out.append(f"La publicación convierte poco también sin publicidad ({st['conversion_pct']:.1f}% de las visitas): "
+                   'revisá fotos, título y descripción con Optimizar con IA.')
+    if not st:
+        out.append('No está en tu análisis de stock de hoy: puede estar pausada o sin stock.')
+    if not out:
+        out.append(f"{p['clics']} personas entraron y {'nadie compró' if not p['unidades_ads'] else 'casi nadie compró'}. "
+                   'Compará precio, fotos y opiniones contra tus competidores en la ficha.')
+    return out
+
+
 def _plata(n: float) -> str:
     return f"${n:,.0f}".replace(',', '.')
 
 
-def _accion_producto(p: dict) -> dict | None:
+def _accion_producto(p: dict, dias: int = 30) -> dict | None:
     base = {'item_id': p['item_id'], 'titulo': p['titulo'], 'campania': p['campania']}
     if p['gasto'] > 0 and p['stock'] is not None and (p['stock'] <= 0 or (p['dias_stock'] or 999) < DIAS_STOCK_MIN):
         return {**base, 'tipo': 'pausar_stock', 'prioridad': 1, 'plata': p['gasto'],
@@ -197,15 +223,17 @@ def _accion_producto(p: dict) -> dict | None:
     if p['ventas_ads'] == 0 and p['gasto'] >= GASTO_SIN_VENTAS:
         return {**base, 'tipo': 'sacar', 'prioridad': 1, 'plata': p['gasto'],
                 'que': 'Sacalo de la publicidad (o mejorá la publicación primero)',
-                'porque': (f"Gastó {_plata(p['gasto'])} en 30 días, tuvo {p['clics']} clics y ninguna venta. "
-                           "La gente entra y no compra: el problema está en la publicación o el precio, no en la publicidad.")}
+                'porque': (f"Gastó {_plata(p['gasto'])} en {dias} días, tuvo {p['clics']} clics y ninguna venta. "
+                           "La gente entra y no compra: el problema está en la publicación o el precio, no en la publicidad."),
+                'causas': p['por_que']}
     if p['veredicto'] == 'pierde' and p['ventas_ads'] > 0:
         perdida = -(p['resultado'] or 0)
         return {**base, 'tipo': 'perdida', 'prioridad': 1 if perdida > 10000 else 2, 'plata': perdida,
                 'que': f"Pierde plata en «{p['campania']}»: bajá su ACoS objetivo o sacalo",
-                'porque': (f"Gastó {_plata(p['gasto'])} para vender {_plata(p['ventas_ads'])} "
+                'porque': (f"En {dias} días gastó {_plata(p['gasto'])} para vender {_plata(p['ventas_ads'])} "
                            f"(ACoS {p['acos'] * 100:.0f}%). Su margen es {p['margen'] * 100:.0f}%, "
-                           f"así que la publicidad le hizo perder ≈{_plata(perdida)}.")}
+                           f"así que la publicidad le hizo perder ≈{_plata(perdida)}."),
+                'causas': p['por_que']}
     if p['veredicto'] == 'gana' and p['unidades_ads'] >= 3 and p['acos'] < p['margen'] * 0.5:
         return {**base, 'tipo': 'potenciar', 'prioridad': 3, 'plata': p['resultado'] or 0,
                 'que': 'Funciona muy bien: dale más empuje',
@@ -215,14 +243,14 @@ def _accion_producto(p: dict) -> dict | None:
     return None
 
 
-def _accion_campania(k: dict) -> dict | None:
+def _accion_campania(k: dict, dias: int = 30) -> dict | None:
     base = {'campania': k['nombre'], 'campania_id': k['id']}
     if k['estado'] != 'active':
         return None
     if k['presupuesto'] and k['gasto_hoy'] >= k['presupuesto'] * PRESUPUESTO_AGOTADO and (k['resultado'] or 0) > 0:
         return {**base, 'tipo': 'presupuesto', 'prioridad': 2, 'plata': k['resultado'],
                 'que': f"Subí el presupuesto de «{k['nombre']}»",
-                'porque': (f"Hoy ya gastó {_plata(k['gasto_hoy'])} de {_plata(k['presupuesto'])} por día y en 30 días "
+                'porque': (f"Hoy ya gastó {_plata(k['gasto_hoy'])} de {_plata(k['presupuesto'])} por día y en {dias} días "
                            f"dejó {_plata(k['resultado'])} de ganancia después de publicidad. Se queda sin plata "
                            "y deja de mostrarse en las horas que vende.")}
     if (k['resultado'] or 0) < 0:

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
+{% block title %} — Meli Ads{% endblock %}
+
+{% block content %}
+<style>
+.ma-head{display:flex;align-items:flex-end;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+.ma-head h1{font-size:1.5rem;font-weight:800;margin:0}
+.ma-head .sub{color:var(--app-text-2);font-size:.85rem}
+.ma-per{margin-left:auto;display:flex;gap:.3rem}
+.ma-per button{background:var(--app-surface);border:1px solid var(--app-border);color:var(--app-text-2);border-radius:20px;padding:.3rem .8rem;font-size:.8rem;font-weight:600}
+.ma-per button.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.ma-card{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--radius-card);padding:1rem 1.15rem;margin-bottom:1rem}
+.ma-card h2{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--app-muted);margin:0 0 .7rem}
+.ma-frase{font-size:1.02rem;line-height:1.5;margin-bottom:.8rem}
+.ma-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.7rem}
+.ma-kpi{background:var(--app-surface-2);border-radius:var(--radius-ctl);padding:.7rem .85rem}
+.ma-kpi .n{font-size:1.3rem;font-weight:800}
+.ma-kpi .l{font-size:.75rem;color:var(--app-text-2)}
+.ma-acc{display:flex;gap:.8rem;padding:.85rem 0;border-bottom:1px solid var(--app-border)}
+.ma-acc:last-child{border-bottom:0}
+.ma-num{flex:0 0 28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;color:#fff}
+.ma-num.p1{background:var(--solid-critical)}.ma-num.p2{background:var(--solid-warning)}.ma-num.p3{background:var(--solid-success)}
+.ma-acc .que{font-weight:700;font-size:.95rem}
+.ma-acc .prod{font-size:.8rem;color:var(--app-text-2);margin:.1rem 0 .3rem}
+.ma-acc .porque{font-size:.86rem;line-height:1.45}
+.ma-acc ul{margin:.35rem 0 0;padding-left:1.1rem;font-size:.83rem;color:var(--app-text-2)}
+.ma-acc .como{font-size:.78rem;color:var(--app-muted);margin-top:.35rem}
+.ma-acc .btns{margin-top:.45rem;display:flex;gap:.4rem;flex-wrap:wrap}
+.ma-tabla{width:100%;border-collapse:collapse;font-size:.84rem}
+.ma-tabla th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--app-muted);font-weight:700;padding:.4rem .45rem;border-bottom:1px solid var(--app-border);text-align:left;white-space:nowrap}
+.ma-tabla td{padding:.5rem .45rem;border-bottom:1px solid var(--app-border);vertical-align:top}
+.ma-tabla .r{text-align:right;white-space:nowrap}
+.ma-tabla tr.clic{cursor:pointer}.ma-tabla tr.clic:hover td{background:var(--app-surface-2)}
+.ma-tabla tr.sel td{background:var(--app-surface-2)}
+.ma-pill{font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.ma-pill.gana{background:var(--color-success-100);color:var(--color-success-700)}
+.ma-pill.pierde{background:var(--color-critical-100);color:var(--color-critical-700)}
+.ma-pill.justo{background:var(--color-warning-100);color:var(--color-warning-700)}
+.ma-pill.sin_datos,.ma-pill.sin_gasto,.ma-pill.pausada{background:var(--app-surface-2);color:var(--app-muted)}
+.ma-filtros{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.6rem}
+.ma-filtros button{background:none;border:1px solid var(--app-border);color:var(--app-text-2);border-radius:16px;padding:.2rem .65rem;font-size:.78rem}
+.ma-filtros button.on{border-color:var(--brand);color:var(--app-text)}
+.ma-mut{color:var(--app-muted);font-size:.8rem}
+.ma-wrap{overflow-x:auto}
+</style>
+
+<div class="ma-head">
+  <div>
+    <h1><i class="bi bi-megaphone me-1"></i>Meli Ads</h1>
+    <div class="sub">Tu analista de publicidad: qué funciona, qué te hace perder plata y qué hacer ahora · {{ alias }}</div>
+  </div>
+  <div class="ma-per" role="group" aria-label="Período">
+    <button data-d="7" class="on">Últimos 7 días</button><button data-d="30">30 días</button>
+  </div>
+</div>
+
+<div id="ma-cargando" class="ma-card ma-mut">Leyendo tus campañas en Mercado Libre…</div>
+<div id="ma-error" class="alert alert-warning" hidden></div>
+
+<div id="ma-cuerpo" hidden>
+  <div class="ma-card">
+    <h2>Cómo te fue</h2>
+    <div class="ma-frase" id="ma-frase"></div>
+    <div class="ma-kpis" id="ma-kpis"></div>
+  </div>
+
+  <div class="ma-card">
+    <h2>Qué hacer ahora</h2>
+    <div id="ma-acciones"></div>
+  </div>
+
+  <div class="ma-card">
+    <h2>Tus campañas</h2>
+    <div class="ma-wrap"><table class="ma-tabla"><thead><tr>
+      <th>Campaña</th><th>Estado</th><th class="r">Presupuesto/día</th><th class="r">Invertido</th>
+      <th class="r">Vendido por publicidad</th><th class="r">ACoS (objetivo)</th><th class="r">Te dejó</th><th>Productos</th>
+    </tr></thead><tbody id="ma-camps"></tbody></table></div>
+    <div class="ma-mut mt-2">Tocá una campaña para ver solo sus productos abajo.</div>
+  </div>
+
+  <div class="ma-card">
+    <h2 id="ma-prod-tit">Productos con publicidad</h2>
+    <div class="ma-filtros" id="ma-filtros"></div>
+    <div class="ma-wrap"><table class="ma-tabla"><thead><tr>
+      <th>Producto</th><th>Campaña</th><th class="r">Invertido</th><th class="r">Clics</th><th class="r">Ventas</th>
+      <th class="r">ACoS</th><th class="r">Tu margen</th><th>Veredicto</th>
+    </tr></thead><tbody id="ma-prods"></tbody></table></div>
+    <div class="ma-mut mt-2" id="ma-sin-gasto"></div>
+  </div>
+
+  <div class="ma-card ma-mut">
+    <b>ACoS:</b> de cada $100 que vendés por publicidad, cuántos gastaste en ella. Un producto puede pagar de ACoS hasta su
+    margen sin perder plata (si gana 30% por venta, hasta 30% de ACoS). <b>Te dejó:</b> lo que quedó de las ventas por
+    publicidad después de pagar producto, comisión, envío y la publicidad.
+    <a href="/meli-ads/anterior?alias={{ alias | urlencode }}">Vista anterior</a> (cambiar presupuestos y mover productos).
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALIAS = {{ alias | tojson }};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => (n || n === 0) ? (n < 0 ? '−$' : '$') + Math.abs(Math.round(n)).toLocaleString('es-AR') : '—';
+const pct = n => n == null ? '—' : Math.round(n * 100) + '%';
+const VERED = {gana: 'Gana', pierde: 'Pierde plata', justo: 'Gana poco', sin_datos: 'Falta el costo', sin_gasto: 'Sin gasto', pausada: 'Pausada'};
+const COMO = {
+  sacar: 'En Mercado Libre: Publicidad → tu campaña → buscá el producto y pausalo. Antes, abrí su ficha y fijate precio y fotos contra la competencia.',
+  perdida: 'En Mercado Libre: Publicidad → la campaña → bajá el ACoS objetivo, o pausá este producto.',
+  pausar_stock: 'En Mercado Libre: Publicidad → la campaña → pausá este producto hasta reponer.',
+  presupuesto: 'En Mercado Libre: Publicidad → la campaña → Presupuesto diario.',
+  campania_pierde: 'Revisá abajo los productos de esta campaña marcados «Pierde plata».',
+  potenciar: 'En Mercado Libre: Publicidad → movelo a tu campaña con más presupuesto, o subí el ACoS objetivo de la suya.',
+  sumar: 'En Mercado Libre: Publicidad → sumalo a una campaña con ACoS objetivo menor a su margen.',
+};
+let D = null, FILTRO = 'gasto', CAMP = null, DIAS = 7;
+
+async function cargar() {
+  $('ma-cargando').hidden = false; $('ma-cuerpo').hidden = true; $('ma-error').hidden = true;
+  let j;
+  try { j = await (await fetch(`/api/meli-ads/${encodeURIComponent(ALIAS)}/analista?dias=${DIAS}`)).json(); }
+  catch (e) { j = {ok: false, error: 'No se pudo conectar con el sistema.'}; }
+  $('ma-cargando').hidden = true;
+  if (!j.ok) { $('ma-error').textContent = j.error || 'No se pudo leer Meli Ads.'; $('ma-error').hidden = false; return; }
+  D = j; CAMP = null; pintar(); $('ma-cuerpo').hidden = false;
+}
+
+function pintar() {
+  const r = D.resumen;
+  const res = r.resultado;
+  $('ma-frase').innerHTML = `En los últimos <b>${r.dias} días</b> invertiste <b>${money(r.gasto)}</b> en publicidad y trajo
+    <b>${money(r.ventas_ads)}</b> en ventas` + (res == null ? '.' : res >= 0
+      ? `. Después de pagar todo, la publicidad te dejó <b style="color:var(--color-success-500)">${money(res)}</b>.`
+      : `. Después de pagar todo, la publicidad te hizo <b style="color:var(--color-critical-500)">perder ${money(-res)}</b>.`)
+    + (r.sin_margen ? ` <span class="ma-mut">(${r.sin_margen} productos con publicidad no tienen costo cargado y no entran en la cuenta.)</span>` : '');
+  $('ma-kpis').innerHTML = [
+    [money(r.gasto), 'invertido en publicidad'], [money(r.ventas_ads), 'vendido por publicidad'],
+    [pct(r.acos), 'ACoS: de cada $100 vendidos, lo que fue publicidad'],
+    [`${r.activos} de ${r.productos}`, 'anuncios que gastaron en el período'],
+  ].map(([n, l]) => `<div class="ma-kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+
+  $('ma-acciones').innerHTML = D.acciones.length ? D.acciones.map((a, i) => `
+    <div class="ma-acc"><div class="ma-num p${a.prioridad}">${i + 1}</div><div style="flex:1;min-width:0">
+      <div class="que">${esc(a.que)}</div>
+      ${a.titulo ? `<div class="prod">${esc(a.titulo)}${a.campania ? ` · campaña ${esc(a.campania)}` : ''}</div>` : ''}
+      <div class="porque">${esc(a.porque)}</div>
+      ${(a.causas || []).length ? `<ul>${a.causas.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+      <div class="como">${esc(COMO[a.tipo] || '')}</div>
+      ${a.item_id ? `<div class="btns">
+        <a class="btn btn-sm btn-outline-secondary" href="/publicacion/${encodeURIComponent(ALIAS)}/${esc(a.item_id)}">Ver la ficha</a>
+        ${['sacar', 'perdida'].includes(a.tipo) ? `<a class="btn btn-sm btn-outline-secondary" href="/optimizaciones/${encodeURIComponent(ALIAS)}?item=${esc(a.item_id)}">Mejorar la publicación</a>` : ''}
+      </div>` : ''}
+    </div></div>`).join('')
+    : '<div class="ma-mut">No hay nada urgente: la publicidad está dejando ganancia en todos los productos con datos.</div>';
+
+  $('ma-camps').innerHTML = D.campanias.map(c => `
+    <tr class="clic ${CAMP === c.id ? 'sel' : ''}" onclick="elegirCamp(${Number(c.id)})">
+      <td><b>${esc(c.nombre)}</b></td>
+      <td><span class="ma-pill ${c.estado === 'active' ? 'gana' : 'pausada'}">${c.estado === 'active' ? 'activa' : 'pausada'}</span></td>
+      <td class="r">${money(c.presupuesto)}${c.estado === 'active' ? `<div class="ma-mut">hoy ${money(c.gasto_hoy)}</div>` : ''}</td>
+      <td class="r">${money(c.gasto)}</td><td class="r">${money(c.ventas_ads)}<div class="ma-mut">${c.unidades_ads} u.</div></td>
+      <td class="r">${pct(c.acos)} <span class="ma-mut">(${pct(c.objetivo_acos)})</span></td>
+      <td class="r" style="color:${(c.resultado || 0) < 0 ? 'var(--color-critical-500)' : 'inherit'}">${money(c.resultado)}</td>
+      <td>${c.productos}${c.pierden ? ` · <span style="color:var(--color-critical-500)">${c.pierden} pierden</span>` : ''}</td></tr>`).join('');
+
+  const base = D.productos.filter(p => CAMP == null || p.campania_id === CAMP);
+  const grupos = {gasto: ['Con gasto', p => p.gasto > 0], pierde: ['Pierden plata', p => p.veredicto === 'pierde'],
+                  sinventa: ['Gastan sin vender', p => p.gasto > 0 && !p.unidades_ads],
+                  gana: ['Ganan', p => p.veredicto === 'gana'], todos: ['Todos', () => true]};
+  $('ma-filtros').innerHTML = Object.entries(grupos).map(([k, [n, f]]) =>
+    `<button class="${FILTRO === k ? 'on' : ''}" onclick="FILTRO='${k}';pintar()">${n} (${base.filter(f).length})</button>`).join('');
+  const vis = base.filter(grupos[FILTRO][1]);
+  $('ma-prod-tit').textContent = CAMP == null ? 'Productos con publicidad' : `Productos de «${(D.campanias.find(c => c.id === CAMP) || {}).nombre}»`;
+  $('ma-prods').innerHTML = vis.length ? vis.map(p => `<tr>
+      <td><a class="link-ficha" href="/publicacion/${encodeURIComponent(ALIAS)}/${esc(p.item_id)}">${esc(p.titulo.slice(0, 60))}</a>
+        <div class="ma-mut">${esc(p.item_id)}${p.stock != null ? ` · stock ${p.stock}` : ''}</div></td>
+      <td>${esc(p.campania)}</td><td class="r">${money(p.gasto)}</td><td class="r">${p.clics}</td>
+      <td class="r">${p.unidades_ads}<div class="ma-mut">${money(p.ventas_ads)}</div></td>
+      <td class="r">${pct(p.acos)}</td><td class="r">${pct(p.margen)}</td>
+      <td><span class="ma-pill ${p.veredicto}">${VERED[p.veredicto] || p.veredicto}</span><div class="ma-mut">${esc(p.motivo)}</div></td></tr>`).join('')
+    : '<tr><td colspan="8" class="ma-mut">Nada en este filtro.</td></tr>';
+  const cero = base.filter(p => !p.gasto).length;
+  $('ma-sin-gasto').textContent = cero ? `${cero} anuncios no gastaron en el período (Mercado Libre no los mostró o están pausados): mirá el filtro «Todos».` : '';
+}
+
+function elegirCamp(id) { CAMP = CAMP === id ? null : id; FILTRO = 'gasto'; pintar(); document.getElementById('ma-prod-tit').scrollIntoView({behavior: 'smooth', block: 'start'}); }
+
+document.querySelectorAll('.ma-per button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.ma-per button').forEach(x => x.classList.toggle('on', x === b));
+  DIAS = +b.dataset.d; cargar();
+});
+cargar();
+</script>
+{% endblock %}
