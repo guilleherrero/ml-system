@@ -368,8 +368,11 @@ function pintarGrupos() {
       <div class="cb-detalle">
         ${g.items.map(id => {
           const m = S.items.filter(i => i.id === id)[0];
-          return `<div style="display:flex;gap:.4rem;align-items:center">${esc(m ? m.titulo.slice(0, 55) : id)}
-            <span class="cb-meta">${esc(id)}</span>
+          // El título abre la publicación en Mercado Libre; el ID, su ficha en el sistema
+          const ml = `https://articulo.mercadolibre.com.ar/${id.slice(0, 3)}-${id.slice(3)}`;
+          return `<div style="display:flex;gap:.4rem;align-items:center">
+            <a href="${esc(ml)}" target="_blank" rel="noopener" title="Ver en Mercado Libre">${esc(m ? m.titulo.slice(0, 55) : id)} <i class="bi bi-box-arrow-up-right" style="font-size:.7em"></i></a>
+            <a class="cb-meta" href="/publicacion/${encodeURIComponent(ALIAS)}/${esc(id)}" title="Ficha de la publicación">${esc(id)}</a>
             <button class="app-btn app-btn-xs app-btn-ghost" style="margin-left:auto" title="Sacar del grupo"
               onclick="quitarDeGrupo(${sug ? 1 : 0}, ${k}, ${js(id)})">×</button></div>`;
         }).join('')}
