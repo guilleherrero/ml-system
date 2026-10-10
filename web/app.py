@@ -8367,6 +8367,28 @@ def api_meli_ads_analista(alias):
     return jsonify({'ok': True, **out})
 
 
+@app.route('/api/meli-ads/<alias>/sondeo')
+def api_meli_ads_sondeo(alias):
+    # ponytail: sondeo temporal (solo GET) de rutas de escritura de Product Ads v2; se borra al implementar
+    if not session.get('is_admin') and not request.headers.get('Authorization', '').startswith('Bearer '):
+        return jsonify({'ok': False}), 403
+    import requests as _rq
+    c = _promo_client(alias); c._ensure_token()
+    h = {'Authorization': f'Bearer {c.account.access_token}', 'api-version': '2'}
+    camp, item, adv = request.args.get('camp'), request.args.get('item'), request.args.get('adv')
+    out = {}
+    for n, u in {
+        'camp_site': f'/marketplace/advertising/MLA/product_ads/campaigns/{camp}',
+        'camp_adv': f'/marketplace/advertising/MLA/advertisers/{adv}/product_ads/campaigns/{camp}',
+        'ad_site': f'/marketplace/advertising/MLA/product_ads/ads/{item}',
+        'ad_adv': f'/marketplace/advertising/MLA/advertisers/{adv}/product_ads/ads/{item}',
+        'item_v1': f'/advertising/product_ads/items/{item}',
+    }.items():
+        r = _rq.get('https://api.mercadolibre.com' + u, headers=h, timeout=12)
+        out[n] = {'status': r.status_code, 'body': r.text[:400]}
+    return jsonify(out)
+
+
 @app.route('/meli-ads')
 def meli_ads():
     """Analista de Meli Ads: qué hacer con la publicidad (los datos los trae el JS)."""
