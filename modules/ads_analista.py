@@ -41,8 +41,10 @@ def leer(token: str, dias: int = 30, atras: int = 0) -> dict:
 
     atras: cuántos días antes de hoy termina el período (para comparar con el anterior).
     """
+    # Los N días incluyen hoy, como Mercado Ads: "30 días" al 11/10 es del 12/9 al 11/10.
+    # Antes se restaban N días enteros y se sumaba uno de más (gasto y clics de 31 días).
     hoy = date.today() - timedelta(days=atras)
-    desde, hasta = (hoy - timedelta(days=dias)).isoformat(), hoy.isoformat()
+    desde, hasta = (hoy - timedelta(days=dias - 1)).isoformat(), hoy.isoformat()
     r = eng._ads_get('/advertising/advertisers', token, params={'product_id': 'PADS'}, api_version='1')
     if r['status'] in (401, 403):
         return {'error': 'Tu cuenta no le dio permiso de Publicidad al sistema. Reconectala.'}

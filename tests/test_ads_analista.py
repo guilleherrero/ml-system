@@ -75,3 +75,22 @@ def test_ejecutar_valida_antes_de_tocar_mercado_libre(monkeypatch):
     aa.ejecutar('t', {'tipo': 'campania', 'campania_id': 357067839, 'presupuesto': 3750})
     assert llamadas == [('PUT', '/marketplace/advertising/MLA/product_ads/ads/MLA1568967243', {'status': 'paused'}),
                         ('PUT', '/marketplace/advertising/MLA/product_ads/campaigns/357067839', {'budget': 3750.0})]
+
+
+def test_periodo_igual_que_mercado_ads(monkeypatch):
+    from datetime import date
+    pedidos = []
+    monkeypatch.setattr(aa.eng, '_ads_get', lambda *a, **k: {'ok': True, 'status': 200,
+                        'data': {'advertisers': [{'advertiser_id': 1, 'site_id': 'MLA'}]}})
+    monkeypatch.setattr(aa.eng, '_mkt_paginado', lambda path, token, q: (pedidos.append(q) or ([], 200)))
+
+    class Hoy(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 10, 11)
+    monkeypatch.setattr(aa, 'date', Hoy)
+    aa.leer('t', dias=30)
+    assert (pedidos[0]['date_from'], pedidos[0]['date_to']) == ('2026-09-12', '2026-10-11')
+    pedidos.clear()
+    aa.leer('t', dias=7, atras=7)          # período anterior para comparar
+    assert (pedidos[0]['date_from'], pedidos[0]['date_to']) == ('2026-09-28', '2026-10-04')
