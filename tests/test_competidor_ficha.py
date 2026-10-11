@@ -17,3 +17,13 @@ def test_recaptura_sin_ficha_conserva_descripcion(monkeypatch):
                                     item_propio='MLA1')
     assert r2['description'] == 'Lycra lavable' and r2['photos_count'] == 6
     assert r2['premium'] is True and r2['attributes'][0]['value'] == 'Lycra'
+
+
+def test_competidores_con_campos_vacios_no_rompen_el_optimizador():
+    import os, sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'web'))
+    import app as webapp
+    c = webapp._normalizar_competidores([{'id': 'MLA1', 'title': None, 'sold_quantity': None, 'price': '',
+                                          'photos_count': None, 'attributes': None}, 'basura'])
+    assert len(c) == 1 and c[0]['sold_quantity'] == 0 and c[0]['price'] == 0.0 and c[0]['title'] == ''
+    assert c[0]['sold_quantity'] > -1   # lo que hacía fallar a seo_optimizer

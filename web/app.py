@@ -12904,6 +12904,37 @@ def _tg(tipo: str, titulo: str, detalle: str = '', alias: str = '', url: str = '
         return False
 
 
+def _normalizar_competidores(comps) -> list:
+    """Competidores con los campos numéricos siempre números.
+
+    Los capturados con el botón pueden traer vendidos, fotos o precio vacíos, y
+    seo_optimizer los compara como números ('>' entre None e int): la
+    optimización se cortaba. Se normaliza acá para no tocar seo_optimizer.
+    """
+    def n(v, tipo):
+        try:
+            return tipo(v) if v not in (None, '') else tipo(0)
+        except (TypeError, ValueError):
+            return tipo(0)
+    out = []
+    for c in comps or []:
+        if not isinstance(c, dict):
+            continue
+        c = dict(c)
+        for k in ('sold_quantity', 'photos_count', 'reviews_total', 'seller_sales'):
+            c[k] = n(c.get(k), int)
+        for k in ('price', 'reviews_rating'):
+            c[k] = n(c.get(k), float)
+        c['attributes'] = [a for a in (c.get('attributes') or []) if isinstance(a, dict)]
+        c['description'] = c.get('description') or ''
+        c['title'] = c.get('title') or ''
+        c['seller'] = c.get('seller') or '-'
+        for k in ('premium', 'free_ship', 'full_ship'):
+            c[k] = bool(c.get(k))
+        out.append(c)
+    return out
+
+
 def _competidores_para_optimizar(alias: str, item_id: str) -> list:
     """Los competidores confirmados de esa publicacion, con el shape que espera
     seo_optimizer.
@@ -14388,7 +14419,7 @@ def api_optimizar_pub():
     # IDs de competidores elegidos manualmente por el usuario (lista de product IDs)
     manual_competitor_ids      = body.get('competitor_ids', [])
     manual_competitor_titles   = body.get('competitor_titles', [])
-    manual_competitor_products = body.get('competitor_products', [])  # [{id,title,attributes,description,main_features}]
+    manual_competitor_products = _normalizar_competidores(body.get('competitor_products', []))  # [{id,title,attributes,description,main_features}]
     kw_research                = body.get('kw_research') or {}        # {titulo:[], descripcion:[], long_tail:[]}
 
     if not alias or not item_id:
@@ -15396,6 +15427,7 @@ def api_optimizar_pub_v2():
     # de ML, que devuelve 403, y optimizaba a ciegas.
     if not comp_prods:
         comp_prods = _competidores_para_optimizar(alias, item_id)
+    comp_prods = _normalizar_competidores(comp_prods)
 
     if not alias or not item_id:
         return jsonify({'ok': False, 'error': 'Falta alias o item_id'}), 400
@@ -15596,7 +15628,7 @@ def api_lanzar_nuevo_v2():
     # Aca NO se cae a los competidores confirmados: es un producto que todavia
     # no existe, asi que no hay publicacion propia a la cual esten asociados.
     # Para un lanzamiento los elige el usuario a mano.
-    comp_prods   = body.get('competitor_products', [])
+    comp_prods   = _normalizar_competidores(body.get('competitor_products', []))
     gap_keywords = body.get('gap_keywords', [])
 
     if not alias or not product_idea:
