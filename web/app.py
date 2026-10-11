@@ -8393,6 +8393,14 @@ def api_meli_ads_accion(alias):
         return jsonify({'ok': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'ok': False, 'error': f'No se pudo: {e}'}), 502
+    if res.get('sin_permiso'):
+        # ¿Con qué usuario de ML quedó conectada la cuenta? Un colaborador/operador
+        # puede leer la publicidad pero no cambiarla.
+        try:
+            me = eng._ads_get('/users/me', token)['data'] or {}
+            res['usuario_ml'] = {k: me.get(k) for k in ('id', 'nickname', 'user_type', 'tags')}
+        except Exception:
+            pass
     # Permisos API infiere "Publicidad (escritura)" del último intento de cambio
     if res.get('ok') or res.get('sin_permiso'):
         try:
