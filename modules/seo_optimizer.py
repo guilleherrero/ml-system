@@ -3487,7 +3487,7 @@ def run_full_optimization(item_id: str, client: MLClient, console=None,
     _val_t1_kws   = _tier1_kws_from_analysis(keyword_analysis)
     _val_ancla    = _ancla_from_title(title)
     _val_kw_princ = seo_result.get("keyword_principal", "") or (keyword_analysis[0]["keyword"].lower() if keyword_analysis else "")
-    _val_pt, _, _, _ = _classify_product_complexity(item_data.get("category_id", ""), category_name, item_data)
+    _val_pt, _, _, _ = _classify_product_complexity(category_name, attrs_count=len(item_data.get("attributes") or []))
     _errores = validar_sintesis(seo_result, _val_pt, _val_t1_kws, _val_ancla, _val_kw_princ)
     if _errores:
         _c.print(f"  [yellow]⚠ validar_sintesis: {len(_errores)} problema(s) — reintentando corrección...[/yellow]")
@@ -3723,7 +3723,7 @@ def run_new_listing(product_idea: str, client: MLClient, expected_price: float =
     _val_t1_kws   = _tier1_kws_from_analysis(keyword_analysis)
     _val_ancla    = _ancla_from_title(product_idea)
     _val_kw_princ = seo_result.get("keyword_principal", "") or (keyword_analysis[0]["keyword"].lower() if keyword_analysis else "")
-    _val_pt, _, _, _ = _classify_product_complexity(category_id, category_name, item_mock)
+    _val_pt, _, _, _ = _classify_product_complexity(category_name, attrs_count=len(item_mock.get("attributes") or []))
     _errores = validar_sintesis(seo_result, _val_pt, _val_t1_kws, _val_ancla, _val_kw_princ)
     if _errores:
         _c.print(f"  [yellow]⚠ validar_sintesis: {len(_errores)} problema(s) — reintentando corrección...[/yellow]")

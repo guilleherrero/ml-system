@@ -562,6 +562,29 @@ Cada entrada documenta una excepción explícita a la **Regla #1** (no tocar
 `modules/seo_optimizer.py` sin autorización). Solo se modifican prompts o
 constantes acotadas; nunca la lógica algorítmica de los 7 sub-módulos.
 
+### 2026-10-11 — fix: validador post-síntesis llamaba mal a `_classify_product_complexity`
+
+**Autorizado por:** usuario (Guille), sesión del 11/10/2026 («autorizado»).
+**Hash antes:** `0389b93a8c4ff11c8eaa97327a6f54c1`
+**Hash después:** `e092a4e3c45152064651a21c2a8a3630`
+**Funciones modificadas:** `run_full_optimization` y `run_new_listing`, una línea cada una.
+**Diff:** 2 líneas modificadas, 0 agregadas, 0 borradas.
+
+**Motivación:** el validador agregado el 07/07/2026 (commit `0a99445`) llamaba
+`_classify_product_complexity(category_id, category_name, item)`, con los
+argumentos corridos: `category_name` (texto) entraba como `attrs_count` y
+`attrs_count >= 10` fallaba con `TypeError: '>=' not supported between 'str'
+and 'int'` (línea 222). Pasaba **después** de la llamada a Claude: cada
+optimización desde julio gastaba la síntesis y terminaba en error.
+
+**Cambio:** `_classify_product_complexity(category_name, attrs_count=len(<item>.get("attributes") or []))`
+en las dos llamadas del validador.
+
+**No modificado:** prompts, constantes, lógica de los 7 sub-módulos, scoring.
+
+**Validación:** `tests/run_regresion.sh` PASS con el hash nuevo; optimización
+real en producción de MLA1481911017 (Cortador de puntas).
+
 ### 2026-05-04 — hotfix prompt: prevenir emojis y leakage de checklist
 
 **Autorizado por:** usuario (Guille) en sesión Sprint 3.2.
