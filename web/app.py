@@ -12904,6 +12904,16 @@ def _tg(tipo: str, titulo: str, detalle: str = '', alias: str = '', url: str = '
         return False
 
 
+def _donde_fallo(e: Exception) -> str:
+    """' (en archivo.py:línea)' del último punto del código del sistema donde falló."""
+    import traceback as _tb
+    frames = [f for f in _tb.extract_tb(e.__traceback__) if '/ml_system/' in f.filename or '/modules/' in f.filename]
+    if not frames:
+        return ''
+    f = frames[-1]
+    return f' (en {os.path.basename(f.filename)}:{f.lineno})'
+
+
 def _normalizar_competidores(comps) -> list:
     """Competidores con los campos numéricos siempre números.
 
@@ -15463,7 +15473,7 @@ def api_optimizar_pub_v2():
                 import traceback, sys as _sys
                 tb = traceback.format_exc()
                 print(f'[ERROR run_full_optimization] item={item_id}: {type(opt_err).__name__}: {opt_err}\n{tb}', file=_sys.stderr, flush=True)
-                yield _sse({'type': 'error', 'msg': f'[{type(opt_err).__name__}] {opt_err}'})
+                yield _sse({'type': 'error', 'msg': f'[{type(opt_err).__name__}] {opt_err}{_donde_fallo(opt_err)}'})
                 return
 
             if not result:
