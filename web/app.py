@@ -8355,8 +8355,11 @@ def api_meli_ads_analista(alias):
     from modules import grupos_producto as gp
 
     def competencia(item_id):
+        # Solo los confirmados como el MISMO producto. Los candidatos sin confirmar
+        # pueden ser otro modelo (más chico, más barato) con fotos parecidas: comparar
+        # contra ellos sugería bajar el precio sin motivo.
         precios = [float(c['price']) for c in gp.competidores_del_grupo(alias, item_id)
-                   if c.get('clase') in ('directo', 'candidato') and c.get('price')]
+                   if c.get('clase') == 'directo' and c.get('price')]
         # La mediana y no el mínimo: entre los cargados suele haber alguno que no es
         # exactamente el mismo producto, y el más barato exagera la diferencia.
         import statistics

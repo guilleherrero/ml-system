@@ -210,7 +210,7 @@ def _por_que_no_vende(p: dict, st: dict, competencia) -> list[str]:
     medio = competencia(p['item_id']) if competencia else None
     if medio and precio and precio > medio * 1.05:
         out.append(f"Tu precio ({_plata(precio)}) está {round((precio / medio - 1) * 100)}% arriba del precio típico "
-                   f"de tus competidores cargados ({_plata(medio)}, la mitad vende más barato).")
+                   f"de tus competidores confirmados como el mismo producto ({_plata(medio)}).")
     if st and not st.get('free_shipping') and precio and precio >= 33000:
         out.append('No ofrece envío gratis y la competencia en ese precio sí.')
     if st and (st.get('conversion_pct') is not None) and st.get('conversion_pct') < 1:
