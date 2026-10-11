@@ -72,7 +72,7 @@
 <!-- ── Resolver ahora ───────────────────────────────────────── -->
 <div class="rp-sec mt-0" id="sec-ahora">Resolver ahora</div>
 <div class="rp-kpis mt-0" id="kpis"></div>
-<div id="lista-ahora"><div class="rp-vacio">Buscando reclamos, mensajes, preguntas y envíos…</div></div>
+<div id="lista-ahora"><div class="rp-vacio">Buscando reclamos, preguntas y mensajes…</div></div>
 <div class="rp-sec">En curso — esperando al comprador o a Mercado Libre</div>
 <div id="lista-curso"><div class="rp-vacio rp-cargando">…</div></div>
 <details id="sec-viejos" class="mt-3" style="display:none">
@@ -100,7 +100,8 @@
 <script>
 const ALIAS = {{ alias|tojson }};
 const A = encodeURIComponent(ALIAS);
-const SECCIONES = ['reclamos', 'envios', 'mensajes', 'preguntas'];
+// Los envíos no van acá (se ven en Hoy): esta sección es reclamos, preguntas y mensajes
+const SECCIONES = ['reclamos', 'preguntas', 'mensajes'];
 const NOMBRE = {reclamo: 'Reclamo', mensaje: 'Mensaje', pregunta: 'Pregunta', envio: 'Envío'};
 // Ventana de respuesta para lo que no trae fecha límite de ML: 24 h.
 const VENTANA_H = 24;
@@ -301,7 +302,7 @@ function afectaBadge(x) {
 }
 
 function todos() {
-  return [...(DATOS.reclamos || []), ...(DATOS.envios || []), ...(DATOS.mensajes || []), ...(DATOS.preguntas || [])];
+  return [...(DATOS.reclamos || []), ...(DATOS.preguntas || []), ...(DATOS.mensajes || [])];
 }
 
 function pintar() {
@@ -310,15 +311,17 @@ function pintar() {
   const ahora = xs.filter(x => (x.tipo !== 'reclamo' || x.me_toca) && !viejo(x));
   const curso = xs.filter(x => x.tipo === 'reclamo' && !x.me_toca);
   const viejos = xs.filter(viejo).sort((a, b) => a.horas_esperando - b.horas_esperando);
-  const peso = x => (x.afecta === 'si' || x.afecta === '48h' || x.tipo === 'envio') ? 0 : 1;
-  ahora.sort((a, b) => (a._h ?? 1e9) - (b._h ?? 1e9) || peso(a) - peso(b));
+  // Primero reclamos, después preguntas, después mensajes; dentro de cada uno, lo que vence antes
+  const orden = {reclamo: 0, pregunta: 1, mensaje: 2};
+  const peso = x => (x.afecta === 'si' || x.afecta === '48h') ? 0 : 1;
+  ahora.sort((a, b) => (orden[a.tipo] ?? 3) - (orden[b.tipo] ?? 3) || (a._h ?? 1e9) - (b._h ?? 1e9) || peso(a) - peso(b));
 
   const n = t => ahora.filter(x => x.tipo === t).length;
   const urg = ahora.filter(x => color(x._h, x) === 'rojo').length;
   const cargando = SECCIONES.filter(s => !(s in DATOS));
   $('kpis').innerHTML = [['', `<b>${ahora.length}</b> para resolver` + (urg ? ` · <b class="text-danger">${urg} urgentes</b>` : '')],
-    ['reclamo', `<b>${n('reclamo')}</b> reclamos` + (curso.length ? ` <span class="text-muted">(+${curso.length} en curso)</span>` : '')], ['envio', `<b>${n('envio')}</b> envíos`],
-    ['mensaje', `<b>${n('mensaje')}</b> mensajes`], ['pregunta', `<b>${n('pregunta')}</b> preguntas`]]
+    ['reclamo', `<b>${n('reclamo')}</b> reclamos` + (curso.length ? ` <span class="text-muted">(+${curso.length} en curso)</span>` : '')],
+    ['pregunta', `<b>${n('pregunta')}</b> preguntas`], ['mensaje', `<b>${n('mensaje')}</b> mensajes`]]
     .map(([t, h]) => `<span class="rp-kpi ${FILTRO === t ? 'on' : ''}" role="button" tabindex="0" onclick="filtrar('${t}')">${h}</span>`).join('') +
     (cargando.length ? `<span class="rp-cargando align-self-center">cargando ${cargando.join(', ')}…</span>` : '');
 
