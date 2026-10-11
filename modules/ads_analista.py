@@ -342,7 +342,8 @@ def _escribir(metodo: str, path: str, token: str, body: dict) -> dict:
         except ValueError:
             return {'ok': True, 'data': None}
     if r.status_code in (401, 403):
-        return {'ok': False, 'error': SIN_PERMISO, 'sin_permiso': True}
+        return {'ok': False, 'error': SIN_PERMISO, 'sin_permiso': True,
+                'detalle_ml': f'HTTP {r.status_code} {metodo} {path}: {r.text[:300]}'}
     try:
         msg = r.json().get('message') or r.text[:200]
     except ValueError:
