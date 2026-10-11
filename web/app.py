@@ -5524,6 +5524,8 @@ def api_aplicar_optimizacion():
 
     if not alias or not item_id:
         return jsonify({'ok': False, 'error': 'Falta alias o item_id'}), 400
+    if not re.fullmatch(r'ML[A-Z]\d+', item_id):
+        return jsonify({'ok': False, 'error': 'Publicación inválida'}), 400
     if not titulo and not descripcion and not attrs_raw:
         return jsonify({'ok': False, 'error': 'Nada para aplicar'}), 400
 
@@ -5597,7 +5599,11 @@ def api_aplicar_optimizacion():
             # Strip internal validation checklist — no debe publicarse en ML
             cl_idx = descripcion.find('### CHECKLIST DE VALIDACIÓN INTERNA')
             desc_clean = descripcion[:cl_idx].strip() if cl_idx > 0 else descripcion
-            client._put(f'/items/{item_id}/description', {'plain_text': desc_clean})
+            try:
+                client._put(f'/items/{item_id}/description', {'plain_text': desc_clean})
+            except Exception:
+                # Sin descripción previa ML no deja editarla: hay que crearla
+                client._post(f'/items/{item_id}/description', {'plain_text': desc_clean})
             applied.append('descripcion')
         except Exception as e:
             errors.append(f'descripción: {e}')
