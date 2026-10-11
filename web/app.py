@@ -15615,19 +15615,17 @@ def api_optimizar_pub_v2():
 # ── Trabajos largos en segundo plano ─────────────────────────────────────────
 # Render corta cualquier pedido a los 120 s, y una optimización tarda más. El
 # generador SSE corre en un hilo y la pantalla consulta los eventos de a poco.
-# ponytail: en memoria del proceso (1 worker); si se reinicia, el trabajo se pierde
-_JOBS: dict = {}
-_JOBS_LOCK = _threading.Lock()
+# Se guarda en la base (db_save) y no en memoria: Render corre más de una copia
+# del servidor y la consulta puede caer en otra distinta de la que lo lanzó.
+def _job_path(jid: str) -> str:
+    return os.path.join(DATA_DIR, 'jobs', f'{jid}.json')
 
 
 def _lanzar_job(generador) -> str:
     import uuid
     jid = uuid.uuid4().hex
     job = {'eventos': [], 'fin': False, 'ts': _time_module.time(), 'usuario': session.get('user_id')}
-    with _JOBS_LOCK:
-        for k in [k for k, v in _JOBS.items() if _time_module.time() - v['ts'] > 3600]:
-            _JOBS.pop(k, None)
-        _JOBS[jid] = job
+    db_save(_job_path(jid), job)
 
     def correr():
         try:
@@ -15637,11 +15635,13 @@ def _lanzar_job(generador) -> str:
                         try:
                             job['eventos'].append(json.loads(linea[6:]))
                         except ValueError:
-                            pass
+                            continue
+                        db_save(_job_path(jid), job)
         except Exception as e:
             job['eventos'].append({'type': 'error', 'msg': str(e)})
         finally:
             job['fin'] = True
+            db_save(_job_path(jid), job)
     from flask import copy_current_request_context
     _threading.Thread(target=copy_current_request_context(correr), daemon=True).start()
     return jid
@@ -15649,7 +15649,9 @@ def _lanzar_job(generador) -> str:
 
 @app.route('/api/job/<jid>')
 def api_job(jid):
-    job = _JOBS.get(jid)
+    if not re.fullmatch(r'[0-9a-f]{32}', jid or ''):
+        return jsonify({'ok': False, 'error': 'Trabajo inválido'}), 400
+    job = db_load(_job_path(jid))
     if not job or job.get('usuario') != session.get('user_id'):
         return jsonify({'ok': False, 'error': 'Trabajo no encontrado (¿se reinició el servidor?)'}), 404
     try:
