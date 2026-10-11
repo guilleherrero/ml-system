@@ -15461,10 +15461,31 @@ def api_optimizar_pub_v2():
 
             yield _sse({'type': 'step', 'msg': 'Ejecutando análisis completo: keywords + posiciones + competidores + IA...'})
             import sys
+            # La optimización tarda varios minutos y no emite nada mientras corre:
+            # Render corta las conexiones que pasan ~2 min en silencio y el
+            # navegador se quedaba sin resultado. Corre en un hilo y acá se manda
+            # un aviso de progreso cada 15 s para mantener viva la conexión.
+            import threading, time as _t
+            _caja = {}
+
+            def _correr():
+                try:
+                    _caja['r'] = run_full_optimization(item_id, client,
+                                                       competitor_products=comp_prods or None,
+                                                       gap_keywords=gap_keywords or None)
+                except Exception as _e:
+                    _caja['e'] = _e
+            _hilo = threading.Thread(target=_correr, daemon=True)
+            _hilo.start()
+            _t0 = _t.time()
+            while _hilo.is_alive():
+                _hilo.join(15)
+                if _hilo.is_alive():
+                    yield _sse({'type': 'step', 'msg': f'Analizando con IA… ({int(_t.time() - _t0)} s)'})
             try:
-                result = run_full_optimization(item_id, client,
-                                               competitor_products=comp_prods or None,
-                                               gap_keywords=gap_keywords or None)
+                if 'e' in _caja:
+                    raise _caja['e']
+                result = _caja.get('r')
             except ValueError as ve:
                 # Error esperado: item no encontrado o ID incorrecto
                 yield _sse({'type': 'error', 'msg': str(ve)})
