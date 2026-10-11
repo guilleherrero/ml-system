@@ -5827,7 +5827,9 @@ def api_aplicar_optimizacion():
     if attrs_errors:
         result['attrs_warnings'] = attrs_errors
     if errors:
-        return jsonify({'ok': False, 'error': '; '.join(errors), **result})
+        # **result primero: si no, su 'ok': True pisaba el False y la pantalla
+        # mostraba "aplicado" aunque Mercado Libre hubiera rechazado el cambio
+        return jsonify({**result, 'ok': bool(applied), 'error': '; '.join(errors)})
     return jsonify(result)
 
 
