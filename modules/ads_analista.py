@@ -323,10 +323,10 @@ def _accion_campania(k: dict, dias: int = 30) -> dict | None:
 import re as _re
 
 ESTRATEGIAS = {'PROFITABILITY': 'Rentabilidad', 'INCREASE': 'Crecimiento', 'VISIBILITY': 'Visibilidad'}
-SIN_PERMISO = ('Mercado Libre no deja que el sistema cambie tu publicidad: la aplicación tiene permiso de '
-               'Publicidad solo de lectura. Habilitalo en developers.mercadolibre.com.ar → tu aplicación → '
-               'Permisos → Publicidad: «lectura y escritura», y después reconectá la cuenta desde '
-               'Configuración → Cuentas.')
+SIN_PERMISO = ('Mercado Libre todavía no deja que el sistema cambie tu publicidad, aunque la aplicación ya '
+               'tiene el permiso de Publicidad en lectura y escritura (está pedido a Mercado Libre). Mientras '
+               'tanto, hacé este cambio en Mercado Libre → Publicidad → la campaña. El análisis y el cambio de '
+               'precio sí funcionan desde acá.')
 
 
 def _escribir(metodo: str, path: str, token: str, body: dict) -> dict:
