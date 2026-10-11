@@ -15604,10 +15604,59 @@ def api_optimizar_pub_v2():
         except Exception as e:
             yield _sse({'type': 'error', 'msg': str(e)})
 
+    if request.args.get('modo') == 'job':
+        return jsonify({'ok': True, 'job': _lanzar_job(generate)})
     resp = Response(stream_with_context(generate()), mimetype='text/event-stream')
     resp.headers['X-Accel-Buffering'] = 'no'
     resp.headers['Cache-Control']     = 'no-cache'
     return resp
+
+
+# ── Trabajos largos en segundo plano ─────────────────────────────────────────
+# Render corta cualquier pedido a los 120 s, y una optimización tarda más. El
+# generador SSE corre en un hilo y la pantalla consulta los eventos de a poco.
+# ponytail: en memoria del proceso (1 worker); si se reinicia, el trabajo se pierde
+_JOBS: dict = {}
+_JOBS_LOCK = _threading.Lock()
+
+
+def _lanzar_job(generador) -> str:
+    import uuid
+    jid = uuid.uuid4().hex
+    job = {'eventos': [], 'fin': False, 'ts': _time_module.time(), 'usuario': session.get('user_id')}
+    with _JOBS_LOCK:
+        for k in [k for k, v in _JOBS.items() if _time_module.time() - v['ts'] > 3600]:
+            _JOBS.pop(k, None)
+        _JOBS[jid] = job
+
+    def correr():
+        try:
+            for chunk in generador():
+                for linea in str(chunk).split('\n\n'):
+                    if linea.startswith('data: '):
+                        try:
+                            job['eventos'].append(json.loads(linea[6:]))
+                        except ValueError:
+                            pass
+        except Exception as e:
+            job['eventos'].append({'type': 'error', 'msg': str(e)})
+        finally:
+            job['fin'] = True
+    from flask import copy_current_request_context
+    _threading.Thread(target=copy_current_request_context(correr), daemon=True).start()
+    return jid
+
+
+@app.route('/api/job/<jid>')
+def api_job(jid):
+    job = _JOBS.get(jid)
+    if not job or job.get('usuario') != session.get('user_id'):
+        return jsonify({'ok': False, 'error': 'Trabajo no encontrado (¿se reinició el servidor?)'}), 404
+    try:
+        desde = max(0, int(request.args.get('desde', 0)))
+    except ValueError:
+        desde = 0
+    return jsonify({'ok': True, 'eventos': job['eventos'][desde:], 'fin': job['fin']})
 
 
 # ── Lanzar producto nuevo (v2 — mismo pipeline que Optimizaciones IA) ────────

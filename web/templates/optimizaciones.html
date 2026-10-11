@@ -2719,7 +2719,26 @@ function startOptimization() {
   document.getElementById('optBtn').disabled = true;
   document.getElementById('optPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  fetch('/api/optimizar-pub-v2', {
+  // En segundo plano: Render corta los pedidos a los 120 s y optimizar tarda más.
+  function manejar(ev) {
+    if (ev.type === 'step') document.getElementById('optStep').textContent = ev.msg;
+    else if (ev.type === 'token') {
+      const out = document.getElementById('optOutput');
+      out.dataset.raw = (out.dataset.raw||'') + ev.text;
+      out.innerHTML = renderMd(out.dataset.raw);
+      out.scrollTop = out.scrollHeight;
+    }
+    else if (ev.type === 'done') {
+      document.getElementById('optStep').textContent = '✅ Listo — recargando para mostrar el resultado...';
+      setTimeout(() => location.reload(), 2000);
+    }
+    else if (ev.type === 'error') document.getElementById('optStep').textContent = '❌ ' + ev.msg;
+  }
+  function terminar() {
+    document.getElementById('optSpinner').style.display = 'none';
+    document.getElementById('optBtn').disabled = false;
+  }
+  fetch('/api/optimizar-pub-v2?modo=job', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2732,48 +2751,22 @@ function startOptimization() {
       kw_research: kwResearchData,
       gap_keywords: gapKwList
     })
-  }).then(resp => {
-    const reader = resp.body.getReader();
-    const dec    = new TextDecoder();
-    let buf      = '';
-    function read() {
-      reader.read().then(({ done, value }) => {
-        if (done) {
-          document.getElementById('optSpinner').style.display = 'none';
-          document.getElementById('optBtn').disabled = false;
-          return;
-        }
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n\n'); buf = lines.pop();
-        lines.forEach(l => {
-          if (!l.startsWith('data: ')) return;
-          try {
-            const ev = JSON.parse(l.slice(6));
-            if (ev.type === 'step') document.getElementById('optStep').textContent = ev.msg;
-            else if (ev.type === 'token') {
-              const out = document.getElementById('optOutput');
-              out.dataset.raw = (out.dataset.raw||'') + ev.text;
-              out.innerHTML = renderMd(out.dataset.raw);
-              out.scrollTop = out.scrollHeight;
-            }
-            else if (ev.type === 'done') {
-              document.getElementById('optStep').textContent = '✅ Listo — recargando para mostrar el resultado...';
-              document.getElementById('optSpinner').style.display = 'none';
-              document.getElementById('optBtn').disabled = false;
-              setTimeout(() => location.reload(), 2000);
-            }
-            else if (ev.type === 'error') {
-              document.getElementById('optStep').textContent = '❌ ' + ev.msg;
-              document.getElementById('optSpinner').style.display = 'none';
-              document.getElementById('optBtn').disabled = false;
-            }
-          } catch {}
-        });
-        read();
-      });
-    }
-    read();
-  });
+  }).then(r => r.json()).then(j => {
+    if (!j.ok) { manejar({type: 'error', msg: j.error || 'No se pudo iniciar'}); return terminar(); }
+    let desde = 0, fallos = 0;
+    (async function consultar() {
+      try {
+        const e = await (await fetch(`/api/job/${j.job}?desde=${desde}`)).json();
+        if (!e.ok) { manejar({type: 'error', msg: e.error}); return terminar(); }
+        fallos = 0;
+        e.eventos.forEach(manejar); desde += e.eventos.length;
+        if (e.fin) return terminar();
+      } catch (err) {
+        if (++fallos > 10) { manejar({type: 'error', msg: 'Se perdió la conexión con el sistema.'}); return terminar(); }
+      }
+      setTimeout(consultar, 3000);
+    })();
+  }).catch(() => { manejar({type: 'error', msg: 'No se pudo conectar con el sistema.'}); terminar(); });
 }
 
 // ── Modal confirmar aplicar en ML ────────────────────────────────────────────
