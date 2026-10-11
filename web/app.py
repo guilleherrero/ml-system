@@ -8393,6 +8393,14 @@ def api_meli_ads_accion(alias):
         return jsonify({'ok': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'ok': False, 'error': f'No se pudo: {e}'}), 502
+    # Permisos API infiere "Publicidad (escritura)" del último intento de cambio
+    if res.get('ok') or res.get('sin_permiso'):
+        try:
+            from modules.permisos_checker import log_write_attempt
+            log_write_attempt(_resolve_alias(alias), 'publicidad_write', f"accion:{a.get('tipo')}",
+                              200 if res.get('ok') else 401)
+        except Exception as e:
+            app.logger.warning('[meli-ads] no pude registrar el intento de escritura: %s', e)
     _audit('MELI_ADS_ACCION', alias=alias, tipo=a.get('tipo'), item=a.get('item_id'),
            campania=a.get('campania_id'), ok=res.get('ok'),
            cambios={k: a.get(k) for k in ('estado', 'presupuesto', 'acos_objetivo', 'nombre') if a.get(k) not in (None, '')})
