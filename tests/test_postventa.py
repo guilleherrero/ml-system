@@ -292,3 +292,14 @@ def test_reclamos_ventana_solo_afectados_y_cachea_cerrados(monkeypatch):
     pedidos.clear()
     pv.reclamos_ventana(C(), 'Novara', AHORA)
     assert pedidos == ['/post-purchase/v1/claims/3/affects-reputation']   # el cerrado sale del cache
+
+
+def test_reclamo_como_comprador_no_es_para_resolver():
+    from modules.postventa import soy_vendedor
+    como_comprador = {'players': [{'role': 'complainant', 'user_id': 55993545},
+                                  {'role': 'respondent', 'user_id': 111}]}
+    como_vendedor = {'players': [{'role': 'complainant', 'user_id': 222},
+                                 {'role': 'respondent', 'user_id': 55993545}]}
+    assert not soy_vendedor(como_comprador, 55993545)
+    assert soy_vendedor(como_vendedor, '55993545')
+    assert soy_vendedor({}, 55993545)   # sin datos no se descarta

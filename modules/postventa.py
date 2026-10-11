@@ -143,6 +143,20 @@ def reputacion(client) -> dict:
 
 # ── Reclamos ─────────────────────────────────────────────────────────────────
 
+def soy_vendedor(claim: dict, uid) -> bool:
+    """True si en este reclamo la cuenta es el vendedor que responde.
+
+    ML devuelve también reclamos donde la cuenta es la COMPRADORA aunque se le
+    pida players.role=respondent (10/2026): aparecían como reclamos para
+    resolver, sin detalle, con un link de venta que da 404, y se contaban en la
+    proyección de reputación. Sin datos de players no se puede saber: se deja.
+    """
+    players = claim.get('players') or []
+    if not players:
+        return True
+    return any(p.get('role') == 'respondent' and str(p.get('user_id')) == str(uid) for p in players)
+
+
 def _mis_acciones(claim: dict) -> list[dict]:
     for p in claim.get('players') or []:
         if p.get('role') == 'respondent':
@@ -181,6 +195,8 @@ def reclamos_abiertos(client, limite: int = 100) -> list[dict]:
         'status': 'opened', 'limit': min(limite, 100), 'sort': 'date_created:desc'})
     out = []
     for c in data.get('data') or []:
+        if not soy_vendedor(c, uid):
+            continue
         cid = c.get('id')
         detalle = _get_o_vacio(client, f'{CLAIMS}/{cid}/detail')
         afecta = _get_o_vacio(client, f'{CLAIMS}/{cid}/affects-reputation')
@@ -465,10 +481,11 @@ def reclamos_ventana(client, alias: str, ahora: datetime | None = None) -> list[
                 'players.user_id': uid, 'players.role': 'respondent', 'status': estado,
                 'sort': 'date_created:desc', 'limit': 100, 'offset': offset})
             lote = data.get('data') or []
-            dentro = [c for c in lote if (_fecha(c.get('date_created')) or ahora) >= corte]
+            dentro = [c for c in lote if (_fecha(c.get('date_created')) or ahora) >= corte
+                      and soy_vendedor(c, uid)]
             claims += dentro
             offset += len(lote)
-            if len(dentro) < len(lote) or len(lote) < 100:
+            if any((_fecha(c.get('date_created')) or ahora) < corte for c in lote) or len(lote) < 100:
                 break
     cache = db_load(_afectacion_path(alias)) or {}
     out = []
