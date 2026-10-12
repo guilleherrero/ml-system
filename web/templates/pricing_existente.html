@@ -124,6 +124,15 @@
     </div>
   </div>
 
+  <div class="pc-card" id="peVariantesCard" style="display:none">
+    <div class="pc-card-header">Variantes de esta publicación</div>
+    <div class="pc-card-body">
+      <p class="pc-sub-metric mb-2">Cada variante es otra publicación en ML (mismo grupo). "Aplicar" propone el mismo precio y las mismas cuotas a las que estén tildadas.</p>
+      <div id="peVariantes"></div>
+      <div id="peVariantesAviso" class="mt-2"></div>
+    </div>
+  </div>
+
   {% include '_pricing_guia.html' %}
   <div class="row">
     <div class="col-lg-5">
@@ -464,6 +473,7 @@ document.getElementById('peItem').addEventListener('change', function () {
     document.getElementById('peBtn').disabled = ctx.faltantes.some(f => f.bloqueante);
     document.getElementById('peResultados').innerHTML = '';
     document.getElementById('peEscaleraResultado').innerHTML = '';
+    renderVariantes(ctx.variantes || []);
     cargarExperimentos();
   });
 });
@@ -726,31 +736,119 @@ function camposExperimentoComunes(goal, r) {
   };
 }
 
-function aplicarPrecioExistente(btn, itemId, precioNuevo, pub, goal, r, situacionHoy, escalon) {
-  btn.disabled = true;
-  btn.textContent = 'Aplicando...';
-  fetch('/api/pricing/aplicar', {
+// ── Variantes (User Products: cada color es otro item_id del mismo grupo) ──
+// Bug real 2026-10-12: se aplicó a Rojo y Negro quedó con otro precio y otras
+// cuotas sin ningún aviso. Ahora se ven todas, se tildan todas por defecto y
+// el cambio se propone para las tildadas.
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+function renderVariantes(vars) {
+  const card = document.getElementById('peVariantesCard');
+  if (vars.length < 2) { card.style.display = 'none'; document.getElementById('peVariantes').innerHTML = ''; return; }
+  card.style.display = '';
+  const base = vars[0];
+  const pct = v => v === null || v === undefined ? '—' : `${v}%`;
+  const difPrecio = vars.some(v => v.precio !== base.precio);
+  const difCuotas = vars.some(v => v.cuotas !== base.cuotas);
+  let html = '<table class="table table-sm mb-0"><thead><tr><th></th><th>Variante</th><th>Precio hoy</th><th>Cuotas hoy</th><th>Margen hoy</th></tr></thead><tbody>';
+  vars.forEach((v, i) => {
+    const rojoP = v.precio !== base.precio ? ' class="text-danger fw-bold"' : '';
+    const rojoC = v.cuotas !== base.cuotas ? ' class="text-danger fw-bold"' : '';
+    html += `<tr><td><input type="checkbox" class="form-check-input pe-var-check" value="${escHtml(v.id)}" checked></td>` +
+      `<td>${escHtml(v.color || v.titulo)}${i === 0 ? ' <span class="pc-etiqueta">(la que abriste)</span>' : ''}<br><span class="pc-sub-metric">${escHtml(v.id)}${v.sku ? ' · ' + escHtml(v.sku) : ''}</span></td>` +
+      `<td${rojoP}>${fmtMoney(v.precio)}</td><td${rojoC}>${escHtml(v.cuotas)}</td><td>${pct(v.margen_actual_pct)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  if (difPrecio || difCuotas) {
+    html = `<div class="pc-faltante bloq mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Las variantes HOY no están alineadas: distinto ${[difPrecio && 'precio', difCuotas && 'cuotas'].filter(Boolean).join(' y ')} (en rojo).</div>` + html;
+  }
+  document.getElementById('peVariantes').innerHTML = html;
+  document.querySelectorAll('.pe-var-check').forEach(c => c.addEventListener('change', avisoVariantes));
+  avisoVariantes();
+}
+
+function variantesElegidas() {
+  return [...document.querySelectorAll('.pe-var-check')].filter(c => c.checked).map(c => c.value);
+}
+
+function avisoVariantes() {
+  const total = document.querySelectorAll('.pe-var-check').length;
+  const n = variantesElegidas().length;
+  document.getElementById('peVariantesAviso').innerHTML = n === total ? '' :
+    `<div class="pc-faltante bloq"><i class="bi bi-exclamation-octagon me-1"></i><strong>Ojo: vas a cambiar ${n} de ${total} variantes.</strong> Las destildadas quedan con su precio y cuotas actuales.</div>`;
+}
+
+function aplicarPrecioExistente(btn, itemId, precioNuevo, pub, goal, r, situacionHoy, escalon, descripcion) {
+  const payload = {
+    alias: document.getElementById('peAlias').value,
+    item_id: itemId,
+    precio_nuevo: precioNuevo,
+    producto_key: PE_CONTEXTO.item.id,
+    ganancia_venta: pub.ganancia_venta,
+    situacion_hoy: situacionHoy,
+    escalon,
+    ...camposExperimentoComunes(goal, r),
+  };
+  // Las variantes elegidas en la tabla son las de la publicación abierta;
+  // para una duplicada del trio el servidor toma todas las suyas.
+  if (itemId === PE_CONTEXTO.item.id && document.querySelectorAll('.pe-var-check').length) {
+    payload.item_ids = variantesElegidas();
+    if (!payload.item_ids.length) { alert('Tildá al menos una variante.'); return; }
+  }
+  const post = extra => fetch('/api/pricing/aplicar', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      confirmado: true,
-      alias: document.getElementById('peAlias').value,
-      item_id: itemId,
-      precio_nuevo: precioNuevo,
-      producto_key: PE_CONTEXTO.item.id,
-      ganancia_venta: pub.ganancia_venta,
-      situacion_hoy: situacionHoy,
-      escalon,
-      ...camposExperimentoComunes(goal, r),
-    }),
-  })
-    .then(res => res.json())
-    .then(v => {
-      if (!v.ok) { alert('Error: ' + v.error); btn.disabled = false; btn.textContent = 'Aplicar'; return; }
-      alert(`Listo. Precio cambiado de $${v.precio_antes.toLocaleString('es-AR')} a $${v.precio_despues.toLocaleString('es-AR')}. Se empieza a medir mañana (job 06:05 ART).`);
-      btn.textContent = 'Aplicado ✓';
-      cargarExperimentos();
-    })
-    .catch(err => { alert('Error: ' + err); btn.disabled = false; btn.textContent = 'Aplicar'; });
+    body: JSON.stringify({...payload, ...extra}),
+  }).then(res => res.json());
+  const pct = v => v === null || v === undefined ? '—' : `${v}%`;
+  const reset = () => { btn.disabled = false; btn.textContent = 'Aplicar'; };
+
+  btn.disabled = true;
+  btn.textContent = 'Revisando variantes...';
+  post({previsualizar: true}).then(p => {
+    if (!p.ok) { alert('Error: ' + p.error); reset(); return; }
+    const lineas = p.variantes.map(v =>
+      `• ${v.color || v.titulo} (${v.id}): ${fmtMoney(v.precio)} ${v.cuotas} → ${fmtMoney(precioNuevo)} — margen ${pct(v.margen_actual_pct)} → ${pct(v.margen_nuevo_pct)}` +
+      (v.bloqueo ? `\n   ⛔ ${v.bloqueo}` : ''));
+    const fuera = p.no_incluidas.map(v => `• ${v.color || v.titulo} (${v.id}) — queda en ${fmtMoney(v.precio)} ${v.cuotas}`);
+    const bloqueada = p.variantes.some(v => v.bloqueo);
+    const texto = `${descripcion}\nCuotas: ${p.cuotas}\n\n` +
+      `Cambia ${p.variantes.length} de ${p.variantes.length + p.no_incluidas.length} variante(s):\n${lineas.join('\n')}` +
+      (fuera.length ? `\n\n⚠️ NO cambian:\n${fuera.join('\n')}` : '') +
+      (bloqueada ? '\n\n⛔ No se puede proponer: alguna variante queda debajo del margen mínimo o sin costo.' :
+                   '\n\nSe manda como PROPUESTA (Telegram + Cerebro). No cambia nada en ML hasta que la apruebes. ¿Proponer?');
+    if (bloqueada) { alert(texto); reset(); return; }
+    if (!confirm(texto)) { reset(); return; }
+    btn.textContent = 'Proponiendo...';
+    return post({confirmado: true}).then(v => {
+      if (!v.ok) { alert('Error: ' + v.error); reset(); return; }
+      btn.textContent = 'Propuesta enviada';
+      if (!confirm('Propuesta enviada a Telegram y a la bandeja de Cerebro.\n\n¿La aprobás ya desde acá? (se aplica en ML ahora)')) return;
+      btn.textContent = 'Aplicando...';
+      return fetch('/api/cerebro/accion/aprobar', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({alias: payload.alias, accion_id: v.accion_id}),
+      }).then(res => res.json()).then(a => {
+        if (!a.ok) { alert('Error al aprobar: ' + a.error); btn.textContent = 'Propuesta enviada'; return; }
+        alert(textoResultado(a.accion));
+        const det = a.accion.detalle || {};
+        btn.textContent = det.aplicadas === det.total ? 'Aplicado ✓' : 'Aplicado con errores';
+        cargarExperimentos();
+      });
+    });
+  }).catch(err => { alert('Error: ' + err); reset(); });
+}
+
+function textoResultado(accion) {
+  const det = accion.detalle || {};
+  const res = det.resultado;
+  if (!res) return `La propuesta quedó "${accion.estado}".`;
+  const nombres = Object.fromEntries((det.variantes || []).map(v => [v.id, v.color || v.id]));
+  return `Aplicado y verificado en ${det.aplicadas} de ${det.total} variantes:\n\n` +
+    Object.entries(res).map(([id, r]) => `${r === 'ok' ? '✅' : '❌'} ${nombres[id] || id} (${id})${r === 'ok' ? '' : ' — ' + r}`).join('\n') +
+    (det.aplicadas === det.total ? '' : '\n\nRevisá las que fallaron en ML.');
 }
 
 let PE_DUPLICAR_CTX = null;
@@ -926,14 +1024,8 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
     const escalonLabel = selEscalon.selectedOptions[0].textContent;
     gananciaParaPrecio(precioEditado, pub, idx).then(ganancia => {
       const pubAjustado = {...pub, ganancia_venta: ganancia};
-      const ok = confirm(
-        `Vas a cambiar el precio REAL de ${PE_CONTEXTO.item.id} en MercadoLibre:\n\n` +
-        `De $${PE_CONTEXTO.item.precio.toLocaleString('es-AR')} a $${precioEditado.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}").\n` +
-        `Escalón de cuotas: ${escalonLabel}.\n\n` +
-        `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
-      );
-      if (!ok) return;
-      aplicarPrecioExistente(btn, PE_CONTEXTO.item.id, precioEditado, pubAjustado, goal, r, PE_CONTEXTO.situacion_hoy, escalon);
+      aplicarPrecioExistente(btn, PE_CONTEXTO.item.id, precioEditado, pubAjustado, goal, r, PE_CONTEXTO.situacion_hoy, escalon,
+        `Precio nuevo $${precioEditado.toLocaleString('es-AR')} (perfil "${nombre}", estrategia "${GOALS[goal].label}", escalón ${escalonLabel}).`);
     });
     return;
   }
@@ -950,17 +1042,11 @@ document.getElementById('peResultados').addEventListener('click', function (e) {
     const escalonLabel = selEscalon.selectedOptions[0].textContent;
     gananciaParaPrecio(precioEditado, pub, idx).then(ganancia => {
       const pubAjustado = {...pub, ganancia_venta: ganancia};
-      const ok = confirm(
-        `Vas a cambiar el precio REAL de ${linkeado} en MercadoLibre (perfil "${nombre}"):\n\n` +
-        `A $${precioEditado.toLocaleString('es-AR')} (estrategia "${GOALS[goal].label}").\n` +
-        `Escalón de cuotas: ${escalonLabel}.\n\n` +
-        `Esto escribe en tu cuenta real ahora mismo. ¿Confirmás?`
-      );
-      if (!ok) return;
       // situacion_hoy es la de la publicación EXISTENTE (Batalla) — no la de
       // esta duplicada, así que no se manda (sería un dato falso para este
       // item_id). El experimento igual se abre y mide desde cero.
-      aplicarPrecioExistente(btn, linkeado, precioEditado, pubAjustado, goal, r, null, escalon);
+      aplicarPrecioExistente(btn, linkeado, precioEditado, pubAjustado, goal, r, null, escalon,
+        `Publicación "${nombre}" (${linkeado}): precio nuevo $${precioEditado.toLocaleString('es-AR')} (estrategia "${GOALS[goal].label}", escalón ${escalonLabel}).`);
     });
     return;
   }

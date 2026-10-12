@@ -796,6 +796,30 @@ def _candidates_keywords(alias: str) -> list[Oportunidad]:
     return out
 
 
+def _candidates_variantes(alias: str) -> list[Oportunidad]:
+    """Variantes de una misma publicacion (family_id) con precio o cuotas
+    distintos y sin marcar como diferencia a proposito. Sin impacto en $
+    inventado: es una alerta de consistencia, no una oportunidad medida."""
+    from modules import precio_variantes
+    out = []
+    for f in precio_variantes.desalineadas_cuenta(alias):
+        que = ' y '.join(x for x, si in (('precio', f['difiere_precio']),
+                                          ('cuotas', f['difiere_cuotas'])) if si)
+        out.append(Oportunidad(
+            fingerprint=_fingerprint("variantes_desalineadas", f["family_id"], f["catalogo"]),
+            tipo="variantes_desalineadas",
+            descripcion=f"VARIANTES con distinto {que} — {f['variantes'][0]['titulo'][:50]}",
+            impacto_mensual_ars=0.0,
+            urgencia="alta",
+            cta_label="Abrir calculadora →",
+            cta_url="/pricing/existente",
+            fuente="variantes",
+            snapshot=f,
+        ))
+    _logger.info("[top_acciones] variantes: %d candidates", len(out))
+    return out
+
+
 _DETECTORS = [
     ("duplicados",    _candidates_duplicados),
     ("repricing",     _candidates_repricing),
@@ -805,6 +829,7 @@ _DETECTORS = [
     ("buybox",        _candidates_buybox),
     ("stock_critico", _candidates_stock_critico),
     ("keywords",      _candidates_keywords),
+    ("variantes",     _candidates_variantes),
 ]
 
 

@@ -224,6 +224,7 @@ def _get_items_with_stock(client: MLClient) -> list[dict]:
             "category_id":   item.get("category_id", ""),
             "family_id":     item.get("family_id"),
             "tags":          item.get("tags") or [],
+            "catalog_listing": bool(item.get("catalog_listing")),
             "shipping":      item.get("shipping") or {},
             "seller_id":     item.get("seller_id"),
         })
@@ -446,6 +447,10 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             "fee_rate":      margen_data["fee_rate"],
             "fee_source":    margen_data["fee_source"],
             "cuotas":        cuotas_de_item(item["listing_type"], item["tags"]),
+            # Para el control de variantes desalineadas (modules/precio_variantes)
+            "family_id":       item.get("family_id"),
+            "tags":            item["tags"],
+            "catalog_listing": item.get("catalog_listing", False),
             "ventas_30d":    ventas_30d,
             "facturado_30d": facturado_30d,
             "visitas_30d":   visitas_30d,

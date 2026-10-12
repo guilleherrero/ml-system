@@ -281,9 +281,23 @@ def actualizar_accion(alias: str, accion_id: str, **campos) -> dict | None:
 
 
 def aprobar_accion(alias: str, accion_id: str, por: str = 'usuario') -> dict | None:
-    """Aprueba una propuesta. El precio arranca siempre en propone-y-apruebo (3.5)."""
-    return actualizar_accion(alias, accion_id, estado=ESTADO_APROBADA,
-                             aprobada_ts=_ahora(), aprobada_por=por)
+    """Aprueba una propuesta. El precio arranca siempre en propone-y-apruebo (3.5).
+
+    Si la propuesta trae `detalle.ejecutar` (calculadora de precios), se aplica
+    en ML aca mismo — Telegram y el panel pasan los dos por esta funcion, asi
+    que aprobar en cualquiera de los dos aplica igual. Una propuesta que ya no
+    esta pendiente no se vuelve a aprobar: aprobar dos veces no puede aplicar
+    dos veces.
+    """
+    actual = get_accion(alias, accion_id)
+    if not actual or actual.get('estado') != ESTADO_PENDIENTE:
+        return actual
+    acc = actualizar_accion(alias, accion_id, estado=ESTADO_APROBADA,
+                            aprobada_ts=_ahora(), aprobada_por=por)
+    if acc and (acc.get('detalle') or {}).get('ejecutar'):
+        from modules import precio_variantes
+        acc = precio_variantes.ejecutar(alias, acc)
+    return acc
 
 
 def rechazar_accion(alias: str, accion_id: str, por: str = 'usuario',

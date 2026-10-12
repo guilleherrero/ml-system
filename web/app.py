@@ -9383,7 +9383,19 @@ def api_pricing_contexto():
         if row and row.item_ids_trio:
             item_ids_trio = row.item_ids_trio
 
+    # Variantes (User Products: cada color es otro item_id de la misma
+    # family_id). Bug real 2026-10-12: se cambio Rojo y Negro quedo igual sin
+    # que nada avisara. Las duplicadas del trio quedan afuera: tienen otro
+    # precio a proposito.
+    try:
+        variantes = _pricing_variantes(client, alias, item_id, item_ids_trio.values())
+    except Exception as e:
+        variantes = []
+        faltantes.append({'dato': 'Variantes', 'bloqueante': False,
+            'consecuencia': f'No se pudo revisar si la publicación tiene otras variantes ({e}). Revisalo en ML antes de aplicar.'})
+
     return jsonify({'ok': True,
+        'variantes': variantes,
         'item': {'id': item_id, 'titulo': item.get('title', ''), 'precio': precio,
                  'listing_type_id': listing_type, 'stock': stock},
         'situacion_hoy': {'precio': precio, 'ventas_dia': ventas_dia, 'ventas_dia_7d': ventas_dia_7d,
@@ -9403,41 +9415,54 @@ def api_pricing_contexto():
         'faltantes': faltantes})
 
 
+def _pricing_variantes(client, alias, item_id, excluir=()):
+    """Variantes del item con costo y margen actual (el del panel de stock)."""
+    from modules import precio_variantes as pv
+    from modules.stock_rentabilidad import _load_costos
+    from core.db_storage import db_load
+    costos = _load_costos()
+    snap = db_load(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
+    margen_snap = {it.get('id'): it.get('margen_pct') for it in snap.get('items', [])}
+    out = []
+    for v in pv.variantes(client, item_id, excluir):
+        m = margen_snap.get(v['id'])
+        out.append({**v, 'costo': (costos.get(v['id']) or {}).get('costo'),
+                    'margen_actual_pct': round(m * 100, 1) if m is not None else None})
+    return out
+
+
 @app.route('/api/pricing/aplicar', methods=['POST'])
 def api_pricing_aplicar():
-    """Aplica un precio nuevo en ML y abre el experimento que lo va a medir.
+    """PROPONE un precio nuevo (y su escalon de cuotas) para TODAS las
+    variantes elegidas de la publicacion. No escribe en ML.
 
-    Escribe en ML — exige `confirmado: true` explicito (regla de trabajo del
-    parrafo 0 de la spec: nada se aplica en ML como efecto secundario de un
-    calculo). Edita la publicacion cuyo item_id se le pasa — para Batalla es
-    siempre la existente; para Medio/Compensa el frontend manda el item_id
-    de la publicacion duplicada (ver /api/pricing/trio/duplicar) una vez que
-    existe, nunca el de Batalla.
+    Bug real 2026-10-12 (Cortador Ender Pro, Novara): esto hacia el PUT a un
+    solo item_id. En User Products cada color es otro item de la misma
+    family_id, asi que Rojo quedo a $72.000 con interes bajo y Negro a
+    $48.000 con 3 cuotas, sin aviso. Ahora:
+    - `item_ids` (opcional): variantes a cambiar; por defecto TODAS. Se
+      validan contra las variantes reales leidas de ML en este momento.
+    - Margen minimo 15% verificado aca, por variante y con el costo de cada
+      una: si alguna queda debajo, no se propone nada.
+    - `previsualizar: true` devuelve la tabla por variante sin crear nada.
+    - Si no, deja una propuesta en Cerebro (sale sola a Telegram). Al
+      aprobarla —Telegram o panel— `precio_variantes.ejecutar` aplica precio
+      y cuotas a cada item, los vuelve a leer y dice cual fallo.
 
-    Si se manda `escalon`, tambien deja el escalon de cuotas REAL de la
-    publicacion igual al que se eligio para calcular el precio — antes solo
-    cambiaba el precio, y el escalon del selector quedaba como un dato de
-    referencia para el calculo que nunca se aplicaba de verdad (bug
-    reportado por Guille 2026-09-20: "si el batalla tiene cuotas tambien
-    tomaria la cuota que yo cargo en este cuadro"). Verificado contra la
-    documentacion oficial de ML (2026-09-20, "Tipos de publicacion" +
-    "Campanas con cuotas para Marketplace"):
-    - El listing_type_id (gold_special <-> gold_pro) NO se cambia con el
-      PUT generico de /items — hace falta el endpoint dedicado POST
-      /items/{id}/listing_type (sin cargo).
-    - El tag de cuotas SI se cambia con el PUT generico, pero hay que
-      mandar la lista COMPLETA de tags (los reemplaza, no los suma) y el
-      listing_type tiene que coincidir con el tag antes de mandarlo — por
-      eso el listing_type se cambia primero, y recien despues se manda el
-      precio + los tags ya armados en un solo PUT.
+    Detalle de ML (verificado 2026-09-20): listing_type va por
+    POST /items/{id}/listing_type y primero; el PUT de tags reemplaza la
+    lista completa (ver precio_variantes.aplicar_item).
     """
     from core.account_manager import AccountManager
+    from modules import cerebro, precio_variantes as pv
+    from modules.stock_rentabilidad import _load_costos
     from modules.trio_generador import CUOTAS_A_TAGS
     from web.db import session_scope
-    from web.models_pricing import PrecioExperimento
+    from web.models_pricing import PricingConfig
 
     body = request.get_json() or {}
-    if body.get('confirmado') is not True:
+    previsualizar = body.get('previsualizar') is True
+    if not previsualizar and body.get('confirmado') is not True:
         return jsonify({'ok': False, 'error': 'Falta la confirmación explícita (confirmado: true).'}), 400
 
     alias        = body.get('alias', '')
@@ -9458,19 +9483,15 @@ def api_pricing_aplicar():
     if estrategia not in ('rent', 'comp', 'vel', 'meta'):
         return jsonify({'ok': False, 'error': 'estrategia tiene que ser rent, comp, vel o meta.'}), 400
 
-    # Auditoria 2026-09-19: antes esto armaba el registro del experimento
-    # DESPUES de escribir en ML — si algun campo fallaba al parsear, el
-    # precio real YA habia cambiado pero quedaba sin registrar, sin que el
-    # usuario se enterara (veia un error generico). Ahora se valida y
-    # arma todo ANTES de tocar ML: si algo esta mal, no se escribe nada.
     try:
         precio_nuevo_f = float(precio_nuevo)
+        costo_form     = float(body.get('costo') or 0)
+        ganancia_base  = float(body.get('ganancia_venta') or 0)
         campos_experimento = dict(
-            alias=alias, producto_key=producto_key, item_ids=[item_id],
+            alias=alias, producto_key=producto_key,
             estrategia=estrategia, modo=body.get('modo', ''),
             objetivo=float(body.get('objetivo') or 0), piso=float(body.get('piso') or 0),
-            costo=float(body.get('costo') or 0),
-            ganancia_venta={item_id: float(body.get('ganancia_venta') or 0)},
+            costo=costo_form,
             ventas_dia_previas=float(situacion.get('ventas_dia') or 0),
             ganancia_dia_previa=float(situacion.get('ganancia_dia') or 0),
             meta_ventas_dia=float(body.get('meta_ventas_dia') or 0),
@@ -9478,62 +9499,106 @@ def api_pricing_aplicar():
             competidor_min=body.get('competidor_min'), competidor_max=body.get('competidor_max'),
         )
     except (TypeError, ValueError) as e:
-        return jsonify({'ok': False, 'error': f'Datos del experimento inválidos, no se tocó ML: {e}'}), 400
+        return jsonify({'ok': False, 'error': f'Datos inválidos, no se propuso nada: {e}'}), 400
+    if precio_nuevo_f <= 0:
+        return jsonify({'ok': False, 'error': 'Precio inválido.'}), 400
+
+    # Las duplicadas del trio (y Batalla, si lo que se aplica es una
+    # duplicada) no son "variantes": tienen otro precio a proposito.
+    with session_scope() as s:
+        row = s.query(PricingConfig).filter_by(alias=alias, item_id=producto_key).first()
+        trio = dict(row.item_ids_trio or {}) if row else {}
+    excluir = (set(trio.values()) | {producto_key}) - {item_id}
 
     try:
         client = AccountManager().get_client(alias)
-        item_antes = client.get_item(item_id)
+        vars_ = _pricing_variantes(client, alias, item_id, excluir)
     except Exception as e:
-        return jsonify({'ok': False, 'error': f'No se pudo conectar con ML: {e}'}), 400
+        return jsonify({'ok': False, 'error': f'No se pudo leer la publicación y sus variantes en ML: {e}'}), 400
 
-    precio_antes = float(item_antes.get('price') or 0)
+    ids_validos = [v['id'] for v in vars_]
+    pedidos = [i for i in (body.get('item_ids') or ids_validos)]
+    ajenos = [i for i in pedidos if i not in ids_validos]
+    if ajenos:
+        return jsonify({'ok': False, 'error': f'{", ".join(ajenos)} no es variante de {item_id}.'}), 400
+    if not pedidos:
+        return jsonify({'ok': False, 'error': 'Elegí al menos una variante.'}), 400
 
-    # Si se pidio un escalon, primero alinear listing_type_id (gratis, via
-    # endpoint dedicado) y armar los tags nuevos — SIN pisar tags que no son
-    # de cuotas (regla oficial de ML: el PUT reemplaza la lista completa).
-    TAGS_DE_CUOTAS_CONOCIDOS = {'pcj-co-funded', '3x_campaign', '9x_campaign', '12x_campaign'}
-    payload_update = {'price': precio_nuevo_f}
-    listing_type_cambiado = None
-    if escalon is not None:
-        listing_type_obj, tags_cuota_obj = CUOTAS_A_TAGS[escalon]
-        tag_cuota_obj = tags_cuota_obj[0] if tags_cuota_obj else None
-        listing_type_actual = item_antes.get('listing_type_id')
-        if listing_type_actual != listing_type_obj:
-            try:
-                client.update_listing_type(item_id, listing_type_obj)
-                listing_type_cambiado = listing_type_obj
-            except Exception as e:
-                return jsonify({'ok': False,
-                    'error': f'No se pudo cambiar el tipo de publicación a {listing_type_obj}: {e}. No se tocó el precio ni las cuotas.'}), 400
-        tags_actuales = list(item_antes.get('tags') or [])
-        tags_sin_cuotas = [t for t in tags_actuales if t not in TAGS_DE_CUOTAS_CONOCIDOS]
-        payload_update['tags'] = tags_sin_cuotas + ([tag_cuota_obj] if tag_cuota_obj else [])
+    # El costo del item principal es el del formulario (con el que se calculo
+    # la ganancia); el de las otras variantes, el cargado para cada una.
+    costos = {**_load_costos(), item_id: {'costo': costo_form}}
+    filas = pv.margenes([v for v in vars_ if v['id'] in pedidos], costos,
+                        precio_nuevo_f, ganancia_base, costo_form)
+    no_incluidas = [v for v in vars_ if v['id'] not in pedidos]
+    bloqueos = [f for f in filas if f['bloqueo']]
+    resumen = {'variantes': filas, 'no_incluidas': no_incluidas,
+               'cuotas': pv.etiqueta_escalon(escalon) if escalon is not None else 'sin cambios'}
 
-    try:
-        client.update_item(item_id, payload_update)
-    except Exception as e:
-        aviso_tipo = f' (el tipo de publicación SÍ se cambió a {listing_type_cambiado} antes de este error)' if listing_type_cambiado else ''
-        return jsonify({'ok': False, 'error': f'ML rechazó el cambio de precio/cuotas{aviso_tipo}: {e}'}), 400
+    if previsualizar:
+        return jsonify({'ok': True, **resumen})
+    if bloqueos:
+        return jsonify({'ok': False, **resumen, 'error': 'No se propuso nada: ' + '; '.join(
+            f'{f.get("color") or f["id"]} ({f["id"]}): {f["bloqueo"]}' for f in bloqueos)}), 400
 
-    # El precio YA cambió en ML en este punto. Si el registro del experimento
-    # falla de acá para abajo, hay que decirlo explícitamente — no puede
-    # devolver un error genérico como si nada hubiera pasado.
-    try:
-        with session_scope() as s:
-            exp = PrecioExperimento(
-                precios_antes={item_id: precio_antes}, precios_despues={item_id: precio_nuevo_f},
-                **campos_experimento,
-            )
-            s.add(exp)
-            s.flush()
-            experimento_id = exp.id
-    except Exception as e:
-        app.logger.error(f'[pricing/aplicar] Precio cambiado en ML ({item_id} -> {precio_nuevo_f}) pero el experimento NO se pudo guardar: {e}')
-        return jsonify({'ok': False,
-            'error': f'El precio SÍ se cambió en ML (de ${precio_antes:,.0f} a ${precio_nuevo_f:,.0f}) pero no se pudo registrar el experimento para medirlo: {e}. Anotalo a mano.'}), 500
+    principal = vars_[0]
+    margenes_nuevos = [f['margen_nuevo_pct'] for f in filas if f['margen_nuevo_pct'] is not None]
+    accion = cerebro.registrar_accion(
+        alias, tipo='precio', item_id=item_id, origen=cerebro.ORIGEN_PROPUESTO,
+        hipotesis=f'Calculadora de precios: estrategia {estrategia}, '
+                  f'{len(pedidos)} de {len(vars_)} variantes',
+        estado_previo=cerebro.capturar_estado_previo(alias, item_id, {'precio': principal['precio']}),
+        detalle={
+            'titulo': principal['titulo'], 'precio_antes': principal['precio'],
+            'precio_despues': precio_nuevo_f, 'cuotas': resumen['cuotas'],
+            'margen_nuevo_pct': min(margenes_nuevos) if margenes_nuevos else None,
+            'variantes': [{k: f.get(k) for k in ('id', 'color', 'sku', 'precio', 'cuotas',
+                                                  'margen_actual_pct', 'margen_nuevo_pct')}
+                          for f in filas],
+            'variantes_no_incluidas': [f'{v.get("color") or v["id"]} ({v["id"]})' for v in no_incluidas],
+            'ejecutar': {'item_ids': pedidos, 'precio_nuevo': precio_nuevo_f, 'escalon': escalon,
+                         'ganancias': {f['id']: f['ganancia_nueva'] for f in filas},
+                         'experimento': campos_experimento},
+        },
+        ejecutado_por='api:pricing/aplicar')
+    _audit('PRICING_PROPUESTA', alias=alias, item_id=item_id, accion_id=accion.get('id'),
+           item_ids=pedidos, precio_nuevo=precio_nuevo_f, escalon=escalon)
+    return jsonify({'ok': True, 'propuesta': True, 'accion_id': accion.get('id'), **resumen})
 
-    return jsonify({'ok': True, 'experimento_id': experimento_id,
-                    'precio_antes': precio_antes, 'precio_despues': precio_nuevo_f})
+
+@app.route('/api/variantes-desalineadas/<alias>')
+def api_variantes_desalineadas(alias):
+    """Publicaciones cuyas variantes (family_id) tienen distinto precio o
+    cuotas. `?vivo=1` lee ML ahora; si no, el snapshot de stock. Solo lee."""
+    from modules import precio_variantes as pv
+    alias = _resolve_alias(alias)
+    if request.args.get('vivo') == '1':
+        from core.account_manager import AccountManager
+        try:
+            items = pv._items_activos(AccountManager().get_client(alias))
+        except Exception as e:
+            return jsonify({'ok': False, 'error': f'No se pudo leer ML: {e}'}), 400
+        fams = pv.desalineadas(items, pv.familias_a_proposito(alias))
+    else:
+        fams = pv.desalineadas_cuenta(alias)
+    return jsonify({'ok': True, 'familias': fams,
+                    'a_proposito': pv.familias_a_proposito(alias)})
+
+
+@app.route('/api/variantes-a-proposito/<alias>', methods=['POST'])
+def api_variantes_a_proposito(alias):
+    """Marca (o desmarca) una familia como 'la diferencia entre variantes es a
+    proposito' para que el control deje de alertarla."""
+    from modules import precio_variantes as pv
+    body = request.get_json() or {}
+    fam = str(body.get('family_id') or '').strip()
+    if not fam:
+        return jsonify({'ok': False, 'error': 'Falta family_id'}), 400
+    alias = _resolve_alias(alias)
+    pv.marcar_a_proposito(alias, fam, body.get('a_proposito', True) is not False,
+                          body.get('nota') or '')
+    _audit('VARIANTES_A_PROPOSITO', alias=alias, family_id=fam,
+           a_proposito=body.get('a_proposito', True))
+    return jsonify({'ok': True, 'a_proposito': pv.familias_a_proposito(alias)})
 
 
 @app.route('/api/pricing/trio/titulo_sugerido')

@@ -315,9 +315,12 @@ def _procesar_callback(cb: dict) -> dict:
     if accion_tipo == 'ok':
         res = cerebro.aprobar_accion(alias, accion_id, por='telegram')
         _responder_callback(cb_id, 'Aprobada')
-        _editar(chat_id, message_id,
-                f'{_resumen_accion(res)}\n\n<b>Aprobada.</b> Se aplica en la '
-                f'proxima corrida y queda registrada para evaluarla a 7 y 14 dias.')
+        if (res.get('detalle') or {}).get('resultado'):
+            from modules import precio_variantes
+            cierre = f'<b>Aprobada.</b>\n{_escape(precio_variantes.texto_resultado(res))}'
+        else:
+            cierre = ('<b>Aprobada.</b> Queda registrada para evaluarla a 7 y 14 dias.')
+        _editar(chat_id, message_id, f'{_resumen_accion(res)}\n\n{cierre}')
         return {'ok': True, 'accion': 'aprobada', 'id': accion_id}
 
     if accion_tipo == 'no':
@@ -350,8 +353,19 @@ def _resumen_accion(acc: dict) -> str:
             delta = f" ({(float(despues)/float(antes)-1)*100:+.1f}%)"
         except (TypeError, ValueError, ZeroDivisionError):
             pass
-        return (f"<b>{_escape(det.get('titulo') or acc.get('item_id'))}</b>\n"
-                f"{_plata(antes)} → {_plata(despues)}{delta}")
+        txt = (f"<b>{_escape(det.get('titulo') or acc.get('item_id'))}</b>\n"
+               f"{_plata(antes)} → {_plata(despues)}{delta}")
+        if det.get('cuotas'):
+            txt += f"\nCuotas: {_escape(det['cuotas'])}"
+        # Calculadora: una linea por variante, para que se vea cuantas cambian
+        pct = lambda x: '—' if x is None else f'{x:.0f}%'
+        for v in det.get('variantes') or []:
+            txt += (f"\n· {_escape(v.get('color') or v.get('id'))}: {_plata(v.get('precio'))}"
+                    f" ({_escape(v.get('cuotas', ''))}) · margen "
+                    f"{pct(v.get('margen_actual_pct'))} → {pct(v.get('margen_nuevo_pct'))}")
+        if det.get('variantes_no_incluidas'):
+            txt += f"\n⚠️ NO cambia: {_escape(', '.join(det['variantes_no_incluidas']))}"
+        return txt
     return f"<b>{_escape(det.get('titulo') or acc.get('item_id'))}</b> · {_escape(acc.get('tipo'))}"
 
 
@@ -872,6 +886,10 @@ def enviar_resumen(chat_id: str | None = None, vaciar: bool = True) -> bool:
             bloque.insert(1, f'<i>{_escape(a)}</i>')
         lineas += bloque
 
+    # 2b. Variantes de una misma publicacion con precio o cuotas distintos
+    for a in aliases[:2]:
+        lineas += _bloque_variantes(a)
+
     # 3. Lo que se junto durante el dia
     lineas += _bloque_novedades(pend)
 
@@ -887,6 +905,26 @@ def enviar_resumen(chat_id: str | None = None, vaciar: bool = True) -> bool:
         cfg['pendientes_resumen'] = []
         _guardar(cfg)
     return ok
+
+def _bloque_variantes(alias: str) -> list[str]:
+    """Bug 2026-10-12: la calculadora cambio Rojo y no Negro sin avisar. Si
+    vuelve a pasar (o se edita a mano una sola), sale aca."""
+    try:
+        from modules import precio_variantes
+        fams = precio_variantes.desalineadas_cuenta(alias)
+    except Exception as e:
+        _logger.warning('[telegram] variantes desalineadas %s: %s', alias, e)
+        return []
+    if not fams:
+        return []
+    out = [f'\n🎨 <b>{len(fams)} publicaciones con variantes desalineadas</b> · {_escape(alias)}']
+    for f in fams[:5]:
+        que = ' y '.join(x for x, si in (('precio', f['difiere_precio']),
+                                          ('cuotas', f['difiere_cuotas'])) if si)
+        out.append(f'· {_escape(f["variantes"][0]["titulo"][:45])} — distinto {que}: ' +
+                   ', '.join(f'{_plata(v["precio"])} {_escape(v["cuotas"])}' for v in f['variantes']))
+    return out
+
 
 def _aliases() -> list[str]:
     try:

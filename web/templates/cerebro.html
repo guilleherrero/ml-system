@@ -543,6 +543,13 @@ async function decidir(que, id) {
     body: JSON.stringify({alias: ALIAS, accion_id: id}),
   }).then(r => r.json());
   if (!r.ok) { alert(r.error || 'No se pudo'); return; }
+  // Propuestas de la calculadora: aprobar las aplica en ML ya, variante por variante
+  const det = (r.accion && r.accion.detalle) || {};
+  if (que === 'aprobar' && det.resultado) {
+    const nombres = Object.fromEntries((det.variantes || []).map(v => [v.id, v.color || v.id]));
+    alert(`Aplicado y verificado en ${det.aplicadas} de ${det.total} variantes:\n\n` +
+      Object.entries(det.resultado).map(([id, x]) => `${x === 'ok' ? '✅' : '❌'} ${nombres[id] || id} (${id})${x === 'ok' ? '' : ' — ' + x}`).join('\n'));
+  }
   cargar();
 }
 
