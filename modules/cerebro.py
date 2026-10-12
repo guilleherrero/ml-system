@@ -292,9 +292,15 @@ def aprobar_accion(alias: str, accion_id: str, por: str = 'usuario') -> dict | N
     actual = get_accion(alias, accion_id)
     if not actual or actual.get('estado') != ESTADO_PENDIENTE:
         return actual
+    token = uuid.uuid4().hex
     acc = actualizar_accion(alias, accion_id, estado=ESTADO_APROBADA,
-                            aprobada_ts=_ahora(), aprobada_por=por)
-    if acc and (acc.get('detalle') or {}).get('ejecutar'):
+                            aprobada_ts=_ahora(), aprobada_por=por, ejecucion_token=token)
+    # ponytail: reclamo por relectura, no atomico (kv JSON sin compare-and-set).
+    # Si Telegram y el panel aprueban en el mismo instante, ejecuta solo el que
+    # dejo el ultimo token. Peor caso residual: el mismo precio aplicado dos
+    # veces (inocuo en ML) y un experimento duplicado. Lock en Postgres si pasa.
+    if (acc and (acc.get('detalle') or {}).get('ejecutar')
+            and (get_accion(alias, accion_id) or {}).get('ejecucion_token') == token):
         from modules import precio_variantes
         acc = precio_variantes.ejecutar(alias, acc)
     return acc

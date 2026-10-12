@@ -757,7 +757,7 @@ function renderVariantes(vars) {
   vars.forEach((v, i) => {
     const rojoP = v.precio !== base.precio ? ' class="text-danger fw-bold"' : '';
     const rojoC = v.cuotas !== base.cuotas ? ' class="text-danger fw-bold"' : '';
-    html += `<tr><td><input type="checkbox" class="form-check-input pe-var-check" value="${escHtml(v.id)}" checked></td>` +
+    html += `<tr><td><input type="checkbox" class="form-check-input pe-var-check" value="${escHtml(v.id)}" ${v.sugerida === false ? '' : 'checked'}></td>` +
       `<td>${escHtml(v.color || v.titulo)}${i === 0 ? ' <span class="pc-etiqueta">(la que abriste)</span>' : ''}<br><span class="pc-sub-metric">${escHtml(v.id)}${v.sku ? ' · ' + escHtml(v.sku) : ''}</span></td>` +
       `<td${rojoP}>${fmtMoney(v.precio)}</td><td${rojoC}>${escHtml(v.cuotas)}</td><td>${pct(v.margen_actual_pct)}</td></tr>`;
   });

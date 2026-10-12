@@ -9517,7 +9517,7 @@ def api_pricing_aplicar():
         return jsonify({'ok': False, 'error': f'No se pudo leer la publicación y sus variantes en ML: {e}'}), 400
 
     ids_validos = [v['id'] for v in vars_]
-    pedidos = [i for i in (body.get('item_ids') or ids_validos)]
+    pedidos = body.get('item_ids') or [v['id'] for v in vars_ if v.get('sugerida', True)]
     ajenos = [i for i in pedidos if i not in ids_validos]
     if ajenos:
         return jsonify({'ok': False, 'error': f'{", ".join(ajenos)} no es variante de {item_id}.'}), 400

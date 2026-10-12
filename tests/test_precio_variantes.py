@@ -49,16 +49,19 @@ class FakeML:
 
 def _items():
     return {
-        'ROJO':  {'id': 'ROJO', 'title': 'Cortador Rojo', 'price': 72000, 'family_id': 7,
+        'ROJO':  {'id': 'ROJO', 'title': 'Cortador Rojo', 'price': 72000, 'family_id': 7, 'user_product_id': 'UP_ROJO',
                   'listing_type_id': 'gold_special', 'tags': ['good_quality', 'pcj-co-funded'],
                   'attributes': [{'id': 'COLOR', 'value_name': 'Rojo'}]},
-        'NEGRO': {'id': 'NEGRO', 'title': 'Cortador Negro', 'price': 48000, 'family_id': 7,
+        'NEGRO': {'id': 'NEGRO', 'title': 'Cortador Negro', 'price': 48000, 'family_id': 7, 'user_product_id': 'UP_NEGRO',
                   'listing_type_id': 'gold_pro', 'tags': ['3x_campaign'],
                   'attributes': [{'id': 'COLOR', 'value_name': 'Negro'}]},
         'CATA':  {'id': 'CATA', 'title': 'Cortador catalogo', 'price': 50000, 'family_id': 7,
                   'listing_type_id': 'gold_pro', 'tags': [], 'catalog_listing': True},
-        'TRIO':  {'id': 'TRIO', 'title': 'Cortador 12 cuotas', 'price': 90000, 'family_id': 7,
+        'TRIO':  {'id': 'TRIO', 'title': 'Cortador 12 cuotas', 'price': 90000, 'family_id': 7, 'user_product_id': 'UP_NEGRO',
                   'listing_type_id': 'gold_pro', 'tags': ['12x_campaign']},
+        # Rojo tambien tiene un "Medio" (mismo color = mismo user_product_id)
+        'ROJO6': {'id': 'ROJO6', 'title': 'Cortador Rojo 6 cuotas', 'price': 80000, 'family_id': 7,
+                  'user_product_id': 'UP_ROJO', 'listing_type_id': 'gold_pro', 'tags': []},
         'OTRO':  {'id': 'OTRO', 'title': 'Otro producto', 'price': 1000, 'family_id': 8,
                   'listing_type_id': 'gold_pro', 'tags': []},
     }
@@ -93,6 +96,19 @@ class TestVariantes(unittest.TestCase):
         self.assertEqual([v['id'] for v in vs], ['ROJO', 'NEGRO'])
         self.assertEqual(vs[0]['cuotas'], '3 a 12 con interés bajo')
         self.assertEqual(vs[1]['cuotas'], '3 cuotas sin interés')
+        # el otro escalon del MISMO color (ROJO6) no es variante: queda afuera
+        self.assertNotIn('ROJO6', [v['id'] for v in pv.variantes(self.ml, 'ROJO')])
+
+    def test_otro_color_con_varios_escalones_sugiere_solo_el_mismo(self):
+        vs = {v['id']: v for v in pv.variantes(self.ml, 'ROJO')}
+        # Negro tiene dos publicaciones (3 y 12 cuotas); ninguna en el escalon
+        # de Rojo (interes bajo) -> se muestran, ninguna tildada por defecto
+        self.assertFalse(vs['NEGRO']['sugerida'])
+        self.assertFalse(vs['TRIO']['sugerida'])
+        self.ml.items['NEGRO'].update(listing_type_id='gold_special', tags=['pcj-co-funded'])
+        vs = {v['id']: v for v in pv.variantes(self.ml, 'ROJO')}
+        self.assertTrue(vs['NEGRO']['sugerida'])
+        self.assertFalse(vs['TRIO']['sugerida'])
 
     def test_aprobar_aplica_a_todas_y_verifica(self):
         acc = self._proponer(['ROJO', 'NEGRO'])
@@ -129,6 +145,28 @@ class TestVariantes(unittest.TestCase):
         cerebro.aprobar_accion(self.alias, acc['id'])
         self.assertEqual(self.ml.puts, [])
 
+
+
+class TestTelegramChatAutorizado(unittest.TestCase):
+    """Aprobar escribe en ML: un chat desconocido no puede usar el bot."""
+
+    def test_chat_ajeno_ignorado(self):
+        from modules import telegram_bot as tb
+        cfg = {'chat_ids': ['111'], 'avisos': {}, 'pendientes_resumen': []}
+        with mock.patch.object(tb, '_config', return_value=cfg), \
+             mock.patch.object(tb, '_responder_callback') as resp, \
+             mock.patch.object(tb, '_procesar_callback') as cb, \
+             mock.patch.object(tb, '_procesar_mensaje') as msg:
+            r = tb.procesar_update({'callback_query': {'id': 'x', 'data': 'cb:ok:A:1',
+                                                       'message': {'chat': {'id': 999}}}})
+            self.assertEqual(r.get('motivo'), 'chat no autorizado')
+            cb.assert_not_called()
+            resp.assert_called_once()
+            tb.procesar_update({'message': {'chat': {'id': 999}, 'text': '/start'}})
+            tb.procesar_update({'message': {'chat': {'id': 999}, 'text': '/bandeja'}})
+            msg.assert_not_called()
+            tb.procesar_update({'message': {'chat': {'id': 111}, 'text': '/bandeja'}})
+            msg.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()

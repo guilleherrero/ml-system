@@ -220,13 +220,32 @@ def _registrar_chat(chat_id) -> bool:
     return False
 
 
+def _chat_autorizado(chat_id) -> bool:
+    """Solo los chats ya registrados manejan el bot. Aprobar una propuesta de
+    precio escribe en ML (precio_variantes.ejecutar), asi que un desconocido
+    que encuentre el bot no puede ni pedir la bandeja ni apretar botones."""
+    return str(chat_id) in _config().get('chat_ids', [])
+
+
 def procesar_update(update: dict) -> dict:
     """Punto de entrada del webhook. Devuelve un resumen para el log."""
     try:
         if 'callback_query' in update:
-            return _procesar_callback(update['callback_query'])
+            cb = update['callback_query']
+            if not _chat_autorizado(((cb.get('message') or {}).get('chat') or {}).get('id')):
+                _responder_callback(cb.get('id'), 'Chat no autorizado')
+                return {'ok': True, 'ignorado': True, 'motivo': 'chat no autorizado'}
+            return _procesar_callback(cb)
         if 'message' in update:
-            return _procesar_mensaje(update['message'])
+            msg = update['message']
+            cid = (msg.get('chat') or {}).get('id')
+            # /start registra solo el PRIMER chat (el dueño). Antes cualquiera
+            # que le escribiera al bot quedaba registrado y recibia propuestas.
+            primer_start = (not _config().get('chat_ids')
+                            and (msg.get('text') or '').strip().lower().startswith('/start'))
+            if not primer_start and not _chat_autorizado(cid):
+                return {'ok': True, 'ignorado': True, 'motivo': 'chat no autorizado'}
+            return _procesar_mensaje(msg)
     except Exception as e:
         _logger.error('[telegram] update fallo: %s', e)
         return {'ok': False, 'error': str(e)}

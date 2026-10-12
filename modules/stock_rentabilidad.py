@@ -225,6 +225,7 @@ def _get_items_with_stock(client: MLClient) -> list[dict]:
             "family_id":     item.get("family_id"),
             "tags":          item.get("tags") or [],
             "catalog_listing": bool(item.get("catalog_listing")),
+            "user_product_id": item.get("user_product_id"),
             "shipping":      item.get("shipping") or {},
             "seller_id":     item.get("seller_id"),
         })
@@ -451,6 +452,7 @@ def run(client: MLClient, alias: str, mostrar_todos: bool = False):
             "family_id":       item.get("family_id"),
             "tags":            item["tags"],
             "catalog_listing": item.get("catalog_listing", False),
+            "user_product_id": item.get("user_product_id"),
             "ventas_30d":    ventas_30d,
             "facturado_30d": facturado_30d,
             "visitas_30d":   visitas_30d,

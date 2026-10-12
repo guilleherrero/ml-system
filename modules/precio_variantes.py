@@ -111,17 +111,31 @@ def variantes(client, item_id: str, excluir=()) -> list[dict]:
     `excluir`: item_ids que se separan a proposito (duplicadas Medio/Compensa
     del trio, que tienen precio y cuotas distintos por diseño).
     """
-    base = client._get(f'/items/{item_id}', params={'attributes': _ATRIBUTOS})
-    fam = base.get('family_id')
-    out = [_resumen_item(base)]
+    raw = client._get(f'/items/{item_id}', params={'attributes': _ATRIBUTOS})
+    base = {**_resumen_item(raw), 'sugerida': True}
+    fam = raw.get('family_id')
     if not fam:
-        return out
+        return [base]
     excluir = set(excluir or ())
+    otros: dict = {}
     for it in _items_activos(client):
-        if (it.get('id') != item_id and it.get('family_id') == fam
-                and bool(it.get('catalog_listing')) == bool(base.get('catalog_listing'))
-                and it.get('id') not in excluir):
-            out.append(_resumen_item(it))
+        if (it.get('id') == item_id or it.get('family_id') != fam or it.get('id') in excluir
+                or bool(it.get('catalog_listing')) != base['catalog_listing']):
+            continue
+        r = _resumen_item(it)
+        # Mismo user_product_id = mismo color en otro escalon de cuotas (trio
+        # Batalla/Medio/Compensa): no es otra variante, tiene otro precio a
+        # proposito. Sin user_product_id (modelo viejo) no se puede saber.
+        if base['user_product_id'] and r['user_product_id'] == base['user_product_id']:
+            continue
+        otros.setdefault(r['user_product_id'] or r['id'], []).append(r)
+    out = [base]
+    for pubs in otros.values():
+        # De cada otro color se sugiere la publicacion del MISMO escalon que la
+        # abierta (o la unica que tenga). Las demas se muestran sin tildar.
+        for r in pubs:
+            r['sugerida'] = len(pubs) == 1 or r['escalon'] == base['escalon']
+            out.append(r)
     return out
 
 
@@ -288,11 +302,18 @@ def marcar_a_proposito(alias: str, family_id: str, a_proposito: bool = True,
 
 
 def desalineadas(items: list[dict], a_proposito: dict | None = None) -> list[dict]:
-    """Familias donde las variantes no tienen el mismo precio o las mismas cuotas.
+    """Familias donde las variantes (colores) no ofrecen lo mismo.
 
-    `items`: dicts con id, titulo, precio, family_id, listing_type, tags,
-    catalog_listing (el snapshot de stock o `_items_activos`). Se compara
-    dentro de cada (family_id, catalogo si/no), igual que `variantes()`.
+    En User Products cada color es un `user_product_id` distinto. Un mismo
+    color puede tener VARIAS publicaciones a proposito (el trio Batalla /
+    Medio / Compensa: mismo producto, otro precio por escalon de cuotas) —
+    esas comparten user_product_id y no se comparan entre si. Lo que se
+    compara es la oferta de cada color: el conjunto (precio, cuotas) de sus
+    publicaciones. Si dos colores no ofrecen exactamente lo mismo, alerta.
+    Sin user_product_id (modelo viejo) cada item cuenta como su propio color.
+
+    `items`: dicts con id, titulo, precio, family_id, user_product_id,
+    listing_type, tags, catalog_listing (snapshot de stock o `_items_activos`).
     """
     a_proposito = a_proposito or {}
     grupos: dict = {}
@@ -303,18 +324,24 @@ def desalineadas(items: list[dict], a_proposito: dict | None = None) -> list[dic
         lt = it.get('listing_type') or it.get('listing_type_id')
         grupos.setdefault((str(fam), bool(it.get('catalog_listing'))), []).append({
             'id': it.get('id'), 'titulo': it.get('titulo') or it.get('title', ''),
+            'user_product_id': it.get('user_product_id') or it.get('id'),
             'precio': float(it.get('precio') or it.get('price') or 0),
             'cuotas': etiqueta_escalon(escalon_de(lt, it.get('tags'))),
         })
     out = []
     for (fam, catalogo), vs in grupos.items():
-        if len(vs) < 2:
+        por_color: dict = {}
+        for v in vs:
+            por_color.setdefault(v['user_product_id'], set()).add((v['precio'], v['cuotas']))
+        if len(por_color) < 2:
             continue
-        precios = {v['precio'] for v in vs}
-        cuotas = {v['cuotas'] for v in vs}
-        if len(precios) > 1 or len(cuotas) > 1:
-            out.append({'family_id': fam, 'catalogo': catalogo, 'variantes': vs,
-                        'difiere_precio': len(precios) > 1, 'difiere_cuotas': len(cuotas) > 1})
+        ofertas = list(por_color.values())
+        if all(o == ofertas[0] for o in ofertas):
+            continue
+        out.append({'family_id': fam, 'catalogo': catalogo,
+                    'variantes': sorted(vs, key=lambda v: (v['user_product_id'], v['cuotas'])),
+                    'difiere_precio': len({frozenset(p for p, _ in o) for o in ofertas}) > 1,
+                    'difiere_cuotas': len({frozenset(c for _, c in o) for o in ofertas}) > 1})
     return out
 
 
@@ -338,6 +365,18 @@ if __name__ == '__main__':
         {'id': 'X', 'precio': 10000, 'family_id': 2, 'listing_type': 'gold_pro', 'tags': []},
         {'id': 'Y', 'precio': 10000, 'family_id': 2, 'listing_type': 'gold_pro', 'tags': []},
     ]
+    trio = [  # mismo color en 3 escalones (mismo user_product_id): a proposito
+        {'id': 'B', 'precio': 48000, 'family_id': 3, 'user_product_id': 'U1', 'listing_type': 'gold_special', 'tags': []},
+        {'id': 'M', 'precio': 56000, 'family_id': 3, 'user_product_id': 'U1', 'listing_type': 'gold_special', 'tags': ['pcj-co-funded']},
+        {'id': 'C', 'precio': 71000, 'family_id': 3, 'user_product_id': 'U1', 'listing_type': 'gold_pro', 'tags': []},
+    ]
+    assert desalineadas(trio) == []
+    # dos colores con el mismo trio: alineados; si un color sube Medio, alerta
+    trio2 = trio + [{**t, 'id': t['id'] + '2', 'user_product_id': 'U2'} for t in trio]
+    assert desalineadas(trio2) == []
+    trio2[4] = {**trio2[4], 'precio': 60000}
+    d2 = desalineadas(trio2)
+    assert len(d2) == 1 and d2[0]['difiere_precio'] and not d2[0]['difiere_cuotas']
     d = desalineadas(caso)
     assert len(d) == 1 and d[0]['difiere_precio'] and d[0]['difiere_cuotas']
     assert {v['id'] for v in d[0]['variantes']} == {'R', 'N'}  # catalogo aparte
