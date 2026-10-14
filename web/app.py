@@ -20511,6 +20511,12 @@ try:
 except Exception as _e:
     print(f'[contabilidad] ERROR registrando las rutas: {_e}')
 
+try:
+    from web.duplicador_routes import bp as _bp_duplicador
+    app.register_blueprint(_bp_duplicador)
+except Exception as _e:
+    print(f'[duplicador] ERROR registrando las rutas: {_e}')
+
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
 

@@ -1054,6 +1054,9 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 53 | `get_competitor_details` con un `product_id` tipo MLAU devuelve HTTP 500: `cannot access local variable 'no_active_listings' where it is not associated with a value` — la variable se usa antes de asignarse | `web/app.py` `/api/detalle-competidor` | Peor de lo que decia el reporte original: la variable no se asignaba en **tres** caminos distintos (Intento 2 `/items/{id}` directo, Intento 3 con catalogo encontrado y listings activos, e Intento 3 sin catalogo encontrado), no solo uno. **Resuelto**: se inicializa `no_active_listings = False` una sola vez al principio de la funcion. Probado en vivo contra los dos casos reales que antes rompian (MLA2089950644 y un MLAU inventado) — ambos devuelven 200 ahora | A — **Resuelto** 2026-09-18 |
 | 54 | Falta una funcion para listar las publicaciones de un vendedor a partir de su `seller_id` | idem | Mismo bloqueo que la correccion 51: no hay endpoint de busqueda vivo para armarla. Sigue limitado al bookmarklet | A — sin resolver (bloqueo externo, mismo que 51) |
 | 55 | La calculadora de precios (`/api/pricing/aplicar`) le cambiaba precio y cuotas a UNA sola variante. Caso real 2026-10-12, Cortador Ender Pro (Novara): Rojo MLA1568967243 quedo a $72.000 con "3 a 12 interes bajo" y Negro MLA1481911017 siguio a $48.000 con "3 cuotas", sin aviso. Causa: en User Products cada color es OTRO item_id agrupado por `family_id` (sin `variations[]`), y el endpoint hacia el PUT a un solo `item_id`. Ademas aplicaba directo (sin la propuesta Telegram + panel), no verificaba el 15% en el servidor, no releia el item despues del PUT, y `cerebro.aprobar_accion` no ejecutaba nada aunque Telegram decia "se aplica en la proxima corrida" | `web/app.py` `/api/pricing/aplicar` y `/api/pricing/contexto`, `web/templates/pricing_existente.html`, `modules/cerebro.py` `aprobar_accion` | Precios y cuotas distintos entre colores de la misma publicacion; cambios de precio salteando la aprobacion | **Resuelto** 2026-10-12: `modules/precio_variantes.py` detecta las variantes por `family_id` en vivo (sin catalogo ni duplicadas del trio), la calculadora las muestra con precio/cuotas/margen y todas tildadas por defecto (aviso si se elige una parte), el endpoint verifica 15% por variante con el costo de cada una y deja una PROPUESTA en Cerebro (sale a Telegram). Al aprobar (Telegram o panel, unico punto: `aprobar_accion`) aplica precio + cuotas a cada item, los relee y dice cual fallo; no se aplica dos veces. Control preventivo: `variantes` en top acciones + bloque en el resumen diario + `GET /api/variantes-desalineadas/<alias>?vivo=1`; flag permanente `POST /api/variantes-a-proposito/<alias>`. Tests: `tests/test_precio_variantes.py` |
+| 56 | `/api/pricing/trio/duplicar` crea Medio/Compensa con `POST /items` mandando `title` (y un titulo distinto por perfil via `titulo_variante`). Novara es `user_product_seller` (banner de UpSeller, 2026-10-14): la doc oficial de Precio por variacion dice que "el campo title no debe ser enviado", y que title, family_name, attributes, pictures y available_quantity se sincronizan entre TODOS los items del mismo user_product_id. Ademas no copia attributes, sale_terms ni shipping | `web/app.py` `api_pricing_trio_duplicar`, `modules/trio_generador.titulo_variante` | Si ML asocia la copia al UP del original, el titulo "distinto" no puede existir: o se ignora, o renombra la familia entera incluida la Batalla (titulo congelado por ventas). Si no la asocia, nace un UP aparte que compite contra el original. El camino documentado es `POST /user-products/{UP}/items` (solo condiciones de venta; fotos, ficha, titulo y stock salen del UP). **No verificado en vivo** — la creacion real nunca se probo (ver Pendiente del Sprint 5) | A — detectado 2026-10-14, pendiente de decision |
+| 57 | La Regla #1 sigue con el hash viejo (`74783469...`) y `seo_optimizer.py` volvio a cambiar en un commit legitimo (`2ee387d`, 2026-10-11): hoy da `e092a4e3c45152064651a21c2a8a3630`, distinto tambien del `0389b93a...` re-baseado en septiembre (correccion 16) | skill `meli-reglas`, `docs/ARQUITECTURA_OPTIMIZAR_IA.md` | Misma consecuencia que la 16: la verificacion previa al push falla siempre. Requiere que Guille confirme el hash nuevo | A — pendiente de decision |
+| 58 | `tests/test_contabilidad_ui.py` da 10 errores con pytest: usa un fixture `cliente` que no esta definido (no hay `conftest.py`). Ya fallaba antes del Duplicador (verificado con `git stash`) | `tests/test_contabilidad_ui.py` | Esa pantalla no tiene red de seguridad: si se rompe, ningun test lo avisa. Definir el fixture o convertirlo al formato de los demas tests | B — detectado 2026-10-14 |
 
 ### Estado al cierre del Sprint A
 
@@ -2379,6 +2382,51 @@ Verificado en vivo contra la cuenta real: se vinculó `MLA1487381139`
 ya ocupado, misma publicación en dos slots) y se desvinculó limpio al
 final — no quedó nada real tocado en ML, era puro link en la base. 56
 tests siguen pasando.
+
+## 13. Duplicador de publicaciones — subseccion A (2026-10-14)
+
+Pedido de Guille, inspirado en "Duplicar como Producto Nuevo" de UpSeller.
+Pantalla `/duplicar` (menu Precios y promos), modulo dedicado:
+`modules/duplicador.py`, `web/duplicador_routes.py`, `web/templates/duplicador.html`,
+`tests/test_duplicador.py`. Lo unico que se toco de lo existente, con OK de
+Guille: el registro del blueprint en `web/app.py` y un enlace en `base.html`.
+
+**Investigacion (Fase 1, con evidencia):** UpSeller copia todo (titulo,
+descripcion, fotos, variantes, atributos) a un borrador y pide "modificar
+antes de publicar para evitar sanciones por duplicados"; no evita duplicar
+dos veces. Para el caso de Guille no hace falta copiar: Novara es
+`user_product_seller` (confirmado con `/users/me`) y la doc oficial de Precio
+por variacion permite hasta 30 items (condiciones de venta) por User Product,
+creados con `POST /user-products/{UP}/items` mandando solo precio, tipo, tags
+de cuotas y garantia. Fotos, ficha, titulo y stock salen del UP: no se copia
+ni se altera ninguna imagen. Verificado en vivo: la Recortadora
+(MLAU5363515287) ya tiene sin cuotas + 6 cuotas + interes bajo en el MISMO UP.
+
+**Como funciona:**
+- Pub 1 = la publicacion elegida. Pub 2 = Premium con 3/6/9/12 cuotas sin
+  interes (lo elige Guille), Pub 3 = Clasica con interes bajo (`pcj-co-funded`).
+- Precio por ROI sobre costo (default 120%, editable) con `precio_motor`; costo,
+  IIBB, percepcion y envio editables; comision y costo de cuotas reales de
+  `/listing_prices` por dominio. Muestra margen y ROI actuales y resultantes.
+  Sin costo no calcula. Nunca guarda ni crea debajo del 15%.
+- Borrador en `data/duplicador_<alias>.json` (kv_store). Nada va a ML hasta
+  "Aprobar y publicar" en la pantalla (sin Telegram, decision de Guille).
+- Al aprobar revalida en vivo: mismo UP, que ML no tenga ya esa condicion de
+  venta (detecta tambien copias hechas a mano o con UpSeller), tope de 30,
+  margen con el costo vigente. Crea, copia la descripcion (no se comparte
+  entre items), relee y avisa cualquier diferencia. Registra origen -> copia.
+- Caso secundario: pausadas (reactivar, solo con stock) y finalizadas
+  (`POST /items/{id}/relist`; dentro de 60 dias conserva visitas y ventas).
+
+**Intermitencias reales de ML encontradas probando:** `/users/{id}/items/search`
+con `user_product_id` devolvio 500 una vez (reintento + bloqueo con mensaje si
+persiste), y `/listing_prices` omitio un escalon en una corrida (reintento de
+los faltantes; si sigue faltando no se calcula con un numero inventado).
+
+**Pendiente:** la creacion real (`POST /user-products/.../items`) no se probo
+en vivo: la primera la aprueba Guille siguiendo el checklist. Subsecciones B
+(solo duplicar, editando lo que ML permite) y C (otras cuentas, sujeta a
+confirmar la politica de cuentas relacionadas con ML) quedan para despues.
 
 ## Sprints
 

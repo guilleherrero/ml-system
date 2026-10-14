@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
+{% block title %} — Duplicar publicaciones{% endblock %}
+{% block content %}
+<style>
+.dp-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; overflow:hidden; margin-bottom:.85rem; }
+.dp-card-header { background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-100); padding:.55rem 1rem;
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-700); }
+.dp-card-body { padding:.9rem 1rem; }
+.dp-etiqueta { font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-500); }
+.dp-tile { background:var(--color-neutral-50); border-radius:10px; padding:.6rem .85rem; height:100%; }
+.dp-valor { font-size:1.15rem; font-weight:700; }
+.dp-tabla th, .dp-tabla td { font-size:.82rem; vertical-align:middle; }
+.dp-aviso { border-radius:8px; padding:.5rem .75rem; font-size:.8rem; margin-bottom:.5rem; }
+.dp-aviso-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
+.dp-aviso-bad  { background:var(--color-critical-100); color:var(--color-critical-700); }
+.dp-aviso-ok   { background:var(--color-success-100); color:var(--color-success-700); }
+.dp-badge { font-size:.65rem; font-weight:700; text-transform:uppercase; padding:.2rem .5rem; border-radius:6px; }
+.dp-badge-pendiente  { background:var(--color-warning-100); color:var(--color-warning-700); }
+.dp-badge-aplicado   { background:var(--color-success-100); color:var(--color-success-700); }
+.dp-badge-descartado { background:var(--color-neutral-100); color:var(--color-neutral-700); }
+.dp-ok  { color:var(--color-success-700); font-weight:600; }
+.dp-bad { color:var(--color-critical-700); font-weight:600; }
+.dp-precio { max-width:120px; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-copy me-2"></i>Duplicar publicaciones</h5>
+    <div class="text-muted" style="font-size:.8rem">Otra condición de venta del mismo producto, como permite ML (User Products). Nada se publica sin tu aprobación.</div>
+  </div>
+  <select class="form-select form-select-sm" id="dpAlias" style="max-width:220px">
+    {% for acc in cuentas_menu %}
+      <option value="{{ acc.alias }}" {% if acc.alias == request.cookies.get('ml_cuenta') %}selected{% endif %}>{{ acc.alias }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabCalc" type="button"><i class="bi bi-calculator me-1"></i>Con calculadora</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabRepub" type="button" id="btnTabRepub"><i class="bi bi-arrow-repeat me-1"></i>Republicar pausadas / finalizadas</button></li>
+</ul>
+
+<div class="tab-content">
+<!-- ── A: duplicar con calculadora ─────────────────────────────── -->
+<div class="tab-pane fade show active" id="tabCalc">
+
+  <div class="dp-card"><div class="dp-card-header">1 · Publicación de origen (Pub 1)</div><div class="dp-card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-7"><label class="dp-etiqueta">Publicación</label>
+        <select class="form-select form-select-sm" id="dpItemSel"><option value="">Cargando…</option></select></div>
+      <div class="col-md-3"><label class="dp-etiqueta">o escribí el ID</label>
+        <input class="form-control form-control-sm" id="dpItemId" placeholder="MLA…"></div>
+      <div class="col-md-2"><button class="btn btn-sm btn-primary w-100" id="dpCargar"><i class="bi bi-search me-1"></i>Cargar</button></div>
+    </div>
+    <div id="dpOrigen" class="mt-3"></div>
+  </div></div>
+
+  <div class="dp-card d-none" id="dpParamsCard"><div class="dp-card-header">2 · Parámetros (podés editarlos)</div><div class="dp-card-body">
+    <div class="row g-2">
+      <div class="col-md-3"><label class="dp-etiqueta">Cuotas sin interés de la Pub 2</label><select class="form-select form-select-sm" id="dpEscalon"></select></div>
+      <div class="col-md-2"><label class="dp-etiqueta">ROI objetivo %</label><input type="number" class="form-control form-control-sm" id="dpRoi" step="1"></div>
+      <div class="col-md-2"><label class="dp-etiqueta">Costo $</label><input type="number" class="form-control form-control-sm" id="dpCosto" step="1"></div>
+      <div class="col-md-1"><label class="dp-etiqueta">IIBB %</label><input type="number" class="form-control form-control-sm" id="dpIibb" step="0.01"></div>
+      <div class="col-md-2"><label class="dp-etiqueta">Percep. IVA %</label><input type="number" class="form-control form-control-sm" id="dpPercep" step="0.01"></div>
+      <div class="col-md-2"><label class="dp-etiqueta">Envío $</label><input type="number" class="form-control form-control-sm" id="dpEnvio" step="1"></div>
+    </div>
+    <div class="small text-muted mt-1" id="dpCargosOrigen"></div>
+    <button class="btn btn-sm btn-primary mt-2" id="dpCalcular"><i class="bi bi-calculator me-1"></i>Calcular</button>
+  </div></div>
+
+  <div class="dp-card d-none" id="dpResCard"><div class="dp-card-header">3 · Precios propuestos</div><div class="dp-card-body">
+    <div id="dpResAvisos"></div>
+    <table class="table table-sm dp-tabla mb-2">
+      <thead><tr><th></th><th>Publicación</th><th>Cuotas</th><th class="text-end">Sugerido (ROI)</th><th>Precio</th>
+        <th class="text-end">Ganancia</th><th class="text-end">Margen</th><th class="text-end">ROI</th></tr></thead>
+      <tbody id="dpResBody"></tbody>
+    </table>
+    <div class="small text-muted mb-2">Podés editar el precio: se recalcula al salir del campo. Nunca se guarda por debajo del <span id="dpPiso"></span>% de margen.</div>
+    <button class="btn btn-sm btn-success" id="dpGuardar"><i class="bi bi-save me-1"></i>Guardar como borradores</button>
+  </div></div>
+
+  <div class="dp-card"><div class="dp-card-header">Borradores y copias creadas</div><div class="dp-card-body">
+    <div id="dpBorradores" class="small text-muted">Cargando…</div>
+  </div></div>
+</div>
+
+<!-- ── Caso secundario: republicar ─────────────────────────────── -->
+<div class="tab-pane fade" id="tabRepub">
+  <div class="dp-card"><div class="dp-card-header">Pausadas · se reactivan (mismo ID, conserva todo)</div><div class="dp-card-body" id="dpPausadas">Cargando…</div></div>
+  <div class="dp-card"><div class="dp-card-header">Finalizadas · se republican (ML crea otro ID; dentro de 60 días conserva visitas y ventas)</div><div class="dp-card-body" id="dpFinalizadas">Cargando…</div></div>
+</div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const pesos = n => n == null ? '—' : '$' + Number(n).toLocaleString('es-AR', {maximumFractionDigits: 0});
+  const pct = n => n == null ? '—' : Number(n).toLocaleString('es-AR', {maximumFractionDigits: 1}) + '%';
+  const alias = () => $('dpAlias').value;
+  let CTX = null, FILAS = [];
+
+  async function api(url, body) {
+    const opt = body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {};
+    const r = await fetch(url, opt);
+    let j; try { j = await r.json(); } catch (e) { throw new Error('El servidor no respondió bien (' + r.status + ').'); }
+    if (!j.ok) throw new Error(j.error || 'Error');
+    return j;
+  }
+  const aviso = (tipo, txt) => `<div class="dp-aviso dp-aviso-${tipo}">${esc(txt)}</div>`;
+
+  async function cargarItems() {
+    $('dpItemSel').innerHTML = '<option value="">Cargando…</option>';
+    try {
+      const r = await fetch('/api/costos-items/' + encodeURIComponent(alias()));
+      const j = await r.json();
+      const items = (j.items || j || []).filter(i => i && i.id);
+      $('dpItemSel').innerHTML = '<option value="">Elegí una publicación…</option>' +
+        items.map(i => `<option value="${esc(i.id)}">${esc(i.titulo)} · ${esc(i.id)} · ${pesos(i.precio)}</option>`).join('');
+    } catch (e) { $('dpItemSel').innerHTML = '<option value="">No se pudo cargar la lista: escribí el ID</option>'; }
+  }
+
+  async function cargarOrigen() {
+    const id = ($('dpItemId').value || $('dpItemSel').value).trim();
+    if (!id) return;
+    $('dpOrigen').innerHTML = '<span class="text-muted small">Trayendo datos reales de ML…</span>';
+    ['dpParamsCard', 'dpResCard'].forEach(x => $(x).classList.add('d-none'));
+    try {
+      CTX = await api(`/duplicar/api/contexto?alias=${encodeURIComponent(alias())}&item_id=${encodeURIComponent(id)}`);
+    } catch (e) { $('dpOrigen').innerHTML = aviso('bad', e.message); return; }
+    const it = CTX.item, m = CTX.margen_actual;
+    let html = `<div class="fw-semibold mb-2">${esc(it.titulo)} <span class="text-muted small">${esc(it.id)} · UP ${esc(it.user_product_id)}</span></div>
+      <div class="row g-2 mb-2">
+        <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">Precio hoy</div><div class="dp-valor">${pesos(it.precio)}</div><div class="small">${esc(it.cuotas)}</div></div></div>
+        <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">Costo</div><div class="dp-valor" id="dpCostoTile">${pesos(CTX.costo)}</div></div></div>
+        <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">Margen actual</div><div class="dp-valor" id="dpMargenActual">${m ? pct(m.margen_pct) : '—'}</div><div class="small" id="dpGananciaActual">${m ? 'Ganancia ' + pesos(m.ganancia) : ''}</div></div></div>
+        <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">ROI actual</div><div class="dp-valor" id="dpRoiActual">${m ? pct(m.roi_pct) : '—'}</div></div></div>
+      </div>`;
+    if (CTX.falta_costo) html += aviso('bad', 'Falta el costo de este producto. Cargalo en Costos (o escribilo abajo): sin costo no se calcula el precio.');
+    html += `<div class="dp-etiqueta mb-1">Publicaciones de este mismo producto en ML (${CTX.existentes.length})</div>
+      <table class="table table-sm dp-tabla mb-0"><tbody>${CTX.existentes.map(e =>
+        `<tr><td>${esc(e.id)}</td><td>${esc(e.cuotas)}</td><td class="text-end">${pesos(e.precio)}</td><td>${esc(e.status)}</td></tr>`).join('')}</tbody></table>`;
+    $('dpOrigen').innerHTML = html;
+
+    $('dpEscalon').innerHTML = '<option value="">Elegí…</option>' + CTX.escalones_pub2.map(o =>
+      `<option value="${o.escalon}" ${o.ocupado_por ? 'disabled' : ''}>${esc(o.cuotas)}${o.ocupado_por ? ' — ya existe (' + esc(o.ocupado_por) + ')' : ''}</option>`).join('');
+    $('dpRoi').value = CTX.roi_objetivo;
+    $('dpCosto').value = CTX.costo ?? '';
+    $('dpIibb').value = CTX.cargos.iibb; $('dpPercep').value = CTX.cargos.percepcion_iva; $('dpEnvio').value = CTX.cargos.envio;
+    $('dpCargosOrigen').textContent = 'Cargos: ' + CTX.cargos_origen + '. Comisiones y costo de cuotas: API de ML para esta categoría.';
+    $('dpPiso').textContent = CTX.margen_minimo_pct;
+    $('dpParamsCard').classList.remove('d-none');
+  }
+
+  function cuerpo(extra) {
+    const precios = {};
+    document.querySelectorAll('.dp-precio').forEach(i => { if (i.dataset.editado === '1') precios[i.dataset.perfil] = i.value; });
+    return Object.assign({alias: alias(), item_id: CTX.item.id, escalon_pub2: $('dpEscalon').value,
+      roi_objetivo: $('dpRoi').value, costo: $('dpCosto').value, precios,
+      cargos: {iibb: $('dpIibb').value, percepcion_iva: $('dpPercep').value, envio: $('dpEnvio').value}}, extra || {});
+  }
+
+  async function calcular(mantenerEdiciones) {
+    if (!mantenerEdiciones) document.querySelectorAll('.dp-precio').forEach(i => i.dataset.editado = '');
+    $('dpResAvisos').innerHTML = '';
+    let res;
+    try { res = await api('/duplicar/api/calcular', cuerpo()); FILAS = res.filas; }
+    catch (e) { $('dpResCard').classList.remove('d-none'); $('dpResBody').innerHTML = ''; $('dpResAvisos').innerHTML = aviso('bad', e.message); return; }
+    if (res.margen_actual) {
+      $('dpMargenActual').textContent = pct(res.margen_actual.margen_pct);
+      $('dpGananciaActual').textContent = 'Ganancia ' + pesos(res.margen_actual.ganancia);
+      $('dpRoiActual').textContent = pct(res.margen_actual.roi_pct);
+      $('dpCostoTile').textContent = pesos(res.costo);
+    }
+    const ocupadaPub3 = CTX.pub3_ocupada_por;
+    $('dpResBody').innerHTML = FILAS.map(f => {
+      const bloqueada = f.perfil === 'pub3' && ocupadaPub3;
+      return `<tr>
+        <td><input type="checkbox" class="form-check-input dp-incluir" value="${f.perfil}" ${bloqueada ? 'disabled' : 'checked'}></td>
+        <td>${esc(f.nombre)}${bloqueada ? '<div class="small dp-bad">Ya existe: ' + esc(ocupadaPub3) + '</div>' : ''}</td>
+        <td>${esc(f.cuotas)}</td><td class="text-end">${pesos(f.precio_sugerido)}</td>
+        <td><input type="number" class="form-control form-control-sm dp-precio" data-perfil="${f.perfil}" data-editado="${f.editado ? '1' : ''}" value="${f.precio}"></td>
+        <td class="text-end">${pesos(f.ganancia)}</td>
+        <td class="text-end ${f.cumple_piso ? 'dp-ok' : 'dp-bad'}">${pct(f.margen_pct)}</td>
+        <td class="text-end">${pct(f.roi_pct)}</td></tr>`;
+    }).join('');
+    document.querySelectorAll('.dp-precio').forEach(i => i.addEventListener('change', () => { i.dataset.editado = '1'; calcular(true); }));
+    const bajo = FILAS.filter(f => !f.cumple_piso);
+    if (bajo.length) $('dpResAvisos').innerHTML = aviso('bad', bajo.map(f => f.nombre).join(' y ') + ' queda debajo del piso de margen: subí el precio para poder guardarla.');
+    $('dpResCard').classList.remove('d-none');
+  }
+
+  async function guardar() {
+    const incluir = [...document.querySelectorAll('.dp-incluir:checked')].map(c => c.value);
+    try { await api('/duplicar/api/borradores', cuerpo({incluir})); }
+    catch (e) { $('dpResAvisos').innerHTML = aviso('bad', e.message); return; }
+    $('dpResAvisos').innerHTML = aviso('ok', 'Borradores guardados. No se publicó nada: aprobalos abajo cuando quieras.');
+    cargarBorradores();
+  }
+
+  async function cargarBorradores() {
+    let j;
+    try { j = await api('/duplicar/api/borradores?alias=' + encodeURIComponent(alias())); }
+    catch (e) { $('dpBorradores').innerHTML = aviso('bad', e.message); return; }
+    if (!j.borradores.length) { $('dpBorradores').innerHTML = 'Todavía no hay borradores en esta cuenta.'; return; }
+    $('dpBorradores').innerHTML = `<table class="table table-sm dp-tabla mb-0"><thead><tr><th>Estado</th><th>Origen</th><th>Publicación</th>
+      <th class="text-end">Precio</th><th class="text-end">Margen</th><th>Creada</th><th></th></tr></thead><tbody>${j.borradores.map(b => `
+      <tr><td><span class="dp-badge dp-badge-${b.estado}">${esc(b.estado)}</span></td>
+        <td>${esc(b.titulo_origen)}<div class="text-muted">${esc(b.item_origen)}</div></td>
+        <td>${esc(b.nombre)}<div class="text-muted">${esc(b.cuotas)}</div></td>
+        <td class="text-end">${pesos(b.precio)}</td><td class="text-end">${pct(b.margen_pct)}</td>
+        <td>${b.item_creado ? esc(b.item_creado) : '—'}${(b.avisos || []).map(a => '<div class="dp-bad">' + esc(a) + '</div>').join('')}</td>
+        <td class="text-end">${b.estado === 'pendiente' ? `
+          <button class="btn btn-sm btn-success py-0 dp-aprobar" data-id="${b.id}"><i class="bi bi-check2 me-1"></i>Aprobar y publicar</button>
+          <button class="btn btn-sm btn-outline-secondary py-0 dp-descartar" data-id="${b.id}">Descartar</button>` : ''}</td></tr>`).join('')}
+      </tbody></table>`;
+    document.querySelectorAll('.dp-aprobar').forEach(btn => btn.addEventListener('click', () => aprobar(btn.dataset.id, j.borradores)));
+    document.querySelectorAll('.dp-descartar').forEach(btn => btn.addEventListener('click', async () => {
+      try { await api(`/duplicar/api/borradores/${btn.dataset.id}/descartar`, {alias: alias()}); } catch (e) { alert(e.message); }
+      cargarBorradores();
+    }));
+  }
+
+  async function aprobar(id, lista) {
+    const b = lista.find(x => x.id === id);
+    if (!confirm(`Se va a crear en Mercado Libre y queda ACTIVA:\n\n${b.titulo_origen}\n${b.nombre} · ${b.cuotas}\nPrecio ${pesos(b.precio)} · margen ${pct(b.margen_pct)}\n\nAntes de crear se vuelve a verificar margen y duplicados con datos en vivo. ¿Confirmás?`)) return;
+    try {
+      const r = await api(`/duplicar/api/borradores/${id}/aprobar`, {alias: alias(), confirmado: true});
+      const av = r.borrador.avisos || [];
+      alert(`Creada: ${r.borrador.item_creado}` + (av.length ? '\n\nRevisá:\n- ' + av.join('\n- ') : ''));
+    } catch (e) { alert(e.message); }
+    cargarBorradores();
+  }
+
+  async function cargarRepublicables() {
+    $('dpPausadas').innerHTML = $('dpFinalizadas').innerHTML = '<span class="text-muted small">Trayendo de ML…</span>';
+    let j;
+    try { j = await api('/duplicar/api/republicables?alias=' + encodeURIComponent(alias())); }
+    catch (e) { $('dpPausadas').innerHTML = aviso('bad', e.message); $('dpFinalizadas').innerHTML = ''; return; }
+    $('dpPausadas').innerHTML = j.pausadas.length ? `<table class="table table-sm dp-tabla mb-0"><tbody>${j.pausadas.map(p => `
+      <tr><td>${esc(p.titulo)}<div class="text-muted">${esc(p.id)} · ${esc(p.cuotas)}</div></td><td class="text-end">${pesos(p.precio)}</td><td>Stock ${esc(p.stock)}</td>
+      <td class="text-end">${Number(p.stock) > 0
+        ? `<button class="btn btn-sm btn-outline-primary py-0 dp-reactivar" data-id="${esc(p.id)}">Reactivar</button>`
+        : '<span class="small text-muted">Sin stock: ML la reactiva sola al cargar stock</span>'}</td></tr>`).join('')}</tbody></table>`
+      : '<span class="small text-muted">No hay publicaciones pausadas.</span>';
+    $('dpFinalizadas').innerHTML = j.finalizadas.length ? `<table class="table table-sm dp-tabla mb-0"><tbody>${j.finalizadas.map(p => `
+      <tr><td>${esc(p.titulo)}<div class="text-muted">${esc(p.id)} · ${esc(p.cuotas)} · cerrada ${esc((p.cerrada || '').slice(0, 10))}</div>
+        ${p.cerrada && (Date.now() - Date.parse(p.cerrada)) > 60 * 864e5 ? '<div class="small dp-bad">Más de 60 días: se republica sin las visitas ni las ventas anteriores</div>' : ''}</td>
+      <td><input type="number" class="form-control form-control-sm dp-rp-precio" value="${p.precio}" style="max-width:110px"></td>
+      <td><input type="number" class="form-control form-control-sm dp-rp-cant" value="1" min="1" style="max-width:80px"></td>
+      <td class="text-end"><button class="btn btn-sm btn-outline-primary py-0 dp-relist" data-id="${esc(p.id)}">Republicar</button></td></tr>`).join('')}</tbody></table>`
+      : '<span class="small text-muted">No hay publicaciones finalizadas.</span>';
+    document.querySelectorAll('.dp-reactivar').forEach(btn => btn.addEventListener('click', async () => {
+      if (!confirm(`Reactivar ${btn.dataset.id}? Vuelve a estar a la venta con el precio y stock que tiene.`)) return;
+      try { const r = await api('/duplicar/api/reactivar', {alias: alias(), item_id: btn.dataset.id, confirmado: true}); alert(`${r.item_id}: ${r.status}`); }
+      catch (e) { alert(e.message); }
+      cargarRepublicables();
+    }));
+    document.querySelectorAll('.dp-relist').forEach(btn => btn.addEventListener('click', async () => {
+      const tr = btn.closest('tr'), precio = tr.querySelector('.dp-rp-precio').value, cantidad = tr.querySelector('.dp-rp-cant').value;
+      if (!confirm(`Republicar ${btn.dataset.id} a ${pesos(precio)} con ${cantidad} unidades? ML crea una publicación nueva y queda activa.`)) return;
+      try {
+        const r = await api('/duplicar/api/relist', {alias: alias(), item_id: btn.dataset.id, precio, cantidad, confirmado: true});
+        alert(`Republicada: ${r.item_nuevo}` + (r.aviso ? '\n\n' + r.aviso : ''));
+      } catch (e) { alert(e.message); }
+      cargarRepublicables();
+    }));
+  }
+
+  $('dpCargar').addEventListener('click', cargarOrigen);
+  $('dpItemSel').addEventListener('change', () => { $('dpItemId').value = ''; cargarOrigen(); });
+  $('dpCalcular').addEventListener('click', () => calcular(false));
+  $('dpGuardar').addEventListener('click', guardar);
+  $('btnTabRepub').addEventListener('shown.bs.tab', cargarRepublicables);
+  $('dpAlias').addEventListener('change', () => {
+    CTX = null; $('dpOrigen').innerHTML = '';
+    ['dpParamsCard', 'dpResCard'].forEach(x => $(x).classList.add('d-none'));
+    cargarItems(); cargarBorradores();
+    if ($('btnTabRepub').classList.contains('active')) cargarRepublicables();
+  });
+  cargarItems(); cargarBorradores();
+})();
+</script>
+{% endblock %}
