@@ -34,6 +34,7 @@ ESCALON_PUB3 = 4                    # Clasica con interes bajo (pcj-co-funded)
 ROI_OBJETIVO_DEFAULT = 120.0
 MAX_ITEMS_POR_UP = 30               # limite documentado por ML
 MARGEN_MINIMO = pm.MARGEN_MINIMO_ACEPTABLE
+TERMINOS_GARANTIA = ('WARRANTY_TYPE', 'WARRANTY_TIME')
 
 
 class DuplicadorError(Exception):
@@ -125,43 +126,143 @@ def calcular(costo, cargos: pm.Cargos, tasas: dict, escalon_pub2: int,
     return out
 
 
+def calcular_variantes(variantes: list[dict], costos: dict, cargos: pm.Cargos, tasas: dict, escalon_pub2: int,
+                       roi_objetivo: float = ROI_OBJETIVO_DEFAULT, precios: dict | None = None) -> list[dict]:
+    """Pub 2 / Pub 3 para cada variante elegida de la familia.
+
+    `variantes` son entradas de familia(); `costos` es {user_product_id: costo}.
+    `precios` editados vienen con clave "UP|perfil". Una variante sin costo o
+    sin publicacion propia no se calcula y lo dice; las demas siguen.
+    """
+    precios = precios or {}
+    out = []
+    for v in variantes:
+        up = v['user_product_id']
+        g = {'user_product_id': up, 'variante': v.get('variante'), 'thumbnail': v.get('thumbnail'),
+             'origen_id': (v.get('origen') or {}).get('id'), 'titulo': (v.get('origen') or {}).get('titulo', ''),
+             'filas': [], 'error': None}
+        if not v.get('origen'):
+            g['error'] = 'No tiene publicación propia (solo catálogo o ninguna activa): no hay de dónde duplicar.'
+        else:
+            try:
+                editados = {k.split('|', 1)[1]: val for k, val in precios.items() if k.startswith(up + '|')}
+                filas = calcular(costos.get(up), cargos, tasas, escalon_pub2, roi_objetivo, editados)
+                for f in filas:
+                    oc = condicion_ocupada(v.get('publicaciones') or [], f['escalon'])
+                    f['ocupada_por'] = oc['id'] if oc else None
+                    f['clave'] = f'{up}|{f["perfil"]}'
+                g['filas'] = filas
+            except DuplicadorError as e:
+                g['error'] = str(e)
+        out.append(g)
+    return out
+
+
 def condicion_ocupada(existentes: list[dict], escalon: int) -> dict | None:
-    """El item del mismo UP que ya tiene esa condicion de venta, si hay uno.
-    Mira lo que existe en ML de verdad, asi que tambien detecta copias hechas
-    a mano o desde otra herramienta (UpSeller)."""
-    return next((e for e in existentes if e.get('escalon') == escalon), None)
+    """El item propio (no de catalogo) del mismo UP que ya tiene esa condicion
+    de venta, si hay uno. Mira lo que existe en ML de verdad, asi que tambien
+    detecta copias hechas a mano o desde otra herramienta (UpSeller). La de
+    catalogo no cuenta: compite por buy box con su propio precio, no es la
+    publicacion propia que se esta armando."""
+    return next((e for e in existentes if e.get('escalon') == escalon and not e.get('catalog_listing')), None)
 
 
 # ── Lectura de ML ────────────────────────────────────────────────────────────
 
-_ATRIBUTOS = 'id,title,price,status,user_product_id,family_id,listing_type_id,tags,category_id,domain_id,currency_id,catalog_listing,seller_id,sale_terms'
+_ATRIBUTOS = ('id,title,price,status,user_product_id,family_id,listing_type_id,tags,category_id,domain_id,'
+              'currency_id,catalog_listing,seller_id,sale_terms,available_quantity,thumbnail,secure_thumbnail,attributes')
+_ATRIBUTOS_VARIANTE = ('COLOR', 'SIZE', 'MAIN_COLOR', 'FLAVOR', 'VOLUME_CAPACITY', 'UNITS_PER_PACK')   # sin MODEL: es igual en toda la familia
 
 
-def items_del_up(client, seller_id, user_product_id: str) -> list[dict]:
-    """Items activos y pausados del mismo User Product, en vivo."""
+def _buscar(client, seller, params) -> list:
+    for intento in (1, 2):   # ML devuelve 500 de forma intermitente en este search (visto 2026-10-14)
+        try:
+            return (client._get(f'/users/{seller}/items/search', params=params) or {}).get('results') or []
+        except Exception as e:
+            if intento == 2:
+                raise DuplicadorError(f'ML no respondió al buscar las publicaciones de este producto ({e}). '
+                                      'Sin esa verificación no se sigue: probá de nuevo en un rato.')
+
+
+def etiqueta_variante(item: dict) -> str:
+    """Lo que distingue a esta variante de sus hermanas (color, talle...)."""
+    vals = [a.get('value_name') for a in item.get('attributes') or []
+            if a.get('id') in _ATRIBUTOS_VARIANTE and a.get('value_name')]
+    return ' · '.join(dict.fromkeys(vals)) or item.get('title', '')
+
+
+def items_de_ups(client, seller, user_product_ids: list[str]) -> list[dict]:
+    """Items activos y pausados de esos User Products, en vivo."""
     ids = []
-    for status in ('active', 'paused'):
-        params = {'user_product_id': user_product_id, 'status': status}
-        for intento in (1, 2):   # ML devuelve 500 de forma intermitente en este search (visto 2026-10-14)
-            try:
-                data = client._get(f'/users/{seller_id}/items/search', params=params) or {}
-                break
-            except Exception as e:
-                if intento == 2:
-                    raise DuplicadorError(f'ML no respondió al buscar las publicaciones de este producto ({e}). '
-                                          'Sin esa verificación no se sigue: probá de nuevo en un rato.')
-        ids += [i for i in data.get('results') or [] if i not in ids]
-    out = []
+    for i in range(0, len(user_product_ids), 10):
+        lote = ','.join(user_product_ids[i:i + 10])
+        for status in ('active', 'paused'):
+            ids += [x for x in _buscar(client, seller, {'user_product_id': lote, 'status': status}) if x not in ids]
+    ups, out = set(user_product_ids), []
     for i in range(0, len(ids), 20):
         entries = client._get('/items', params={'ids': ','.join(ids[i:i + 20]), 'attributes': _ATRIBUTOS}) or []
         for e in entries:
             b = e.get('body') or {}
-            if e.get('code') == 200 and b.get('user_product_id') == user_product_id:
+            if e.get('code') == 200 and b.get('user_product_id') in ups:
                 esc = escalon_de(b.get('listing_type_id'), b.get('tags'))
-                out.append({'id': b['id'], 'precio': float(b.get('price') or 0), 'status': b.get('status'),
+                out.append({'id': b['id'], 'user_product_id': b['user_product_id'], 'titulo': b.get('title', ''),
+                            'precio': float(b.get('price') or 0), 'status': b.get('status'),
                             'listing_type_id': b.get('listing_type_id'), 'escalon': esc,
-                            'cuotas': etiqueta_escalon(esc), 'catalog_listing': bool(b.get('catalog_listing'))})
+                            'cuotas': etiqueta_escalon(esc), 'catalog_listing': bool(b.get('catalog_listing')),
+                            'stock': b.get('available_quantity'), 'variante': etiqueta_variante(b),
+                            'thumbnail': b.get('secure_thumbnail') or b.get('thumbnail')})
     return out
+
+
+def items_del_up(client, seller, user_product_id: str) -> list[dict]:
+    return items_de_ups(client, seller, [user_product_id])
+
+
+def familia(client, item: dict) -> list[dict]:
+    """Todas las variantes (User Products) de la familia del item, cada una
+    con sus publicaciones y la que sirve de Pub 1: la propia (no catalogo)
+    sin cuotas si existe, si no la primera propia."""
+    ups = [item['user_product_id']]
+    if item.get('family_id'):
+        try:
+            fam = client._get(f"/user-products-families/{item['family_id']}/user-products") or {}
+            ups = list(dict.fromkeys([item['user_product_id']] + (fam.get('user_products_ids') or [])))
+        except Exception:
+            pass   # sin la familia se sigue con la variante cargada; la pantalla lo muestra
+    items = items_de_ups(client, seller_id(client), ups)
+    out = []
+    for up in ups:
+        de_up = [x for x in items if x['user_product_id'] == up]
+        propias = [x for x in de_up if not x['catalog_listing']]
+        if up == item['user_product_id']:
+            origen = next((x for x in propias if x['id'] == item['id']), None)
+        else:
+            origen = next((x for x in propias if x['escalon'] == 0), None) or (propias[0] if propias else None)
+        out.append({'user_product_id': up, 'es_la_cargada': up == item['user_product_id'],
+                    'variante': (origen or (de_up[0] if de_up else {})).get('variante', up),
+                    'thumbnail': (origen or (de_up[0] if de_up else {})).get('thumbnail'),
+                    'stock': (origen or (de_up[0] if de_up else {})).get('stock'),
+                    'origen': origen, 'publicaciones': de_up})
+    return out
+
+
+def detalle(client, item: dict) -> dict:
+    """Todo lo que la copia hereda del producto, para verlo antes de duplicar."""
+    try:
+        descripcion = (client._get(f"/items/{item['id']}/description") or {}).get('plain_text') or ''
+    except Exception:
+        descripcion = None
+    envio = item.get('shipping') or {}
+    return {
+        'titulo': item.get('title', ''), 'family_name': item.get('family_name') or '',
+        'fotos': [p.get('secure_url') or p.get('url') for p in item.get('pictures') or [] if p.get('secure_url') or p.get('url')],
+        'ficha': [{'nombre': a.get('name') or a.get('id'), 'valor': a.get('value_name')}
+                  for a in item.get('attributes') or [] if a.get('value_name')],
+        'descripcion': descripcion,
+        'garantia': [{'nombre': st.get('name') or st.get('id'), 'valor': st.get('value_name')}
+                     for st in item.get('sale_terms') or [] if st.get('value_name') and st.get('id') in TERMINOS_GARANTIA],
+        'envio': {'gratis': bool(envio.get('free_shipping')), 'logistica': envio.get('logistic_type'), 'modo': envio.get('mode')},
+    }
 
 
 def seller_id(client):
@@ -273,9 +374,12 @@ def aprobar(alias: str, bid: str, client, cargos: pm.Cargos, tasas: dict, costo_
                'listing_type_id': b['listing_type_id']}
     if b['tags']:
         payload['tags'] = list(b['tags'])
-    if origen.get('sale_terms'):
-        payload['sale_terms'] = [{k: v for k, v in st.items() if k in ('id', 'value_id', 'value_name')}
-                                 for st in origen['sale_terms']]
+    # Solo la garantia: en sale_terms ML tambien guarda la campaña de cuotas del
+    # original (ej. 3x_campaign), que no tiene que pasar a una copia con otras cuotas.
+    garantia = [{k: v for k, v in st.items() if k in ('id', 'value_id', 'value_name')}
+                for st in origen.get('sale_terms') or [] if st.get('id') in TERMINOS_GARANTIA]
+    if garantia:
+        payload['sale_terms'] = garantia
     try:
         creado = client._post(f'/user-products/{b["user_product_id"]}/items', payload)
     except Exception as e:

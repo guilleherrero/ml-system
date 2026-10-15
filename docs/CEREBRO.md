@@ -2423,6 +2423,21 @@ con `user_product_id` devolvio 500 una vez (reintento + bloqueo con mensaje si
 persiste), y `/listing_prices` omitio un escalon en una corrida (reintento de
 los faltantes; si sigue faltando no se calcula con un numero inventado).
 
+**Ampliacion 2026-10-15 (pedido de Guille: "deberia mostrarme todo, fotos, variantes"):**
+- Al cargar la Pub 1 se ve lo que hereda la copia: fotos, titulo y family_name,
+  ficha completa, descripcion, garantia y envio (solo lectura: lo sincroniza ML).
+- Variantes: `GET /user-products-families/{family_id}/user-products` trae todos
+  los UP de la familia (cada color es un UP). Se muestran con foto, stock, costo
+  y las publicaciones que ya tienen; se pueden tildar varias y armar Pub 2/Pub 3
+  para cada una, cada una con SU costo. Una sin costo o sin publicacion propia
+  (solo catalogo) se informa y se saltea. Todo se valida antes de guardar el
+  primer borrador. Las de catalogo no bloquean una condicion de venta propia.
+- **Bug encontrado y corregido antes de que pasara:** ML guarda la campaña de
+  cuotas del item en `sale_terms` (`INSTALLMENTS_CAMPAIGN: 3x_campaign`,
+  verificado en MLA1481911017). El duplicador copiaba todos los sale_terms, asi
+  que una Pub 3 de interes bajo hubiera nacido con la campaña de 3 cuotas del
+  original. Ahora solo se copian WARRANTY_TYPE y WARRANTY_TIME (test fijado).
+
 **Pendiente:** la creacion real (`POST /user-products/.../items`) no se probo
 en vivo: la primera la aprueba Guille siguiendo el checklist. Subsecciones B
 (solo duplicar, editando lo que ML permite) y C (otras cuentas, sujeta a

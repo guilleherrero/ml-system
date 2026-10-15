@@ -22,6 +22,13 @@
 .dp-ok  { color:var(--color-success-700); font-weight:600; }
 .dp-bad { color:var(--color-critical-700); font-weight:600; }
 .dp-precio { max-width:120px; }
+.dp-fotos { display:flex; gap:.5rem; overflow-x:auto; padding-bottom:.25rem; }
+.dp-fotos img { height:96px; width:96px; object-fit:contain; background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:8px; flex:0 0 auto; }
+.dp-thumb { height:40px; width:40px; object-fit:contain; background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:6px; }
+.dp-desc { white-space:pre-wrap; font-size:.8rem; max-height:320px; overflow:auto; background:var(--color-neutral-50); border-radius:8px; padding:.6rem .8rem; }
+.dp-chip { display:inline-block; font-size:.68rem; border-radius:6px; padding:.1rem .4rem; margin:.1rem .2rem .1rem 0; background:var(--color-neutral-100); color:var(--color-neutral-700); }
+.dp-chip-cat { background:var(--color-info-100); color:var(--color-info-700); }
+.dp-grupo td { background:var(--color-neutral-50); font-weight:600; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between mb-3">
@@ -56,11 +63,18 @@
     <div id="dpOrigen" class="mt-3"></div>
   </div></div>
 
+  <div class="dp-card d-none" id="dpDetalleCard"><div class="dp-card-header">Lo que hereda la copia (sale del producto en ML, no se edita acá)</div><div class="dp-card-body" id="dpDetalle"></div></div>
+
+  <div class="dp-card d-none" id="dpVarCard"><div class="dp-card-header">Variantes de la familia</div><div class="dp-card-body">
+    <div class="small text-muted mb-2">En ML cada color/variante es un producto propio: cada una necesita su propia Pub 2 y Pub 3. Tildá las que querés duplicar.</div>
+    <div id="dpVariantes"></div>
+  </div></div>
+
   <div class="dp-card d-none" id="dpParamsCard"><div class="dp-card-header">2 · Parámetros (podés editarlos)</div><div class="dp-card-body">
     <div class="row g-2">
       <div class="col-md-3"><label class="dp-etiqueta">Cuotas sin interés de la Pub 2</label><select class="form-select form-select-sm" id="dpEscalon"></select></div>
       <div class="col-md-2"><label class="dp-etiqueta">ROI objetivo %</label><input type="number" class="form-control form-control-sm" id="dpRoi" step="1"></div>
-      <div class="col-md-2"><label class="dp-etiqueta">Costo $</label><input type="number" class="form-control form-control-sm" id="dpCosto" step="1"></div>
+      <div class="col-md-2"><label class="dp-etiqueta">Costo $ (variante cargada)</label><input type="number" class="form-control form-control-sm" id="dpCosto" step="1"></div>
       <div class="col-md-1"><label class="dp-etiqueta">IIBB %</label><input type="number" class="form-control form-control-sm" id="dpIibb" step="0.01"></div>
       <div class="col-md-2"><label class="dp-etiqueta">Percep. IVA %</label><input type="number" class="form-control form-control-sm" id="dpPercep" step="0.01"></div>
       <div class="col-md-2"><label class="dp-etiqueta">Envío $</label><input type="number" class="form-control form-control-sm" id="dpEnvio" step="1"></div>
@@ -99,7 +113,7 @@
   const pesos = n => n == null ? '—' : '$' + Number(n).toLocaleString('es-AR', {maximumFractionDigits: 0});
   const pct = n => n == null ? '—' : Number(n).toLocaleString('es-AR', {maximumFractionDigits: 1}) + '%';
   const alias = () => $('dpAlias').value;
-  let CTX = null, FILAS = [];
+  let CTX = null, GRUPOS = [];
 
   async function api(url, body) {
     const opt = body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {};
@@ -125,69 +139,96 @@
     const id = ($('dpItemId').value || $('dpItemSel').value).trim();
     if (!id) return;
     $('dpOrigen').innerHTML = '<span class="text-muted small">Trayendo datos reales de ML…</span>';
-    ['dpParamsCard', 'dpResCard'].forEach(x => $(x).classList.add('d-none'));
+    ['dpDetalleCard', 'dpVarCard', 'dpParamsCard', 'dpResCard'].forEach(x => $(x).classList.add('d-none'));
     try {
       CTX = await api(`/duplicar/api/contexto?alias=${encodeURIComponent(alias())}&item_id=${encodeURIComponent(id)}`);
     } catch (e) { $('dpOrigen').innerHTML = aviso('bad', e.message); return; }
     const it = CTX.item, m = CTX.margen_actual;
-    let html = `<div class="fw-semibold mb-2">${esc(it.titulo)} <span class="text-muted small">${esc(it.id)} · UP ${esc(it.user_product_id)}</span></div>
+    let html = `<div class="fw-semibold mb-2">${esc(it.titulo)} <span class="text-muted small">${esc(it.id)} · ${esc(it.variante)} · UP ${esc(it.user_product_id)}</span></div>
       <div class="row g-2 mb-2">
         <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">Precio hoy</div><div class="dp-valor">${pesos(it.precio)}</div><div class="small">${esc(it.cuotas)}</div></div></div>
         <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">Costo</div><div class="dp-valor" id="dpCostoTile">${pesos(CTX.costo)}</div></div></div>
         <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">Margen actual</div><div class="dp-valor" id="dpMargenActual">${m ? pct(m.margen_pct) : '—'}</div><div class="small" id="dpGananciaActual">${m ? 'Ganancia ' + pesos(m.ganancia) : ''}</div></div></div>
         <div class="col-6 col-md-3"><div class="dp-tile"><div class="dp-etiqueta">ROI actual</div><div class="dp-valor" id="dpRoiActual">${m ? pct(m.roi_pct) : '—'}</div></div></div>
       </div>`;
-    if (CTX.falta_costo) html += aviso('bad', 'Falta el costo de este producto. Cargalo en Costos (o escribilo abajo): sin costo no se calcula el precio.');
-    html += `<div class="dp-etiqueta mb-1">Publicaciones de este mismo producto en ML (${CTX.existentes.length})</div>
-      <table class="table table-sm dp-tabla mb-0"><tbody>${CTX.existentes.map(e =>
-        `<tr><td>${esc(e.id)}</td><td>${esc(e.cuotas)}</td><td class="text-end">${pesos(e.precio)}</td><td>${esc(e.status)}</td></tr>`).join('')}</tbody></table>`;
+    if (CTX.falta_costo) html += `<div id="dpFaltaCosto">${aviso('bad', 'Falta el costo de esta variante. Cargalo en Costos (o escribilo abajo): sin costo no se calcula el precio.')}</div>`;
     $('dpOrigen').innerHTML = html;
 
+    const d = CTX.detalle;
+    $('dpDetalle').innerHTML = `
+      ${d.fotos.length ? `<div class="dp-fotos mb-3">${d.fotos.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto"></a>`).join('')}</div>` : aviso('warn', 'La publicación no tiene fotos.')}
+      <div class="small mb-2"><span class="dp-etiqueta">Título</span><br>${esc(d.titulo)}
+        ${d.family_name && d.family_name !== d.titulo ? `<br><span class="dp-etiqueta">Nombre de familia</span><br>${esc(d.family_name)}` : ''}</div>
+      <div class="small mb-2"><span class="dp-etiqueta">Garantía</span> ${d.garantia.length ? d.garantia.map(g => esc(g.nombre) + ': ' + esc(g.valor)).join(' · ') : 'Sin garantía cargada'}
+        &nbsp; <span class="dp-etiqueta">Envío</span> ${d.envio.gratis ? 'Gratis' : 'A cargo del comprador'}${d.envio.logistica ? ' · ' + esc(d.envio.logistica) : ''}</div>
+      <details class="mb-2"><summary class="small fw-semibold">Ficha técnica (${d.ficha.length})</summary>
+        <table class="table table-sm dp-tabla mb-0 mt-1"><tbody>${d.ficha.map(a => `<tr><td class="text-muted">${esc(a.nombre)}</td><td>${esc(a.valor)}</td></tr>`).join('')}</tbody></table></details>
+      <details><summary class="small fw-semibold">Descripción</summary>
+        ${d.descripcion === null ? aviso('warn', 'No se pudo leer la descripción. Al aprobar se vuelve a intentar copiarla.')
+          : d.descripcion ? `<div class="dp-desc mt-1">${esc(d.descripcion)}</div>` : aviso('warn', 'La publicación no tiene descripción.')}</details>`;
+    $('dpDetalleCard').classList.remove('d-none');
+
+    $('dpVariantes').innerHTML = `<table class="table table-sm dp-tabla mb-1"><thead><tr><th></th><th></th><th>Variante</th><th>Pub 1</th>
+      <th class="text-end">Stock</th><th class="text-end">Costo</th><th>Publicaciones que ya tiene</th></tr></thead><tbody>${CTX.variantes.map(v => `
+      <tr><td><input type="checkbox" class="form-check-input dp-var" value="${esc(v.user_product_id)}" ${v.es_la_cargada ? 'checked' : ''} ${v.origen ? '' : 'disabled'}></td>
+        <td>${v.thumbnail ? `<img class="dp-thumb" src="${esc(v.thumbnail)}" alt="">` : ''}</td>
+        <td>${esc(v.variante)}${v.es_la_cargada ? ' <span class="dp-chip">cargada</span>' : ''}</td>
+        <td>${v.origen ? esc(v.origen.id) + '<div class="text-muted">' + esc(v.origen.cuotas) + ' · ' + pesos(v.origen.precio) + '</div>' : '<span class="dp-bad">Sin publicación propia</span>'}</td>
+        <td class="text-end">${esc(v.stock ?? '—')}</td>
+        <td class="text-end">${v.costo ? pesos(v.costo) : '<span class="dp-bad">Falta</span>'}</td>
+        <td>${v.publicaciones.map(p => `<span class="dp-chip ${p.catalog_listing ? 'dp-chip-cat' : ''}" title="${esc(p.id)} · ${esc(p.status)}">${esc(p.cuotas)}${p.catalog_listing ? ' (catálogo)' : ''} ${pesos(p.precio)}</span>`).join('')}</td></tr>`).join('')}
+      </tbody></table>
+      ${CTX.variantes.length > 1 ? '<button class="btn btn-sm btn-outline-secondary py-0" id="dpTodas">Tildar todas las variantes</button>' : '<div class="small text-muted">Este producto no tiene otras variantes.</div>'}`;
+    if ($('dpTodas')) $('dpTodas').addEventListener('click', () => document.querySelectorAll('.dp-var:not(:disabled)').forEach(c => c.checked = true));
+    $('dpVarCard').classList.remove('d-none');
+
     $('dpEscalon').innerHTML = '<option value="">Elegí…</option>' + CTX.escalones_pub2.map(o =>
-      `<option value="${o.escalon}" ${o.ocupado_por ? 'disabled' : ''}>${esc(o.cuotas)}${o.ocupado_por ? ' — ya existe (' + esc(o.ocupado_por) + ')' : ''}</option>`).join('');
+      `<option value="${o.escalon}">${esc(o.cuotas)}</option>`).join('');
     $('dpRoi').value = CTX.roi_objetivo;
     $('dpCosto').value = CTX.costo ?? '';
     $('dpIibb').value = CTX.cargos.iibb; $('dpPercep').value = CTX.cargos.percepcion_iva; $('dpEnvio').value = CTX.cargos.envio;
-    $('dpCargosOrigen').textContent = 'Cargos: ' + CTX.cargos_origen + '. Comisiones y costo de cuotas: API de ML para esta categoría.';
+    $('dpCargosOrigen').textContent = 'Cargos: ' + CTX.cargos_origen + '. Comisiones y costo de cuotas: API de ML para esta categoría. El costo escrito acá vale para la variante cargada; las demás usan su costo guardado.';
     $('dpPiso').textContent = CTX.margen_minimo_pct;
     $('dpParamsCard').classList.remove('d-none');
   }
 
+  const variantesElegidas = () => [...document.querySelectorAll('.dp-var:checked')].map(c => c.value);
+
   function cuerpo(extra) {
     const precios = {};
-    document.querySelectorAll('.dp-precio').forEach(i => { if (i.dataset.editado === '1') precios[i.dataset.perfil] = i.value; });
+    document.querySelectorAll('.dp-precio').forEach(i => { if (i.dataset.editado === '1') precios[i.dataset.clave] = i.value; });
     return Object.assign({alias: alias(), item_id: CTX.item.id, escalon_pub2: $('dpEscalon').value,
-      roi_objetivo: $('dpRoi').value, costo: $('dpCosto').value, precios,
+      roi_objetivo: $('dpRoi').value, costo: $('dpCosto').value, precios, variantes: variantesElegidas(),
       cargos: {iibb: $('dpIibb').value, percepcion_iva: $('dpPercep').value, envio: $('dpEnvio').value}}, extra || {});
   }
 
   async function calcular(mantenerEdiciones) {
     if (!mantenerEdiciones) document.querySelectorAll('.dp-precio').forEach(i => i.dataset.editado = '');
     $('dpResAvisos').innerHTML = '';
+    if (!variantesElegidas().length) { $('dpResCard').classList.remove('d-none'); $('dpResBody').innerHTML = ''; $('dpResAvisos').innerHTML = aviso('bad', 'Tildá al menos una variante.'); return; }
     let res;
-    try { res = await api('/duplicar/api/calcular', cuerpo()); FILAS = res.filas; }
+    try { res = await api('/duplicar/api/calcular', cuerpo()); GRUPOS = res.grupos; }
     catch (e) { $('dpResCard').classList.remove('d-none'); $('dpResBody').innerHTML = ''; $('dpResAvisos').innerHTML = aviso('bad', e.message); return; }
     if (res.margen_actual) {
       $('dpMargenActual').textContent = pct(res.margen_actual.margen_pct);
       $('dpGananciaActual').textContent = 'Ganancia ' + pesos(res.margen_actual.ganancia);
       $('dpRoiActual').textContent = pct(res.margen_actual.roi_pct);
-      $('dpCostoTile').textContent = pesos(res.costo);
+      $('dpCostoTile').textContent = pesos($('dpCosto').value);
+      if ($('dpFaltaCosto')) $('dpFaltaCosto').remove();
     }
-    const ocupadaPub3 = CTX.pub3_ocupada_por;
-    $('dpResBody').innerHTML = FILAS.map(f => {
-      const bloqueada = f.perfil === 'pub3' && ocupadaPub3;
-      return `<tr>
-        <td><input type="checkbox" class="form-check-input dp-incluir" value="${f.perfil}" ${bloqueada ? 'disabled' : 'checked'}></td>
-        <td>${esc(f.nombre)}${bloqueada ? '<div class="small dp-bad">Ya existe: ' + esc(ocupadaPub3) + '</div>' : ''}</td>
+    $('dpResBody').innerHTML = GRUPOS.map(g => `
+      <tr class="dp-grupo"><td colspan="8">${g.thumbnail ? `<img class="dp-thumb me-2" src="${esc(g.thumbnail)}" alt="">` : ''}${esc(g.variante)} <span class="text-muted small">desde ${esc(g.origen_id || '—')}</span></td></tr>
+      ${g.error ? `<tr><td colspan="8">${aviso('bad', g.error)}</td></tr>` : g.filas.map(f => `<tr>
+        <td><input type="checkbox" class="form-check-input dp-incluir" value="${esc(f.clave)}" ${f.ocupada_por ? 'disabled' : (f.cumple_piso ? 'checked' : '')}></td>
+        <td>${esc(f.nombre)}${f.ocupada_por ? '<div class="small dp-bad">Ya existe: ' + esc(f.ocupada_por) + '</div>' : ''}</td>
         <td>${esc(f.cuotas)}</td><td class="text-end">${pesos(f.precio_sugerido)}</td>
-        <td><input type="number" class="form-control form-control-sm dp-precio" data-perfil="${f.perfil}" data-editado="${f.editado ? '1' : ''}" value="${f.precio}"></td>
+        <td><input type="number" class="form-control form-control-sm dp-precio" data-clave="${esc(f.clave)}" data-editado="${f.editado ? '1' : ''}" value="${f.precio}"></td>
         <td class="text-end">${pesos(f.ganancia)}</td>
         <td class="text-end ${f.cumple_piso ? 'dp-ok' : 'dp-bad'}">${pct(f.margen_pct)}</td>
-        <td class="text-end">${pct(f.roi_pct)}</td></tr>`;
-    }).join('');
+        <td class="text-end">${pct(f.roi_pct)}</td></tr>`).join('')}`).join('');
     document.querySelectorAll('.dp-precio').forEach(i => i.addEventListener('change', () => { i.dataset.editado = '1'; calcular(true); }));
-    const bajo = FILAS.filter(f => !f.cumple_piso);
-    if (bajo.length) $('dpResAvisos').innerHTML = aviso('bad', bajo.map(f => f.nombre).join(' y ') + ' queda debajo del piso de margen: subí el precio para poder guardarla.');
+    const bajo = GRUPOS.flatMap(g => g.filas.filter(f => !f.cumple_piso && !f.ocupada_por).map(f => g.variante + ' · ' + f.nombre));
+    if (bajo.length) $('dpResAvisos').innerHTML = aviso('bad', 'Debajo del piso de margen (no se guardan): ' + bajo.join(', ') + '. Subí el precio para incluirlas.');
     $('dpResCard').classList.remove('d-none');
   }
 
@@ -275,7 +316,7 @@
   $('btnTabRepub').addEventListener('shown.bs.tab', cargarRepublicables);
   $('dpAlias').addEventListener('change', () => {
     CTX = null; $('dpOrigen').innerHTML = '';
-    ['dpParamsCard', 'dpResCard'].forEach(x => $(x).classList.add('d-none'));
+    ['dpDetalleCard', 'dpVarCard', 'dpParamsCard', 'dpResCard'].forEach(x => $(x).classList.add('d-none'));
     cargarItems(); cargarBorradores();
     if ($('btnTabRepub').classList.contains('active')) cargarRepublicables();
   });

@@ -43,9 +43,14 @@ class FakeML:
 
     def _get(self, path, params=None):
         if path == f'/users/{SELLER}/items/search':
+            ups = params['user_product_id'].split(',')
             return {'results': [i for i, it in self.items.items()
-                                if it.get('user_product_id') == params['user_product_id']
-                                and it.get('status') == params['status']]}
+                                if it.get('user_product_id') in ups and it.get('status') == params['status']]}
+        if path.startswith('/user-products-families/'):
+            fam = path.split('/')[2]
+            return {'family_id': fam, 'user_products_ids': list(dict.fromkeys(
+                it['user_product_id'] for it in self.items.values()
+                if str(it.get('family_id')) == fam and it.get('user_product_id')))}
         if path == '/items':
             return [{'code': 200, 'body': dict(self.items[i])} for i in params['ids'].split(',')]
         if path.endswith('/description'):
@@ -65,10 +70,12 @@ class FakeML:
 
 
 def _origen(**extra):
-    base = {'id': 'PUB1', 'title': 'Cortador', 'seller_id': SELLER, 'user_product_id': UP, 'price': 60000,
+    base = {'id': 'PUB1', 'title': 'Cortador', 'seller_id': SELLER, 'user_product_id': UP, 'family_id': 7, 'price': 60000,
+            'attributes': [{'id': 'COLOR', 'value_name': 'Rojo'}],
             'listing_type_id': 'gold_special', 'tags': [], 'status': 'active', 'category_id': 'MLA1',
             'domain_id': 'MLA-X', 'currency_id': 'ARS',
-            'sale_terms': [{'id': 'WARRANTY_TYPE', 'value_id': '2230280', 'value_name': 'Garantía del vendedor', 'x': 1}]}
+            'sale_terms': [{'id': 'WARRANTY_TYPE', 'value_id': '2230280', 'value_name': 'Garantía del vendedor', 'x': 1},
+                           {'id': 'INSTALLMENTS_CAMPAIGN', 'value_name': '3x_campaign'}]}
     base.update(extra)
     return base
 
@@ -149,8 +156,9 @@ class TestBorradoresYAprobacion(unittest.TestCase):
         # Fotos, ficha, titulo y stock salen del UP: no se mandan ni se tocan
         for prohibido in ('title', 'pictures', 'attributes', 'available_quantity', 'description'):
             self.assertNotIn(prohibido, payload)
-        self.assertEqual(payload['sale_terms'][0], {'id': 'WARRANTY_TYPE', 'value_id': '2230280',
-                                                    'value_name': 'Garantía del vendedor'})
+        # Solo la garantia: la campaña de cuotas del original no pasa a la copia
+        self.assertEqual(payload['sale_terms'], [{'id': 'WARRANTY_TYPE', 'value_id': '2230280',
+                                                  'value_name': 'Garantía del vendedor'}])
         # La descripcion no se comparte entre items: se copia aparte
         self.assertEqual(self.ml.posts[1], (f'/items/{r["item_creado"]}/description',
                                             {'plain_text': 'Descripcion original'}))
@@ -188,6 +196,61 @@ class TestBorradoresYAprobacion(unittest.TestCase):
         for iid in ('AJENA', 'VIEJA', 'CATA', 'NOEXISTE'):
             with self.assertRaises(dup.DuplicadorError):
                 dup.leer_origen(self.ml, iid)
+
+
+class TestVariantes(unittest.TestCase):
+    """Cada color es otro User Product de la misma familia: cada uno necesita
+    su propia Pub 2 y Pub 3, con su propio costo."""
+
+    def setUp(self):
+        self.ml = FakeML({
+            'PUB1': _origen(),
+            'NEGRO1': _origen(id='NEGRO1', user_product_id='MLAU2', attributes=[{'id': 'COLOR', 'value_name': 'Negro'}]),
+            'NEGRO6': _origen(id='NEGRO6', user_product_id='MLAU2', listing_type_id='gold_pro', tags=[],
+                              attributes=[{'id': 'COLOR', 'value_name': 'Negro'}]),
+            'CATA12': _origen(id='CATA12', user_product_id='MLAU2', listing_type_id='gold_pro', tags=['12x_campaign'],
+                              catalog_listing=True, attributes=[{'id': 'COLOR', 'value_name': 'Negro'}]),
+            'SOLOCAT': _origen(id='SOLOCAT', user_product_id='MLAU3', catalog_listing=True,
+                               attributes=[{'id': 'COLOR', 'value_name': 'Azul'}]),
+        })
+
+    def test_familia_trae_todas_las_variantes_con_su_pub1(self):
+        fam = dup.familia(self.ml, self.ml.get_item('PUB1'))
+        por_up = {v['user_product_id']: v for v in fam}
+        self.assertEqual(set(por_up), {UP, 'MLAU2', 'MLAU3'})
+        self.assertTrue(por_up[UP]['es_la_cargada'])
+        self.assertEqual(por_up['MLAU2']['variante'], 'Negro')
+        self.assertEqual(por_up['MLAU2']['origen']['id'], 'NEGRO1')     # la sin cuotas, no la de 6
+        self.assertIsNone(por_up['MLAU3']['origen'])                    # solo catalogo: no hay de donde duplicar
+
+    def test_calcula_cada_variante_con_su_costo_y_sus_ocupadas(self):
+        fam = dup.familia(self.ml, self.ml.get_item('PUB1'))
+        grupos = {g['user_product_id']: g for g in dup.calcular_variantes(
+            fam, {UP: COSTO, 'MLAU2': COSTO * 2, 'MLAU3': COSTO}, CARGOS, TASAS, 6)}
+        rojo, negro, azul = grupos[UP], grupos['MLAU2'], grupos['MLAU3']
+        self.assertIsNone(rojo['error'])
+        self.assertGreater(negro['filas'][0]['precio'], rojo['filas'][0]['precio'])   # mas costo, mas precio
+        self.assertEqual(negro['filas'][0]['ocupada_por'], 'NEGRO6')                    # ya tiene 6 cuotas propia
+        self.assertIsNone(rojo['filas'][0]['ocupada_por'])
+        self.assertTrue(azul['error'])
+        # La de catalogo con 12 cuotas no bloquea una propia con 12 cuotas
+        g12 = dup.calcular_variantes([v for v in fam if v['user_product_id'] == 'MLAU2'], {'MLAU2': COSTO}, CARGOS, TASAS, 12)
+        self.assertIsNone(g12[0]['filas'][0]['ocupada_por'])
+
+    def test_variante_sin_costo_no_se_calcula_y_las_demas_si(self):
+        fam = dup.familia(self.ml, self.ml.get_item('PUB1'))
+        grupos = {g['user_product_id']: g for g in dup.calcular_variantes(fam, {UP: COSTO}, CARGOS, TASAS, 6)}
+        self.assertIn('costo', grupos['MLAU2']['error'])
+        self.assertEqual(len(grupos[UP]['filas']), 2)
+
+    def test_detalle_muestra_lo_que_hereda(self):
+        item = _origen(pictures=[{'secure_url': 'https://x/1.jpg'}], shipping={'free_shipping': True, 'logistic_type': 'fulfillment'},
+                       attributes=[{'id': 'BRAND', 'name': 'Marca', 'value_name': 'Biobella'}, {'id': 'X', 'name': 'Vacio', 'value_name': None}])
+        d = dup.detalle(self.ml, item)
+        self.assertEqual(d['fotos'], ['https://x/1.jpg'])
+        self.assertEqual(d['ficha'], [{'nombre': 'Marca', 'valor': 'Biobella'}])
+        self.assertEqual(d['descripcion'], 'Descripcion original')
+        self.assertTrue(d['envio']['gratis'])
 
 
 if __name__ == '__main__':

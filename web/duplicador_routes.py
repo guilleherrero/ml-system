@@ -104,6 +104,19 @@ def pantalla():
     return render_template('duplicador.html')
 
 
+def _costos_por_up(variantes: list[dict]) -> dict:
+    """Costo de cada variante: el de su Pub 1 y, si no, el de cualquier otra
+    publicacion propia del mismo UP (es el mismo producto fisico)."""
+    from modules.stock_rentabilidad import _load_costos
+    costos = _load_costos()
+    out = {}
+    for v in variantes:
+        ids = ([v['origen']['id']] if v.get('origen') else []) + [x['id'] for x in v.get('publicaciones') or []]
+        c = next(((costos.get(i) or {}).get('costo') for i in ids if (costos.get(i) or {}).get('costo') not in (None, '', 0)), None)
+        out[v['user_product_id']] = float(c) if c else None
+    return out
+
+
 @bp.route('/api/contexto')
 def api_contexto():
     alias, item_id = request.args.get('alias', ''), request.args.get('item_id', '').strip().upper()
@@ -112,10 +125,15 @@ def api_contexto():
         item = dup.leer_origen(client, item_id)
         tasas = _tasas(client, item)
         cargos, cargos_origen = _cargos(alias, item_id)
-        existentes = dup.items_del_up(client, dup.seller_id(client), item['user_product_id'])
+        variantes = dup.familia(client, item)
     except dup.DuplicadorError as e:
         return _error(e)
-    costo = _costo(item_id)
+    costos = _costos_por_up(variantes)
+    costo = costos.get(item['user_product_id'])
+    for v in variantes:
+        v['costo'] = costos.get(v['user_product_id'])
+    cargada = next(v for v in variantes if v['es_la_cargada'])
+    existentes = cargada['publicaciones']
 
     esc1 = dup.escalon_de(item.get('listing_type_id'), item.get('tags'))
     actual = None
@@ -127,49 +145,60 @@ def api_contexto():
     return jsonify({'ok': True,
         'item': {'id': item['id'], 'titulo': item.get('title', ''), 'precio': float(item.get('price') or 0),
                  'cuotas': dup.etiqueta_escalon(esc1), 'escalon': esc1,
-                 'user_product_id': item['user_product_id'], 'status': item.get('status')},
+                 'user_product_id': item['user_product_id'], 'status': item.get('status'),
+                 'variante': cargada.get('variante')},
+        'detalle': dup.detalle(client, item),
+        'variantes': variantes,
         'costo': costo,
         'falta_costo': costo is None,
         'margen_actual': actual,
         'cargos': cargos.__dict__, 'cargos_origen': cargos_origen,
         'tasas': {str(k): v for k, v in tasas.items()},
         'existentes': existentes,
-        'escalones_pub2': [{'escalon': e, 'cuotas': dup.etiqueta_escalon(e),
-                            'ocupado_por': (dup.condicion_ocupada(existentes, e) or {}).get('id')}
-                           for e in dup.ESCALONES_PUB2],
-        'pub3_ocupada_por': (dup.condicion_ocupada(existentes, dup.ESCALON_PUB3) or {}).get('id'),
+        'escalones_pub2': [{'escalon': e, 'cuotas': dup.etiqueta_escalon(e)} for e in dup.ESCALONES_PUB2],
         'roi_objetivo': dup.ROI_OBJETIVO_DEFAULT,
         'margen_minimo_pct': dup.MARGEN_MINIMO * 100})
 
 
 def _calcular_desde_body(body: dict):
+    """Calcula para las variantes elegidas (por defecto, solo la cargada).
+    El costo escrito en pantalla vale para la variante cargada; las demas
+    usan su costo guardado."""
     alias, item_id = body.get('alias', ''), (body.get('item_id') or '').strip().upper()
     client = _client(alias)
     item = dup.leer_origen(client, item_id)
     tasas = _tasas(client, item)
     base, _ = _cargos(alias, item_id)
     cargos = _cargos_con_ediciones(base, body.get('cargos'))
-    costo = body.get('costo') if body.get('costo') not in (None, '') else _costo(item_id)
     try:
         escalon = int(body.get('escalon_pub2'))
     except (TypeError, ValueError):
         raise dup.DuplicadorError('Elegí las cuotas de la Pub 2.')
-    roi = body.get('roi_objetivo') if body.get('roi_objetivo') not in (None, '') else dup.ROI_OBJETIVO_DEFAULT
-    filas = dup.calcular(costo, cargos, tasas, escalon, float(roi), body.get('precios') or {})
+    roi = float(body.get('roi_objetivo') if body.get('roi_objetivo') not in (None, '') else dup.ROI_OBJETIVO_DEFAULT)
+
+    variantes = dup.familia(client, item)
+    elegidas = set(body.get('variantes') or [item['user_product_id']])
+    variantes = [v for v in variantes if v['user_product_id'] in elegidas]
+    costos = _costos_por_up(variantes)
+    if body.get('costo') not in (None, ''):
+        costos[item['user_product_id']] = float(body['costo'])
+    grupos = dup.calcular_variantes(variantes, costos, cargos, tasas, escalon, roi, body.get('precios') or {})
+
     actual = None
+    c1 = costos.get(item['user_product_id'])
     esc1 = dup.escalon_de(item.get('listing_type_id'), item.get('tags'))
-    if esc1 is not None and tasas.get(esc1):
-        actual = dup.evaluar_precio(float(item.get('price') or 0), esc1, tasas, cargos, float(costo))
-    return alias, item, filas, float(costo), float(roi), actual
+    if c1 and esc1 is not None and tasas.get(esc1):
+        actual = dup.evaluar_precio(float(item.get('price') or 0), esc1, tasas, cargos, c1)
+    return alias, item, grupos, costos, roi, actual
 
 
 @bp.route('/api/calcular', methods=['POST'])
 def api_calcular():
     try:
-        _, _, filas, costo, roi, actual = _calcular_desde_body(request.get_json() or {})
+        _, _, grupos, costos, roi, actual = _calcular_desde_body(request.get_json() or {})
     except dup.DuplicadorError as e:
         return _error(e)
-    return jsonify({'ok': True, 'filas': filas, 'costo': costo, 'roi_objetivo': roi, 'margen_actual': actual})
+    return jsonify({'ok': True, 'grupos': grupos, 'roi_objetivo': roi, 'margen_actual': actual})
 
 
 @bp.route('/api/borradores', methods=['GET'])
@@ -180,14 +209,31 @@ def api_borradores():
 
 @bp.route('/api/borradores', methods=['POST'])
 def api_crear_borradores():
+    """Guarda los borradores elegidos de todas las variantes, o ninguno: todo
+    se valida antes de guardar el primero."""
     body = request.get_json() or {}
     try:
-        alias, item, filas, costo, roi, _ = _calcular_desde_body(body)
-        incluir = set(body.get('incluir') or ['pub2', 'pub3'])
-        filas = [f for f in filas if f['perfil'] in incluir]
-        if not filas:
+        alias, _, grupos, costos, roi, _ = _calcular_desde_body(body)
+        incluir = set(body.get('incluir') or [])
+        pendientes = {(b['user_product_id'], b['escalon']) for b in dup.listar_borradores(alias) if b['estado'] == 'pendiente'}
+        lotes = []
+        for g in grupos:
+            filas = [f for f in g['filas'] if f['clave'] in incluir]
+            for f in filas:
+                if f.get('ocupada_por'):
+                    raise dup.DuplicadorError(f'{g["variante"]}: ya existe {f["cuotas"]} ({f["ocupada_por"]}).')
+                if not f['cumple_piso']:
+                    raise dup.DuplicadorError(f'{g["variante"]} · {f["nombre"]}: margen {f["margen_pct"]}%, debajo del piso. No se guarda nada.')
+                if (g['user_product_id'], f['escalon']) in pendientes:
+                    raise dup.DuplicadorError(f'{g["variante"]}: ya hay un borrador pendiente de {f["cuotas"]}.')
+            if filas:
+                lotes.append((g, filas))
+        if not lotes:
             raise dup.DuplicadorError('Elegí al menos una publicación para guardar.')
-        nuevos = dup.crear_borradores(alias, item, filas, costo, roi, _usuario())
+        nuevos = []
+        for g, filas in lotes:
+            origen = {'id': g['origen_id'], 'title': g['titulo'] or g['variante'], 'user_product_id': g['user_product_id']}
+            nuevos += dup.crear_borradores(alias, origen, filas, costos[g['user_product_id']], roi, _usuario())
     except dup.DuplicadorError as e:
         return _error(e)
     return jsonify({'ok': True, 'borradores': nuevos})
