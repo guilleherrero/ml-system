@@ -10,6 +10,7 @@ import os
 import sys
 import unittest
 import uuid
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -53,12 +54,28 @@ class FakeML:
                 if str(it.get('family_id')) == fam and it.get('user_product_id')))}
         if path == '/items':
             return [{'code': 200, 'body': dict(self.items[i])} for i in params['ids'].split(',')]
+        if path.startswith('/categories/'):
+            return {'settings': {'max_pictures_per_item': 4}}
         if path.endswith('/description'):
             return {'plain_text': self.descripcion}
         raise AssertionError(path)
 
+    diagnostico = {}          # picture_id o 'base64' -> lista de problemas
+    puts = None
+
+    def update_item(self, iid, payload):
+        self.puts = (iid, payload)
+        if 'pictures' in payload:
+            self.items[iid]['pictures'] = [{'id': p['id']} for p in payload['pictures']]
+
     def _post(self, path, payload):
         self.posts.append((path, payload))
+        if path == '/moderations/pictures/diagnostic':
+            clave = payload.get('picture_id') or 'base64'
+            probs = self.diagnostico.get(clave, [])
+            return {'diagnostics': [{'picture_type': payload['context']['picture_type'],
+                                     'action': 'diagnostic' if probs else 'empty',
+                                     'detections': [{'name': 'x', 'wordings': [{'kind': 'REMEDY_SHORT', 'value': t}]} for t in probs]}]}
         if path.startswith('/user-products/'):
             self._n += 1
             nid = f'NUEVO{self._n}'
@@ -251,6 +268,84 @@ class TestVariantes(unittest.TestCase):
         self.assertEqual(d['ficha'], [{'nombre': 'Marca', 'valor': 'Biobella'}])
         self.assertEqual(d['descripcion'], 'Descripcion original')
         self.assertTrue(d['envio']['gratis'])
+
+
+class TestDescripcionYFotos(unittest.TestCase):
+
+    def setUp(self):
+        self.alias = f'TestDupDF_{uuid.uuid4().hex[:8]}'
+        self.ml = FakeML({'PUB1': _origen(pictures=[{'id': 'P1'}, {'id': 'P2'}, {'id': 'P3'}])})
+        self.ml.diagnostico = {}
+
+    def tearDown(self):
+        p = dup._path(self.alias)
+        if os.path.exists(p):
+            os.remove(p)
+
+    def test_descripcion_sin_emojis_ni_html(self):
+        self.assertEqual(dup.validar_descripcion('  Envío gratis\r\nÑandú 100%  '), 'Envío gratis\nÑandú 100%')
+        for mala in ('Oferta 🔥', 'Listo ✅', '<p>hola</p>'):
+            with self.assertRaises(dup.DuplicadorError):
+                dup.validar_descripcion(mala)
+
+    def test_la_copia_usa_la_descripcion_editada(self):
+        filas = dup.calcular(COSTO, CARGOS, TASAS, 12)
+        b = dup.crear_borradores(self.alias, self.ml.get_item('PUB1'), filas, COSTO, 120)[0]
+        dup.editar_descripcion(self.alias, b['id'], 'Texto propio de la copia')
+        r = dup.aprobar(self.alias, b['id'], self.ml, CARGOS, TASAS, COSTO)
+        self.assertIn((f'/items/{r["item_creado"]}/description', {'plain_text': 'Texto propio de la copia'}), self.ml.posts)
+        with self.assertRaises(dup.DuplicadorError):            # ya aprobado: no se edita
+            dup.editar_descripcion(self.alias, b['id'], 'otra')
+
+    def test_restaurar_vuelve_a_la_del_original(self):
+        filas = dup.calcular(COSTO, CARGOS, TASAS, 12)
+        b = dup.crear_borradores(self.alias, self.ml.get_item('PUB1'), filas, COSTO, 120)[0]
+        dup.editar_descripcion(self.alias, b['id'], 'cambiada')
+        self.assertIsNone(dup.editar_descripcion(self.alias, b['id'], None)['descripcion'])
+
+    def test_reordenar_fotos_existentes(self):
+        r = dup.aplicar_fotos(self.ml, 'PUB1', [{'id': 'P3'}, {'id': 'P1'}])
+        self.assertEqual(self.ml.puts, ('PUB1', {'pictures': [{'id': 'P3'}, {'id': 'P1'}]}))
+        self.assertEqual(r['avisos'], [])
+        # Solo se diagnostica la que pasa a ser principal
+        diags = [p for p in self.ml.posts if p[0] == '/moderations/pictures/diagnostic']
+        self.assertEqual([(d[1]['picture_id'], d[1]['context']['picture_type']) for d in diags], [('P3', 'thumbnail')])
+
+    def test_foto_nueva_con_problemas_no_sube_nada(self):
+        self.ml.diagnostico = {'base64': ['Elimina tus fotos que contienen logos y/o textos.']}
+        nueva = {'nuevo': {'nombre': 'a.jpg', 'mime': 'image/jpeg', 'contenido': b'xx'}}
+        with mock.patch.object(dup, '_subir_foto') as subir:
+            with self.assertRaises(dup.DuplicadorError) as ctx:
+                dup.aplicar_fotos(self.ml, 'PUB1', [{'id': 'P1'}, nueva])
+            subir.assert_not_called()
+        self.assertIn('logos', str(ctx.exception))
+        self.assertIsNone(self.ml.puts)
+
+    def test_foto_nueva_ok_se_sube_y_queda_en_su_lugar(self):
+        nueva = {'nuevo': {'nombre': 'a.png', 'mime': 'image/png', 'contenido': b'xx'}}
+        with mock.patch.object(dup, '_subir_foto', return_value='NUEVA1'):
+            dup.aplicar_fotos(self.ml, 'PUB1', [nueva, {'id': 'P2'}])
+        self.assertEqual(self.ml.puts[1]['pictures'], [{'id': 'NUEVA1'}, {'id': 'P2'}])
+
+    def test_rechazos_de_fotos(self):
+        casos = ([], [{'id': 'AJENA'}], [{'id': 'P1'}] * 5,
+                 [{'nuevo': {'nombre': 'a.gif', 'mime': 'image/gif', 'contenido': b'x'}}],
+                 [{'nuevo': {'nombre': 'g.jpg', 'mime': 'image/jpeg', 'contenido': b'x' * (dup.MAX_BYTES_FOTO + 1)}}])
+        for plan in casos:
+            with self.assertRaises(dup.DuplicadorError):
+                dup.aplicar_fotos(self.ml, 'PUB1', plan)
+        self.assertIsNone(self.ml.puts)
+
+    def test_si_el_diagnostico_falla_avisa_y_sigue(self):
+        orig = self.ml._post
+        def falla(path, payload):
+            if path == '/moderations/pictures/diagnostic':
+                raise RuntimeError('500')
+            return orig(path, payload)
+        self.ml._post = falla
+        r = dup.aplicar_fotos(self.ml, 'PUB1', [{'id': 'P2'}, {'id': 'P1'}])
+        self.assertEqual(len(r['avisos']), 1)
+        self.assertIsNotNone(self.ml.puts)
 
 
 if __name__ == '__main__':

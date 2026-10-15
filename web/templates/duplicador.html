@@ -28,6 +28,13 @@
 .dp-desc { white-space:pre-wrap; font-size:.8rem; max-height:320px; overflow:auto; background:var(--color-neutral-50); border-radius:8px; padding:.6rem .8rem; }
 .dp-chip { display:inline-block; font-size:.68rem; border-radius:6px; padding:.1rem .4rem; margin:.1rem .2rem .1rem 0; background:var(--color-neutral-100); color:var(--color-neutral-700); }
 .dp-chip-cat { background:var(--color-info-100); color:var(--color-info-700); }
+.dp-fe-grid { display:flex; flex-wrap:wrap; gap:.6rem; }
+.dp-fe-item { width:132px; border:1px solid var(--color-neutral-200); border-radius:10px; padding:.35rem; background:var(--color-neutral-0); }
+.dp-fe-item img { width:100%; height:110px; object-fit:contain; border-radius:6px; }
+.dp-fe-item.principal { border-color:var(--color-success-700); }
+.dp-fe-btns { display:flex; justify-content:space-between; margin-top:.25rem; }
+.dp-fe-btns button { padding:0 .35rem; font-size:.75rem; }
+.dp-fe-estado { font-size:.68rem; line-height:1.2; margin-top:.2rem; }
 .dp-grupo td { background:var(--color-neutral-50); font-weight:600; }
 </style>
 
@@ -63,7 +70,7 @@
     <div id="dpOrigen" class="mt-3"></div>
   </div></div>
 
-  <div class="dp-card d-none" id="dpDetalleCard"><div class="dp-card-header">Lo que hereda la copia (sale del producto en ML, no se edita acá)</div><div class="dp-card-body" id="dpDetalle"></div></div>
+  <div class="dp-card d-none" id="dpDetalleCard"><div class="dp-card-header">Lo que hereda la copia (fotos y ficha son del producto en ML)</div><div class="dp-card-body" id="dpDetalle"></div></div>
 
   <div class="dp-card d-none" id="dpVarCard"><div class="dp-card-header">Variantes de la familia</div><div class="dp-card-body">
     <div class="small text-muted mb-2">En ML cada color/variante es un producto propio: cada una necesita su propia Pub 2 y Pub 3. Tildá las que querés duplicar.</div>
@@ -156,7 +163,9 @@
 
     const d = CTX.detalle;
     $('dpDetalle').innerHTML = `
-      ${d.fotos.length ? `<div class="dp-fotos mb-3">${d.fotos.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto"></a>`).join('')}</div>` : aviso('warn', 'La publicación no tiene fotos.')}
+      ${d.fotos.length ? `<div class="dp-fotos mb-2">${d.fotos.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto"></a>`).join('')}</div>` : aviso('warn', 'La publicación no tiene fotos.')}
+      <button class="btn btn-sm btn-outline-primary py-0 mb-3" id="dpFeAbrir"><i class="bi bi-images me-1"></i>Editar fotos del producto</button>
+      <div id="dpFotosEditor" class="d-none mb-3"></div>
       <div class="small mb-2"><span class="dp-etiqueta">Título</span><br>${esc(d.titulo)}
         ${d.family_name && d.family_name !== d.titulo ? `<br><span class="dp-etiqueta">Nombre de familia</span><br>${esc(d.family_name)}` : ''}</div>
       <div class="small mb-2"><span class="dp-etiqueta">Garantía</span> ${d.garantia.length ? d.garantia.map(g => esc(g.nombre) + ': ' + esc(g.valor)).join(' · ') : 'Sin garantía cargada'}
@@ -167,6 +176,7 @@
         ${d.descripcion === null ? aviso('warn', 'No se pudo leer la descripción. Al aprobar se vuelve a intentar copiarla.')
           : d.descripcion ? `<div class="dp-desc mt-1">${esc(d.descripcion)}</div>` : aviso('warn', 'La publicación no tiene descripción.')}</details>`;
     $('dpDetalleCard').classList.remove('d-none');
+    $('dpFeAbrir').addEventListener('click', abrirEditorFotos);
 
     $('dpVariantes').innerHTML = `<table class="table table-sm dp-tabla mb-1"><thead><tr><th></th><th></th><th>Variante</th><th>Pub 1</th>
       <th class="text-end">Stock</th><th class="text-end">Costo</th><th>Publicaciones que ya tiene</th></tr></thead><tbody>${CTX.variantes.map(v => `
@@ -240,6 +250,112 @@
     cargarBorradores();
   }
 
+  // ── Editor de fotos del producto ──────────────────────────────────
+  let FE = null;   // {info, fotos:[{id,url} | {archivo:File,url,diag}]}
+
+  async function abrirEditorFotos() {
+    const box = $('dpFotosEditor');
+    box.classList.remove('d-none');
+    box.innerHTML = '<span class="small text-muted">Trayendo las fotos de ML…</span>';
+    let info;
+    try { info = await api(`/duplicar/api/fotos?alias=${encodeURIComponent(alias())}&item_id=${encodeURIComponent(CTX.item.id)}`); }
+    catch (e) { box.innerHTML = aviso('bad', e.message); return; }
+    FE = {info, fotos: info.fotos.map(f => ({id: f.id, url: f.url}))};
+    pintarEditor();
+  }
+
+  function pintarEditor() {
+    const i = FE.info;
+    $('dpFotosEditor').innerHTML = `
+      ${aviso('warn', 'Las fotos son del producto: el cambio se aplica a TODAS sus publicaciones (' + i.publicaciones_afectadas.join(', ') + '), también a la Pub 1. No se puede tener otro orden en cada copia.')}
+      <div class="dp-fe-grid mb-2">${FE.fotos.map((f, n) => `
+        <div class="dp-fe-item ${n === 0 ? 'principal' : ''}">
+          <img src="${esc(f.url)}" alt="Foto ${n + 1}">
+          <div class="small"><b>${n + 1}</b>${n === 0 ? ' · Principal' : ''}${f.archivo ? ' · <span class="dp-chip">nueva</span>' : ''}</div>
+          ${f.archivo ? `<div class="dp-fe-estado ${f.diag && f.diag.problemas && f.diag.problemas.length ? 'dp-bad' : (f.diag && f.diag.validada ? 'dp-ok' : 'text-muted')}">${
+            !f.diag ? 'Revisando con ML…' : f.diag.problemas && f.diag.problemas.length ? esc(f.diag.problemas.join(' ')) : f.diag.validada ? 'ML: sin problemas' : esc(f.diag.error || 'No se pudo validar')}</div>` : ''}
+          <div class="dp-fe-btns">
+            <button class="btn btn-sm btn-outline-secondary dp-fe-mov" data-n="${n}" data-d="-1" ${n === 0 ? 'disabled' : ''} title="Mover antes"><i class="bi bi-arrow-left"></i></button>
+            <button class="btn btn-sm btn-outline-secondary dp-fe-mov" data-n="${n}" data-d="1" ${n === FE.fotos.length - 1 ? 'disabled' : ''} title="Mover después"><i class="bi bi-arrow-right"></i></button>
+            <button class="btn btn-sm btn-outline-danger dp-fe-del" data-n="${n}" title="Quitar"><i class="bi bi-x-lg"></i></button>
+          </div></div>`).join('')}</div>
+      <div class="small text-muted mb-2">${FE.fotos.length} fotos${i.maximo ? ' de ' + i.maximo + ' que admite la categoría' : ''}. JPG o PNG, hasta 10 MB. Cada foto nueva se revisa con el diagnóstico de ML (fondo, tamaño, logos, marcas de agua) antes de subir nada; al aplicar se revisa de nuevo la principal.</div>
+      <label class="btn btn-sm btn-outline-primary py-0 mb-0"><i class="bi bi-plus-lg me-1"></i>Agregar fotos<input type="file" id="dpFeArchivos" accept="image/jpeg,image/png" multiple hidden></label>
+      <button class="btn btn-sm btn-success py-0 ms-2" id="dpFeAplicar"><i class="bi bi-check2 me-1"></i>Aplicar en ML</button>
+      <button class="btn btn-sm btn-outline-secondary py-0 ms-1" id="dpFeCancelar">Cancelar</button>
+      <div id="dpFeAvisos" class="mt-2"></div>`;
+    document.querySelectorAll('.dp-fe-mov').forEach(b => b.addEventListener('click', () => {
+      const n = +b.dataset.n, m = n + (+b.dataset.d); [FE.fotos[n], FE.fotos[m]] = [FE.fotos[m], FE.fotos[n]]; pintarEditor(); }));
+    document.querySelectorAll('.dp-fe-del').forEach(b => b.addEventListener('click', () => { FE.fotos.splice(+b.dataset.n, 1); pintarEditor(); }));
+    $('dpFeArchivos').addEventListener('change', e => agregarFotos([...e.target.files]));
+    $('dpFeCancelar').addEventListener('click', () => { $('dpFotosEditor').classList.add('d-none'); FE = null; });
+    $('dpFeAplicar').addEventListener('click', aplicarFotos);
+  }
+
+  async function agregarFotos(archivos) {
+    for (const a of archivos) {
+      const f = {archivo: a, url: URL.createObjectURL(a), diag: null};
+      FE.fotos.push(f);
+      pintarEditor();
+      const fd = new FormData();
+      fd.append('alias', alias()); fd.append('item_id', CTX.item.id); fd.append('archivo', a);
+      fd.append('principal', FE.fotos.indexOf(f) === 0 ? '1' : '0');
+      try { const r = await fetch('/duplicar/api/fotos/diagnosticar', {method: 'POST', body: fd}); const j = await r.json();
+            f.diag = j.ok ? j : {validada: false, problemas: [], error: j.error}; }
+      catch (e) { f.diag = {validada: false, problemas: [], error: 'No se pudo validar la foto.'}; }
+      pintarEditor();
+    }
+  }
+
+  async function aplicarFotos() {
+    const malas = FE.fotos.filter(f => f.diag && f.diag.problemas && f.diag.problemas.length);
+    if (malas.length) { $('dpFeAvisos').innerHTML = aviso('bad', 'Hay fotos con problemas según ML: quitalas o reemplazalas antes de aplicar.'); return; }
+    if (!FE.fotos.length) { $('dpFeAvisos').innerHTML = aviso('bad', 'Tiene que quedar al menos una foto.'); return; }
+    if (!confirm(`Se van a cambiar las fotos del producto en Mercado Libre.\n\nAfecta a: ${FE.info.publicaciones_afectadas.join(', ')}\nQuedan ${FE.fotos.length} fotos, en el orden que ves.\n\n¿Confirmás?`)) return;
+    const fd = new FormData(), plan = [];
+    fd.append('alias', alias()); fd.append('item_id', CTX.item.id); fd.append('confirmado', 'true');
+    FE.fotos.forEach((f, n) => { if (f.archivo) { fd.append('f' + n, f.archivo); plan.push({archivo: 'f' + n}); } else plan.push({id: f.id}); });
+    fd.append('plan', JSON.stringify(plan));
+    $('dpFeAvisos').innerHTML = '<span class="small text-muted">Revisando y aplicando en ML…</span>';
+    try {
+      const r = await fetch('/duplicar/api/fotos/aplicar', {method: 'POST', body: fd}); const j = await r.json();
+      if (!j.ok) throw new Error(j.error);
+      alert(`Fotos actualizadas (${j.fotos}) en: ${j.publicaciones_afectadas.join(', ')}` + (j.avisos.length ? '\n\nRevisá:\n- ' + j.avisos.join('\n- ') : ''));
+      FE = null; cargarOrigen();
+    } catch (e) { $('dpFeAvisos').innerHTML = aviso('bad', e.message); }
+  }
+
+  // ── Descripción de cada copia ─────────────────────────────────────
+  async function editarDescripcion(b, fila) {
+    const prev = document.getElementById('dpDesc_' + b.id);
+    if (prev) { prev.remove(); return; }
+    const tr = document.createElement('tr'); tr.id = 'dpDesc_' + b.id;
+    tr.innerHTML = '<td colspan="7"><span class="small text-muted">Cargando descripción…</span></td>';
+    fila.after(tr);
+    let texto = b.descripcion;
+    if (texto == null) {
+      try { texto = (await api(`/duplicar/api/descripcion?alias=${encodeURIComponent(alias())}&item_id=${encodeURIComponent(b.item_origen)}`)).texto; }
+      catch (e) { tr.innerHTML = `<td colspan="7">${aviso('bad', e.message)}</td>`; return; }
+    }
+    tr.innerHTML = `<td colspan="7">
+      <div class="small mb-1">${b.descripcion == null ? 'Es la descripción del original: si la cambiás, solo cambia en esta copia.' : 'Descripción editada para esta copia.'} Texto plano, sin emojis (ML los rechaza).</div>
+      <textarea class="form-control form-control-sm mb-1" rows="12">${esc(texto)}</textarea>
+      <button class="btn btn-sm btn-success py-0 dp-desc-guardar">Guardar</button>
+      ${b.descripcion != null ? '<button class="btn btn-sm btn-outline-secondary py-0 ms-1 dp-desc-original">Volver a la del original</button>' : ''}
+      <button class="btn btn-sm btn-outline-secondary py-0 ms-1 dp-desc-cerrar">Cerrar</button>
+      <div class="dp-desc-aviso mt-1"></div></td>`;
+    tr.querySelector('.dp-desc-cerrar').addEventListener('click', () => tr.remove());
+    tr.querySelector('.dp-desc-guardar').addEventListener('click', async () => {
+      try { await api(`/duplicar/api/borradores/${b.id}/descripcion`, {alias: alias(), texto: tr.querySelector('textarea').value}); cargarBorradores(); }
+      catch (e) { tr.querySelector('.dp-desc-aviso').innerHTML = aviso('bad', e.message); }
+    });
+    const orig = tr.querySelector('.dp-desc-original');
+    if (orig) orig.addEventListener('click', async () => {
+      try { await api(`/duplicar/api/borradores/${b.id}/descripcion`, {alias: alias(), restaurar: true}); cargarBorradores(); }
+      catch (e) { tr.querySelector('.dp-desc-aviso').innerHTML = aviso('bad', e.message); }
+    });
+  }
+
   async function cargarBorradores() {
     let j;
     try { j = await api('/duplicar/api/borradores?alias=' + encodeURIComponent(alias())); }
@@ -253,10 +369,13 @@
         <td class="text-end">${pesos(b.precio)}</td><td class="text-end">${pct(b.margen_pct)}</td>
         <td>${b.item_creado ? esc(b.item_creado) : '—'}${(b.avisos || []).map(a => '<div class="dp-bad">' + esc(a) + '</div>').join('')}</td>
         <td class="text-end">${b.estado === 'pendiente' ? `
+          <button class="btn btn-sm btn-outline-primary py-0 dp-desc" data-id="${b.id}"><i class="bi bi-text-paragraph me-1"></i>Descripción${b.descripcion != null ? ' (editada)' : ''}</button>
           <button class="btn btn-sm btn-success py-0 dp-aprobar" data-id="${b.id}"><i class="bi bi-check2 me-1"></i>Aprobar y publicar</button>
           <button class="btn btn-sm btn-outline-secondary py-0 dp-descartar" data-id="${b.id}">Descartar</button>` : ''}</td></tr>`).join('')}
       </tbody></table>`;
     document.querySelectorAll('.dp-aprobar').forEach(btn => btn.addEventListener('click', () => aprobar(btn.dataset.id, j.borradores)));
+    document.querySelectorAll('.dp-desc').forEach(btn => btn.addEventListener('click', () =>
+      editarDescripcion(j.borradores.find(x => x.id === btn.dataset.id), btn.closest('tr'))));
     document.querySelectorAll('.dp-descartar').forEach(btn => btn.addEventListener('click', async () => {
       try { await api(`/duplicar/api/borradores/${btn.dataset.id}/descartar`, {alias: alias()}); } catch (e) { alert(e.message); }
       cargarBorradores();

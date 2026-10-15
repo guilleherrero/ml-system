@@ -271,6 +271,86 @@ def api_aprobar(bid):
     return jsonify({'ok': True, 'borrador': resultado})
 
 
+@bp.route('/api/descripcion')
+def api_descripcion():
+    try:
+        texto = dup.descripcion_original(_client(request.args.get('alias', '')), request.args.get('item_id', '').strip().upper())
+    except dup.DuplicadorError as e:
+        return _error(e)
+    except Exception as e:
+        return _error(f'No se pudo leer la descripción en ML: {e}')
+    return jsonify({'ok': True, 'texto': texto})
+
+
+@bp.route('/api/borradores/<bid>/descripcion', methods=['POST'])
+def api_descripcion_borrador(bid):
+    body = request.get_json() or {}
+    try:
+        b = dup.editar_descripcion(body.get('alias', ''), bid, None if body.get('restaurar') else body.get('texto', ''), _usuario())
+    except dup.DuplicadorError as e:
+        return _error(e)
+    return jsonify({'ok': True, 'borrador': b})
+
+
+@bp.route('/api/fotos')
+def api_fotos():
+    try:
+        r = dup.fotos(_client(request.args.get('alias', '')), request.args.get('item_id', '').strip().upper())
+    except dup.DuplicadorError as e:
+        return _error(e)
+    return jsonify({'ok': True, **r})
+
+
+def _archivo(f) -> dict:
+    contenido = f.read()
+    return {'nombre': f.filename or 'foto', 'mime': (f.mimetype or '').lower(), 'contenido': contenido}
+
+
+@bp.route('/api/fotos/diagnosticar', methods=['POST'])
+def api_fotos_diagnosticar():
+    """Diagnostico de ML de una foto nueva, en base64: no se sube nada."""
+    alias, item_id = request.form.get('alias', ''), request.form.get('item_id', '').strip().upper()
+    f = request.files.get('archivo')
+    if not f:
+        return _error('Falta la foto.')
+    try:
+        client = _client(alias)
+        item = dup.leer_origen(client, item_id)
+        n = _archivo(f)
+        if n['mime'] not in dup.FORMATOS_FOTO:
+            raise dup.DuplicadorError('ML acepta JPG o PNG.')
+        if len(n['contenido']) > dup.MAX_BYTES_FOTO:
+            raise dup.DuplicadorError('Pesa más de 10 MB.')
+        r = dup.diagnosticar(client, item['category_id'], item.get('title', ''), contenido=n['contenido'],
+                             mime=n['mime'], principal=request.form.get('principal') == '1')
+    except dup.DuplicadorError as e:
+        return _error(e)
+    return jsonify({'ok': True, **r})
+
+
+@bp.route('/api/fotos/aplicar', methods=['POST'])
+def api_fotos_aplicar():
+    """Cambia las fotos del PRODUCTO (todas sus publicaciones). Exige confirmado."""
+    import json as _json
+    if request.form.get('confirmado') != 'true':
+        return _error('Falta la confirmación explícita.')
+    alias, item_id = request.form.get('alias', ''), request.form.get('item_id', '').strip().upper()
+    try:
+        plan_raw = _json.loads(request.form.get('plan') or '[]')
+        plan = []
+        for p in plan_raw:
+            if p.get('id'):
+                plan.append({'id': p['id']})
+            elif p.get('archivo') and request.files.get(p['archivo']):
+                plan.append({'nuevo': _archivo(request.files[p['archivo']])})
+            else:
+                raise dup.DuplicadorError('Falta una de las fotos nuevas. Volvé a elegirla.')
+        r = dup.aplicar_fotos(_client(alias), item_id, plan)
+    except (dup.DuplicadorError, ValueError) as e:
+        return _error(e)
+    return jsonify({'ok': True, **r})
+
+
 @bp.route('/api/republicables')
 def api_republicables():
     try:

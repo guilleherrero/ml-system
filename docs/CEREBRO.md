@@ -2438,6 +2438,23 @@ los faltantes; si sigue faltando no se calcula con un numero inventado).
   que una Pub 3 de interes bajo hubiera nacido con la campaña de 3 cuotas del
   original. Ahora solo se copian WARRANTY_TYPE y WARRANTY_TIME (test fijado).
 
+**Descripcion y fotos (2026-10-15, pedido de Guille):**
+- Descripcion: es de cada item (ML no la sincroniza entre items del UP), asi
+  que cada borrador puede tener la suya ("Descripción" en el borrador). Se
+  valida sin emojis ni HTML (Regla #3) al guardar y otra vez al aprobar.
+- Fotos: son del PRODUCTO (se sincronizan en todos los items del UP), asi que
+  el editor cambia el producto y lo avisa con la lista de publicaciones
+  afectadas. Reordenar, quitar y agregar JPG/PNG <=10 MB, tope de la categoria
+  (`max_pictures_per_item`). Cada foto nueva y la que pasa a principal pasan por
+  `POST /moderations/pictures/diagnostic` en base64 ANTES de subir nada; si ML
+  marca problemas se bloquea, si la API no responde se avisa y se sigue (lo
+  que pide la doc). Recien despues `POST /pictures/items/upload` y
+  `PUT /items/{id}` con el orden final, y se relee.
+- **Limite real encontrado:** el diagnostico responde 429 `local_rate_limited`
+  con pocas llamadas seguidas y tarda en recuperarse (no es un intervalo fijo;
+  medido 2026-10-15). Hay backoff con jitter, y la pantalla solo diagnostica lo
+  necesario (nuevas + principal), de a una.
+
 **Pendiente:** la creacion real (`POST /user-products/.../items`) no se probo
 en vivo: la primera la aprueba Guille siguiendo el checklist. Subsecciones B
 (solo duplicar, editando lo que ML permite) y C (otras cuentas, sujeta a

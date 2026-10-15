@@ -21,8 +21,14 @@ Modulo dedicado: no modifica nada existente. Lee de `precio_motor`
 `precio_variantes` (escalon de un item), `stock_rentabilidad` (costos) y
 `PricingConfig` (cargos de la cuenta), sin escribir en ninguno.
 """
+import base64
+import random
+import re
+import time
 import uuid
 from datetime import datetime
+
+import requests
 
 from core.db_storage import db_load, db_save
 from modules import precio_motor as pm
@@ -369,6 +375,9 @@ def aprobar(alias: str, bid: str, client, cargos: pm.Cargos, tasas: dict, costo_
         raise DuplicadorError(f'Con el costo y las comisiones de hoy, a ${b["precio"]:,.0f} el margen queda en '
                               f'{ev["margen_pct"]}% (piso {MARGEN_MINIMO * 100:.0f}%). No se crea.')
 
+    if b.get('descripcion') is not None:
+        validar_descripcion(b['descripcion'])
+
     payload = {'price': b['precio'], 'category_id': origen['category_id'],
                'currency_id': origen.get('currency_id', 'ARS'), 'buying_mode': 'buy_it_now',
                'listing_type_id': b['listing_type_id']}
@@ -392,14 +401,16 @@ def aprobar(alias: str, bid: str, client, cargos: pm.Cargos, tasas: dict, costo_
     # explicita y el borrador queda registrado como aplicado igual.
     avisos = []
     try:
-        desc = client._get(f'/items/{origen["id"]}/description') or {}
-        texto = desc.get('plain_text') or ''
+        if b.get('descripcion') is not None:
+            texto = b['descripcion']           # la editada en el borrador (ya validada)
+        else:
+            texto = (client._get(f'/items/{origen["id"]}/description') or {}).get('plain_text') or ''
         if texto:
             client._post(f'/items/{nuevo_id}/description', {'plain_text': texto})
         else:
-            avisos.append('La publicación original no tiene descripción: la copia quedó sin descripción.')
+            avisos.append('La copia quedó sin descripción (la original no tiene y no se cargó una).')
     except Exception as e:
-        avisos.append(f'No se pudo copiar la descripción ({e}). Cargala a mano en {nuevo_id}.')
+        avisos.append(f'No se pudo cargar la descripción ({e}). Cargala a mano en {nuevo_id}.')
 
     try:
         leido = client.get_item(nuevo_id) or {}
@@ -484,3 +495,164 @@ def relist(client, item_id: str, precio: float, cantidad: int) -> dict:
     except Exception as e:
         raise DuplicadorError(f'ML rechazó la republicación: {e}')
     return {'item_original': item_id, 'item_nuevo': (nuevo or {}).get('id'), 'status': (nuevo or {}).get('status')}
+
+
+# ── Descripcion editable de la copia ────────────────────────────────────────
+
+# Rangos de emoji y simbolos pictograficos: ML rechaza descripciones con emojis (Regla #3).
+_EMOJI = re.compile('[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF\U00002B00-\U00002BFF\uFE0F\u200D]')
+
+
+def validar_descripcion(texto: str) -> str:
+    texto = (texto or '').replace('\r\n', '\n').strip()
+    hallados = sorted(set(_EMOJI.findall(texto)) - {'\uFE0F', '\u200D'})
+    if hallados or _EMOJI.search(texto):
+        raise DuplicadorError('La descripción tiene emojis y ML la rechaza. Sacá estos: ' + ' '.join(hallados))
+    if re.search(r'<[a-zA-Z/][^>]*>', texto):
+        raise DuplicadorError('La descripción tiene etiquetas HTML: ML solo acepta texto plano.')
+    return texto
+
+
+def descripcion_original(client, item_id: str) -> str:
+    return (client._get(f'/items/{item_id}/description') or {}).get('plain_text') or ''
+
+
+def editar_descripcion(alias: str, bid: str, texto, usuario: str = '') -> dict:
+    """Guarda la descripcion que va a tener la copia. `texto` None vuelve a
+    copiar la del original al aprobar."""
+    data = _cargar(alias)
+    b = data['borradores'].get(bid)
+    if not b:
+        raise DuplicadorError('Borrador no encontrado.')
+    if b['estado'] != 'pendiente':
+        raise DuplicadorError(f'El borrador ya está {b["estado"]}: la descripción no se puede cambiar.')
+    b['descripcion'] = None if texto is None else validar_descripcion(texto)
+    b['descripcion_editada'] = datetime.now().isoformat(timespec='seconds')
+    b['descripcion_por'] = usuario
+    _guardar(alias, data)
+    return b
+
+
+# ── Fotos del producto ──────────────────────────────────────────────────────
+# En User Products las fotos son del PRODUCTO: cambiarlas en un item cambia
+# todas las publicaciones del mismo UP. Por eso esto edita el producto, no la
+# copia, y la pantalla lo avisa antes de aplicar.
+
+FORMATOS_FOTO = {'image/jpeg', 'image/png'}
+MAX_BYTES_FOTO = 10 * 1024 * 1024
+
+
+def fotos(client, item_id: str) -> dict:
+    item = leer_origen(client, item_id)
+    try:
+        maximo = ((client._get(f"/categories/{item['category_id']}") or {}).get('settings') or {}).get('max_pictures_per_item')
+    except Exception:
+        maximo = None
+    publicaciones = items_del_up(client, seller_id(client), item['user_product_id'])
+    return {'item_id': item['id'], 'titulo': item.get('title', ''), 'category_id': item['category_id'],
+            'user_product_id': item['user_product_id'], 'maximo': maximo,
+            'fotos': [{'id': p['id'], 'url': p.get('secure_url') or p.get('url')} for p in item.get('pictures') or []],
+            'publicaciones_afectadas': [x['id'] for x in publicaciones if not x['catalog_listing']]}
+
+
+def _data_url(contenido: bytes, mime: str) -> str:
+    return f'data:{mime};base64,' + base64.b64encode(contenido).decode()
+
+
+def diagnosticar(client, category_id: str, titulo: str, *, picture_id: str = None,
+                 contenido: bytes = None, mime: str = None, principal: bool = False) -> dict:
+    """Diagnostico oficial de ML (fondo, tamaño, logos, marcas de agua) ANTES
+    de asociar la foto. Una foto nueva se manda en base64: no se sube nada."""
+    body = {'context': {'category_id': category_id, 'title': titulo,
+                        'picture_type': 'thumbnail' if principal else 'other'}}
+    if picture_id:
+        body['picture_id'] = picture_id
+    else:
+        body['picture_url'] = _data_url(contenido, mime)
+    r = None
+    for espera in (0, 1.5, 3, 6):
+        if espera:
+            time.sleep(espera + random.random())   # backoff con jitter, como pide la FAQ de 429 de ML
+        try:
+            r = client._post('/moderations/pictures/diagnostic', body) or {}
+            break
+        except Exception as e:
+            ultimo = e
+            if getattr(e, 'status_code', None) != 429 and '429' not in str(e):
+                break
+    if r is None:
+        # La doc pide no bloquear si la API falla: se informa y se sigue.
+        return {'validada': False, 'problemas': [], 'error': f'ML no pudo validar la foto ({ultimo}).'}
+    problemas = []
+    for d in r.get('diagnostics') or []:
+        if d.get('action') == 'diagnostic':
+            for det in d.get('detections') or []:
+                txt = next((w.get('value') for w in det.get('wordings') or [] if w.get('value')), det.get('name'))
+                if txt not in problemas:
+                    problemas.append(txt)
+    return {'validada': True, 'problemas': problemas, 'error': None}
+
+
+def _subir_foto(client, contenido: bytes, nombre: str, mime: str) -> str:
+    from core.ml_client import ML_API_BASE
+    client._ensure_token()
+    r = requests.post(f'{ML_API_BASE}/pictures/items/upload',
+                      headers={'Authorization': f'Bearer {client.account.access_token}'},
+                      files={'file': (nombre, contenido, mime)}, timeout=60)
+    if not r.ok:
+        raise DuplicadorError(f'ML no aceptó la foto {nombre}: {r.text[:200]}')
+    pid = (r.json() or {}).get('id')
+    if not pid:
+        raise DuplicadorError(f'ML no devolvió el id de la foto {nombre}.')
+    return pid
+
+
+def aplicar_fotos(client, item_id: str, plan: list[dict]) -> dict:
+    """`plan` es la lista final en orden: {'id': picture_id} para conservar una
+    existente o {'nuevo': {'nombre','mime','contenido': bytes}} para agregar.
+    Valida y diagnostica TODO antes de subir o tocar nada."""
+    actual = fotos(client, item_id)
+    existentes = {f['id'] for f in actual['fotos']}
+    if not plan:
+        raise DuplicadorError('La publicación tiene que quedar con al menos una foto.')
+    if actual['maximo'] and len(plan) > actual['maximo']:
+        raise DuplicadorError(f'Esta categoría admite hasta {actual["maximo"]} fotos y quedarían {len(plan)}.')
+    avisos = []
+    for pos, p in enumerate(plan):
+        principal = pos == 0
+        if 'id' in p:
+            if p['id'] not in existentes:
+                raise DuplicadorError(f'La foto {p["id"]} no es de esta publicación.')
+            if not principal:
+                continue       # una existente que no pasa a ser la principal ya estaba aprobada por ML
+            diag = diagnosticar(client, actual['category_id'], actual['titulo'], picture_id=p['id'], principal=True)
+        else:
+            n = p['nuevo']
+            if n['mime'] not in FORMATOS_FOTO:
+                raise DuplicadorError(f'{n["nombre"]}: ML acepta JPG o PNG.')
+            if len(n['contenido']) > MAX_BYTES_FOTO:
+                raise DuplicadorError(f'{n["nombre"]}: pesa más de 10 MB.')
+            diag = diagnosticar(client, actual['category_id'], actual['titulo'],
+                                contenido=n['contenido'], mime=n['mime'], principal=principal)
+        nombre = p.get('id') or p['nuevo']['nombre']
+        if diag['problemas']:
+            raise DuplicadorError(f'Foto {pos + 1} ({nombre}{", principal" if principal else ""}): '
+                                  + ' '.join(diag['problemas']) + ' No se cambió nada.')
+        if diag['error']:
+            avisos.append(f'Foto {pos + 1} ({nombre}): {diag["error"]}')
+
+    ids = []
+    for p in plan:
+        if 'id' in p:
+            ids.append(p['id'])
+        else:
+            n = p['nuevo']
+            ids.append(_subir_foto(client, n['contenido'], n['nombre'], n['mime']))
+    try:
+        client.update_item(item_id, {'pictures': [{'id': i} for i in ids]})
+    except Exception as e:
+        raise DuplicadorError(f'ML rechazó el cambio de fotos: {e}. Las fotos nuevas quedaron subidas pero sin asociar; la publicación no cambió.')
+    leido = [pp.get('id') for pp in (client.get_item(item_id) or {}).get('pictures') or []]
+    if leido[:len(ids)] != ids:
+        avisos.append('ML todavía muestra otro orden de fotos: puede tardar unos minutos en procesarlas. Revisalo en la publicación.')
+    return {'item_id': item_id, 'fotos': len(ids), 'publicaciones_afectadas': actual['publicaciones_afectadas'], 'avisos': avisos}
