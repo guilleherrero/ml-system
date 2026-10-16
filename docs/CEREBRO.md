@@ -2460,6 +2460,44 @@ en vivo: la primera la aprueba Guille siguiendo el checklist. Subsecciones B
 (solo duplicar, editando lo que ML permite) y C (otras cuentas, sujeta a
 confirmar la politica de cuentas relacionadas con ML) quedan para despues.
 
+## 14. Prevencion de moderaciones (2026-10-16)
+
+Pedido de Guille a partir de "Detectar Palabras Prohibidas" de UpSeller (lista
+propia + 900 terminos "en la nube" de otros vendedores, casi todos sustancias;
+"Auto-Detectar" revisa titulo y descripcion al publicar). Antes de copiar la
+idea se miro que le marca ML de verdad a Novara con la API oficial
+`GET /moderations/infractions/{user_id}` (limit maximo 20): 139 infracciones
+desde 2025 en **100 publicaciones** (ML repite la misma a diario: 19 "fondo
+blanco" eran 3 publicaciones). Casi ninguna es por palabras: fotos (15 pubs),
+originalidad/PI (24), categoria (17), duplicadas (14), catalogo (6), datos de
+contacto en fotos (5). Al 16/10 solo 4 siguen activas con algo pendiente.
+
+Hallazgos que importan fuera de este modulo:
+- **Duplicadas = mismo tipo + mismas cuotas en el mismo UP, aunque el precio
+  difiera** (Parche MLA2154664481 a $18.000 anulada por otra "sin cuotas" a
+  $16.000 del mismo UP). Es la regla que aplica el Duplicador (seccion 13).
+- Una infraccion dice "igual a otra que anulamos en una de tus cuentas
+  asociadas": ML vincula las cuentas de Guille (relevante para la subseccion C
+  del Duplicador).
+- El validador de titulos de `seo_optimizer.audit_title` marca como "prohibidas
+  por ML" palabras que son criterio propio ("nuevo", "garantía", "cuotas") y
+  las busca como subcadena. No se toco (Regla #1); este modulo no lo reutiliza.
+
+Plan aprobado (Guille, 2026-10-16), en partes que se despliegan por separado:
+1. **Historial de infracciones — hecho.** `/moderaciones` (menu Clientes):
+   `modules/moderaciones.py`, `web/moderaciones_routes.py`,
+   `web/templates/moderaciones.html`, `tests/test_moderaciones.py`. Agrupa por
+   causa (clasificada por el texto del motivo; el filter_subgroup de ML no
+   alcanza: PQT mezcla portadas con otros elementos), cuenta publicaciones
+   distintas y veces, muestra la solucion de ML, la foto exacta marcada
+   (`pictures`), la categoria sugerida (`suggested`) y el estado de HOY de cada
+   publicacion. Solo lee; cache por cuenta en kv_store.
+2. Revision nocturna de portadas de todo el catalogo con el diagnostico
+   oficial de fotos (lento por el 429 del diagnostico), todas las cuentas.
+3. Revision de texto: bloquea datos de contacto y emojis; avisa terminos de
+   imitacion, marcas ajenas a la ficha y la lista propia de Guille.
+4. Categoria sugerida vs. actual (verificar antes si el endpoint esta vivo).
+
 ## Sprints
 
 | Sprint | Contenido | Estado |

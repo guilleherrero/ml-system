@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
+{% block title %} — Prevención de moderaciones{% endblock %}
+{% block content %}
+<style>
+.md-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; overflow:hidden; margin-bottom:.85rem; }
+.md-card-header { background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-100); padding:.55rem 1rem;
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-700); display:flex; justify-content:space-between; }
+.md-card-body { padding:.9rem 1rem; }
+.md-tile { background:var(--color-neutral-50); border-radius:10px; padding:.6rem .85rem; height:100%; cursor:pointer; border:1px solid transparent; }
+.md-tile.activa { border-color:var(--color-info-700); }
+.md-etiqueta { font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-500); }
+.md-valor { font-size:1.35rem; font-weight:700; }
+.md-tabla th, .md-tabla td { font-size:.8rem; vertical-align:middle; }
+.md-thumb { height:36px; width:36px; object-fit:contain; background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:6px; }
+.md-motivo { font-weight:600; }
+.md-solucion { font-size:.78rem; color:var(--color-neutral-700); background:var(--color-neutral-50); border-radius:8px; padding:.4rem .6rem; margin:.3rem 0 .5rem; }
+.md-chip { display:inline-block; font-size:.66rem; border-radius:6px; padding:.1rem .4rem; background:var(--color-neutral-100); color:var(--color-neutral-700); }
+.md-chip-ok { background:var(--color-success-100); color:var(--color-success-700); }
+.md-chip-bad { background:var(--color-critical-100); color:var(--color-critical-700); }
+.md-chip-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
+.md-aviso { border-radius:8px; padding:.5rem .75rem; font-size:.8rem; background:var(--color-critical-100); color:var(--color-critical-700); }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-shield-exclamation me-2"></i>Prevención de moderaciones</h5>
+    <div class="text-muted" style="font-size:.8rem">Lo que Mercado Libre te marcó de verdad (API oficial de infracciones), agrupado por causa.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <select class="form-select form-select-sm" id="mdDesde" style="max-width:170px">
+      <option value="90">Últimos 90 días</option>
+      <option value="365">Último año</option>
+      <option value="2025-01-01" selected>Desde enero 2025</option>
+    </select>
+    <select class="form-select form-select-sm" id="mdAlias" style="max-width:200px">
+      {% for acc in cuentas_menu %}
+        <option value="{{ acc.alias }}" {% if acc.alias == request.cookies.get('ml_cuenta') %}selected{% endif %}>{{ acc.alias }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-sm btn-outline-primary" id="mdRefrescar" title="Volver a consultar a ML"><i class="bi bi-arrow-clockwise"></i></button>
+  </div>
+</div>
+
+<div id="mdResumen"></div>
+<div id="mdGrupos"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let DATOS = null, FILTRO = null;
+
+  function desde() {
+    const v = $('mdDesde').value;
+    if (v.includes('-')) return v;
+    const d = new Date(Date.now() - (+v) * 864e5);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function estado(item) {
+    if (!item) return '<span class="md-chip">sin datos</span>';
+    const s = item.status, sub = (item.sub_status || []).join(', ');
+    const cls = s === 'active' ? 'md-chip-ok' : (s === 'under_review' || s === 'inactive') ? 'md-chip-bad' : 'md-chip-warn';
+    const txt = {active: 'Activa', paused: 'Pausada', closed: 'Finalizada', under_review: 'En revisión', inactive: 'Inactiva'}[s] || s;
+    return `<span class="md-chip ${cls}">${esc(txt)}${sub ? ' · ' + esc(sub) : ''}</span>`;
+  }
+
+  async function cargar(refrescar) {
+    $('mdResumen').innerHTML = '<div class="small text-muted">Consultando a Mercado Libre…</div>'; $('mdGrupos').innerHTML = '';
+    let j;
+    try {
+      const r = await fetch(`/moderaciones/api/historial?alias=${encodeURIComponent($('mdAlias').value)}&desde=${desde()}${refrescar ? '&refrescar=1' : ''}`);
+      j = await r.json(); if (!j.ok) throw new Error(j.error);
+    } catch (e) { $('mdResumen').innerHTML = `<div class="md-aviso">${esc(e.message)}</div>`; return; }
+    DATOS = j; FILTRO = null; pintar();
+  }
+
+  function pintar() {
+    const j = DATOS;
+    $('mdResumen').innerHTML = `
+      <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3"><div class="md-tile ${FILTRO === null ? 'activa' : ''}" data-cat=""><div class="md-etiqueta">Publicaciones afectadas</div><div class="md-valor">${j.publicaciones}</div>
+          <div class="small text-muted">${j.total} infracciones · ${j.publicaciones_activas_afectadas} siguen activas · desde ${esc(j.desde)}</div></div></div>
+        ${j.grupos.slice(0, 5).map(g => `<div class="col-6 col-md"><div class="md-tile ${FILTRO === g.categoria ? 'activa' : ''}" data-cat="${esc(g.categoria)}">
+          <div class="md-etiqueta">${esc(g.nombre)}</div><div class="md-valor">${g.publicaciones}</div>
+          <div class="small text-muted">${g.total} infracciones${g.activas ? ' · <b>' + g.activas + ' activas</b>' : ''}</div></div></div>`).join('')}
+      </div>
+      <div class="small text-muted mb-2">Datos de ${esc((j.actualizado || '').replace('T', ' '))}${j.desde_cache ? ' (guardados; tocá ↻ para volver a consultar)' : ''}. El estado de cada publicación es el de hoy.</div>`;
+    document.querySelectorAll('.md-tile').forEach(t => t.addEventListener('click', () => { FILTRO = t.dataset.cat || null; pintar(); }));
+
+    const grupos = j.grupos.filter(g => !FILTRO || g.categoria === FILTRO);
+    if (!grupos.length) { $('mdGrupos').innerHTML = '<div class="small text-muted">No hay infracciones en este período.</div>'; return; }
+    $('mdGrupos').innerHTML = grupos.map(g => `
+      <div class="md-card"><div class="md-card-header"><span>${esc(g.nombre)}</span><span>${g.publicaciones} publicaciones · ${g.total} infracciones</span></div><div class="md-card-body">
+        ${g.motivos.map(m => `
+          <div class="md-motivo">${esc(m.motivo)} <span class="md-chip">${m.casos.length} publicaciones · ${m.infracciones} veces</span></div>
+          ${m.solucion ? `<div class="md-solucion"><b>Qué pide ML:</b> ${esc(m.solucion)}</div>` : ''}
+          <details class="mb-3"><summary class="small">Ver las ${m.casos.length} publicaciones</summary>
+            <table class="table table-sm md-tabla mb-0 mt-1"><tbody>${m.casos.map(c => `
+              <tr><td style="width:44px">${c.item && c.item.thumbnail ? `<img class="md-thumb" src="${esc(c.item.thumbnail)}" alt="">` : ''}</td>
+                <td>${c.item ? esc(c.item.titulo) : '<span class="text-muted">' + esc(c.tipo_elemento === 'ITM' ? 'Publicación no disponible' : 'Elemento ' + c.tipo_elemento) + '</span>'}
+                  <div class="text-muted">${c.item_id ? (c.item && c.item.permalink ? `<a href="${esc(c.item.permalink)}" target="_blank" rel="noopener">${esc(c.item_id)}</a>` : esc(c.item_id)) : ''}
+                  ${c.fotos_marcadas.length ? ' · fotos marcadas: ' + c.fotos_marcadas.map(esc).join(', ') : ''}
+                  ${c.categoria_sugerida.length ? ' · ML sugiere: ' + c.categoria_sugerida.map(esc).join(' / ') : ''}</div></td>
+                <td class="text-nowrap">${esc(c.fecha)}${c.veces > 1 ? '<div class="text-muted">' + c.veces + ' veces desde ' + esc(c.primera) + '</div>' : ''}</td><td class="text-end">${c.item_id ? estado(c.item) : ''}</td></tr>`).join('')}
+            </tbody></table></details>`).join('')}
+      </div></div>`).join('');
+  }
+
+  $('mdRefrescar').addEventListener('click', () => cargar(true));
+  $('mdDesde').addEventListener('change', () => cargar(false));
+  $('mdAlias').addEventListener('change', () => cargar(false));
+  cargar(false);
+})();
+</script>
+{% endblock %}

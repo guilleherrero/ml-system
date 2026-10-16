@@ -210,6 +210,7 @@
   ]),
   ('Clientes', 'bi-chat-square-heart', [
      ('Reputación y reclamos', '/reputacion/' ~ ca, 'bi-shield-check', p.startswith('/reputacion/') or p.startswith('/preguntas/'), 'badge-preguntas'),
+     ('Prevención de moderaciones', '/moderaciones', 'bi-shield-exclamation', p.startswith('/moderaciones'), ''),
   ]),
   ('Crecimiento', 'bi-rocket-takeoff', [
      ('Lanzar producto', '/lanzar-nuevo', 'bi-rocket-takeoff', p in ['/lanzar-nuevo', '/lanzamientos', '/evaluar-producto'], ''),
