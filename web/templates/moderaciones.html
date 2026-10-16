@@ -45,6 +45,7 @@
 <ul class="nav nav-tabs mb-3" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#mdTabHist" type="button"><i class="bi bi-clock-history me-1"></i>Historial de infracciones</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mdTabTexto" type="button" id="mdBtnTexto"><i class="bi bi-spellcheck me-1"></i>Revisión de texto</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mdTabCat" type="button"><i class="bi bi-diagram-3 me-1"></i>Categoría</button></li>
 </ul>
 <div class="tab-content">
 <div class="tab-pane fade show active" id="mdTabHist">
@@ -64,6 +65,14 @@
       <div class="col-md-6"><label class="md-etiqueta">Permitidas (una por línea) — no avisa por estas</label><textarea class="form-control form-control-sm" rows="6" id="mdPermitidas"></textarea></div>
     </div>
     <button class="btn btn-sm btn-success mt-2" id="mdGuardarListas">Guardar listas</button> <span class="small" id="mdListasMsg"></span>
+  </div></div>
+</div>
+<div class="tab-pane fade" id="mdTabCat">
+  <div class="md-card"><div class="md-card-header"><span>Categoría actual vs. la que sugiere Mercado Libre</span></div><div class="md-card-body">
+    <div class="small text-muted mb-2">Para cada publicación propia activa se le pregunta a ML qué categoría corresponde a su título.
+      Es una <b>sugerencia para revisar</b>, no un error seguro: en tu historial, su primera sugerencia fue la que ML después exigió en 15 de 17 casos, pero a veces sugiere algo que no corresponde. No cambia nada.</div>
+    <button class="btn btn-sm btn-primary" id="mdRevisarCat"><i class="bi bi-search me-1"></i>Revisar categorías</button>
+    <div id="mdCat" class="mt-3"></div>
   </div></div>
 </div>
 </div>
@@ -171,13 +180,29 @@
           const j = await r.json(); if (!j.ok) throw new Error(j.error); $('mdListasMsg').textContent = 'Guardadas.'; }
     catch (e) { $('mdListasMsg').textContent = e.message; }
   }
+  async function revisarCategorias() {
+    $('mdCat').innerHTML = '<div class="small text-muted">Consultando a ML una por una (unos segundos por publicación)…</div>';
+    let j;
+    try { const r = await fetch('/moderaciones/api/categorias?alias=' + encodeURIComponent($('mdAlias').value)); j = await r.json(); if (!j.ok) throw new Error(j.error); }
+    catch (e) { $('mdCat').innerHTML = `<div class="md-aviso">${esc(e.message)}</div>`; return; }
+    const chip = {revisar: '<span class="md-chip md-chip-warn">Revisar</span>', sin_dato: '<span class="md-chip">ML no sugirió</span>', coincide: '<span class="md-chip md-chip-ok">Coincide</span>'};
+    $('mdCat').innerHTML = `<div class="small mb-2"><b>${j.revisadas}</b> revisadas · <b>${j.revisar}</b> para revisar · ${j.coincide} coinciden · ${j.sin_dato} sin sugerencia.</div>
+      <table class="table table-sm md-tabla mb-0"><thead><tr><th></th><th>Publicación</th><th>Tiene</th><th>ML sugiere</th><th></th></tr></thead><tbody>${j.filas.map(f => `
+        <tr><td style="width:44px">${f.thumbnail ? `<img class="md-thumb" src="${esc(f.thumbnail)}" alt="">` : ''}</td>
+          <td>${esc(f.titulo)}<div class="text-muted">${f.permalink ? `<a href="${esc(f.permalink)}" target="_blank" rel="noopener">${esc(f.id)}</a>` : esc(f.id)}</div></td>
+          <td>${esc(f.actual.nombre || f.actual.id)}<div class="text-muted">${esc(f.actual.id)}</div></td>
+          <td>${f.sugeridas.map((s, n) => `<div${n === 0 ? ' class="fw-semibold"' : ''}>${esc(s.nombre)} <span class="text-muted">${esc(s.id)}</span></div>`).join('') || '—'}</td>
+          <td class="text-end">${chip[f.estado]}</td></tr>`).join('')}
+      </tbody></table>`;
+  }
+  $('mdRevisarCat').addEventListener('click', revisarCategorias);
   $('mdRevisarTexto').addEventListener('click', revisarTexto);
   $('mdGuardarListas').addEventListener('click', guardarListas);
   $('mdBtnTexto').addEventListener('shown.bs.tab', cargarListas);
 
   $('mdRefrescar').addEventListener('click', () => cargar(true));
   $('mdDesde').addEventListener('change', () => cargar(false));
-  $('mdAlias').addEventListener('change', () => { cargar(false); $('mdTexto').innerHTML = ''; cargarListas(); });
+  $('mdAlias').addEventListener('change', () => { cargar(false); $('mdTexto').innerHTML = ''; $('mdCat').innerHTML = ''; cargarListas(); });
   cargar(false);
 })();
 </script>

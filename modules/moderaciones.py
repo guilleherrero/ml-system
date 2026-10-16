@@ -159,3 +159,68 @@ def historial(client, alias: str, desde: str = DESDE_DEFAULT, refrescar: bool = 
     except Exception:
         pass
     return {**datos, 'actualizado': ahora, 'desde': desde, 'desde_cache': False}
+
+
+# ── Parte 4: categoria sugerida por ML vs. la actual ─────────────────────────
+# Fuente: /sites/MLA/domain_discovery/search (publico, vivo al 2026-10-16).
+# Validado contra el historial de Novara: en 15 de las 17 infracciones por
+# "categoria incorrecta", su primera sugerencia fue exactamente la categoria que
+# ML despues exigio. En el catalogo activo algunas sugerencias son dudosas
+# (funda de mesa -> "Fundas para Sillones"), asi que es un AVISO para revisar:
+# nunca cambia la categoria.
+
+def sugerir_categorias(titulo: str, limite: int = 3) -> list[dict] | None:
+    import requests
+    try:
+        r = requests.get('https://api.mercadolibre.com/sites/MLA/domain_discovery/search',
+                         params={'q': titulo, 'limit': limite}, headers={'Accept': 'application/json'}, timeout=15)
+        datos = r.json() if r.ok else None
+    except Exception:
+        return None
+    if not isinstance(datos, list):
+        return None
+    return [{'id': d.get('category_id'), 'nombre': d.get('category_name')} for d in datos if d.get('category_id')]
+
+
+def comparar_categoria(actual: str, sugeridas: list[dict] | None) -> str:
+    """'sin_dato' si ML no sugirio nada; 'coincide' si la primera es la actual;
+    'revisar' si la actual esta entre las otras sugeridas o no aparece."""
+    if not sugeridas:
+        return 'sin_dato'
+    ids = [s['id'] for s in sugeridas]
+    return 'coincide' if ids[0] == actual else 'revisar'
+
+
+def revisar_categorias(client) -> dict:
+    import time
+    ids, offset = [], 0
+    while True:
+        data = client.get_my_listings(limit=50, offset=offset, status='active') or {}
+        ids += data.get('results') or []
+        offset += 50
+        if offset >= (data.get('paging') or {}).get('total', 0):
+            break
+    nombres, filas = {}, []
+    for k in range(0, len(ids), 20):
+        entries = client._get('/items', params={'ids': ','.join(ids[k:k + 20]),
+                                                'attributes': 'id,title,category_id,catalog_listing,permalink,secure_thumbnail,thumbnail'}) or []
+        for e in entries:
+            b = e.get('body') or {}
+            if e.get('code') != 200 or b.get('catalog_listing'):
+                continue      # en catalogo la categoria la define ML
+            sug = sugerir_categorias(b.get('title', ''))
+            actual = b.get('category_id')
+            if actual not in nombres:
+                try:
+                    nombres[actual] = (client._get(f'/categories/{actual}') or {}).get('name')
+                except Exception:
+                    nombres[actual] = None
+            filas.append({'id': b['id'], 'titulo': b.get('title', ''), 'permalink': b.get('permalink'),
+                          'thumbnail': (b.get('secure_thumbnail') or b.get('thumbnail') or '').replace('http://', 'https://') or None,
+                          'actual': {'id': actual, 'nombre': nombres[actual]}, 'sugeridas': sug or [],
+                          'estado': comparar_categoria(actual, sug)})
+            time.sleep(0.15)   # una por una, sin rafagas
+    orden = {'revisar': 0, 'sin_dato': 1, 'coincide': 2}
+    filas.sort(key=lambda f: orden[f['estado']])
+    cuenta = {e: sum(1 for f in filas if f['estado'] == e) for e in orden}
+    return {'revisadas': len(filas), **cuenta, 'filas': filas}

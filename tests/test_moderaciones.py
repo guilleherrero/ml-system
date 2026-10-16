@@ -80,5 +80,16 @@ class TestModeraciones(unittest.TestCase):
         self.assertIsNone(r['grupos'][0]['motivos'][0]['casos'][0]['item_id'])
 
 
+class TestCategoria(unittest.TestCase):
+
+    def test_comparar(self):
+        sug = [{'id': 'MLA47769', 'nombre': 'Termos'}, {'id': 'MLA47752', 'nombre': 'Tazas y Vasos'}]
+        self.assertEqual(mo.comparar_categoria('MLA47769', sug), 'coincide')
+        self.assertEqual(mo.comparar_categoria('MLA47752', sug), 'revisar')     # caso real: ML exigio la primera
+        self.assertEqual(mo.comparar_categoria('MLA1', sug), 'revisar')
+        self.assertEqual(mo.comparar_categoria('MLA1', []), 'sin_dato')         # sin sugerencia no se alerta
+        self.assertEqual(mo.comparar_categoria('MLA1', None), 'sin_dato')
+
+
 if __name__ == '__main__':
     unittest.main()

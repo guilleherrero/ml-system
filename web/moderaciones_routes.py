@@ -8,6 +8,7 @@ protege estas rutas como al resto.
   /moderaciones/api/texto            titulo y ficha de las activas (solo lee)
   /moderaciones/api/texto/descripcion   descripcion de UNA publicacion (solo lee)
   /moderaciones/api/texto/listas     palabras prohibidas / permitidas propias
+  /moderaciones/api/categorias       categoria actual vs. la que sugiere ML (solo lee)
 """
 import re
 
@@ -77,3 +78,12 @@ def api_texto_listas():
     except Exception as e:
         return jsonify({'ok': False, 'error': f'No se pudieron guardar las listas: {e}'}), 400
     return jsonify({'ok': True, **d})
+
+
+@bp.route('/api/categorias')
+def api_categorias():
+    alias = request.args.get('alias', '')
+    try:
+        return jsonify({'ok': True, **mo.revisar_categorias(_client(alias))})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudieron revisar las categorías: {e}'}), 400

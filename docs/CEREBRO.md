@@ -2506,7 +2506,16 @@ Plan aprobado (Guille, 2026-10-16), en partes que se despliegan por separado:
    propias y 8 descripciones, **0 hallazgos y 0 falsos positivos** — coincide
    con el historial: el texto no es el problema de esta cuenta, la
    herramienta es preventiva.
-4. Categoria sugerida vs. actual (verificar antes si el endpoint esta vivo).
+4. **Categoria sugerida — hecho.** `/sites/MLA/domain_discovery/search`
+   esta vivo y es publico (16/10). Backtest contra las 17 infracciones reales
+   de "categoria incorrecta": su primera sugerencia fue EXACTAMENTE la
+   categoria que ML despues exigio en 15/17 (1 sin sugerencia, 1 no detectada:
+   reloj de enfermeria). En el catalogo activo: 37 revisadas, 30 coinciden,
+   7 "revisar" (parches de hongos en "Otros", parches adelgazantes, funda de
+   mesa). Las sugerencias de ML no son estables (los parches adelgazantes
+   dieron "Aparatos para Abdominales" y despues "Almohadillas Relajantes"),
+   asi que es AVISO para revisar, nunca cambia la categoria. Pestaña
+   "Categoría" en `/moderaciones`, una por una al tocar el boton.
 
 ## Sprints
 
