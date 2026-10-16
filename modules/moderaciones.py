@@ -89,7 +89,7 @@ def _estado_items(client, ids: list[str]) -> dict:
             if e.get('code') == 200 and b.get('id'):
                 out[b['id']] = {'titulo': b.get('title', ''), 'status': b.get('status'),
                                 'sub_status': b.get('sub_status') or [], 'permalink': b.get('permalink'),
-                                'thumbnail': b.get('secure_thumbnail') or b.get('thumbnail')}
+                                'thumbnail': (b.get('secure_thumbnail') or b.get('thumbnail') or '').replace('http://', 'https://') or None}
     return out
 
 

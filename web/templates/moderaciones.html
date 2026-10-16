@@ -42,8 +42,31 @@
   </div>
 </div>
 
+<ul class="nav nav-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#mdTabHist" type="button"><i class="bi bi-clock-history me-1"></i>Historial de infracciones</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mdTabTexto" type="button" id="mdBtnTexto"><i class="bi bi-spellcheck me-1"></i>Revisión de texto</button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="mdTabHist">
 <div id="mdResumen"></div>
 <div id="mdGrupos"></div>
+</div>
+<div class="tab-pane fade" id="mdTabTexto">
+  <div class="md-card"><div class="md-card-header"><span>Títulos y fichas de tus publicaciones activas</span></div><div class="md-card-body">
+    <div class="small text-muted mb-2"><b>Bloquea</b> (ML lo rechaza): datos de contacto (teléfonos, emails, links, @usuario), emojis y HTML.
+      <b>Avisa</b>: términos de imitación (réplica, símil, AAA…), nombres de redes sociales y tu lista propia. Las descripciones se revisan de a una, cuando las abrís.</div>
+    <button class="btn btn-sm btn-primary" id="mdRevisarTexto"><i class="bi bi-search me-1"></i>Revisar textos</button>
+    <div id="mdTexto" class="mt-3"></div>
+  </div></div>
+  <div class="md-card"><div class="md-card-header"><span>Tu lista de palabras</span></div><div class="md-card-body">
+    <div class="row g-2">
+      <div class="col-md-6"><label class="md-etiqueta">Prohibidas (una por línea) — avisa si aparecen</label><textarea class="form-control form-control-sm" rows="6" id="mdProhibidas"></textarea></div>
+      <div class="col-md-6"><label class="md-etiqueta">Permitidas (una por línea) — no avisa por estas</label><textarea class="form-control form-control-sm" rows="6" id="mdPermitidas"></textarea></div>
+    </div>
+    <button class="btn btn-sm btn-success mt-2" id="mdGuardarListas">Guardar listas</button> <span class="small" id="mdListasMsg"></span>
+  </div></div>
+</div>
+</div>
 
 <script>
 (function () {
@@ -108,9 +131,53 @@
       </div></div>`).join('');
   }
 
+  // ── Revisión de texto ────────────────────────────────────────────
+  const etiquetaNivel = h => h.nivel === 'bloquea' ? '<span class="md-chip md-chip-bad">Bloquea</span>' : '<span class="md-chip md-chip-warn">Aviso</span>';
+  const campoTxt = {titulo: 'Título', ficha: 'Ficha', descripcion: 'Descripción'};
+  const hallazgoHtml = h => `<div>${etiquetaNivel(h)} <span class="text-muted">${esc(campoTxt[h.campo] || h.campo)}:</span> "${esc(h.texto)}" — ${esc(h.mensaje)}</div>`;
+
+  async function revisarTexto() {
+    $('mdTexto').innerHTML = '<div class="small text-muted">Revisando títulos y fichas…</div>';
+    let j;
+    try { const r = await fetch('/moderaciones/api/texto?alias=' + encodeURIComponent($('mdAlias').value)); j = await r.json(); if (!j.ok) throw new Error(j.error); }
+    catch (e) { $('mdTexto').innerHTML = `<div class="md-aviso">${esc(e.message)}</div>`; return; }
+    $('mdTexto').innerHTML = `<div class="small mb-2"><b>${j.revisadas}</b> publicaciones propias revisadas (las de catálogo no: su texto lo pone ML) ·
+      <b>${j.con_problemas}</b> con algo para mirar.</div>
+      <table class="table table-sm md-tabla mb-0"><tbody>${j.filas.map(f => `
+        <tr><td style="width:44px">${f.thumbnail ? `<img class="md-thumb" src="${esc(f.thumbnail)}" alt="">` : ''}</td>
+          <td>${esc(f.titulo)}<div class="text-muted">${f.permalink ? `<a href="${esc(f.permalink)}" target="_blank" rel="noopener">${esc(f.id)}</a>` : esc(f.id)}</div>
+            <div class="small mt-1">${f.hallazgos.length ? f.hallazgos.map(hallazgoHtml).join('') : '<span class="md-chip md-chip-ok">Título y ficha OK</span>'}</div>
+            <div class="small mt-1 md-desc-res" id="mdDesc_${esc(f.id)}"></div></td>
+          <td class="text-end"><button class="btn btn-sm btn-outline-secondary py-0 md-desc" data-id="${esc(f.id)}">Revisar descripción</button></td></tr>`).join('')}
+      </tbody></table>`;
+    document.querySelectorAll('.md-desc').forEach(b => b.addEventListener('click', async () => {
+      const box = $('mdDesc_' + b.dataset.id); box.innerHTML = '<span class="text-muted">Leyendo descripción…</span>';
+      try {
+        const r = await fetch(`/moderaciones/api/texto/descripcion?alias=${encodeURIComponent($('mdAlias').value)}&item_id=${b.dataset.id}`); const d = await r.json();
+        if (!d.ok) throw new Error(d.error);
+        box.innerHTML = d.hallazgos.length ? d.hallazgos.map(hallazgoHtml).join('') : `<span class="md-chip md-chip-ok">Descripción OK (${d.largo} caracteres)</span>`;
+      } catch (e) { box.innerHTML = `<span class="md-chip md-chip-bad">${esc(e.message)}</span>`; }
+    }));
+  }
+
+  async function cargarListas() {
+    try { const r = await fetch('/moderaciones/api/texto/listas?alias=' + encodeURIComponent($('mdAlias').value)); const j = await r.json();
+      $('mdProhibidas').value = (j.prohibidas || []).join('\n'); $('mdPermitidas').value = (j.permitidas || []).join('\n'); } catch (e) {}
+  }
+  async function guardarListas() {
+    const lineas = id => $(id).value.split('\n').map(x => x.trim()).filter(Boolean);
+    try { const r = await fetch('/moderaciones/api/texto/listas', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({alias: $('mdAlias').value, prohibidas: lineas('mdProhibidas'), permitidas: lineas('mdPermitidas')})});
+          const j = await r.json(); if (!j.ok) throw new Error(j.error); $('mdListasMsg').textContent = 'Guardadas.'; }
+    catch (e) { $('mdListasMsg').textContent = e.message; }
+  }
+  $('mdRevisarTexto').addEventListener('click', revisarTexto);
+  $('mdGuardarListas').addEventListener('click', guardarListas);
+  $('mdBtnTexto').addEventListener('shown.bs.tab', cargarListas);
+
   $('mdRefrescar').addEventListener('click', () => cargar(true));
   $('mdDesde').addEventListener('change', () => cargar(false));
-  $('mdAlias').addEventListener('change', () => cargar(false));
+  $('mdAlias').addEventListener('change', () => { cargar(false); $('mdTexto').innerHTML = ''; cargarListas(); });
   cargar(false);
 })();
 </script>

@@ -2492,10 +2492,20 @@ Plan aprobado (Guille, 2026-10-16), en partes que se despliegan por separado:
    distintas y veces, muestra la solucion de ML, la foto exacta marcada
    (`pictures`), la categoria sugerida (`suggested`) y el estado de HOY de cada
    publicacion. Solo lee; cache por cuenta en kv_store.
-2. Revision nocturna de portadas de todo el catalogo con el diagnostico
-   oficial de fotos (lento por el 429 del diagnostico), todas las cuentas.
-3. Revision de texto: bloquea datos de contacto y emojis; avisa terminos de
-   imitacion, marcas ajenas a la ficha y la lista propia de Guille.
+2. ~~Revision nocturna de portadas~~ — **descartada por Guille (2026-10-16):
+   "es mucha tarea para el sistema"**. Las fotos nuevas igual pasan por el
+   diagnostico en el editor de fotos del Duplicador.
+3. **Revision de texto — hecho.** `modules/revision_texto.py` (puro texto, no
+   llama a ML). Bloquea datos de contacto (telefonos, emails, links,
+   @usuario), emojis y HTML; avisa terminos de imitacion, nombres de redes y la
+   lista propia de Guille (+ lista de permitidas). Telefonos solo en titulo y
+   descripcion (en la ficha hay GTIN y modelos). Pestaña "Revisión de texto"
+   en `/moderaciones`: titulo y ficha de todas las activas de a 20 por llamada,
+   descripcion de a una al abrirla. El Duplicador valida con esto la
+   descripcion de cada copia. Corrido contra Novara el 16/10: 37 publicaciones
+   propias y 8 descripciones, **0 hallazgos y 0 falsos positivos** — coincide
+   con el historial: el texto no es el problema de esta cuenta, la
+   herramienta es preventiva.
 4. Categoria sugerida vs. actual (verificar antes si el endpoint esta vivo).
 
 ## Sprints

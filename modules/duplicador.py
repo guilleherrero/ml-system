@@ -216,7 +216,7 @@ def items_de_ups(client, seller, user_product_ids: list[str]) -> list[dict]:
                             'listing_type_id': b.get('listing_type_id'), 'escalon': esc,
                             'cuotas': etiqueta_escalon(esc), 'catalog_listing': bool(b.get('catalog_listing')),
                             'stock': b.get('available_quantity'), 'variante': etiqueta_variante(b),
-                            'thumbnail': b.get('secure_thumbnail') or b.get('thumbnail')})
+                            'thumbnail': (b.get('secure_thumbnail') or b.get('thumbnail') or '').replace('http://', 'https://') or None})
     return out
 
 
@@ -376,7 +376,7 @@ def aprobar(alias: str, bid: str, client, cargos: pm.Cargos, tasas: dict, costo_
                               f'{ev["margen_pct"]}% (piso {MARGEN_MINIMO * 100:.0f}%). No se crea.')
 
     if b.get('descripcion') is not None:
-        validar_descripcion(b['descripcion'])
+        validar_descripcion(b['descripcion'], alias)
 
     payload = {'price': b['precio'], 'category_id': origen['category_id'],
                'currency_id': origen.get('currency_id', 'ARS'), 'buying_mode': 'buy_it_now',
@@ -499,18 +499,21 @@ def relist(client, item_id: str, precio: float, cantidad: int) -> dict:
 
 # ── Descripcion editable de la copia ────────────────────────────────────────
 
-# Rangos de emoji y simbolos pictograficos: ML rechaza descripciones con emojis (Regla #3).
-_EMOJI = re.compile('[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF\U00002B00-\U00002BFF\uFE0F\u200D]')
-
-
-def validar_descripcion(texto: str) -> str:
+def validar_descripcion(texto: str, alias: str = '') -> str:
+    """Bloquea lo que ML rechaza seguro (emojis, HTML, datos de contacto);
+    los avisos se devuelven aparte con avisos_descripcion()."""
+    from modules import revision_texto as rt
     texto = (texto or '').replace('\r\n', '\n').strip()
-    hallados = sorted(set(_EMOJI.findall(texto)) - {'\uFE0F', '\u200D'})
-    if hallados or _EMOJI.search(texto):
-        raise DuplicadorError('La descripción tiene emojis y ML la rechaza. Sacá estos: ' + ' '.join(hallados))
-    if re.search(r'<[a-zA-Z/][^>]*>', texto):
-        raise DuplicadorError('La descripción tiene etiquetas HTML: ML solo acepta texto plano.')
+    malos = rt.bloquea(rt.revisar(texto, 'descripcion', rt.listas(alias) if alias else None))
+    if malos:
+        raise DuplicadorError('La descripción no se puede guardar: '
+                              + '; '.join(f'{h["mensaje"]} ("{h["texto"]}")' for h in malos))
     return texto
+
+
+def avisos_descripcion(texto: str, alias: str = '') -> list[dict]:
+    from modules import revision_texto as rt
+    return [h for h in rt.revisar(texto or '', 'descripcion', rt.listas(alias) if alias else None) if h['nivel'] == 'aviso']
 
 
 def descripcion_original(client, item_id: str) -> str:
@@ -526,7 +529,8 @@ def editar_descripcion(alias: str, bid: str, texto, usuario: str = '') -> dict:
         raise DuplicadorError('Borrador no encontrado.')
     if b['estado'] != 'pendiente':
         raise DuplicadorError(f'El borrador ya está {b["estado"]}: la descripción no se puede cambiar.')
-    b['descripcion'] = None if texto is None else validar_descripcion(texto)
+    b['descripcion'] = None if texto is None else validar_descripcion(texto, alias)
+    b['avisos_descripcion'] = [] if texto is None else avisos_descripcion(b['descripcion'], alias)
     b['descripcion_editada'] = datetime.now().isoformat(timespec='seconds')
     b['descripcion_por'] = usuario
     _guardar(alias, data)

@@ -338,7 +338,8 @@
       catch (e) { tr.innerHTML = `<td colspan="7">${aviso('bad', e.message)}</td>`; return; }
     }
     tr.innerHTML = `<td colspan="7">
-      <div class="small mb-1">${b.descripcion == null ? 'Es la descripción del original: si la cambiás, solo cambia en esta copia.' : 'Descripción editada para esta copia.'} Texto plano, sin emojis (ML los rechaza).</div>
+      <div class="small mb-1">${b.descripcion == null ? 'Es la descripción del original: si la cambiás, solo cambia en esta copia.' : 'Descripción editada para esta copia.'} Texto plano: no se guarda con emojis, HTML ni datos de contacto (ML los rechaza).</div>
+      ${(b.avisos_descripcion || []).map(h => aviso('warn', h.mensaje + ' ("' + h.texto + '")')).join('')}
       <textarea class="form-control form-control-sm mb-1" rows="12">${esc(texto)}</textarea>
       <button class="btn btn-sm btn-success py-0 dp-desc-guardar">Guardar</button>
       ${b.descripcion != null ? '<button class="btn btn-sm btn-outline-secondary py-0 ms-1 dp-desc-original">Volver a la del original</button>' : ''}
