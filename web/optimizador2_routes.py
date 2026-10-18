@@ -99,6 +99,6 @@ def _busquedas(alias: str, item_id: str) -> list[dict]:
             'pagos': len(b.get('pagos') or []),
             'pagos_arriba': len([x for x in b.get('pagos') or [] if isinstance(x, int) and x <= 10])}
            for q, b in (data.get('busquedas') or {}).items()]
-    # Solo las búsquedas donde apareciste, o las más recientes si no
+    # Solo las búsquedas donde apareció este producto: las demás son de otros
     propias = [b for b in out if b['tu_puesto']]
-    return sorted(propias or out, key=lambda b: b.get('fecha') or '', reverse=True)[:8]
+    return sorted(propias, key=lambda b: b.get('fecha') or '', reverse=True)[:8]
