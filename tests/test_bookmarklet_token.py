@@ -19,3 +19,17 @@ def test_endpoints_publicos_rechazan_sin_token():
     assert c.get('/api/mis-publicaciones-cors/Novara').status_code == 403
     r = c.post('/api/capturar-competidor', json={'alias': 'Novara', 'id': 'MLA1', 'title': 'x'})
     assert r.status_code == 403
+
+
+def test_optimizador2_cors_exige_token():
+    c = webapp.app.test_client()
+    assert c.get('/api/competidores-cors/Novara/lista?item_id=MLA1').status_code == 403
+    assert c.post('/api/competidores-cors/Novara/ficha', json={'fichas': []}).status_code == 403
+    r = c.options('/api/competidores-cors/Novara/ficha')
+    assert r.status_code == 204 and r.headers['Access-Control-Allow-Origin'] == '*'
+    tok = webapp._token_bookmarklet('Novara')
+    r = c.get('/api/competidores-cors/Novara/lista', headers={'X-Cerebro-Token': tok})
+    assert r.status_code == 400  # falta item_id
+    r = c.post('/api/competidores-cors/Novara/ficha', headers={'X-Cerebro-Token': tok},
+               json={'item_id': 'MLA1', 'fichas': [{'clave': 'MLA1::MLA9', 'title': 'x'}]})
+    assert r.get_json() == {'ok': True, 'guardadas': 0}  # no es un competidor elegido

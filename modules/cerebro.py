@@ -1123,6 +1123,13 @@ def guardar_competidor(alias: str, comp: dict, item_propio: str | None = None,
         'full_ship':     bool(comp.get('full_ship') if comp.get('ficha_leida') else previo.get('full_ship')),
         'reviews_rating': comp.get('reviews_rating') or previo.get('reviews_rating'),
         'reviews_total': comp.get('reviews_total') or previo.get('reviews_total'),
+        # Optimizador 2.0: lo lee el botón en la página del competidor
+        # (actualizar_ficha). Una captura desde la búsqueda no lo trae.
+        'videos':        previo.get('videos'),
+        'cuotas':        previo.get('cuotas'),
+        'resenas':       previo.get('resenas') or [],
+        # Solo la búsqueda muestra si aparece por publicidad
+        'publicidad':    bool(comp['publicidad']) if 'publicidad' in comp else bool(previo.get('publicidad')),
         'ficha_ts':      _ahora() if comp.get('ficha_leida') else previo.get('ficha_ts'),
         'free_ship':     bool(comp.get('free_ship')),
         'sold_quantity': comp.get('sold_quantity'),
@@ -1150,6 +1157,29 @@ def guardar_competidor(alias: str, comp: dict, item_propio: str | None = None,
     data['competidores'][clave] = registro
     _save(alias, 'competidores.json', data)
     return registro
+
+
+CAMPOS_FICHA = ('title', 'price', 'description', 'attributes', 'photos_count', 'videos',
+                'premium', 'cuotas', 'full_ship', 'free_ship', 'sold_quantity',
+                'reviews_rating', 'reviews_total', 'resenas')
+
+
+def actualizar_ficha(alias: str, clave: str, datos: dict) -> dict | None:
+    """Completa lo leído de la página del competidor sin tocar su clase.
+
+    guardar_competidor rearma el registro y le pone la clase que le pasen: usarlo
+    para refrescar la ficha devolvía a "candidato" a un competidor confirmado.
+    """
+    data = _competidores_raw(alias)
+    reg = data['competidores'].get(clave)
+    if not reg:
+        return None
+    for k in CAMPOS_FICHA:
+        if datos.get(k) not in (None, '', []):
+            reg[k] = datos[k]
+    reg['ficha_ts'] = reg['actualizado_ts'] = _ahora()
+    _save(alias, 'competidores.json', data)
+    return reg
 
 
 def _liquidando(historial: list[dict]) -> bool:

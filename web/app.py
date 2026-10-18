@@ -453,7 +453,7 @@ def require_login():
         return
     # La lee el capturador desde mercadolibre.com.ar (sin la cookie del sistema):
     # se protege con el token del bookmarklet dentro del endpoint.
-    if request.path.startswith('/api/mis-publicaciones-cors/'):
+    if request.path.startswith('/api/mis-publicaciones-cors/') or request.path.startswith('/api/competidores-cors/'):
         return
     # Auto-actualizar datos si no corrió hoy (resuelve el problema de Render durmiendo)
     if request.path not in _AUTH_EXEMPT and not request.path.startswith('/static'):
@@ -12516,6 +12516,8 @@ def _capturar_lote(alias: str, body: dict):
             'photos_count': f.get('photos_count'), 'premium': bool(f.get('premium')),
             'full_ship': bool(f.get('full_ship')), 'ficha_leida': bool(f.get('ficha_leida')),
             'reviews_rating': f.get('reviews_rating'), 'reviews_total': f.get('reviews_total'),
+            # Solo la búsqueda lo sabe: una captura desde la página no lo pisa
+            **({'publicidad': bool(f['publicidad'])} if 'publicidad' in f else {}),
         }
         try:
             if forzado:
@@ -12544,6 +12546,8 @@ def _capturar_lote(alias: str, body: dict):
                 'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
                 'resultados': len(filas),
                 'mis_posiciones': mios,
+                # Puestos que ocupan resultados pagos (Optimizador 2.0)
+                'pagos': [f.get('posicion') for f in filas if f.get('publicidad')],
             }
             save_json(path, data)
         except Exception as e:
@@ -20528,6 +20532,12 @@ try:
     app.register_blueprint(_bp_importador)
 except Exception as _e:
     print(f'[importador] ERROR registrando las rutas: {_e}')
+
+try:
+    from web.optimizador2_routes import bp as _bp_optimizador2
+    app.register_blueprint(_bp_optimizador2)
+except Exception as _e:
+    print(f'[optimizador2] ERROR registrando las rutas: {_e}')
 
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()

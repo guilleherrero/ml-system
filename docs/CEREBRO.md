@@ -1058,6 +1058,8 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 57 | La Regla #1 sigue con el hash viejo (`74783469...`) y `seo_optimizer.py` volvio a cambiar en un commit legitimo (`2ee387d`, 2026-10-11): hoy da `e092a4e3c45152064651a21c2a8a3630`, distinto tambien del `0389b93a...` re-baseado en septiembre (correccion 16) | skill `meli-reglas`, `docs/ARQUITECTURA_OPTIMIZAR_IA.md` | Misma consecuencia que la 16: la verificacion previa al push falla siempre. Requiere que Guille confirme el hash nuevo | A — pendiente de decision |
 | 58 | `tests/test_contabilidad_ui.py` da 10 errores con pytest: usa un fixture `cliente` que no esta definido (no hay `conftest.py`). Ya fallaba antes del Duplicador (verificado con `git stash`) | `tests/test_contabilidad_ui.py` | Esa pantalla no tiene red de seguridad: si se rompe, ningun test lo avisa. Definir el fixture o convertirlo al formato de los demas tests | B — detectado 2026-10-14 |
 | 59 | `GET /items/{id}` de publicaciones de OTROS vendedores responde **403** con el token de la cuenta (`access_denied`) y sin token (`PA_UNAUTHORIZED_RESULT_FROM_POLICIES`); el multiget `/items?ids=` devuelve 403 por item y `/items/{id}/description` 404. Verificado 2026-10-17 con MLA1596978845 y MLA2089950644. `/products/{id}` (catalogo) SI responde | Todo lo que lea items ajenos por API: `/api/detalle-competidor`, `get_competitor_details` del MCP, precios de competidores por item, y el futuro importador | Mismo bloqueo de politica que las correcciones 26 y 51, ahora tambien sobre items individuales. Lo que dependa de leer la publicacion de un competidor por API devuelve error o vacio. Revisar que funciones existentes lo usan y que muestran cuando falla. La unica via es leer la pagina en el navegador del usuario (bookmarklet) o el catalogo | A — detectado 2026-10-17, sin resolver (bloqueo externo) |
+| 60 | Capturar competidores desde una busqueda (`_capturar_lote`) llama a `guardar_competidor` con `clase=CLASE_CANDIDATO` siempre: un competidor ya confirmado como **directo** que vuelve a aparecer en una captura queda otra vez como candidato | `web/app.py` `_capturar_lote`, `modules/cerebro.py` `guardar_competidor` | Optimizar con IA (`_competidores_para_optimizar`) y el motor de precio usan solo los directos: recapturar una busqueda los saca en silencio. El Optimizador 2.0 no lo empeora (refresca la ficha con `actualizar_ficha`, que no toca la clase). Fix propuesto: conservar la clase previa si ya fue clasificada por el usuario | B — detectado 2026-10-18, sin tocar (espera OK) |
+| 61 | `web/contabilidad_routes.py` hace `from web.app import get_accounts`. En produccion gunicorn carga `app` (corre con `--chdir web`), asi que `web.app` es un modulo distinto: el primer uso carga una segunda copia de app.py, con su propio scheduler | `web/contabilidad_routes.py:78` | Posibles jobs duplicados (cada copia arranca `_start_scheduler`). El Optimizador 2.0 evita el problema usando el modulo ya cargado (`sys.modules['app']`). Fix propuesto: el mismo en contabilidad_routes | B — detectado 2026-10-18, sin tocar (espera OK) |
 
 ### Estado al cierre del Sprint A
 
@@ -2591,3 +2593,23 @@ de catalogo) no se probo**: la primera la hace Guille con el checklist.
 Flujo de trabajo: Claude edita y pushea a `main` desde la sesión (repo agregado
 como fuente); Render auto-deploya; el usuario valida con el checklist de
 `meli-validar`. Regla #4 (protocolo de 60s) se respeta en cada push.
+
+## 16. Optimizador IA 2.0 — etapas 1 y 2 (2026-10-18)
+
+Definicion aprobada por Guille: doc "Optimizador IA 2.0 — Definicion" (Claude Docs).
+
+- **Etapa 1, lectura de competidores.** El mismo boton de siempre, parado en una pagina de producto
+  de www.mercadolibre.com.ar, ofrece "Leer mis competidores guardados": lee de una vez (same-origin)
+  la pagina de cada competidor elegido para el producto: precio, cuotas sin interes (subtitulo del
+  precio en verde), fotos y videos del vendedor (`gallery.pictures_count` / `video_count`; ojo:
+  `videos_quantity` son videos de reseñas), ficha, descripcion, ventas, calificacion y hasta 15
+  reseñas con estrellas (`/noindex/catalog/reviews/{item_id}`). Guarda con `cerebro.actualizar_ficha`
+  sin tocar la clase. No se pueden leer desde ahi los links de publicidad (redireccionador
+  click1) ni articulo.mercadolibre.com.ar: se abre su pagina y se toca el boton ahi.
+  La captura desde la busqueda marca ahora los resultados pagos (`publicidad`) y guarda sus puestos.
+- **Preguntas de competidores: no disponibles.** ML ya no las muestra en la pagina (solo un formulario
+  de preguntas con IA). Se usan las preguntas propias por API.
+- **Etapa 2, informe.** Optimizar con IA → "Ver informe de competencia": tu publicacion contra cada
+  competidor, avisos (video, fotos, cuotas, Full, publicidad), atributos que tienen ellos y vos no,
+  y busquedas capturadas con tu puesto y los pagos del top 10.
+- Archivos: `modules/optimizador2.py`, `web/optimizador2_routes.py`, `tests/test_optimizador2.py`.

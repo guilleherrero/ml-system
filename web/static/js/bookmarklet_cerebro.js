@@ -83,6 +83,8 @@
         free_ship: /(env[íi]o|llega)\s+gratis/i.test(todo),
         sold_quantity: sold ? parseInt(sold[1].replace(/\./g, ''), 10) : null,
         senal_stock: stock ? stock[0].slice(0, 60) : '',
+        // ML marca los resultados pagos con este componente ("Publicidad")
+        publicidad: !!c.querySelector('[class*="ads-promotions"]'),
         posicion: filas.length + 1,
       });
     }
@@ -94,8 +96,9 @@
   // fotos solo se ven en la página. Se leen desde acá, que está en el mismo
   // sitio, y viajan con la captura para que Optimizar con IA las use.
   // ponytail: depende del HTML de ML; si cambia, se guarda lo que haya (nunca rompe la captura)
-  function datosDeFicha(doc) {
+  function datosDeFicha(doc, html) {
     function t(sel) { return txt(doc.querySelector(sel)); }
+    html = html || '';
     var cuerpo = txt(doc.body).slice(0, 60000);
     var attrs = [];
     doc.querySelectorAll('.andes-table__row, [class*="specs__row"]').forEach(function (row) {
@@ -115,11 +118,25 @@
                ((cuerpo.match(/Vendido por\s+([^|]{2,40}?)(?:\s+MercadoL[ií]der|\s+\+|$)/i) || [])[1] || '');
     var rating = parseFloat((t('.ui-pdp-review__rating') || '').replace(',', '.')) || null;
     var nRev = parseInt((t('.ui-pdp-review__amount') || '').replace(/[^\d]/g, ''), 10) || null;
+    // Fotos y videos del VENDEDOR: los cuenta la galería. "videos_quantity" son
+    // los videos de las reseñas, no sirve para esto.
+    var gal = html.match(/"gallery":\{[^{}]*?"pictures_count":(\d+)(?:,"video_count":(\d+))?/);
+    if (gal) fotos = parseInt(gal[1], 10);
+    // Cuotas sin interés: el subtítulo del precio va en verde ("Mismo precio en
+    // 6 cuotas"). En negro son cuotas con interés de la tarjeta.
+    var pc = doc.querySelector('#pricing_price_subtitle'), cuotas = null;
+    if (pc) {
+      var nc = txt(pc).match(/(\d{1,2})\s*cuotas/);
+      cuotas = nc && (/GREEN/.test(pc.className) || /mismo precio|sin inter/i.test(txt(pc))) ? parseInt(nc[1], 10) : 0;
+    }
     return {
+      videos: gal ? parseInt(gal[2] || '0', 10) : null,
+      cuotas: cuotas,
+      item_id: (html.match(/"item_id":"(MLA\d+)"/) || [])[1] || null,
       description: desc.slice(0, 4000),
       attributes: attrs.slice(0, 60),
       photos_count: fotos || null,
-      premium: /mismo precio en \d+ cuotas|cuotas sin inter[eé]s/i.test(cuerpo),
+      premium: cuotas != null ? cuotas > 0 : /mismo precio en \d+ cuotas|cuotas sin inter[eé]s/i.test(cuerpo),
       full_ship: /\bFULL\b/.test(t('.ui-pdp-container__row--shipping-summary') + ' ' + t('[class*="shipping"]')),
       free_ship_ficha: /env[íi]o gratis|llega gratis/i.test(cuerpo),
       sold_quantity_ficha: vendidos,
@@ -134,7 +151,7 @@
     return fetch(f.permalink, {credentials: 'include'})
       .then(function (r) { return r.text(); })
       .then(function (html) {
-        var d = datosDeFicha(new DOMParser().parseFromString(html, 'text/html'));
+        var d = datosDeFicha(new DOMParser().parseFromString(html, 'text/html'), html);
         var out = Object.assign({}, f, d);
         if (d.sold_quantity_ficha && !f.sold_quantity) out.sold_quantity = d.sold_quantity_ficha;
         if (d.seller_ficha && (!f.seller || f.seller === '-')) out.seller = d.seller_ficha;
@@ -169,7 +186,7 @@
       permalink: location.href.split('#')[0].split('?')[0],
       thumbnail: img ? (img.getAttribute('data-zoom') || img.src || '') : '',
       seller: '-', free_ship: false, sold_quantity: null, senal_stock: '', posicion: null,
-    }, datosDeFicha(document));
+    }, datosDeFicha(document, document.documentElement.innerHTML));
   }
 
   // ── Panel ─────────────────────────────────────────────────────────────────
@@ -207,6 +224,13 @@
     'border-radius:7px;cursor:pointer;font-weight:700;font-size:13px', 'Guardar seleccionados');
   pie.appendChild(btnTodos); pie.appendChild(btnGuardar);
   panel.appendChild(pie);
+  // Optimizador 2.0: parado en una página de producto, lee de una vez a todos
+  // los competidores ya elegidos para la publicación (mismo sitio = se puede).
+  var pie2 = el('div', 'padding:0 16px 12px;flex:0 0 auto;background:#f8fafc;display:none');
+  var btnLeer = el('button', 'width:100%;padding:9px 12px;border:1px solid #2563eb;background:#fff;color:#2563eb;' +
+    'border-radius:7px;cursor:pointer;font-weight:700;font-size:13px', 'Leer mis competidores guardados');
+  pie2.appendChild(btnLeer);
+  panel.appendChild(pie2);
   document.body.appendChild(panel);
 
   // Sin el token la pedía como visitante: el sistema la mandaba al login y el
@@ -321,6 +345,77 @@
     });
   };
 
+  function leerResenas(itemId) {
+    if (!itemId) return Promise.resolve([]);
+    return fetch('/noindex/catalog/reviews/' + itemId + '?noIndex=true&access=view_all&modal=true', {credentials: 'include'})
+      .then(function (r) { return r.text(); })
+      .then(function (h) {
+        var re = /"rating":(\d),"comment":\{"content":\{"text":"((?:[^"\\]|\\.)*)"/g, m, out = [];
+        while ((m = re.exec(h)) && out.length < 40) {
+          try { out.push({rating: parseInt(m[1], 10), texto: JSON.parse('"' + m[2] + '"').slice(0, 600)}); } catch (e) {}
+        }
+        return out;
+      }).catch(function () { return []; });
+  }
+
+  function fichaCompleta(c, doc, html) {
+    var d = datosDeFicha(doc, html);
+    var pm = doc.querySelector('meta[itemprop="price"]');
+    return leerResenas(d.item_id).then(function (res) {
+      return Object.assign(d, {
+        clave: c.clave, title: txt(doc.querySelector('h1.ui-pdp-title')) || c.title,
+        price: pm ? parseFloat(pm.getAttribute('content')) || null : null,
+        free_ship: d.free_ship_ficha, sold_quantity: d.sold_quantity_ficha, resenas: res,
+      });
+    });
+  }
+
+  btnLeer.onclick = function () {
+    var item = sel.value;
+    if (!item) { sub.textContent = 'Elegí arriba de cuál publicación tuya son competencia.'; return; }
+    if (location.hostname !== 'www.mercadolibre.com.ar') {
+      sub.textContent = 'Abrí una página de producto de www.mercadolibre.com.ar y tocá el botón ahí.'; return;
+    }
+    btnLeer.disabled = true; btnLeer.textContent = 'Buscando tus competidores…';
+    var aquiId = (document.documentElement.innerHTML.match(/"item_id":"(MLA\d+)"/) || [])[1];
+    fetch(BASE + '/api/competidores-cors/' + encodeURIComponent(ALIAS) + '/lista?item_id=' + encodeURIComponent(item),
+          {headers: {'X-Cerebro-Token': TOKEN}})
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.error || 'sin respuesta');
+        var comps = j.competidores || [];
+        if (!comps.length) throw new Error('esa publicación todavía no tiene competidores elegidos');
+        // El de esta misma página se lee de acá aunque su link no sea leíble
+        var tareas = comps.filter(function (c) { return c.leible || c.id === aquiId; });
+        var hechas = 0, out = [];
+        function una(c) {
+          var p = c.id === aquiId
+            ? fichaCompleta(c, document, document.documentElement.innerHTML)
+            : fetch(c.permalink, {credentials: 'include'}).then(function (r) { return r.text(); })
+                .then(function (h) { return fichaCompleta(c, new DOMParser().parseFromString(h, 'text/html'), h); });
+          return p.then(function (f) { if (f.ficha_leida) out.push(f); })
+            .catch(function () {})
+            .then(function () { btnLeer.textContent = 'Leyendo ' + (++hechas) + ' de ' + tareas.length + '…'; });
+        }
+        var i = 0;
+        function sig() { return i < tareas.length ? una(tareas[i++]).then(sig) : Promise.resolve(); }
+        return Promise.all([sig(), sig(), sig()]).then(function () {
+          return fetch(BASE + '/api/competidores-cors/' + encodeURIComponent(ALIAS) + '/ficha', {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'X-Cerebro-Token': TOKEN},
+            body: JSON.stringify({item_id: item, fichas: out}),
+          }).then(function (r) { return r.json(); }).then(function (k) {
+            var m = 'Leídos ' + (k.guardadas || 0) + ' de ' + comps.length + ' competidores.';
+            var faltan = comps.length - tareas.length;
+            if (faltan) m += ' ' + faltan + ' no se pueden leer desde acá (link de publicidad o publicación vieja): abrí su página y tocá el botón ahí.';
+            sub.textContent = m + ' Ya están en el informe de Optimizar con IA.';
+            btnLeer.textContent = 'Listo ✓';
+          });
+        });
+      })
+      .catch(function (e) { sub.textContent = 'No se pudo: ' + e.message; btnLeer.textContent = 'Leer mis competidores guardados'; })
+      .then(function () { btnLeer.disabled = false; });
+  };
+
   // Recorrer la pagina antes de leer, para que ML cargue las imagenes de las
   // tarjetas que estan abajo. Sin esto la mitad de los competidores llega sin
   // foto, que es justamente lo que se necesita para reconocer el producto.
@@ -345,6 +440,7 @@
     var unica = !leer().length && filaDePaginaActual();
     if (unica) {
       filas = [unica]; marcados = {0: true};
+      pie2.style.display = 'block';
       sub.textContent = 'Esta publicación' + (unica.ficha_leida ? ' (con descripción y características)' : '') + '. Elegí de cuál tuya es competencia y guardá.';
       pintar(); actualizar();
       return;

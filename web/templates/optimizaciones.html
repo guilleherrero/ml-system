@@ -654,6 +654,15 @@
           </button>
         </div>
 
+        <!-- Optimizador 2.0: informe de competencia -->
+        <div style="padding:0 12px 12px;background:var(--color-success-50)">
+          <button id="btnInforme2" class="btn btn-outline-success fw-semibold w-100" style="font-size:.84rem"
+                  onclick="cargarInformeCompetencia()">
+            <i class="bi bi-clipboard-data me-1"></i>Ver informe de competencia
+          </button>
+        </div>
+        <div id="informe2Panel" style="display:none;border-top:1px solid var(--color-success-400);background:var(--color-neutral-0);padding:12px 14px;font-size:.78rem"></div>
+
         <!-- Panel resultado reverse keywords -->
         <div id="reverseKwPanel" style="display:none;border-top:1px solid var(--color-success-400);background:var(--color-success-50)">
 
@@ -2481,6 +2490,58 @@ function saveCompEdit(id) {
 }
 
 // ── Investigar Keywords con IA ────────────────────────────────────────────────
+// ── Optimizador 2.0: informe de competencia ─────────────────────────────────
+function _fmtCuotas(n) { return n == null ? '—' : (n ? n + ' sin interés' : 'no'); }
+function _fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString('es-AR'); }
+
+async function cargarInformeCompetencia() {
+  const item = _getSelectedItemId();
+  const panel = document.getElementById('informe2Panel');
+  if (!item) { showToast('Elegí primero tu publicación', 'warning'); return; }
+  panel.style.display = 'block';
+  panel.innerHTML = '<div class="text-center p-2"><div class="spinner-border spinner-border-sm me-2"></div>Armando el informe…</div>';
+  let d;
+  try {
+    const r = await fetch(`/optimizar2/api/informe?alias=${encodeURIComponent(ALIAS_OPT)}&item_id=${encodeURIComponent(item)}`);
+    d = await r.json();
+  } catch (e) { d = {ok: false, error: String(e)}; }
+  if (!d.ok) { panel.innerHTML = `<div style="color:var(--color-critical-500)">${_escapeHtml(d.error || 'No se pudo armar el informe')}</div>`; return; }
+
+  const e = _escapeHtml;
+  const fila = (c, vos) => `<tr${vos ? ' style="background:var(--color-info-50);font-weight:600"' : ''}>
+      <td style="max-width:260px">${vos ? 'Vos — ' : ''}${/^https:\/\//.test(c.permalink || '') ? `<a href="${e(c.permalink)}" target="_blank" rel="noopener">${e(c.titulo || c.id)}</a>` : e(c.titulo || c.id)}
+        ${c.publicidad ? '<span class="badge bg-warning text-dark ms-1">Publicidad</span>' : ''}</td>
+      <td>${c.precio ? '$' + _fmtNum(Math.round(c.precio)) : '—'}</td>
+      <td>${_fmtCuotas(c.cuotas)}</td>
+      <td>${c.full ? 'Full' : (c.envio_gratis ? 'Gratis' : '—')}</td>
+      <td>${_fmtNum(c.ventas)}</td>
+      <td>${c.rating ? c.rating + ' (' + _fmtNum(c.opiniones) + ')' : '—'}</td>
+      <td>${vos ? '—' : c.resenas_leidas}</td>
+      <td>${_fmtNum(c.fotos)}</td>
+      <td>${_fmtNum(c.videos)}</td>
+      <td>${c.atributos}</td>
+      <td>${vos ? '' : (c.ficha_ts ? e(String(c.ficha_ts).slice(0, 10)) : '<span style="color:var(--color-warning-700)">sin leer</span>')}</td>
+    </tr>`;
+
+  let h = '';
+  if (d.avisos.length) h += `<ul class="mb-2 ps-3">${d.avisos.map(a => `<li>${e(a)}</li>`).join('')}</ul>`;
+  if (d.sin_leer) h += `<div class="mb-2" style="color:var(--color-warning-700)"><i class="bi bi-info-circle me-1"></i>${d.sin_leer} competidor${d.sin_leer > 1 ? 'es' : ''} sin leer. Abrí la página de cualquier producto en Mercado Libre, tocá el botón y elegí <strong>Leer mis competidores guardados</strong>.</div>`;
+  h += `<div class="table-responsive"><table class="table table-sm align-middle mb-2" style="font-size:.74rem">
+      <thead><tr><th>Publicación</th><th>Precio</th><th>Cuotas</th><th>Envío</th><th>Ventas</th><th>Opiniones</th><th>Reseñas leídas</th><th>Fotos</th><th>Videos</th><th>Atributos</th><th>Leído</th></tr></thead>
+      <tbody>${fila(d.mio, true)}${d.competidores.map(c => fila(c, false)).join('')}</tbody></table></div>`;
+  if (d.faltan_atributos.length) {
+    h += `<div class="fw-semibold mb-1">Atributos que tienen ellos y vos no</div>
+      <div class="mb-1" style="color:var(--color-neutral-600)">Agregá solo los que sean ciertos para tu producto.</div>
+      <ul class="mb-2 ps-3">${d.faltan_atributos.slice(0, 25).map(f => `<li><strong>${e(f.nombre)}</strong> — ${f.valores.slice(0, 4).map(e).join(', ')} <span style="color:var(--color-neutral-500)">(${f.cuantos} competidor${f.cuantos > 1 ? 'es' : ''})</span></li>`).join('')}</ul>`;
+  }
+  if (d.busquedas.length) {
+    h += `<div class="fw-semibold mb-1">Búsquedas capturadas con el botón</div>
+      <table class="table table-sm mb-0" style="font-size:.74rem"><thead><tr><th>Búsqueda</th><th>Fecha</th><th>Tu puesto</th><th>Pagos en el top 10</th></tr></thead>
+      <tbody>${d.busquedas.map(b => `<tr><td>${e(b.busqueda)}</td><td>${e(b.fecha || '')}</td><td>${b.tu_puesto || 'no apareciste'}</td><td>${b.pagos_arriba}</td></tr>`).join('')}</tbody></table>`;
+  }
+  panel.innerHTML = h;
+}
+
 function toggleKwSection() {
   const el = document.getElementById('kwSection');
   const ch = document.getElementById('kwChevron');
