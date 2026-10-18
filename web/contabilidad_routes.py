@@ -75,8 +75,10 @@ def _filtro_fecha_hora(valor):
 def _accounts():
     """Cuentas ML para la sidebar. Import diferido: app.py importa este módulo."""
     try:
-        from web.app import get_accounts
-        return get_accounts()
+        # El app.py ya cargado: en producción gunicorn lo carga como `app` (corre
+        # desde web/) e importar `web.app` cargaba una segunda copia, con otro scheduler.
+        import sys
+        return (sys.modules.get('app') or sys.modules['web.app']).get_accounts()
     except Exception:
         return []
 

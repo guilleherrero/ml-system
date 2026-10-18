@@ -33,3 +33,19 @@ def test_optimizador2_cors_exige_token():
     r = c.post('/api/competidores-cors/Novara/ficha', headers={'X-Cerebro-Token': tok},
                json={'item_id': 'MLA1', 'fichas': [{'clave': 'MLA1::MLA9', 'title': 'x'}]})
     assert r.get_json() == {'ok': True, 'guardadas': 0}  # no es un competidor elegido
+
+
+def test_captura_rechaza_ids_y_numeros_raros(monkeypatch):
+    guardados = []
+    from modules import cerebro
+    monkeypatch.setattr(cerebro, 'guardar_competidor', lambda alias, comp, **k: guardados.append(comp) or {})
+    monkeypatch.setattr(webapp, '_items_propios', lambda alias: [])
+    monkeypatch.setattr(webapp, '_ml_auth', lambda alias: (_ for _ in ()).throw(Exception('sin red')))
+    c = webapp.app.test_client()
+    tok = webapp._token_bookmarklet('Novara')
+    r = c.post('/api/capturar-competidor', headers={'X-Cerebro-Token': tok}, json={
+        'alias': 'Novara', 'competidores': [
+            {'id': "MLA1');alert(1);//", 'title': 'x'},
+            {'id': 'MLA123456', 'title': 'ok', 'reviews_rating': '<img>', 'price': '9'}]})
+    assert r.get_json()['guardados'] == 1 and r.get_json()['errores'] == 1
+    assert guardados[0]['reviews_rating'] is None and guardados[0]['price'] == 9.0

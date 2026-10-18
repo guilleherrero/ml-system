@@ -12471,11 +12471,26 @@ def _capturar_lote(alias: str, body: dict):
         heads, mi_user_id = None, None
 
     guardados, mios, errores, fichas = 0, [], 0, 0
+
+    def _n(v, hi, entero=True):
+        # Llegan de páginas de terceros vía el botón: solo números razonables
+        try:
+            x = int(v) if entero else float(v)
+        except (TypeError, ValueError):
+            return None
+        return x if 0 <= x <= hi else None
+
     for f in filas:
-        cid = (f.get('id') or '').strip().upper()
-        if not cid or not f.get('title'):
+        if not isinstance(f, dict):
             errores += 1
             continue
+        cid = str(f.get('id') or '').strip().upper()
+        if not re.fullmatch(r'MLA\d{5,15}', cid) or not isinstance(f.get('title'), str) or not f['title']:
+            errores += 1
+            continue
+        f = {**f, 'posicion': _n(f.get('posicion'), 10000), 'price': _n(f.get('price'), 1e9, False),
+             'sold_quantity': _n(f.get('sold_quantity'), 1e8), 'photos_count': _n(f.get('photos_count'), 100),
+             'reviews_rating': _n(f.get('reviews_rating'), 5, False), 'reviews_total': _n(f.get('reviews_total'), 1e8)}
 
         # Una tarjeta de catalogo linkea a la ficha, no a una publicacion. El id
         # de ficha no es un competidor: el competidor es quien gana esa ficha.

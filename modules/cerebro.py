@@ -1099,6 +1099,10 @@ def guardar_competidor(alias: str, comp: dict, item_propio: str | None = None,
     data = _competidores_raw(alias)
     clave = f'{item_propio or "_sin_asociar"}::{comp_id}'
     previo = data['competidores'].get(clave, {})
+    # Volver a capturarlo no deshace lo que el usuario ya decidió: antes, una
+    # captura nueva devolvía a "candidato" a un competidor confirmado como directo.
+    if clase == CLASE_CANDIDATO and previo.get('clase') not in (None, CLASE_CANDIDATO):
+        clase = previo['clase']
 
     registro = {
         'clave':         clave,

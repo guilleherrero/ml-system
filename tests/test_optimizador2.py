@@ -59,3 +59,14 @@ def test_informe_no_deja_pasar_texto_en_campos_numericos():
                            'sold_quantity': '<b>', 'price': 'x', 'ficha_ts': 'x'}])
     c = r['competidores'][0]
     assert c['rating'] is None and c['ventas'] is None and c['precio'] is None
+
+
+def test_recapturar_no_desconfirma(monkeypatch):
+    data = {'competidores': {'MLA1::MLA2': {'clave': 'MLA1::MLA2', 'id': 'MLA2', 'clase': cerebro.CLASE_DIRECTO}}}
+    monkeypatch.setattr(cerebro, '_competidores_raw', lambda alias: data)
+    monkeypatch.setattr(cerebro, '_save', lambda *a: True)
+    reg = cerebro.guardar_competidor('x', {'id': 'MLA2', 'title': 't'}, item_propio='MLA1')
+    assert reg['clase'] == cerebro.CLASE_DIRECTO
+    # Una decisión explícita sí cambia la clase
+    reg = cerebro.guardar_competidor('x', {'id': 'MLA2', 'title': 't'}, item_propio='MLA1', clase=cerebro.CLASE_RUIDO)
+    assert reg['clase'] == cerebro.CLASE_RUIDO

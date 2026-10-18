@@ -2405,24 +2405,27 @@ function renderSelectedSection() {
 
   document.getElementById('compSelectedCards').innerHTML = entries.map(c => {
     const meta = [];
-    if (c.sold_quantity) meta.push(`${c.sold_quantity.toLocaleString('es-AR')} ventas`);
-    if (c.reviews_rating) meta.push(`⭐ ${c.reviews_rating} (${c.reviews_total || 0})`);
-    if (c.price) meta.push(`$${Math.round(c.price).toLocaleString('es-AR')}`);
-    if (c.photos_count) meta.push(`${c.photos_count} fotos`);
+    // Llegan del botón (páginas de terceros): solo números, todo escapado abajo
+    const n = v => Number(v) || 0;
+    if (n(c.sold_quantity)) meta.push(`${n(c.sold_quantity).toLocaleString('es-AR')} ventas`);
+    if (n(c.reviews_rating)) meta.push(`⭐ ${n(c.reviews_rating)} (${n(c.reviews_total)})`);
+    if (n(c.price)) meta.push(`$${Math.round(n(c.price)).toLocaleString('es-AR')}`);
+    if (n(c.photos_count)) meta.push(`${n(c.photos_count)} fotos`);
     if (c.premium) meta.push('Premium');
     if (c.free_ship) meta.push('Envío gratis');
     const noData = (c.title === c.id || !c.title);
     const safeId = c.id.replace(/[^a-z0-9]/gi, '_');
-    const displayTitle = c._manualTitle || (noData ? '' : c.title);
+    const displayTitle = _escapeHtml(c._manualTitle || (noData ? '' : c.title));
+    const thumb = /^https:\/\//.test(c.thumbnail || '') ? _escapeHtml(c.thumbnail) : '';
     const displayDesc  = c._manualDesc  || c.description || '';
     return `
     <div style="background:var(--color-neutral-0);border:1px solid ${noData ? 'var(--color-warning-100)' : 'var(--color-success-100)'};border-radius:8px;max-width:340px;overflow:hidden" id="comp-card-${safeId}">
       <div class="d-flex align-items-start gap-2 p-2">
-        ${c.thumbnail
-          ? `<img src="${c.thumbnail}" style="width:44px;height:44px;object-fit:contain;border-radius:4px;flex-shrink:0;background:var(--color-neutral-50)">`
+        ${thumb
+          ? `<img src="${thumb}" style="width:44px;height:44px;object-fit:contain;border-radius:4px;flex-shrink:0;background:var(--color-neutral-50)">`
           : `<div style="width:44px;height:44px;background:var(--color-neutral-100);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--color-neutral-400)"><i class="bi bi-image"></i></div>`}
         <div style="min-width:0;flex:1">
-          <div class="fw-semibold text-truncate" style="font-size:.8rem;color:${noData?'var(--color-warning-500)':'inherit'}" title="${displayTitle || c.id}">
+          <div class="fw-semibold text-truncate" style="font-size:.8rem;color:${noData?'var(--color-warning-500)':'inherit'}" title="${displayTitle || safeId}">
             ${displayTitle || `<em style="color:var(--color-warning-500)">Sin datos — editá para agregar título</em>`}
           </div>
           <div class="text-muted" style="font-size:.68rem;margin-top:2px">${meta.join(' · ') || (noData ? 'Ficha no disponible (API restringida)' : '—')}</div>
@@ -2433,10 +2436,10 @@ function renderSelectedSection() {
           </div>
         </div>
         <div class="d-flex flex-column gap-1 flex-shrink-0">
-          <button class="btn btn-xs ${noData ? 'btn-warning' : 'btn-outline-secondary'}" onclick="toggleEditComp('${c.id}')" title="Editar título y descripción">
+          <button class="btn btn-xs ${noData ? 'btn-warning' : 'btn-outline-secondary'}" onclick="toggleEditComp('${safeId === c.id ? c.id : ''}')" title="Editar título y descripción">
             <i class="bi bi-pencil"></i>
           </button>
-          <button class="btn btn-xs btn-outline-danger" onclick="removeCompetidor('${c.id}')" title="Quitar">
+          <button class="btn btn-xs btn-outline-danger" onclick="removeCompetidor('${safeId === c.id ? c.id : ''}')" title="Quitar">
             <i class="bi bi-x-lg"></i>
           </button>
         </div>
@@ -2447,10 +2450,10 @@ function renderSelectedSection() {
           <i class="bi bi-pencil-fill me-1"></i>
           ${noData ? 'Buscá este producto en el panel de ML y pegá el título y descripción:' : 'Editar datos del competidor:'}
         </div>
-        <input type="text" placeholder="Título del competidor" value="${displayTitle.replace(/"/g,'&quot;')}"
+        <input type="text" placeholder="Título del competidor" value="${displayTitle}"
                class="form-control form-control-sm mb-2" id="edit-title-${safeId}">
         <textarea placeholder="Descripción del competidor (copiá desde la publicación)" class="form-control form-control-sm mb-2" rows="3"
-                  id="edit-desc-${safeId}">${displayDesc.replace(/</g,'&lt;')}</textarea>
+                  id="edit-desc-${safeId}">${_escapeHtml(displayDesc)}</textarea>
         <button class="btn btn-sm btn-success w-100" onclick="saveCompEdit('${c.id}')">
           <i class="bi bi-check-lg me-1"></i>Guardar datos
         </button>
