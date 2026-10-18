@@ -5,8 +5,9 @@
  * ml-system. No usa CORS ni token: abre una ventana del sistema (con la sesion
  * del usuario) y le pasa los datos con postMessage, solo a ese origen.
  *
- * Lee: titulo, precio, caracteristicas, fotos (solo como referencia) y si la
- * pagina es de catalogo. NO lee la descripcion: no se copia.
+ * Lee: titulo, precio, caracteristicas, fotos (solo como referencia), la
+ * descripcion (referencia editable, pedido de Guille 2026-10-18) y si la
+ * pagina es de catalogo.
  */
 (function () {
   var CFG = window.__MLSYS_IMPORTAR__ || {};
@@ -36,9 +37,11 @@
     if (u.indexOf('https://http2.mlstatic.com/') === 0 && fotos.indexOf(u) < 0) fotos.push(u);
   });
   var m = document.documentElement.innerHTML.match(/"category_id":"(MLA\d+)"/);
+  var d = document.querySelector('.ui-pdp-description__content');
   var datos = {
     url: location.href.split('#')[0], titulo: titulo, precio: precioMeta.content,
-    specs: specs, fotos: fotos.slice(0, 20), categoria_pagina: m ? m[1] : null
+    specs: specs, fotos: fotos.slice(0, 20), categoria_pagina: m ? m[1] : null,
+    descripcion: d ? (d.innerText || d.textContent || '').trim().slice(0, 50000) : ''
   };
 
   var win = window.open(BASE + '/importar/recibir?alias=' + encodeURIComponent(ALIAS), 'mlsys_importar',

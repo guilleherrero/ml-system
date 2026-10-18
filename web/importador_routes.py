@@ -194,7 +194,7 @@ def api_guardar():
         b = imp.guardar_edicion(body.get('alias', ''), body.get('id', ''), body.get('edicion') or {})
     except imp.ImportadorError as e:
         return _error(e)
-    avisos = rt_avisos(b)
+    avisos = rt_avisos(b) + [{'nivel': 'aviso', 'mensaje': m, 'texto': ''} for m in imp.avisos_propia(b)]
     return jsonify({'ok': True, 'importacion': b, 'avisos_texto': avisos})
 
 
@@ -314,7 +314,7 @@ def api_publicar():
         nuevo = (creado or {}).get('id')
         if not nuevo:
             raise imp.ImportadorError(f'ML no devolvió el id de la publicación. Respuesta: {creado}')
-        avisos = []
+        avisos = imp.avisos_propia(b) if modo != 'catalogo' else []
         if modo != 'catalogo' and e['descripcion'].strip():
             try:
                 client._post(f'/items/{nuevo}/description', {'plain_text': e['descripcion'].strip()})

@@ -8,9 +8,12 @@ que el boton nuevo lee la PAGINA que el usuario esta mirando y la manda aca.
 Que se usa de la publicacion ajena (decision aprobada por Guille):
 - Si: titulo como referencia, precio como referencia, caracteristicas (ficha),
   y las fotos SOLO para mirarlas.
-- No: ni fotos ni descripcion se copian. En Novara, los relojes de enfermeria
+- No: las fotos no se copian. En Novara, los relojes de enfermeria
   importados con fotos ajenas recibieron el 2026-02-02 infracciones por marcas
   de agua, datos de contacto en fotos y categoria incorrecta.
+- Descripcion: se trae como referencia y se puede "usar como base" (pedido de
+  Guille 2026-10-18). Bloquea datos de contacto y la marca del otro si la del
+  usuario es otra; avisa si queda casi igual a la original.
 
 Dos formas de publicar, las dos solo con aprobacion:
 - Propia: categoria sugerida por ML, ficha editable, fotos y descripcion del
@@ -84,8 +87,9 @@ def limpiar_captura(datos: dict) -> dict:
                 specs.append([n, v])
     m_cat = re.search(r'/p/(MLA\d+)', url)
     m_up = re.search(r'/up/(MLAU\d+)', url)
+    descripcion = str(datos.get('descripcion') or '').replace('\r\n', '\n').strip()[:50000]
     cat_pag = datos.get('categoria_pagina')
-    return {'url': url, 'titulo': titulo, 'precio': precio, 'fotos': fotos, 'specs': specs,
+    return {'url': url, 'titulo': titulo, 'precio': precio, 'fotos': fotos, 'specs': specs, 'descripcion': descripcion,
             # El catalog_product_id solo vale si la pagina ES de catalogo: en las
             # /up/ el HTML trae ids de OTROS productos (visto: MLA2080523428).
             'catalog_product_id': m_cat.group(1) if m_cat else None,
@@ -98,7 +102,12 @@ def capturar(alias: str, datos: dict, usuario: str = '') -> dict:
     d = _cargar(alias)
     for b in d['borradores'].values():
         if b['estado'] == 'pendiente' and b['origen']['url'].split('#')[0] == origen['url'].split('#')[0]:
-            return b            # ya estaba importada: no se duplica el borrador
+            # Ya estaba importada: no se duplica el borrador, pero se refresca lo
+            # leido de la pagina (p. ej. capturas viejas sin descripcion). La
+            # edicion del usuario no se toca.
+            b['origen'] = origen
+            _guardar(alias, d)
+            return b
     bid = uuid.uuid4().hex[:10]
     b = {'id': bid, 'estado': 'pendiente', 'creado': datetime.now().isoformat(timespec='seconds'),
          'creado_por': usuario, 'origen': origen,
@@ -250,9 +259,14 @@ def validar_propia(b: dict, campos: list[dict], fotos_nuevas: list[dict], evalua
     ajena = marca_ajena(b['origen']['specs'])
     if ajena and _norm(ajena) not in ('generica', 'generico', 'sin marca', 'nobrand', 'no brand'):
         mia = e['atributos'].get('BRAND', '')
-        if _norm(ajena) != _norm(mia) and re.search(r'(?<!\w)' + re.escape(_norm(ajena)) + r'(?!\w)', _norm(e['family_name'])):
-            faltas.append(f'El nombre incluye "{ajena}", la marca del otro vendedor, y tu marca es otra. '
-                          'Sacala del nombre: ML lo toma como producto no original.')
+        patron = r'(?<!\w)' + re.escape(_norm(ajena)) + r'(?!\w)'
+        if _norm(ajena) != _norm(mia):
+            if re.search(patron, _norm(e['family_name'])):
+                faltas.append(f'El nombre incluye "{ajena}", la marca del otro vendedor, y tu marca es otra. '
+                              'Sacala del nombre: ML lo toma como producto no original.')
+            if re.search(patron, _norm(e['descripcion'])):
+                faltas.append(f'La descripción menciona "{ajena}", la marca del otro vendedor, y tu marca es otra. '
+                              'Sacala: ML lo toma como producto no original.')
     for h in rt.bloquea(rt.revisar(e['family_name'], 'titulo') + rt.revisar(e['descripcion'], 'descripcion')):
         faltas.append(f'{h["mensaje"]} ("{h["texto"]}")')
     return faltas
@@ -314,3 +328,21 @@ def sugerencias_categoria(b: dict, nombre_de=None) -> list[dict]:
         nombre = nombre_de(pag) if nombre_de else None
         sug.insert(0, {'id': pag, 'nombre': nombre, 'origen': 'vendedor'})
     return sug
+
+
+def parecido_descripcion(b: dict) -> float:
+    """0 a 1: cuanto se parece la descripcion propia a la del otro vendedor."""
+    import difflib
+    a, o = _norm(b['edicion'].get('descripcion')), _norm(b['origen'].get('descripcion'))
+    if not a or not o:
+        return 0.0
+    return round(difflib.SequenceMatcher(None, a, o, autojunk=False).ratio(), 2)
+
+
+def avisos_propia(b: dict) -> list[str]:
+    """Lo que conviene mirar pero no bloquea."""
+    out = []
+    if parecido_descripcion(b) >= 0.8:
+        out.append(f'La descripción es {int(parecido_descripcion(b) * 100)}% igual a la del otro vendedor: '
+                   'conviene pasarla a tus palabras (es texto de otro y ML puede verla como copia).')
+    return out

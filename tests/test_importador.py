@@ -22,7 +22,8 @@ CAPTURA_UP = {   # pagina /up/ real (2026-10-18): trae en el HTML un catalog_pro
     'specs': [['Marca', 'Nobrand'], ['Modelo', 'AW-888'], ['Color', 'Violeta oscuro'], ['', 'x'], 'mal'],
     'fotos': ['https://http2.mlstatic.com/D_Q_NP_877065-CBT114354627809_072026-R.webp', 'https://otro.com/x.jpg',
               'data:image/png;base64,AAA'],
-    'categoria_pagina': 'MLA5411', 'catalog_product_id': 'MLA2080523428'}
+    'categoria_pagina': 'MLA5411', 'catalog_product_id': 'MLA2080523428',
+    'descripcion': 'Cortadora Vivamia recargable. Consultas al 11 4567 8901.'}
 
 
 class TestCaptura(unittest.TestCase):
@@ -49,10 +50,13 @@ class TestCaptura(unittest.TestCase):
                 imp.limpiar_captura(mala)
 
     def test_no_duplica_el_borrador_de_la_misma_pagina(self):
-        a = imp.capturar(self.alias, CAPTURA_UP)
+        a = imp.capturar(self.alias, {**CAPTURA_UP, 'descripcion': ''})
+        imp.guardar_edicion(self.alias, a['id'], {'family_name': 'Mio', 'escalon': 0})
         b = imp.capturar(self.alias, {**CAPTURA_UP, 'url': CAPTURA_UP['url'] + '#reviews'})
         self.assertEqual(a['id'], b['id'])
         self.assertEqual(len(imp.listar(self.alias)), 1)
+        self.assertTrue(b['origen']['descripcion'])                 # se refresca lo leido
+        self.assertEqual(b['edicion']['family_name'], 'Mio')         # sin tocar la edicion
 
     def test_editar_valida(self):
         b = imp.capturar(self.alias, CAPTURA_UP)
@@ -130,6 +134,27 @@ class TestFichaYPublicacion(unittest.TestCase):
                    {'id': 'B', 'title': 'Cortadora De Puntas Abiertas Recargable', 'category_id': 'MLA999'},
                    {'id': 'C', 'title': 'Faja Postparto', 'category_id': 'MLA5411'}]
         self.assertEqual([d['id'] for d in imp.posibles_duplicados(propios, 'Cortadora Puntas Abiertas Recargable Usb', 'MLA5411')], ['A'])
+
+
+class TestDescripcion(unittest.TestCase):
+
+    def _b(self, desc, marca='Novara'):
+        o = imp.limpiar_captura({**CAPTURA_UP, 'specs': [['Marca', 'Vivamia']]})
+        return {'origen': o, 'edicion': {'family_name': 'Cortadora', 'category_id': 'MLA5411', 'atributos': {'BRAND': marca},
+                                         'escalon': 0, 'precio': 50000, 'costo': 10000, 'stock': 1, 'descripcion': desc}}
+
+    def test_bloquea_contacto_y_marca_ajena_en_la_descripcion(self):
+        foto = [{'nombre': 'a.jpg', 'mime': 'image/jpeg', 'contenido': b'x'}]
+        faltas = imp.validar_propia(self._b(CAPTURA_UP['descripcion']), [], foto, None)
+        self.assertTrue(any('teléfono' in f for f in faltas))
+        self.assertTrue(any('Vivamia' in f and 'descripción' in f for f in faltas))
+        self.assertFalse(any('Vivamia' in f for f in imp.validar_propia(self._b('Cortadora Vivamia', marca='Vivamia'), [], foto, None)))
+
+    def test_avisa_si_queda_casi_igual(self):
+        b = self._b(CAPTURA_UP['descripcion'])
+        self.assertGreaterEqual(imp.parecido_descripcion(b), 0.99)
+        self.assertTrue(imp.avisos_propia(b))
+        self.assertEqual(imp.avisos_propia(self._b('Cortadora recargable USB de uso personal, liviana y silenciosa.')), [])
 
 
 if __name__ == '__main__':

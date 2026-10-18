@@ -2554,6 +2554,14 @@ Como funciona:
   catalogo"), con confirmacion obligatoria de que es exactamente ese producto.
 - Cuenta UP: `family_name` y sin `title` en el POST.
 
+Descripcion (2026-10-18, pedido de Guille: "seria bueno que la traiga para
+poder editarla"): el boton ahora lee la descripcion; se muestra como
+referencia con "Usar como base". Bloquea publicar con datos de contacto
+(comunes en descripciones ajenas) o con la marca del otro si la propia es
+otra; avisa si queda >= 80% igual a la original (difflib). Reimportar la misma
+pagina refresca lo leido sin tocar la edicion. **El boton hay que volver a
+instalarlo** (el codigo va adentro del favorito).
+
 Probado en vivo sin publicar: captura real de una /up/ y una /p/, editor con
 24 campos y 11 precargados, precio calculado. **La publicacion real (propia y
 de catalogo) no se probo**: la primera la hace Guille con el checklist.

@@ -150,7 +150,12 @@
       <div class="ip-mias mb-2" id="ipMias"></div>
       <label class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-plus-lg me-1"></i>Agregar fotos<input type="file" id="ipArchivos" accept="image/jpeg,image/png" multiple hidden></label>
 
-      <div class="ip-etiqueta mt-3">Descripción (tuya; texto plano, sin datos de contacto ni emojis)</div>
+      <div class="ip-etiqueta mt-3">Descripción (texto plano; no se publica con datos de contacto, emojis ni la marca del otro vendedor)</div>
+      ${o.descripcion ? `<details class="mb-1"><summary class="small">Descripción del otro vendedor (${o.descripcion.length} caracteres) — referencia</summary>
+          <div class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--color-neutral-50);border-radius:8px;padding:.5rem .7rem">${esc(o.descripcion)}</div>
+          <button class="btn btn-sm btn-outline-primary py-0 mt-1" id="ipUsarDesc">Usar como base</button>
+          <span class="small text-muted ms-1">La pasa al cuadro de abajo para que la edites. Conviene escribirla con tus palabras.</span></details>`
+        : '<div class="small text-muted mb-1">No se leyó descripción de la página. Si la importaste antes de este cambio, volvé a tocar el botón (actualizado) en la publicación.</div>'}
       <textarea class="form-control form-control-sm" id="ipDesc" rows="8">${esc(e.descripcion)}</textarea>
 
       ${j.posibles_duplicados.length ? `<div class="mt-3">${aviso('warn', 'Tenés publicaciones muy parecidas en esta categoría: ' + j.posibles_duplicados.map(d => d.id + ' (' + d.titulo + ')').join(', ') + '. Si es el mismo producto, usá el Duplicador en vez de importar.')}
@@ -168,6 +173,10 @@
     $('ipPrecio').addEventListener('change', () => evaluar(false));
     $('ipEsc').addEventListener('change', () => evaluar(false));
     $('ipGuardar').addEventListener('click', () => guardar(false));
+    if ($('ipUsarDesc')) $('ipUsarDesc').addEventListener('click', () => {
+      if ($('ipDesc').value.trim() && !confirm('Reemplaza lo que escribiste en la descripción. ¿Seguir?')) return;
+      $('ipDesc').value = ACT.origen.descripcion; $('ipDesc').focus();
+    });
     $('ipPublicar').addEventListener('click', () => publicar('propia'));
     if ($('ipPublicarCat')) $('ipPublicarCat').addEventListener('click', () => publicar('catalogo'));
     $('ipEditor').scrollIntoView({behavior: 'smooth'});
