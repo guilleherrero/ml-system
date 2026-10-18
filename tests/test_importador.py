@@ -58,6 +58,13 @@ class TestCaptura(unittest.TestCase):
         self.assertTrue(b['origen']['descripcion'])                 # se refresca lo leido
         self.assertEqual(b['edicion']['family_name'], 'Mio')         # sin tocar la edicion
 
+    def test_eliminar_la_saca_de_la_lista(self):
+        b = imp.capturar(self.alias, CAPTURA_UP)
+        imp.eliminar(self.alias, b['id'])
+        self.assertEqual(imp.listar(self.alias), [])
+        with self.assertRaises(imp.ImportadorError):
+            imp.eliminar(self.alias, b['id'])
+
     def test_editar_valida(self):
         b = imp.capturar(self.alias, CAPTURA_UP)
         e = imp.guardar_edicion(self.alias, b['id'], {'family_name': ' Cortadora  X ', 'category_id': 'MLA5411',

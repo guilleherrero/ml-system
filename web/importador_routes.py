@@ -10,7 +10,7 @@ protege todas estas rutas (incluida la de recibir: corre con la sesion).
   /importar/api/preparar       categoria sugerida, campos de ficha, tasas, catalogo
   /importar/api/guardar        guarda la edicion
   /importar/api/evaluar        ganancia / margen de un precio (no guarda)
-  /importar/api/descartar
+  /importar/api/eliminar       saca una importacion de la lista (no toca ML)
   /importar/api/publicar       crea en ML (exige confirmado)
 """
 import json
@@ -234,14 +234,14 @@ def api_evaluar():
     return jsonify({'ok': True, 'evaluacion': ev, 'precio_sugerido': sugerido})
 
 
-@bp.route('/api/descartar', methods=['POST'])
-def api_descartar():
+@bp.route('/api/eliminar', methods=['POST'])
+def api_eliminar():
     body = request.get_json() or {}
     try:
-        b = imp.descartar(body.get('alias', ''), body.get('id', ''))
+        b = imp.eliminar(body.get('alias', ''), body.get('id', ''))
     except imp.ImportadorError as e:
         return _error(e)
-    return jsonify({'ok': True, 'importacion': b})
+    return jsonify({'ok': True, 'eliminada': b['id']})
 
 
 @bp.route('/api/publicar', methods=['POST'])

@@ -77,13 +77,17 @@
           ${b.origen.catalog_product_id ? ' · <span class="ip-chip">catálogo</span>' : ''}</div></td>
         <td>${esc(b.creado.slice(0, 10))}</td>
         <td><span class="ip-chip">${esc(b.estado)}</span>${b.item_creado ? '<div class="small">' + esc(b.item_creado) + '</div>' : ''}${(b.avisos || []).map(a => '<div class="small ip-bad">' + esc(a) + '</div>').join('')}</td>
-        <td class="text-end">${b.estado === 'pendiente' ? `<button class="btn btn-sm btn-primary py-0 ip-editar" data-id="${b.id}">Editar</button>
-          <button class="btn btn-sm btn-outline-secondary py-0 ip-desc" data-id="${b.id}">Descartar</button>` : ''}</td></tr>`).join('')}</tbody></table>`;
+        <td class="text-end">${b.estado === 'pendiente' ? `<button class="btn btn-sm btn-primary py-0 ip-editar" data-id="${b.id}">Editar</button>` : ''}
+          <button class="btn btn-sm btn-outline-danger py-0 ip-del" data-id="${b.id}" data-pub="${b.item_creado ? esc(b.item_creado) : ''}"><i class="bi bi-trash me-1"></i>${b.item_creado ? 'Quitar de la lista' : 'Eliminar'}</button></td></tr>`).join('')}</tbody></table>`;
     document.querySelectorAll('.ip-editar').forEach(x => x.addEventListener('click', () => abrir(x.dataset.id)));
-    document.querySelectorAll('.ip-desc').forEach(x => x.addEventListener('click', async () => {
-      if (!confirm('¿Descartar esta importación? No toca nada en ML.')) return;
-      try { await api('/importar/api/descartar', {alias: alias(), id: x.dataset.id}); } catch (e) { alert(e.message); }
-      $('ipEditor').innerHTML = ''; lista();
+    document.querySelectorAll('.ip-del').forEach(x => x.addEventListener('click', async () => {
+      const msg = x.dataset.pub
+        ? `¿Quitar de esta lista? La publicación ${x.dataset.pub} en Mercado Libre NO se toca: sigue activa.`
+        : '¿Eliminar esta importación? Se borra el borrador de ml-system; en Mercado Libre no cambia nada.';
+      if (!confirm(msg)) return;
+      try { await api('/importar/api/eliminar', {alias: alias(), id: x.dataset.id}); } catch (e) { alert(e.message); }
+      if (ACT && ACT.id === x.dataset.id) { $('ipEditor').innerHTML = ''; ACT = null; }
+      lista();
     }));
   }
 

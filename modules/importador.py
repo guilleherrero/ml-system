@@ -130,14 +130,13 @@ def obtener(alias: str, bid: str) -> dict:
     return b
 
 
-def descartar(alias: str, bid: str) -> dict:
+def eliminar(alias: str, bid: str) -> dict:
+    """Saca la importacion de la lista (solo datos de ml-system). Si ya se
+    publico, la publicacion en ML sigue igual: esto no la toca."""
     d = _cargar(alias)
-    b = d['borradores'].get(bid)
+    b = d['borradores'].pop(bid, None)
     if not b:
         raise ImportadorError('Importación no encontrada.')
-    if b['estado'] != 'pendiente':
-        raise ImportadorError(f'Ya está {b["estado"]}.')
-    b['estado'] = 'descartado'
     _guardar(alias, d)
     return b
 
