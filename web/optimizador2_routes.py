@@ -94,10 +94,10 @@ def _busquedas(alias: str, item_id: str) -> list[dict]:
     data = a.load_json(os.path.join(a.DATA_DIR, f'busquedas_capturadas_{a.safe(alias)}.json')) or {}
     hermanas = set(gp.hermanas_de(alias, item_id)) | {item_id}
     out = [{'busqueda': q, 'fecha': b.get('fecha'), 'resultados': b.get('resultados'),
-            'tu_puesto': min((p.get('posicion') for p in b.get('mis_posiciones') or []
-                              if p.get('id') in hermanas and p.get('posicion')), default=None),
+            'tu_puesto': min((p['posicion'] for p in b.get('mis_posiciones') or []
+                              if p.get('id') in hermanas and isinstance(p.get('posicion'), int)), default=None),
             'pagos': len(b.get('pagos') or []),
-            'pagos_arriba': len([x for x in b.get('pagos') or [] if x and x <= 10])}
+            'pagos_arriba': len([x for x in b.get('pagos') or [] if isinstance(x, int) and x <= 10])}
            for q, b in (data.get('busquedas') or {}).items()]
     # Solo las búsquedas donde apareciste, o las más recientes si no
     propias = [b for b in out if b['tu_puesto']]

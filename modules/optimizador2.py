@@ -110,11 +110,12 @@ def _norm(s: str) -> str:
 def _fila(c: dict) -> dict:
     return {
         'id': c.get('id'), 'titulo': c.get('title') or '', 'permalink': c.get('permalink') or '',
-        'precio': c.get('price'), 'cuotas': c.get('cuotas'),
+        'precio': _num(c.get('price'), 0, 1e9), 'cuotas': _num(c.get('cuotas'), 0, 24, True),
         'full': bool(c.get('full_ship')), 'envio_gratis': bool(c.get('free_ship')),
-        'ventas': c.get('sold_quantity'), 'rating': c.get('reviews_rating'),
-        'opiniones': c.get('reviews_total'), 'resenas_leidas': len(c.get('resenas') or []),
-        'fotos': c.get('photos_count'), 'videos': c.get('videos'),
+        # La captura desde la búsqueda guarda estos sin validar: solo números
+        'ventas': _num(c.get('sold_quantity'), 0, 1e8, True), 'rating': _num(c.get('reviews_rating'), 0, 5),
+        'opiniones': _num(c.get('reviews_total'), 0, 1e8, True), 'resenas_leidas': len(c.get('resenas') or []),
+        'fotos': _num(c.get('photos_count'), 0, 100, True), 'videos': _num(c.get('videos'), 0, 50, True),
         'publicidad': bool(c.get('publicidad')),
         'atributos': len(c.get('attributes') or []), 'ficha_ts': c.get('ficha_ts'),
     }

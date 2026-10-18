@@ -51,3 +51,11 @@ def test_actualizar_ficha_no_cambia_la_clase(monkeypatch):
     assert reg['clase'] == cerebro.CLASE_DIRECTO and reg['title'] == 'nuevo'
     assert reg['videos'] == 0 and reg['ficha_ts']
     assert cerebro.actualizar_ficha('x', 'no-existe', {}) is None
+
+
+def test_informe_no_deja_pasar_texto_en_campos_numericos():
+    mio = {'id': 'MLA1', 'attributes': []}
+    r = op2.informe(mio, [{'id': 'MLA2', 'reviews_rating': '<img src=x onerror=alert(1)>',
+                           'sold_quantity': '<b>', 'price': 'x', 'ficha_ts': 'x'}])
+    c = r['competidores'][0]
+    assert c['rating'] is None and c['ventas'] is None and c['precio'] is None
