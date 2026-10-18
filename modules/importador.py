@@ -331,12 +331,19 @@ def sugerencias_categoria(b: dict, nombre_de=None) -> list[dict]:
 
 
 def parecido_descripcion(b: dict) -> float:
-    """0 a 1: cuanto se parece la descripcion propia a la del otro vendedor."""
-    import difflib
-    a, o = _norm(b['edicion'].get('descripcion')), _norm(b['origen'].get('descripcion'))
+    """0 a 1: cuanto se parece la descripcion propia a la del otro vendedor.
+
+    Jaccard sobre grupos de 3 palabras: lineal en el largo del texto. Antes se
+    usaba difflib.SequenceMatcher, que es cuadratico: con dos descripciones de
+    50.000 caracteres podia tardar minutos y colgar el unico worker
+    (hallazgo de la revision de seguridad, 2026-10-18)."""
+    def grupos(texto):
+        w = _norm(texto).split()[:20000]
+        return {' '.join(w[i:i + 3]) for i in range(max(len(w) - 2, 0))} or set(w)
+    a, o = grupos(b['edicion'].get('descripcion')), grupos(b['origen'].get('descripcion'))
     if not a or not o:
         return 0.0
-    return round(difflib.SequenceMatcher(None, a, o, autojunk=False).ratio(), 2)
+    return round(len(a & o) / len(a | o), 2)
 
 
 def avisos_propia(b: dict) -> list[str]:

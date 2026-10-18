@@ -156,6 +156,15 @@ class TestDescripcion(unittest.TestCase):
         self.assertTrue(imp.avisos_propia(b))
         self.assertEqual(imp.avisos_propia(self._b('Cortadora recargable USB de uso personal, liviana y silenciosa.')), [])
 
+    def test_textos_largos_no_cuelgan(self):
+        import time
+        largo = ' '.join(f'palabra{i % 977} texto{i % 131}' for i in range(25000))   # ~50.000 caracteres o mas
+        b = self._b(largo)
+        b['origen']['descripcion'] = largo[::-1]
+        t0 = time.time()
+        imp.parecido_descripcion(b)
+        self.assertLess(time.time() - t0, 1.0)
+
 
 if __name__ == '__main__':
     unittest.main()

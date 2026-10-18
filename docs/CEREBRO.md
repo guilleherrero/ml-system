@@ -2558,7 +2558,9 @@ Descripcion (2026-10-18, pedido de Guille: "seria bueno que la traiga para
 poder editarla"): el boton ahora lee la descripcion; se muestra como
 referencia con "Usar como base". Bloquea publicar con datos de contacto
 (comunes en descripciones ajenas) o con la marca del otro si la propia es
-otra; avisa si queda >= 80% igual a la original (difflib). Reimportar la misma
+otra; avisa si queda >= 80% igual a la original (Jaccard de grupos de 3
+palabras: se cambio difflib, cuadratico, que con 50.000 caracteres podia
+colgar el unico worker — hallazgo de la revision de seguridad). Reimportar la misma
 pagina refresca lo leido sin tocar la edicion. **El boton hay que volver a
 instalarlo** (el codigo va adentro del favorito).
 
