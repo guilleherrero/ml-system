@@ -195,6 +195,7 @@
      ('Optimizar con IA', '/optimizaciones/' ~ ca, 'bi-stars', p.startswith('/optimizaciones/'), ''),
      ('Embudo de conversión', '/funnel/' ~ ca, 'bi-funnel', p.startswith('/funnel/'), ''),
      ('Duplicados', '/duplicados/' ~ ca, 'bi-files', p.startswith('/duplicados/'), ''),
+     ('Duplicar publicaciones', '/duplicar', 'bi-copy', p.startswith('/duplicar'), ''),
      ('Importador de publicaciones', '/importar', 'bi-box-arrow-in-down', p.startswith('/importar'), ''),
   ]),
   ('Stock y Full', 'bi-box-seam', [
@@ -207,7 +208,6 @@
      ('Repricing', '/repricing/' ~ ca, 'bi-arrow-repeat', p.startswith('/repricing/') and not p.startswith('/repricing/wizard'), ''),
      ('Configurar repricing', '/repricing/wizard?alias=' ~ ca, 'bi-magic', p == '/repricing/wizard', ''),
      ('Calculadora de precios', '/pricing/existente', 'bi-calculator', p == '/pricing/existente', ''),
-     ('Duplicar publicaciones', '/duplicar', 'bi-copy', p.startswith('/duplicar'), ''),
   ]),
   ('Clientes', 'bi-chat-square-heart', [
      ('Reputación y reclamos', '/reputacion/' ~ ca, 'bi-shield-check', p.startswith('/reputacion/') or p.startswith('/preguntas/'), 'badge-preguntas'),
