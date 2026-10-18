@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% set tema_listo = true %}
+{% block title %} — Importando…{% endblock %}
+{% block content %}
+<div class="app-card" style="padding:18px;max-width:480px">
+  <h6 class="mb-2"><i class="bi bi-box-arrow-in-down me-1"></i>Importar a ml-system</h6>
+  <div id="imEstado" class="small">Esperando los datos de la publicación…</div>
+</div>
+<script>
+(function () {
+  const ALIAS = {{ alias | tojson }};
+  const estado = document.getElementById('imEstado');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  if (!window.opener) { estado.textContent = 'Abrí esta ventana con el botón "Importar a ml-system" desde una publicación.'; return; }
+  window.addEventListener('message', async ev => {
+    // Solo se aceptan datos de una pagina de MercadoLibre Argentina.
+    if (!/^https:\/\/([a-z]+\.)?mercadolibre\.com\.ar$/.test(ev.origin) || !ev.data || ev.data.tipo !== 'mlsys-importar-datos') return;
+    estado.textContent = 'Guardando…';
+    try {
+      const r = await fetch('/importar/api/capturar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                       body: JSON.stringify({alias: ALIAS, datos: ev.data.datos})});
+      const j = await r.json(); if (!j.ok) throw new Error(j.error);
+      estado.innerHTML = `Importada como borrador: <b>${esc(j.titulo)}</b>.<br>No se publicó nada.<br><br>
+        <a class="btn btn-sm btn-primary" target="_blank" href="/importar?alias=${encodeURIComponent(ALIAS)}&abrir=${encodeURIComponent(j.id)}">Abrir en ml-system</a>`;
+    } catch (e) { estado.textContent = 'No se pudo importar: ' + e.message; }
+  });
+  window.opener.postMessage({tipo: 'mlsys-importar-listo'}, '*');
+})();
+</script>
+{% endblock %}

@@ -20523,6 +20523,12 @@ try:
 except Exception as _e:
     print(f'[moderaciones] ERROR registrando las rutas: {_e}')
 
+try:
+    from web.importador_routes import bp as _bp_importador
+    app.register_blueprint(_bp_importador)
+except Exception as _e:
+    print(f'[importador] ERROR registrando las rutas: {_e}')
+
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
 

@@ -179,7 +179,8 @@ def sugerir_categorias(titulo: str, limite: int = 3) -> list[dict] | None:
         return None
     if not isinstance(datos, list):
         return None
-    return [{'id': d.get('category_id'), 'nombre': d.get('category_name')} for d in datos if d.get('category_id')]
+    return [{'id': d.get('category_id'), 'nombre': d.get('category_name'), 'domain_id': d.get('domain_id')}
+            for d in datos if d.get('category_id')]
 
 
 def comparar_categoria(actual: str, sugeridas: list[dict] | None) -> str:

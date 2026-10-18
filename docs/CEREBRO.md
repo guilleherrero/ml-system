@@ -1057,6 +1057,7 @@ Se corrigen en el sprint indicado. Se van agregando a medida que aparecen.
 | 56 | `/api/pricing/trio/duplicar` crea Medio/Compensa con `POST /items` mandando `title` (y un titulo distinto por perfil via `titulo_variante`). Novara es `user_product_seller` (banner de UpSeller, 2026-10-14): la doc oficial de Precio por variacion dice que "el campo title no debe ser enviado", y que title, family_name, attributes, pictures y available_quantity se sincronizan entre TODOS los items del mismo user_product_id. Ademas no copia attributes, sale_terms ni shipping | `web/app.py` `api_pricing_trio_duplicar`, `modules/trio_generador.titulo_variante` | Si ML asocia la copia al UP del original, el titulo "distinto" no puede existir: o se ignora, o renombra la familia entera incluida la Batalla (titulo congelado por ventas). Si no la asocia, nace un UP aparte que compite contra el original. El camino documentado es `POST /user-products/{UP}/items` (solo condiciones de venta; fotos, ficha, titulo y stock salen del UP). **No verificado en vivo** — la creacion real nunca se probo (ver Pendiente del Sprint 5) | A — detectado 2026-10-14, pendiente de decision |
 | 57 | La Regla #1 sigue con el hash viejo (`74783469...`) y `seo_optimizer.py` volvio a cambiar en un commit legitimo (`2ee387d`, 2026-10-11): hoy da `e092a4e3c45152064651a21c2a8a3630`, distinto tambien del `0389b93a...` re-baseado en septiembre (correccion 16) | skill `meli-reglas`, `docs/ARQUITECTURA_OPTIMIZAR_IA.md` | Misma consecuencia que la 16: la verificacion previa al push falla siempre. Requiere que Guille confirme el hash nuevo | A — pendiente de decision |
 | 58 | `tests/test_contabilidad_ui.py` da 10 errores con pytest: usa un fixture `cliente` que no esta definido (no hay `conftest.py`). Ya fallaba antes del Duplicador (verificado con `git stash`) | `tests/test_contabilidad_ui.py` | Esa pantalla no tiene red de seguridad: si se rompe, ningun test lo avisa. Definir el fixture o convertirlo al formato de los demas tests | B — detectado 2026-10-14 |
+| 59 | `GET /items/{id}` de publicaciones de OTROS vendedores responde **403** con el token de la cuenta (`access_denied`) y sin token (`PA_UNAUTHORIZED_RESULT_FROM_POLICIES`); el multiget `/items?ids=` devuelve 403 por item y `/items/{id}/description` 404. Verificado 2026-10-17 con MLA1596978845 y MLA2089950644. `/products/{id}` (catalogo) SI responde | Todo lo que lea items ajenos por API: `/api/detalle-competidor`, `get_competitor_details` del MCP, precios de competidores por item, y el futuro importador | Mismo bloqueo de politica que las correcciones 26 y 51, ahora tambien sobre items individuales. Lo que dependa de leer la publicacion de un competidor por API devuelve error o vacio. Revisar que funciones existentes lo usan y que muestran cuando falla. La unica via es leer la pagina en el navegador del usuario (bookmarklet) o el catalogo | A — detectado 2026-10-17, sin resolver (bloqueo externo) |
 
 ### Estado al cierre del Sprint A
 
@@ -2516,6 +2517,46 @@ Plan aprobado (Guille, 2026-10-16), en partes que se despliegan por separado:
    dieron "Aparatos para Abdominales" y despues "Almohadillas Relajantes"),
    asi que es AVISO para revisar, nunca cambia la categoria. Pestaña
    "Categoría" en `/moderaciones`, una por una al tocar el boton.
+
+## 15. Importador de publicaciones — "Importar como plantilla" (2026-10-18)
+
+Pedido de Guille a partir del Importador de UpSeller (extension + "Importar
+Ahora"; Guille ya tenia 18 importadas ahi, varias de otros vendedores).
+
+Por que asi:
+- ML bloqueo leer publicaciones ajenas por API (correccion 59): el boton lee
+  la PAGINA que el usuario esta mirando, como la extension de UpSeller.
+- Los relojes de enfermeria importados con fotos ajenas recibieron el
+  2026-02-02 infracciones por marcas de agua, datos de contacto en fotos y
+  categoria incorrecta: de la ajena NO se copian fotos ni descripcion.
+
+Como funciona:
+- Boton NUEVO de favoritos "Importar a ml-system" (`web/static/js/
+  bookmarklet_importar.js`, aparte del de competidores). Sin CORS ni token:
+  abre `/importar/recibir` (con la sesion del usuario, cookie Lax) y le pasa los
+  datos por postMessage solo a ese origen; la ventanita solo acepta mensajes de
+  mercadolibre.com.ar. Lee titulo, precio, caracteristicas, fotos (referencia)
+  y categoria de la pagina. NO la descripcion.
+- `/importar` (menu Crecimiento): borrador editable. Categoria: la del
+  vendedor original PRIMERO (con titulos cortos domain_discovery falla: la
+  cortadora dio "Puntas de Destornillador" y despues "Cortadoras de Tela"),
+  las de ML como alternativas con aviso si difieren. Ficha de la categoria
+  precargada con lo leido SALVO marca, modelo y codigos (identifican el
+  producto del otro; se muestran como referencia). Precio con la calculadora
+  (comisiones reales por category_id, verificado igual que por domain_id) y
+  piso 15%. Fotos y descripcion del usuario (diagnostico de fotos y revision de
+  texto). Avisa publicaciones propias parecidas (usar el Duplicador).
+- Bloquea publicar si el nombre lleva la marca del otro y la del usuario es
+  otra (riesgo "no era original", 24 publicaciones de Novara).
+- Catalogo: solo si la pagina era /p/MLA... (en /up/ el HTML trae ids de OTROS
+  productos: se vio MLA2080523428, un cortapelos 4 en 1 inactivo). Publica
+  directo con catalog_product_id + catalog_listing (doc "Publicar en
+  catalogo"), con confirmacion obligatoria de que es exactamente ese producto.
+- Cuenta UP: `family_name` y sin `title` en el POST.
+
+Probado en vivo sin publicar: captura real de una /up/ y una /p/, editor con
+24 campos y 11 precargados, precio calculado. **La publicacion real (propia y
+de catalogo) no se probo**: la primera la hace Guille con el checklist.
 
 ## Sprints
 

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% set tema_listo = true %}{# diseño nuevo: soporta oscuro y claro #}
+{% block title %} — Importar publicaciones{% endblock %}
+{% block content %}
+<style>
+.ip-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; overflow:hidden; margin-bottom:.85rem; }
+.ip-card-header { background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-100); padding:.55rem 1rem;
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-700); }
+.ip-card-body { padding:.9rem 1rem; }
+.ip-etiqueta { font-size:.62rem; text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-500); }
+.ip-tabla th, .ip-tabla td { font-size:.8rem; vertical-align:middle; }
+.ip-thumb { height:40px; width:40px; object-fit:contain; background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:6px; }
+.ip-ref { display:flex; gap:.4rem; overflow-x:auto; }
+.ip-ref img { height:72px; width:72px; object-fit:contain; border:1px dashed var(--color-neutral-300); border-radius:6px; opacity:.85; background:var(--color-neutral-0); }
+.ip-mias { display:flex; flex-wrap:wrap; gap:.5rem; }
+.ip-mia { width:120px; border:1px solid var(--color-neutral-200); border-radius:8px; padding:.3rem; }
+.ip-mia img { width:100%; height:96px; object-fit:contain; }
+.ip-mia.principal { border-color:var(--color-success-700); }
+.ip-aviso { border-radius:8px; padding:.5rem .75rem; font-size:.8rem; margin-bottom:.5rem; }
+.ip-warn { background:var(--color-warning-100); color:var(--color-warning-700); }
+.ip-bad { background:var(--color-critical-100); color:var(--color-critical-700); }
+.ip-ok { background:var(--color-success-100); color:var(--color-success-700); }
+.ip-chip { display:inline-block; font-size:.66rem; border-radius:6px; padding:.1rem .4rem; background:var(--color-neutral-100); color:var(--color-neutral-700); }
+.ip-boton { display:inline-block; padding:.4rem .8rem; border-radius:8px; background:var(--color-info-100); color:var(--color-info-700); font-weight:600; text-decoration:none; cursor:grab; }
+.ip-oblig { color:var(--color-critical-700); }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>Importar publicaciones</h5>
+    <div class="text-muted" style="font-size:.8rem">Una publicación de MercadoLibre como plantilla: categoría y ficha, con tus fotos y tu descripción. Nada se publica sin tu aprobación.</div>
+  </div>
+  <select class="form-select form-select-sm" id="ipAlias" style="max-width:220px">
+    {% for acc in cuentas_menu %}
+      <option value="{{ acc.alias }}" {% if acc.alias == alias_boton %}selected{% endif %}>{{ acc.alias }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="ip-card"><div class="ip-card-header">El botón "Importar a ml-system"</div><div class="ip-card-body">
+  {% if boton %}
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <a class="ip-boton" href="{{ boton }}" onclick="event.preventDefault(); alert('Arrastrá este botón a la barra de favoritos de Chrome.');"><i class="bi bi-box-arrow-in-down me-1"></i>Importar a ml-system</a>
+    <div class="small text-muted">1) Arrastralo a la barra de favoritos (Cmd+Shift+B si no la ves). 2) Entrá a una publicación de MercadoLibre. 3) Tocalo: aparece acá como borrador.
+      Es aparte del botón de competidores. Lee la página que estás mirando; la descripción y las fotos del otro vendedor no se copian.</div>
+  </div>
+  {% else %}<div class="small">Elegí la cuenta arriba para generar el botón.</div>{% endif %}
+</div></div>
+
+<div class="ip-card"><div class="ip-card-header">Importaciones</div><div class="ip-card-body" id="ipLista">Cargando…</div></div>
+<div id="ipEditor"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const pesos = n => n == null || n === '' ? '—' : '$' + Number(n).toLocaleString('es-AR', {maximumFractionDigits: 0});
+  const pct = n => n == null ? '—' : Number(n).toLocaleString('es-AR', {maximumFractionDigits: 1}) + '%';
+  const alias = () => $('ipAlias').value;
+  const aviso = (t, txt) => `<div class="ip-aviso ip-${t}">${esc(txt)}</div>`;
+  const ESC = {0: 'Clásica sin cuotas', 4: 'Clásica 3 a 12 con interés bajo', 3: 'Premium 3 cuotas sin interés', 6: 'Premium 6 cuotas sin interés', 9: 'Premium 9 cuotas sin interés', 12: 'Premium 12 cuotas sin interés'};
+  let ACT = null, CTX = null, FOTOS = [];
+
+  async function api(url, body) {
+    const r = await fetch(url, body ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)} : {});
+    let j; try { j = await r.json(); } catch (e) { throw new Error('El servidor no respondió bien (' + r.status + ').'); }
+    if (!j.ok) throw new Error(j.error || 'Error'); return j;
+  }
+
+  async function lista() {
+    let j;
+    try { j = await api('/importar/api/lista?alias=' + encodeURIComponent(alias())); } catch (e) { $('ipLista').innerHTML = aviso('bad', e.message); return; }
+    if (!j.importaciones.length) { $('ipLista').innerHTML = '<span class="small text-muted">Todavía no importaste nada. Usá el botón desde una publicación de MercadoLibre.</span>'; return; }
+    $('ipLista').innerHTML = `<table class="table table-sm ip-tabla mb-0"><tbody>${j.importaciones.map(b => `
+      <tr><td style="width:46px">${b.origen.fotos[0] ? `<img class="ip-thumb" src="${esc(b.origen.fotos[0])}" alt="">` : ''}</td>
+        <td>${esc(b.origen.titulo)}<div class="text-muted">${pesos(b.origen.precio)} · <a href="${esc(b.origen.url)}" target="_blank" rel="noopener">ver original</a>
+          ${b.origen.catalog_product_id ? ' · <span class="ip-chip">catálogo</span>' : ''}</div></td>
+        <td>${esc(b.creado.slice(0, 10))}</td>
+        <td><span class="ip-chip">${esc(b.estado)}</span>${b.item_creado ? '<div class="small">' + esc(b.item_creado) + '</div>' : ''}${(b.avisos || []).map(a => '<div class="small ip-bad">' + esc(a) + '</div>').join('')}</td>
+        <td class="text-end">${b.estado === 'pendiente' ? `<button class="btn btn-sm btn-primary py-0 ip-editar" data-id="${b.id}">Editar</button>
+          <button class="btn btn-sm btn-outline-secondary py-0 ip-desc" data-id="${b.id}">Descartar</button>` : ''}</td></tr>`).join('')}</tbody></table>`;
+    document.querySelectorAll('.ip-editar').forEach(x => x.addEventListener('click', () => abrir(x.dataset.id)));
+    document.querySelectorAll('.ip-desc').forEach(x => x.addEventListener('click', async () => {
+      if (!confirm('¿Descartar esta importación? No toca nada en ML.')) return;
+      try { await api('/importar/api/descartar', {alias: alias(), id: x.dataset.id}); } catch (e) { alert(e.message); }
+      $('ipEditor').innerHTML = ''; lista();
+    }));
+  }
+
+  async function abrir(id, categoria) {
+    $('ipEditor').innerHTML = '<div class="small text-muted mb-3">Preparando: categoría sugerida, ficha y comisiones reales…</div>';
+    let j;
+    try { j = await api(`/importar/api/preparar?alias=${encodeURIComponent(alias())}&id=${id}${categoria ? '&category_id=' + categoria : ''}`); }
+    catch (e) { $('ipEditor').innerHTML = aviso('bad', e.message); return; }
+    ACT = j.importacion; CTX = j.contexto; if (!categoria) FOTOS = [];
+    const o = ACT.origen, e = ACT.edicion, c = CTX;
+    const valorAttr = id => e.atributos[id] ?? c.precarga[id] ?? '';
+    $('ipEditor').innerHTML = `
+    <div class="ip-card"><div class="ip-card-header">Referencia del otro vendedor (no se publica)</div><div class="ip-card-body">
+      <div class="fw-semibold">${esc(o.titulo)} <span class="text-muted small">${pesos(o.precio)} · <a href="${esc(o.url)}" target="_blank" rel="noopener">ver original</a></span></div>
+      <div class="ip-etiqueta mt-2">Sus fotos — solo para mirar, no se copian</div>
+      <div class="ip-ref mb-2">${o.fotos.map(u => `<img src="${esc(u)}" alt="">`).join('') || '<span class="small text-muted">Sin fotos leídas</span>'}</div>
+      <details><summary class="small">Sus características (${o.specs.length})</summary>
+        <table class="table table-sm ip-tabla mb-0 mt-1"><tbody>${o.specs.map(s => `<tr><td class="text-muted">${esc(s[0])}</td><td>${esc(s[1])}</td></tr>`).join('')}</tbody></table></details>
+    </div></div>
+
+    ${c.catalogo ? `<div class="ip-card"><div class="ip-card-header">Este producto está en el catálogo de ML</div><div class="ip-card-body">
+      ${c.catalogo.error ? aviso('warn', c.catalogo.error) : `
+      <div class="small mb-2">Podés vender en <b>${esc(c.catalogo.nombre)}</b> (${esc(c.catalogo.id)}, ${esc(c.catalogo.estado)}). Fotos y ficha las pone ML: es la forma oficial de vender lo mismo que otros y compite por la primera opción de compra.</div>
+      <div class="ip-ref mb-2">${c.catalogo.fotos.map(u => `<img src="${esc(u)}" alt="">`).join('')}</div>
+      <label class="small"><input type="checkbox" id="ipConfirmoCat" class="form-check-input me-1">Confirmo que mi producto es <b>exactamente</b> este (mismas características). Si no lo es, ML lo cobra con reclamos y puede suspender la cuenta.</label>
+      <div class="small text-muted mt-1">Usa el precio, el costo, las cuotas y el stock de abajo.</div>
+      <button class="btn btn-sm btn-outline-primary mt-2" id="ipPublicarCat"><i class="bi bi-shop me-1"></i>Publicar en catálogo</button>`}
+    </div></div>` : ''}
+
+    <div class="ip-card"><div class="ip-card-header">Tu publicación</div><div class="ip-card-body">
+      <div class="row g-2">
+        <div class="col-md-7"><label class="ip-etiqueta">Nombre del producto${c.es_up ? ' (family_name: ML arma el título con esto y la ficha)' : ''}</label>
+          <input class="form-control form-control-sm" id="ipNombre" value="${esc(e.family_name)}"></div>
+        <div class="col-md-5"><label class="ip-etiqueta">Categoría</label>
+          <select class="form-select form-select-sm" id="ipCat">${c.sugeridas.map(s => `<option value="${esc(s.id)}" ${s.id === c.category_id ? 'selected' : ''}>${esc(s.nombre || s.id)} · ${s.origen === 'vendedor' ? 'la del vendedor original' : 'sugerida por ML'}</option>`).join('')}
+            ${c.sugeridas.some(s => s.id === c.category_id) ? '' : `<option value="${esc(c.category_id)}" selected>${esc(c.categoria_nombre || c.category_id)}</option>`}</select></div>
+      </div>
+
+      ${c.categorias_difieren ? '<div class="mt-2">' + aviso('warn', 'La categoría del vendedor original y la que sugiere ML no coinciden. Quedó elegida la del vendedor; revisá cuál corresponde a tu producto.') + '</div>' : ''}
+      <div class="ip-etiqueta mt-3">Ficha técnica de ${esc(c.categoria_nombre || '')} (<span class="ip-oblig">*</span> obligatorio). Precargado con lo que leímos, salvo marca, modelo y códigos: esos son los del otro vendedor, completá los tuyos.</div>
+      <div class="row g-2">${c.campos.map(f => `
+        <div class="col-md-4"><label class="small">${esc(f.nombre)}${f.obligatorio ? ' <span class="ip-oblig">*</span>' : ''}</label>
+          <input class="form-control form-control-sm ip-attr" data-id="${esc(f.id)}" value="${esc(valorAttr(f.id))}" ${f.valores.length ? `list="ipL_${esc(f.id)}"` : ''}
+            ${c.referencia_identidad[f.id] ? `placeholder="La tuya (el otro vendedor: ${esc(c.referencia_identidad[f.id])})"` : ''}>
+          ${f.valores.length ? `<datalist id="ipL_${esc(f.id)}">${f.valores.map(v => `<option value="${esc(v)}">`).join('')}</datalist>` : ''}</div>`).join('')}</div>
+
+      <div class="row g-2 mt-2">
+        <div class="col-md-3"><label class="ip-etiqueta">Tipo y cuotas</label><select class="form-select form-select-sm" id="ipEsc">${Object.entries(ESC).map(([k, v]) => `<option value="${k}" ${+k === e.escalon ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div class="col-md-2"><label class="ip-etiqueta">Tu costo $</label><input type="number" class="form-control form-control-sm" id="ipCosto" value="${e.costo ?? ''}"></div>
+        <div class="col-md-2"><label class="ip-etiqueta">ROI objetivo %</label><input type="number" class="form-control form-control-sm" id="ipRoi" value="120"></div>
+        <div class="col-md-2"><label class="ip-etiqueta">Precio $</label><input type="number" class="form-control form-control-sm" id="ipPrecio" value="${e.precio ?? ''}"></div>
+        <div class="col-md-1"><label class="ip-etiqueta">Stock</label><input type="number" class="form-control form-control-sm" id="ipStock" value="${e.stock}" min="1"></div>
+        <div class="col-md-2 d-flex align-items-end"><button class="btn btn-sm btn-outline-primary w-100" id="ipCalc">Calcular precio</button></div>
+      </div>
+      <div id="ipEval" class="small mt-1">Referencia: el otro vendedor lo vende a ${pesos(o.precio)}.</div>
+
+      <div class="row g-2 mt-2">
+        <div class="col-md-4"><label class="ip-etiqueta">Garantía</label><select class="form-select form-select-sm" id="ipGarTipo">
+          ${['', 'Garantía del vendedor', 'Garantía de fábrica', 'Sin garantía'].map(g => `<option ${g === e.garantia_tipo ? 'selected' : ''}>${g}</option>`).join('')}</select></div>
+        <div class="col-md-3"><label class="ip-etiqueta">Tiempo de garantía</label><input class="form-control form-control-sm" id="ipGarTiempo" placeholder="30 días" value="${esc(e.garantia_tiempo)}"></div>
+      </div>
+
+      <div class="ip-etiqueta mt-3">Tus fotos (la primera es la principal; ${c.max_fotos ? 'hasta ' + c.max_fotos : ''} JPG o PNG, 10 MB máx.). Se revisan con el diagnóstico de ML al publicar.</div>
+      <div class="ip-mias mb-2" id="ipMias"></div>
+      <label class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-plus-lg me-1"></i>Agregar fotos<input type="file" id="ipArchivos" accept="image/jpeg,image/png" multiple hidden></label>
+
+      <div class="ip-etiqueta mt-3">Descripción (tuya; texto plano, sin datos de contacto ni emojis)</div>
+      <textarea class="form-control form-control-sm" id="ipDesc" rows="8">${esc(e.descripcion)}</textarea>
+
+      ${j.posibles_duplicados.length ? `<div class="mt-3">${aviso('warn', 'Tenés publicaciones muy parecidas en esta categoría: ' + j.posibles_duplicados.map(d => d.id + ' (' + d.titulo + ')').join(', ') + '. Si es el mismo producto, usá el Duplicador en vez de importar.')}
+        <label class="small"><input type="checkbox" id="ipAckDup" class="form-check-input me-1">Es otro producto, publicar igual</label></div>` : ''}
+
+      <div id="ipAvisos" class="mt-3"></div>
+      <button class="btn btn-sm btn-outline-secondary" id="ipGuardar">Guardar borrador</button>
+      <button class="btn btn-sm btn-success ms-1" id="ipPublicar"><i class="bi bi-check2 me-1"></i>Publicar (queda activa)</button>
+    </div></div>`;
+
+    pintarFotos();
+    $('ipCat').addEventListener('change', async () => { await guardar(true); abrir(ACT.id, $('ipCat').value); });
+    $('ipArchivos').addEventListener('change', ev => { [...ev.target.files].forEach(f => FOTOS.push({archivo: f, url: URL.createObjectURL(f)})); pintarFotos(); });
+    $('ipCalc').addEventListener('click', () => evaluar(true));
+    $('ipPrecio').addEventListener('change', () => evaluar(false));
+    $('ipEsc').addEventListener('change', () => evaluar(false));
+    $('ipGuardar').addEventListener('click', () => guardar(false));
+    $('ipPublicar').addEventListener('click', () => publicar('propia'));
+    if ($('ipPublicarCat')) $('ipPublicarCat').addEventListener('click', () => publicar('catalogo'));
+    $('ipEditor').scrollIntoView({behavior: 'smooth'});
+  }
+
+  function pintarFotos() {
+    $('ipMias').innerHTML = FOTOS.map((f, n) => `<div class="ip-mia ${n === 0 ? 'principal' : ''}"><img src="${esc(f.url)}" alt="">
+      <div class="small">${n + 1}${n === 0 ? ' · Principal' : ''}</div>
+      <div class="d-flex justify-content-between"><button class="btn btn-sm btn-outline-secondary py-0 ip-mv" data-n="${n}" data-d="-1" ${n === 0 ? 'disabled' : ''}><i class="bi bi-arrow-left"></i></button>
+        <button class="btn btn-sm btn-outline-secondary py-0 ip-mv" data-n="${n}" data-d="1" ${n === FOTOS.length - 1 ? 'disabled' : ''}><i class="bi bi-arrow-right"></i></button>
+        <button class="btn btn-sm btn-outline-danger py-0 ip-rm" data-n="${n}"><i class="bi bi-x-lg"></i></button></div></div>`).join('') || '<span class="small text-muted">Todavía no agregaste fotos.</span>';
+    document.querySelectorAll('.ip-mv').forEach(b => b.addEventListener('click', () => { const n = +b.dataset.n, m = n + (+b.dataset.d); [FOTOS[n], FOTOS[m]] = [FOTOS[m], FOTOS[n]]; pintarFotos(); }));
+    document.querySelectorAll('.ip-rm').forEach(b => b.addEventListener('click', () => { FOTOS.splice(+b.dataset.n, 1); pintarFotos(); }));
+  }
+
+  function edicion() {
+    const atributos = {};
+    document.querySelectorAll('.ip-attr').forEach(i => { if (i.value.trim()) atributos[i.dataset.id] = i.value.trim(); });
+    return {family_name: $('ipNombre').value, category_id: $('ipCat').value, atributos, escalon: $('ipEsc').value,
+            precio: $('ipPrecio').value, costo: $('ipCosto').value, stock: $('ipStock').value,
+            garantia_tipo: $('ipGarTipo').value, garantia_tiempo: $('ipGarTiempo').value, descripcion: $('ipDesc').value};
+  }
+
+  async function guardar(silencioso) {
+    try {
+      const j = await api('/importar/api/guardar', {alias: alias(), id: ACT.id, edicion: edicion()});
+      if (!silencioso) $('ipAvisos').innerHTML = aviso('ok', 'Borrador guardado.') + j.avisos_texto.map(h => aviso(h.nivel === 'bloquea' ? 'bad' : 'warn', h.mensaje + ' ("' + h.texto + '")')).join('');
+    } catch (e) { $('ipAvisos').innerHTML = aviso('bad', e.message); }
+  }
+
+  async function evaluar(conRoi) {
+    try {
+      const j = await api('/importar/api/evaluar', {alias: alias(), id: ACT.id, precio: $('ipPrecio').value || 0, costo: $('ipCosto').value,
+                                                   escalon: $('ipEsc').value, category_id: $('ipCat').value, roi_objetivo: conRoi ? $('ipRoi').value : ''});
+      if (conRoi && j.precio_sugerido) { $('ipPrecio').value = j.precio_sugerido; return evaluar(false); }
+      const ev = j.evaluacion;
+      $('ipEval').innerHTML = `Ganancia por venta <b>${pesos(ev.ganancia)}</b> · margen <b class="${ev.cumple_piso ? '' : 'ip-oblig'}">${pct(ev.margen_pct)}</b> · ROI ${pct(ev.roi_pct)}
+        ${ev.cumple_piso ? '' : ' · <span class="ip-oblig">debajo del piso de 15%: no se va a poder publicar</span>'} · el otro vendedor: ${pesos(ACT.origen.precio)}`;
+    } catch (e) { $('ipEval').innerHTML = `<span class="ip-oblig">${esc(e.message)}</span>`; }
+  }
+
+  async function publicar(modo) {
+    if (modo === 'catalogo' && !($('ipConfirmoCat') && $('ipConfirmoCat').checked)) { alert('Confirmá primero que tu producto es exactamente el del catálogo.'); return; }
+    const txt = modo === 'catalogo' ? 'en el CATÁLOGO de ML (fotos y ficha las pone ML)' : 'como publicación propia con tus ' + FOTOS.length + ' fotos';
+    if (!confirm(`Se va a publicar en Mercado Libre ${txt} y queda ACTIVA:\n\n${$('ipNombre').value}\n${ESC[$('ipEsc').value]} · ${pesos($('ipPrecio').value)} · stock ${$('ipStock').value}\n\nAntes se verifica margen, ficha, texto y fotos. ¿Confirmás?`)) return;
+    const fd = new FormData();
+    fd.append('alias', alias()); fd.append('id', ACT.id); fd.append('modo', modo); fd.append('confirmado', 'true');
+    fd.append('edicion', JSON.stringify(edicion())); fd.append('n_fotos', modo === 'catalogo' ? 0 : FOTOS.length);
+    fd.append('ack_duplicados', $('ipAckDup') && $('ipAckDup').checked ? 'true' : 'false');
+    fd.append('confirmo_catalogo', $('ipConfirmoCat') && $('ipConfirmoCat').checked ? 'true' : 'false');
+    if (modo !== 'catalogo') FOTOS.forEach((f, n) => fd.append('f' + n, f.archivo));
+    $('ipAvisos').innerHTML = '<span class="small text-muted">Verificando y publicando…</span>';
+    try {
+      const r = await fetch('/importar/api/publicar', {method: 'POST', body: fd}); const j = await r.json();
+      if (!j.ok) throw new Error(j.error);
+      alert(`Publicada: ${j.importacion.item_creado}` + ((j.importacion.avisos || []).length ? '\n\nRevisá:\n- ' + j.importacion.avisos.join('\n- ') : ''));
+      $('ipEditor').innerHTML = ''; lista();
+    } catch (e) { $('ipAvisos').innerHTML = aviso('bad', e.message); }
+  }
+
+  $('ipAlias').addEventListener('change', () => { location.href = '/importar?alias=' + encodeURIComponent(alias()); });
+  lista();
+  const abrirId = new URLSearchParams(location.search).get('abrir');
+  if (abrirId) abrir(abrirId);
+})();
+</script>
+{% endblock %}
