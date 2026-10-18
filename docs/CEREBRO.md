@@ -2456,6 +2456,17 @@ los faltantes; si sigue faltando no se calcula con un numero inventado).
   medido 2026-10-15). Hay backoff con jitter, y la pantalla solo diagnostica lo
   necesario (nuevas + principal), de a una.
 
+**Listado y borradores en lote (2026-10-18, pedido de Guille):** tarjeta
+"Elegir de tus publicaciones" en `/duplicar`: publicaciones propias activas
+(sin catalogo) ordenadas por ventas de 30 dias (`stock_rentabilidad`, una
+sola lectura de ordenes), con buscador, "Duplicar" por fila y "Armar
+borradores" para varias: Pub 2/Pub 3 de cada una con su costo, salteando con
+motivo las ocupadas, sin costo o debajo del piso. No escribe en ML. Es la base
+de la subseccion C: "copiar a la cuenta X" se agrega cuando (1) ML confirme
+por escrito la politica de cuentas relacionadas (Novara ya tiene una
+infraccion "igual a otra que anulamos en una de tus cuentas asociadas") y
+(2) las cuentas de destino esten conectadas (hoy solo Novara).
+
 **Pendiente:** la creacion real (`POST /user-products/.../items`) no se probo
 en vivo: la primera la aprueba Guille siguiendo el checklist. Subsecciones B
 (solo duplicar, editando lo que ML permite) y C (otras cuentas, sujeta a

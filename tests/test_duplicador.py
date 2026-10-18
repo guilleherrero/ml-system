@@ -42,6 +42,10 @@ class FakeML:
     def get_item(self, iid):
         return dict(self.items[iid]) if iid in self.items else None
 
+    def get_my_listings(self, limit=50, offset=0, status='active'):
+        ids = [i for i, it in self.items.items() if it.get('status') == status]
+        return {'results': ids[offset:offset + limit], 'paging': {'total': len(ids)}}
+
     def _get(self, path, params=None):
         if path == f'/users/{SELLER}/items/search':
             ups = params['user_product_id'].split(',')
@@ -346,6 +350,52 @@ class TestDescripcionYFotos(unittest.TestCase):
         r = dup.aplicar_fotos(self.ml, 'PUB1', [{'id': 'P2'}, {'id': 'P1'}])
         self.assertEqual(len(r['avisos']), 1)
         self.assertIsNotNone(self.ml.puts)
+
+
+class TestListadoYLote(unittest.TestCase):
+
+    def setUp(self):
+        self.alias = f'TestDupL_{uuid.uuid4().hex[:8]}'
+        self.ml = FakeML({
+            'PUB1': _origen(sold_quantity=500),
+            'OTRA': _origen(id='OTRA', user_product_id='MLAU9', sold_quantity=10),
+            'SINCOSTO': _origen(id='SINCOSTO', user_product_id='MLAU8', sold_quantity=99),
+            'CATA': _origen(id='CATA', user_product_id='MLAU7', catalog_listing=True, sold_quantity=999),
+        })
+
+    def tearDown(self):
+        p = dup._path(self.alias)
+        if os.path.exists(p):
+            os.remove(p)
+
+    def test_ordena_por_ventas_30_dias_sin_catalogo(self):
+        stats = {'OTRA': {'units': 40}, 'PUB1': {'units': 5}}
+        with mock.patch('modules.stock_rentabilidad._get_all_orders_30d', return_value=[]), \
+             mock.patch('modules.stock_rentabilidad._compute_item_stats', return_value=stats):
+            filas = dup.listado(self.ml, {'PUB1': {'costo': 15000}})
+        self.assertEqual([f['id'] for f in filas], ['OTRA', 'PUB1', 'SINCOSTO'])   # 30d manda; empate por total
+        self.assertEqual(filas[1]['costo'], 15000.0)
+        self.assertIsNone(filas[0]['costo'])
+
+    def test_lote_crea_los_validos_y_explica_el_resto(self):
+        from flask import Flask
+        from web import duplicador_routes as dr
+        app = Flask(__name__); app.secret_key = 'x'; app.register_blueprint(dr.bp)
+        self.ml.items['PUB1_12'] = _origen(id='PUB1_12', listing_type_id='gold_pro', tags=['12x_campaign'])
+        costos = {'PUB1': 15000.0, 'OTRA': 15000.0}
+        with mock.patch.object(dr, '_client', return_value=self.ml), \
+             mock.patch.object(dr, '_tasas', return_value=TASAS), \
+             mock.patch.object(dr, '_cargos', return_value=(CARGOS, 'test')), \
+             mock.patch.object(dr, '_costo', side_effect=lambda i: costos.get(i)):
+            r = app.test_client().post('/duplicar/api/borradores/lote', json={
+                'alias': self.alias, 'item_ids': ['PUB1', 'OTRA', 'SINCOSTO'], 'escalon_pub2': 12, 'roi_objetivo': 120}).get_json()
+        por_id = {x['item_id']: x for x in r['resultado']}
+        self.assertEqual([c['nombre'] for c in por_id['PUB1']['creados']], ['Pub 3 · Clásica interés bajo'])
+        self.assertIn('PUB1_12', por_id['PUB1']['omitidos'][0])           # ya tiene 12 cuotas
+        self.assertEqual(len(por_id['OTRA']['creados']), 2)
+        self.assertIn('costo', por_id['SINCOSTO']['omitidos'][0])
+        self.assertEqual(r['creados'], 3)
+        self.assertEqual(self.ml.posts, [])                                # no escribe en ML
 
 
 if __name__ == '__main__':

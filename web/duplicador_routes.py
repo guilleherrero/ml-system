@@ -10,6 +10,8 @@ dos lineas y el `before_request` global protege estas rutas como al resto.
   /duplicar/api/borradores           GET lista, POST crea borradores (no escribe en ML)
   /duplicar/api/borradores/<id>/aprobar     crea la copia en ML (exige confirmado)
   /duplicar/api/borradores/<id>/descartar
+  /duplicar/api/listado              publicaciones propias por ventas (solo lee)
+  /duplicar/api/borradores/lote      borradores de varias a la vez (no escribe en ML)
   /duplicar/api/republicables        pausadas y finalizadas
   /duplicar/api/reactivar, /relist   caso secundario (exigen confirmado)
 """
@@ -237,6 +239,76 @@ def api_crear_borradores():
     except dup.DuplicadorError as e:
         return _error(e)
     return jsonify({'ok': True, 'borradores': nuevos})
+
+
+@bp.route('/api/listado')
+def api_listado():
+    """Publicaciones propias ordenadas por ventas de 30 dias (solo lee)."""
+    from modules.stock_rentabilidad import _load_costos
+    try:
+        filas = dup.listado(_client(request.args.get('alias', '')), _load_costos())
+    except dup.DuplicadorError as e:
+        return _error(e)
+    except Exception as e:
+        return _error(f'No se pudo armar el listado: {e}')
+    return jsonify({'ok': True, 'publicaciones': filas})
+
+
+@bp.route('/api/borradores/lote', methods=['POST'])
+def api_borradores_lote():
+    """Pub 2 / Pub 3 para varias publicaciones elegidas del listado. Cada una
+    con su costo; las que no se pueden se informan con el motivo y las demas
+    siguen. No escribe nada en ML."""
+    body = request.get_json() or {}
+    alias = body.get('alias', '')
+    ids = [str(i).strip().upper() for i in (body.get('item_ids') or [])][:50]
+    incluir = set(body.get('incluir') or ['pub2', 'pub3'])
+    try:
+        escalon = int(body.get('escalon_pub2'))
+        roi = float(body.get('roi_objetivo') or dup.ROI_OBJETIVO_DEFAULT)
+        client = _client(alias)
+    except (TypeError, ValueError):
+        return _error('Elegí las cuotas de la Pub 2 y un ROI válido.')
+    except dup.DuplicadorError as e:
+        return _error(e)
+    if not ids:
+        return _error('Tildá al menos una publicación.')
+    pendientes = {(b['user_product_id'], b['escalon']) for b in dup.listar_borradores(alias) if b['estado'] == 'pendiente'}
+    resultado, tasas_cache = [], {}
+    for iid in ids:
+        r = {'item_id': iid, 'creados': [], 'omitidos': []}
+        try:
+            item = dup.leer_origen(client, iid)
+            dom = item.get('domain_id') or ''
+            if dom not in tasas_cache:
+                tasas_cache[dom] = _tasas(client, item)
+            cargos, _ = _cargos(alias, iid)
+            costo = _costo(iid)
+            filas = dup.calcular(costo, cargos, tasas_cache[dom], escalon, roi)
+            existentes = dup.items_del_up(client, dup.seller_id(client), item['user_product_id'])
+            validas = []
+            for f in filas:
+                if f['perfil'] not in incluir:
+                    continue
+                oc = dup.condicion_ocupada(existentes, f['escalon'])
+                if oc:
+                    r['omitidos'].append(f'{f["cuotas"]}: ya existe ({oc["id"]})')
+                elif (item['user_product_id'], f['escalon']) in pendientes:
+                    r['omitidos'].append(f'{f["cuotas"]}: ya hay un borrador pendiente')
+                elif not f['cumple_piso']:
+                    r['omitidos'].append(f'{f["cuotas"]}: margen {f["margen_pct"]}%, debajo del piso')
+                else:
+                    validas.append(f)
+            if validas:
+                r['creados'] = [{'id': b['id'], 'nombre': b['nombre'], 'precio': b['precio'], 'margen_pct': b['margen_pct']}
+                                for b in dup.crear_borradores(alias, item, validas, costo, roi, _usuario())]
+                pendientes |= {(item['user_product_id'], f['escalon']) for f in validas}
+            r['titulo'] = item.get('title', '')
+        except dup.DuplicadorError as e:
+            r['omitidos'].append(str(e))
+        resultado.append(r)
+    return jsonify({'ok': True, 'resultado': resultado,
+                    'creados': sum(len(r['creados']) for r in resultado)})
 
 
 @bp.route('/api/borradores/<bid>/descartar', methods=['POST'])

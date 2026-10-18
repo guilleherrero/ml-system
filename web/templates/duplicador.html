@@ -59,6 +59,27 @@
 <!-- ── A: duplicar con calculadora ─────────────────────────────── -->
 <div class="tab-pane fade show active" id="tabCalc">
 
+  <div class="dp-card"><div class="dp-card-header">Elegir de tus publicaciones (ordenadas por ventas)</div><div class="dp-card-body">
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <button class="btn btn-sm btn-outline-primary" id="dpVerListado"><i class="bi bi-list-ul me-1"></i>Ver mis publicaciones</button>
+      <input class="form-control form-control-sm d-none" id="dpBuscar" placeholder="Buscar por título o ID…" style="max-width:320px">
+      <span class="small text-muted" id="dpListadoInfo"></span>
+    </div>
+    <div id="dpListado" class="mt-2" style="max-height:460px;overflow:auto"></div>
+    <div id="dpLote" class="d-none mt-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="dp-etiqueta">Cuotas sin interés de la Pub 2</label>
+          <select class="form-select form-select-sm" id="dpLoteEsc"><option value="3">3 cuotas sin interés</option><option value="6">6 cuotas sin interés</option><option value="9">9 cuotas sin interés</option><option value="12" selected>12 cuotas sin interés</option></select></div>
+        <div class="col-md-2"><label class="dp-etiqueta">ROI objetivo %</label><input type="number" class="form-control form-control-sm" id="dpLoteRoi" value="120"></div>
+        <div class="col-md-3 small"><label class="me-2"><input type="checkbox" class="form-check-input" id="dpLotePub2" checked> Pub 2 (Premium)</label>
+          <label><input type="checkbox" class="form-check-input" id="dpLotePub3" checked> Pub 3 (interés bajo)</label></div>
+        <div class="col-md-4"><button class="btn btn-sm btn-success w-100" id="dpLoteBtn"><i class="bi bi-save me-1"></i>Armar borradores de las seleccionadas</button></div>
+      </div>
+      <div class="small text-muted mt-1">Usa el costo guardado de cada una. No publica nada: quedan como borradores abajo, para revisar y aprobar de a uno.</div>
+      <div id="dpLoteRes" class="mt-2"></div>
+    </div>
+  </div></div>
+
   <div class="dp-card"><div class="dp-card-header">1 · Publicación de origen (Pub 1)</div><div class="dp-card-body">
     <div class="row g-2 align-items-end">
       <div class="col-md-7"><label class="dp-etiqueta">Publicación</label>
@@ -429,6 +450,53 @@
     }));
   }
 
+  // ── Listado de publicaciones propias ──────────────────────────────
+  let LISTADO = [];
+  async function verListado() {
+    $('dpListado').innerHTML = '<span class="small text-muted">Trayendo tus publicaciones y las ventas de 30 días…</span>';
+    try { LISTADO = (await api('/duplicar/api/listado?alias=' + encodeURIComponent(alias()))).publicaciones; }
+    catch (e) { $('dpListado').innerHTML = aviso('bad', e.message); return; }
+    $('dpBuscar').classList.remove('d-none'); $('dpLote').classList.remove('d-none');
+    pintarListado();
+  }
+  function pintarListado() {
+    const q = $('dpBuscar').value.trim().toLowerCase();
+    const filas = LISTADO.filter(p => !q || p.titulo.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
+    $('dpListadoInfo').textContent = `${filas.length} de ${LISTADO.length} publicaciones · ${document.querySelectorAll('.dp-sel:checked').length} tildadas`;
+    const tildadas = new Set([...document.querySelectorAll('.dp-sel:checked')].map(c => c.value));
+    $('dpListado').innerHTML = `<table class="table table-sm dp-tabla mb-0"><thead><tr><th></th><th></th><th>Publicación</th>
+      <th class="text-end">Ventas 30 d</th><th class="text-end">Total</th><th class="text-end">Precio</th><th>Cuotas</th><th class="text-end">Stock</th><th class="text-end">Costo</th><th></th></tr></thead>
+      <tbody>${filas.map(p => `<tr>
+        <td><input type="checkbox" class="form-check-input dp-sel" value="${esc(p.id)}" ${tildadas.has(p.id) ? 'checked' : ''}></td>
+        <td>${p.thumbnail ? `<img class="dp-thumb" src="${esc(p.thumbnail)}" alt="">` : ''}</td>
+        <td>${esc(p.titulo)}<div class="text-muted">${esc(p.id)}${p.variante && p.variante !== p.titulo ? ' · ' + esc(p.variante) : ''}</div></td>
+        <td class="text-end"><b>${p.ventas_30d}</b></td><td class="text-end">${p.ventas_total}</td>
+        <td class="text-end">${pesos(p.precio)}</td><td>${esc(p.cuotas)}</td><td class="text-end">${esc(p.stock ?? '—')}</td>
+        <td class="text-end">${p.costo ? pesos(p.costo) : '<span class="dp-bad">Falta</span>'}</td>
+        <td class="text-end"><button class="btn btn-sm btn-outline-primary py-0 dp-usar" data-id="${esc(p.id)}">Duplicar</button></td></tr>`).join('')}</tbody></table>`;
+    document.querySelectorAll('.dp-sel').forEach(c => c.addEventListener('change', () => {
+      $('dpListadoInfo').textContent = `${filas.length} de ${LISTADO.length} publicaciones · ${document.querySelectorAll('.dp-sel:checked').length} tildadas`; }));
+    document.querySelectorAll('.dp-usar').forEach(b => b.addEventListener('click', () => {
+      $('dpItemId').value = b.dataset.id; cargarOrigen(); $('dpOrigen').scrollIntoView({behavior: 'smooth'}); }));
+  }
+  async function armarLote() {
+    const ids = [...document.querySelectorAll('.dp-sel:checked')].map(c => c.value);
+    if (!ids.length) { $('dpLoteRes').innerHTML = aviso('bad', 'Tildá al menos una publicación.'); return; }
+    const incluir = [$('dpLotePub2').checked ? 'pub2' : null, $('dpLotePub3').checked ? 'pub3' : null].filter(Boolean);
+    $('dpLoteRes').innerHTML = `<span class="small text-muted">Calculando ${ids.length} publicaciones…</span>`;
+    let j;
+    try { j = await api('/duplicar/api/borradores/lote', {alias: alias(), item_ids: ids, escalon_pub2: $('dpLoteEsc').value, roi_objetivo: $('dpLoteRoi').value, incluir}); }
+    catch (e) { $('dpLoteRes').innerHTML = aviso('bad', e.message); return; }
+    $('dpLoteRes').innerHTML = aviso(j.creados ? 'ok' : 'warn', `${j.creados} borradores creados. No se publicó nada.`) +
+      `<table class="table table-sm dp-tabla mb-0"><tbody>${j.resultado.map(r => `<tr><td>${esc(r.titulo || r.item_id)}<div class="text-muted">${esc(r.item_id)}</div></td>
+        <td>${r.creados.map(c => `<div class="dp-ok">${esc(c.nombre)} · ${pesos(c.precio)} · ${pct(c.margen_pct)}</div>`).join('')}
+            ${r.omitidos.map(o => `<div class="small dp-bad">${esc(o)}</div>`).join('')}</td></tr>`).join('')}</tbody></table>`;
+    cargarBorradores();
+  }
+  $('dpVerListado').addEventListener('click', verListado);
+  $('dpBuscar').addEventListener('input', pintarListado);
+  $('dpLoteBtn').addEventListener('click', armarLote);
+
   $('dpCargar').addEventListener('click', cargarOrigen);
   $('dpItemSel').addEventListener('change', () => { $('dpItemId').value = ''; cargarOrigen(); });
   $('dpCalcular').addEventListener('click', () => calcular(false));
@@ -438,6 +506,7 @@
     CTX = null; $('dpOrigen').innerHTML = '';
     ['dpDetalleCard', 'dpVarCard', 'dpParamsCard', 'dpResCard'].forEach(x => $(x).classList.add('d-none'));
     cargarItems(); cargarBorradores();
+    LISTADO = []; $('dpListado').innerHTML = ''; $('dpBuscar').classList.add('d-none'); $('dpLote').classList.add('d-none'); $('dpListadoInfo').textContent = '';
     if ($('btnTabRepub').classList.contains('active')) cargarRepublicables();
   });
   cargarItems(); cargarBorradores();

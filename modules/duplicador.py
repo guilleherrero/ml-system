@@ -660,3 +660,48 @@ def aplicar_fotos(client, item_id: str, plan: list[dict]) -> dict:
     if leido[:len(ids)] != ids:
         avisos.append('ML todavía muestra otro orden de fotos: puede tardar unos minutos en procesarlas. Revisalo en la publicación.')
     return {'item_id': item_id, 'fotos': len(ids), 'publicaciones_afectadas': actual['publicaciones_afectadas'], 'avisos': avisos}
+
+
+# ── Listado de publicaciones propias para elegir que duplicar ───────────────
+# Pedido de Guille (2026-10-18): "el detalle de todas las publicaciones
+# ordenadas por las que mas venden primero y un selector por titulo". Base
+# para la subseccion C (copiar a otra cuenta), que se agrega cuando ML
+# confirme la politica de cuentas relacionadas y esten conectadas.
+
+def listado(client, costos: dict) -> list[dict]:
+    """Publicaciones propias activas (sin catalogo), con ventas de 30 dias y
+    totales, costo y cuotas. Ordenadas por ventas de 30 dias."""
+    from modules.stock_rentabilidad import _compute_item_stats, _get_all_orders_30d
+    seller_id(client)                      # _get_all_orders_30d usa account.user_id
+    ids, offset = [], 0
+    while True:
+        data = client.get_my_listings(limit=50, offset=offset, status='active') or {}
+        ids += data.get('results') or []
+        offset += 50
+        if offset >= (data.get('paging') or {}).get('total', 0):
+            break
+    try:
+        stats = _compute_item_stats(_get_all_orders_30d(client))
+    except Exception:
+        stats = {}
+    out = []
+    for k in range(0, len(ids), 20):
+        entries = client._get('/items', params={'ids': ','.join(ids[k:k + 20]), 'attributes':
+                              'id,title,price,listing_type_id,tags,available_quantity,sold_quantity,'
+                              'catalog_listing,user_product_id,secure_thumbnail,thumbnail,permalink,attributes'}) or []
+        for e in entries:
+            b = e.get('body') or {}
+            if e.get('code') != 200 or b.get('catalog_listing'):
+                continue
+            esc = escalon_de(b.get('listing_type_id'), b.get('tags'))
+            c = (costos.get(b['id']) or {}).get('costo')
+            out.append({'id': b['id'], 'titulo': b.get('title', ''), 'precio': float(b.get('price') or 0),
+                        'cuotas': etiqueta_escalon(esc), 'escalon': esc, 'stock': b.get('available_quantity'),
+                        'ventas_30d': int((stats.get(b['id']) or {}).get('units') or 0),
+                        'ventas_total': int(b.get('sold_quantity') or 0),
+                        'costo': float(c) if c not in (None, '', 0) else None,
+                        'variante': etiqueta_variante(b), 'user_product_id': b.get('user_product_id'),
+                        'permalink': b.get('permalink'),
+                        'thumbnail': (b.get('secure_thumbnail') or b.get('thumbnail') or '').replace('http://', 'https://') or None})
+    out.sort(key=lambda x: (-x['ventas_30d'], -x['ventas_total']))
+    return out
