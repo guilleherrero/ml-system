@@ -53,7 +53,14 @@ def _boton(alias: str) -> str:
 
 @bp.route('')
 def pantalla():
+    # Sin cuenta en la URL (entrando desde el menu) se usa la del selector: la
+    # de la cookie o la primera. Antes quedaba sin boton y el selector ya
+    # mostraba la unica cuenta, asi que no habia forma de generarlo.
+    from core.account_manager import AccountManager
+    aliases = [a.alias for a in AccountManager().list_accounts() if getattr(a, 'alias', '')]
     alias = request.args.get('alias') or request.cookies.get('ml_cuenta') or ''
+    if alias not in aliases:
+        alias = aliases[0] if aliases else ''
     return render_template('importar.html', boton=_boton(alias) if alias else '', alias_boton=alias)
 
 
