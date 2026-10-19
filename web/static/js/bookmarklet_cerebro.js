@@ -133,7 +133,7 @@
       videos: gal ? parseInt(gal[2] || '0', 10) : null,
       cuotas: cuotas,
       item_id: (html.match(/"item_id":"(MLA\d+)"/) || [])[1] || null,
-      description: desc.slice(0, 4000),
+      description: desc.slice(0, 8000),
       attributes: attrs.slice(0, 60),
       photos_count: fotos || null,
       premium: cuotas != null ? cuotas > 0 : /mismo precio en \d+ cuotas|cuotas sin inter[eé]s/i.test(cuerpo),
