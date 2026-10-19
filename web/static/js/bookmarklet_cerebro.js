@@ -174,7 +174,9 @@
 
   // Parado en la página de UNA publicación (no en una búsqueda): se captura esa
   function filaDePaginaActual() {
-    var m = location.href.match(/(MLA)-?(\d{7,12})/i);
+    // Las páginas nuevas son /up/MLAU…: ahí el id de la publicación está en los datos
+    var m = location.href.match(/(MLA)-?(\d{7,12})(?!\d)/i) ||
+            document.documentElement.innerHTML.match(/"item_id":"(MLA)(\d{7,12})"/);
     var h1 = document.querySelector('h1.ui-pdp-title') || document.querySelector('h1');
     if (!m || !h1) return null;
     var img = document.querySelector('.ui-pdp-gallery__figure img, [class*="gallery"] img');
