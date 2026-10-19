@@ -2519,6 +2519,7 @@ async function cargarInformeCompetencia() {
       <td>${c.full ? 'Full' : (c.envio_gratis ? 'Gratis' : '—')}</td>
       <td>${e(_fmtNum(c.ventas))}</td>
       <td>${c.rating ? e(String(c.rating)) + ' (' + e(_fmtNum(c.opiniones)) + ')' : '—'}</td>
+      <td>${vos ? '—' : (c.descripcion ? e(Number(c.descripcion).toLocaleString('es-AR')) + ' letras' : 'no')}</td>
       <td>${vos ? '—' : e(String(c.resenas_leidas))}</td>
       <td>${e(_fmtNum(c.fotos))}</td>
       <td>${e(_fmtNum(c.videos))}</td>
@@ -2530,7 +2531,7 @@ async function cargarInformeCompetencia() {
   if (d.avisos.length) h += `<ul class="mb-2 ps-3">${d.avisos.map(a => `<li>${e(a)}</li>`).join('')}</ul>`;
   if (d.sin_leer) h += `<div class="mb-2" style="color:var(--color-warning-700)"><i class="bi bi-info-circle me-1"></i>${e(String(d.sin_leer))} competidor${d.sin_leer > 1 ? 'es' : ''} sin leer. Abrí la página de cualquier producto en Mercado Libre, tocá el botón y elegí <strong>Leer mis competidores guardados</strong>.</div>`;
   h += `<div class="table-responsive"><table class="table table-sm align-middle mb-2" style="font-size:.74rem">
-      <thead><tr><th>Publicación</th><th>Precio</th><th>Cuotas</th><th>Envío</th><th>Ventas</th><th>Opiniones</th><th>Reseñas leídas</th><th>Fotos</th><th>Videos</th><th>Atributos</th><th>Leído</th></tr></thead>
+      <thead><tr><th>Publicación</th><th>Precio</th><th>Cuotas</th><th>Envío</th><th>Ventas</th><th>Opiniones</th><th>Descripción leída</th><th>Reseñas leídas</th><th>Fotos</th><th>Videos</th><th>Atributos</th><th>Leído</th></tr></thead>
       <tbody>${fila(d.mio, true)}${d.competidores.map(c => fila(c, false)).join('')}</tbody></table></div>`;
   if (d.faltan_atributos.length) {
     h += `<div class="fw-semibold mb-1">Atributos que tienen ellos y vos no</div>
