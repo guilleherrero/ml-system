@@ -229,6 +229,10 @@
   // Optimizador 2.0: parado en una página de producto, lee de una vez a todos
   // los competidores ya elegidos para la publicación (mismo sitio = se puede).
   var pie2 = el('div', 'padding:0 16px 12px;flex:0 0 auto;background:#f8fafc');
+  // Los competidores ya guardados de la publicación elegida: no hay que volver
+  // a tildarlos, el botón de abajo los lee a todos.
+  var guardados = el('div', 'font-size:12px;color:#334155;margin:0 0 8px;max-height:150px;overflow-y:auto');
+  pie2.appendChild(guardados);
   var btnLeer = el('button', 'width:100%;padding:9px 12px;border:1px solid #2563eb;background:#fff;color:#2563eb;' +
     'border-radius:7px;cursor:pointer;font-weight:700;font-size:13px', 'Leer mis competidores guardados');
   pie2.appendChild(btnLeer);
@@ -252,10 +256,31 @@
         sel.value = j.actual.id;
         ACTUAL = j.actual.id;
       }
+      mostrarGuardados();
     }).catch(function (e) {
       sel.options[0].text = 'No pude cargar tus publicaciones (' + e.message + ')';
     });
   var ACTUAL = '';
+
+  function mostrarGuardados() {
+    guardados.textContent = '';
+    if (!sel.value) return;
+    fetch(BASE + '/api/competidores-cors/' + encodeURIComponent(ALIAS) + '/lista?item_id=' + encodeURIComponent(sel.value),
+          {headers: {'X-Cerebro-Token': TOKEN}})
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var cs = (j && j.competidores) || [];
+        if (!cs.length) { guardados.textContent = 'Esta publicación todavía no tiene competidores guardados.'; return; }
+        var leidos = cs.filter(function (c) { return c.leido; }).length;
+        guardados.appendChild(el('div', 'font-weight:700;margin-bottom:3px',
+          'Tus competidores guardados: ' + cs.length + ' (' + leidos + ' leídos, ' + (cs.length - leidos) + ' sin leer). No hace falta tildarlos.'));
+        cs.forEach(function (c) {
+          guardados.appendChild(el('div', 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:' + (c.leido ? '#16a34a' : '#b45309'),
+            (c.leido ? '✓ ' : '• ') + (c.title || c.id)));
+        });
+      }).catch(function () {});
+  }
+  sel.onchange = mostrarGuardados;
 
   var filas = [], marcados = {};
 
@@ -423,6 +448,7 @@
             if (raros) m += ' ' + raros + ' no tienen un link que se pueda leer (publicidad): abrí su página y tocá el botón ahí.';
             sub.textContent = m + ' Ya están en el informe de Optimizar con IA.';
             btnLeer.textContent = 'Listo ✓';
+            mostrarGuardados();
           });
         });
       })

@@ -31,7 +31,8 @@ def elegidos(alias: str, item_id: str) -> list[dict]:
 def lista_para_leer(alias: str, item_id: str) -> list[dict]:
     return [{'clave': c['clave'], 'id': c['id'], 'title': c.get('title', ''),
              'permalink': c.get('permalink') or '',
-             'leible': (c.get('permalink') or '').startswith(LEIBLE)}
+             'leible': (c.get('permalink') or '').startswith(LEIBLE),
+             'leido': bool(c.get('ficha_ts'))}
             for c in elegidos(alias, item_id)]
 
 
