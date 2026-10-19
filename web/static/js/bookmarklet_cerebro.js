@@ -228,7 +228,7 @@
   panel.appendChild(pie);
   // Optimizador 2.0: parado en una página de producto, lee de una vez a todos
   // los competidores ya elegidos para la publicación (mismo sitio = se puede).
-  var pie2 = el('div', 'padding:0 16px 12px;flex:0 0 auto;background:#f8fafc;display:none');
+  var pie2 = el('div', 'padding:0 16px 12px;flex:0 0 auto;background:#f8fafc');
   var btnLeer = el('button', 'width:100%;padding:9px 12px;border:1px solid #2563eb;background:#fff;color:#2563eb;' +
     'border-radius:7px;cursor:pointer;font-weight:700;font-size:13px', 'Leer mis competidores guardados');
   pie2.appendChild(btnLeer);
@@ -375,6 +375,11 @@
   btnLeer.onclick = function () {
     var item = sel.value;
     if (!item) { sub.textContent = 'Elegí arriba de cuál publicación tuya son competencia.'; return; }
+    // Desde una búsqueda el navegador no deja leer las páginas de producto
+    if (!document.querySelector('h1.ui-pdp-title')) {
+      sub.textContent = 'Para leerlos, entrá a cualquier producto (por ejemplo, tocá uno de estos resultados) y tocá el botón ahí: vas a ver esta misma opción.';
+      return;
+    }
     btnLeer.disabled = true; btnLeer.textContent = 'Buscando tus competidores…';
     var aquiId = (document.documentElement.innerHTML.match(/"item_id":"(MLA\d+)"/) || [])[1];
     fetch(BASE + '/api/competidores-cors/' + encodeURIComponent(ALIAS) + '/lista?item_id=' + encodeURIComponent(item),
@@ -452,7 +457,6 @@
     var unica = (document.querySelector('h1.ui-pdp-title') || !leer().length) && filaDePaginaActual();
     if (unica) {
       filas = [unica]; marcados = {0: true};
-      pie2.style.display = 'block';
       sub.textContent = 'Esta publicación' + (unica.ficha_leida ? ' (con descripción y características)' : '') + '. Elegí de cuál tuya es competencia y guardá.';
       pintar(); actualizar();
       return;
