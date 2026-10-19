@@ -2529,7 +2529,12 @@ async function cargarInformeCompetencia() {
 
   let h = '';
   if (d.avisos.length) h += `<ul class="mb-2 ps-3">${d.avisos.map(a => `<li>${e(a)}</li>`).join('')}</ul>`;
-  if (d.sin_leer) h += `<div class="mb-2" style="color:var(--color-warning-700)"><i class="bi bi-info-circle me-1"></i>${e(String(d.sin_leer))} competidor${d.sin_leer > 1 ? 'es' : ''} sin leer. Abrí la página de cualquier producto en Mercado Libre, tocá el botón y elegí <strong>Leer mis competidores guardados</strong>.</div>`;
+  if (d.sin_leer) {
+    const faltan = d.competidores.filter(c => !c.ficha_ts);
+    h += `<div class="mb-2 p-2" style="color:var(--color-warning-700);background:var(--color-warning-50);border-radius:6px"><i class="bi bi-info-circle me-1"></i><strong>${e(String(d.sin_leer))} competidor${d.sin_leer > 1 ? 'es' : ''} sin leer:</strong>
+      <ul class="mb-1 ps-3">${faltan.map(c => `<li>${e(c.titulo || c.id)}${/^https:\/\/articulo\./.test(c.permalink || '') ? ' <span style="color:var(--color-neutral-500)">(está en articulo.mercadolibre.com.ar)</span>' : ''}</li>`).join('')}</ul>
+      Para leerlos: abrí la página de cualquier producto en Mercado Libre (no una búsqueda), tocá el botón y elegí <strong>Leer mis competidores guardados</strong>. No hace falta tildar nada.</div>`;
+  }
   h += `<div class="table-responsive"><table class="table table-sm align-middle mb-2" style="font-size:.74rem">
       <thead><tr><th>Publicación</th><th>Precio</th><th>Cuotas</th><th>Envío</th><th>Ventas</th><th>Opiniones</th><th>Descripción leída</th><th>Reseñas leídas</th><th>Fotos</th><th>Videos</th><th>Atributos</th><th>Leído</th></tr></thead>
       <tbody>${fila(d.mio, true)}${d.competidores.map(c => fila(c, false)).join('')}</tbody></table></div>`;
