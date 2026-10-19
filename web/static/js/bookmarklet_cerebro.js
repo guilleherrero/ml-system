@@ -373,9 +373,6 @@
   btnLeer.onclick = function () {
     var item = sel.value;
     if (!item) { sub.textContent = 'Elegí arriba de cuál publicación tuya son competencia.'; return; }
-    if (location.hostname !== 'www.mercadolibre.com.ar') {
-      sub.textContent = 'Abrí una página de producto de www.mercadolibre.com.ar y tocá el botón ahí.'; return;
-    }
     btnLeer.disabled = true; btnLeer.textContent = 'Buscando tus competidores…';
     var aquiId = (document.documentElement.innerHTML.match(/"item_id":"(MLA\d+)"/) || [])[1];
     fetch(BASE + '/api/competidores-cors/' + encodeURIComponent(ALIAS) + '/lista?item_id=' + encodeURIComponent(item),
@@ -385,8 +382,14 @@
         if (!j.ok) throw new Error(j.error || 'sin respuesta');
         var comps = j.competidores || [];
         if (!comps.length) throw new Error('esa publicación todavía no tiene competidores elegidos');
-        // El de esta misma página se lee de acá aunque su link no sea leíble
-        var tareas = comps.filter(function (c) { return c.leible || c.id === aquiId; });
+        // El navegador solo deja leer páginas del mismo sitio en el que estás
+        // (www.mercadolibre.com.ar o articulo.mercadolibre.com.ar). El de esta
+        // misma página se lee de acá aunque su link sea de otro lado.
+        var mismo = location.origin + '/';
+        var tareas = comps.filter(function (c) { return (c.permalink || '').indexOf(mismo) === 0 || c.id === aquiId; });
+        var otroSitio = comps.filter(function (c) {
+          return tareas.indexOf(c) < 0 && /^https:\/\/(www|articulo)\.mercadolibre\.com\.ar\//.test(c.permalink || '');
+        });
         var hechas = 0, out = [];
         function una(c) {
           var p = c.id === aquiId
@@ -405,8 +408,12 @@
             body: JSON.stringify({item_id: item, fichas: out}),
           }).then(function (r) { return r.json(); }).then(function (k) {
             var m = 'Leídos ' + (k.guardadas || 0) + ' de ' + comps.length + ' competidores.';
-            var faltan = comps.length - tareas.length;
-            if (faltan) m += ' ' + faltan + ' no se pueden leer desde acá (link de publicidad o publicación vieja): abrí su página y tocá el botón ahí.';
+            if (otroSitio.length) {
+              var host = otroSitio[0].permalink.split('/')[2];
+              m += ' ' + otroSitio.length + ' están en ' + host + ': abrí cualquier publicación de ese sitio y tocá el botón otra vez.';
+            }
+            var raros = comps.length - tareas.length - otroSitio.length;
+            if (raros) m += ' ' + raros + ' no tienen un link que se pueda leer (publicidad): abrí su página y tocá el botón ahí.';
             sub.textContent = m + ' Ya están en el informe de Optimizar con IA.';
             btnLeer.textContent = 'Listo ✓';
           });
@@ -437,7 +444,10 @@
   // todavia no hay nada que leer.
   var intentos = 0;
   (function esperar() {
-    var unica = !leer().length && filaDePaginaActual();
+    // Primero la página de producto: abajo trae decenas de tarjetas de
+    // "relacionados" y antes se la confundía con una búsqueda, así que nunca
+    // aparecía "Leer mis competidores guardados".
+    var unica = (document.querySelector('h1.ui-pdp-title') || !leer().length) && filaDePaginaActual();
     if (unica) {
       filas = [unica]; marcados = {0: true};
       pie2.style.display = 'block';
