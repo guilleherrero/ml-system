@@ -4,43 +4,42 @@
 
 {% block content %}
 <style>
-.hy-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin-bottom:1.1rem}
-@media (max-width:600px){.hy-kpi .n{font-size:1.3rem}.hy-kpi .s{display:none}}
-.hy-kpi{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--radius-card);padding:.9rem 1rem}
-.hy-kpi .n{font-size:1.6rem;font-weight:800;line-height:1.1}
-.hy-kpi .l{font-size:.76rem;color:var(--app-text-2);margin-top:3px}
-.hy-kpi .s{font-size:.72rem;color:var(--app-muted);margin-top:4px}
+.hy-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 1.5rem;margin-bottom:1.4rem}
+@media (max-width:600px){.hy-kpi .n{font-size:1.4rem}.hy-kpi .s{display:none}}
+.hy-kpi{border-top:2px solid var(--app-text);padding:.6rem 0 .2rem}
+.hy-kpi .n{font-size:2rem;font-weight:700;line-height:1.1;letter-spacing:-.02em}
+.hy-kpi .l{font-size:.8rem;color:var(--app-text-2);margin-top:3px}
+.hy-kpi .s{font-size:.74rem;color:var(--app-muted);margin-top:4px}
 .hy-filtros{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:.9rem;align-items:center}
-.hy-chip{border:1px solid var(--app-border);background:var(--app-surface);color:var(--app-text-2);border-radius:20px;
+.hy-chip{border:1px solid var(--app-border);background:var(--app-surface);color:var(--app-text-2);border-radius:var(--radius-ctl);
   padding:.3rem .85rem;font-size:.8rem;font-weight:600;cursor:pointer}
-.hy-chip.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
-.hy-sec{font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--app-muted);margin:1.2rem 0 .5rem;
-  display:flex;align-items:center;gap:.5rem}
-.hy-sec .cnt{background:var(--app-surface-2);border:1px solid var(--app-border);border-radius:10px;padding:0 7px;font-size:.7rem}
-.hy-item{background:var(--app-surface);border:1px solid var(--app-border);border-left:4px solid var(--app-border);
-  border-radius:var(--radius-ctl);padding:.7rem .9rem;margin-bottom:.5rem;display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap}
-.hy-item.t0{border-left-color:var(--color-critical-400)}
-.hy-item.t1{border-left-color:var(--color-warning-400)}
-.hy-item.t2{border-left-color:var(--color-info-500)}
-.hy-item.t3{border-left-color:var(--color-success-400)}
+.hy-chip.on{background:var(--app-text);color:var(--app-bg);border-color:var(--app-text)}
+.hy-sec{font-size:.95rem;font-weight:700;color:var(--app-text);margin:1.6rem 0 0;padding-bottom:.4rem;
+  border-bottom:1px solid var(--app-text);display:flex;align-items:center;gap:.5rem}
+.hy-sec .cnt{color:var(--app-muted);font-weight:500;font-size:.85rem}
+/* Filas de planilla: una línea entre cada una, sin tarjetas */
+.hy-item{border-bottom:1px solid var(--app-border);padding:.75rem .25rem;display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap}
+.hy-item:hover{background:var(--app-surface)}
+/* Lo que vence hoy: el título subrayado con resaltador amarillo */
+.hy-item.t0 .tit span.hl{background:linear-gradient(transparent 58%,var(--brand) 58%,var(--brand) 92%,transparent 92%)}
 .hy-item .cuerpo{flex:1;min-width:14rem}
 .hy-item .tit{font-weight:700;font-size:.9rem;color:var(--app-text)}
 .hy-item .det{font-size:.8rem;color:var(--app-text-2);margin-top:2px}
 .hy-item .lado{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:.35rem;min-width:9rem}
-.hy-tag{font-size:.6rem;font-weight:800;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
-.hy-tag.reclamo{background:var(--color-critical-100);color:var(--color-critical-700)}
-.hy-tag.envio{background:var(--color-warning-100);color:var(--color-warning-700)}
-.hy-tag.pregunta,.hy-tag.mensaje{background:var(--color-info-100);color:var(--color-info-700)}
-.hy-tag.alerta{background:var(--color-warning-100);color:var(--color-warning-700)}
-.hy-tag.propuesta{background:var(--brand);color:var(--brand-ink)}
-.hy-tag.oportunidad{background:var(--color-success-100);color:var(--color-success-700)}
-.hy-cuenta{font-size:.68rem;font-weight:700;color:var(--app-muted);border:1px solid var(--app-border);border-radius:8px;padding:1px 7px}
+.hy-tag{font-size:.75rem;font-weight:700;white-space:nowrap}
+.hy-tag.reclamo{color:var(--color-critical-500)}
+.hy-tag.envio{color:var(--color-warning-700)}
+.hy-tag.pregunta,.hy-tag.mensaje{color:var(--color-info-600)}
+.hy-tag.alerta{color:var(--color-warning-700)}
+.hy-tag.propuesta{color:var(--brand-text)}
+.hy-tag.oportunidad{color:var(--color-success-700)}
+.hy-cuenta{font-size:.75rem;font-weight:600;color:var(--app-muted)}
 .hy-reloj{font-weight:800;font-size:.82rem;white-space:nowrap}
 .hy-reloj.rojo{color:var(--color-critical-500)} .hy-reloj.amarillo{color:var(--color-warning-500)} .hy-reloj.gris{color:var(--app-muted)}
 .hy-plata{font-weight:800;font-size:.85rem;color:var(--color-success-500);white-space:nowrap}
 .hy-acc{display:flex;gap:.3rem;flex-wrap:wrap;justify-content:flex-end}
 .hy-acc .btn{font-size:.74rem;padding:.2rem .6rem}
-.hy-vacio{padding:1.4rem;text-align:center;color:var(--app-muted);background:var(--app-surface);border:1px dashed var(--app-border);border-radius:var(--radius-ctl)}
+.hy-vacio{padding:1.4rem .25rem;color:var(--app-muted);border-bottom:1px solid var(--app-border)}
 .hy-cargando{font-size:.78rem;color:var(--app-muted)}
 .hy-rep{display:flex;flex-direction:column;gap:3px;margin-top:4px}
 .hy-rep span{font-size:.74rem}
@@ -250,7 +249,7 @@ function fila(x) {
       <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
         <span class="hy-tag ${x.tipo}">${NOMBRE[x.tipo]}</span>${CUENTAS.length > 1 ? `<span class="hy-cuenta">${esc(x.alias)}</span>` : ''}
       </div>
-      <div class="tit">${x.item_id ? `<a class="link-ficha" href="/publicacion/${encodeURIComponent(x.alias)}/${esc(x.item_id)}">${esc(x.titulo)}</a>` : esc(x.titulo)}</div>
+      <div class="tit"><span class="hl">${x.item_id ? `<a class="link-ficha" href="/publicacion/${encodeURIComponent(x.alias)}/${esc(x.item_id)}">${esc(x.titulo)}</a>` : esc(x.titulo)}</span></div>
       ${x.det ? `<div class="det">${esc(x.det)}</div>` : ''}
     </div>
     <div class="lado">${reloj(x)}<div class="hy-acc">${acciones(x)}</div></div>

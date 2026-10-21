@@ -1,20 +1,20 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="dark" data-bs-theme="dark">
+<html lang="es" data-theme="light" data-bs-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sistema ML{% block title %}{% endblock %}</title>
   <script>
-    /* Tema antes de pintar: sin parpadeo. Oscuro por defecto. */
+    /* Tema antes de pintar: sin parpadeo. Claro por defecto (clave v2: todos arrancan en claro). */
     (function () {
-      var t = 'dark';
-      try { t = localStorage.getItem('ml_tema') || 'dark'; } catch (e) {}
+      var t = 'light';
+      try { t = localStorage.getItem('ml_tema_v2') || 'light'; } catch (e) {}
       document.documentElement.setAttribute('data-theme', t);
       document.documentElement.setAttribute('data-bs-theme', t);
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" integrity="sha384-XGjxtQfXaH2tnPFa9x+ruJTuLE3Aa6LhHSWRr1XeTyhezb4abCG4ccI5AkVDxqC+" crossorigin="anonymous">
   <link href="{{ url_for('static', filename='css/tokens.css') }}" rel="stylesheet">
@@ -37,7 +37,7 @@
     .brand-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--brand); color: var(--brand-ink);
                   display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
     .brand .name { color: var(--app-text); font-size: .98rem; font-weight: 800; line-height: 1.1; }
-    .brand .sub  { color: var(--app-muted); font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; }
+    .brand .sub  { color: var(--app-muted); font-size: .72rem; }
 
     .nav-area { margin-top: 2px; }
     .nav-area > summary, .nav-link-solo {
@@ -61,8 +61,8 @@
                  color: var(--app-text-2); text-decoration: none; font-size: .83rem; }
     .nav-sub a:hover { color: var(--app-text); background: var(--app-shell-2); }
     .nav-sub a.active { color: var(--app-text); background: var(--app-shell-2); font-weight: 600; }
-    .nav-sec { font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; color: var(--app-muted);
-               font-weight: 700; padding: 14px 12px 4px; }
+    .nav-sec { font-size: .78rem; color: var(--app-muted);
+               font-weight: 600; padding: 14px 12px 4px; }
     .nav-badge { margin-left: auto; background: var(--color-critical-400); color: #fff; border-radius: 999px;
                  padding: 0 7px; font-size: .66rem; font-weight: 700; line-height: 1.5; }
 
@@ -459,7 +459,7 @@ function cambiarTema() {
   const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', t);
   document.documentElement.setAttribute('data-bs-theme', t);
-  try { localStorage.setItem('ml_tema', t); } catch (e) {}
+  try { localStorage.setItem('ml_tema_v2', t); } catch (e) {}
   pintarIconoTema();
 }
 pintarIconoTema();

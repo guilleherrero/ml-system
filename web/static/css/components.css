@@ -343,3 +343,12 @@ body { background: var(--app-bg); color: var(--app-text); font-family: var(--fon
 /* Título de producto que abre la ficha de la publicación */
 .link-ficha{color:inherit;text-decoration:none}
 .link-ficha:hover{text-decoration:underline;text-underline-offset:2px}
+
+/* ═══ Estilo planilla (2026-10-21) ═══════════════════════════════
+   Sin mayúsculas forzadas ni íconos decorativos en los títulos;
+   números de ancho fijo para que las cifras queden en columna.
+   El !important pisa también los style="" escritos en las pantallas. */
+*, *::before, *::after { text-transform: none !important; }
+.num, .stat-box, .app-stat-box, .hy-kpi .n, .hy-plata, .hy-reloj { font-variant-numeric: tabular-nums; }
+#main h1 > i.bi:first-child { display: none; }
+.page-header h1 { font-weight: 700; letter-spacing: -.015em; }
