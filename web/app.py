@@ -30,6 +30,7 @@ from datetime import datetime, timedelta, date
 import requests as req_lib
 import anthropic
 from flask import Flask, render_template, redirect, url_for, jsonify, request, Response, stream_with_context, make_response, session
+from markupsafe import escape
 
 # Limpiar el API key de caracteres invisibles (newline, espacios) que rompen httpcore
 _raw_key = os.environ.get('ANTHROPIC_API_KEY', '')
@@ -17032,13 +17033,61 @@ def oauth_exchange():
                     f'<p><a href="/oauth/connect/{alias}">Intentá de nuevo</a> '
                     f'(el código dura solo 10 minutos)</p>')
         expires_at = (datetime.now() + timedelta(seconds=tok.get('expires_in', 21600))).isoformat()
-        acc['access_token']     = tok['access_token']
-        acc['refresh_token']    = tok['refresh_token']
-        acc['token_expires_at'] = expires_at
+        try:
+            nick = req_lib.get('https://api.mercadolibre.com/users/me', timeout=10,
+                               headers={'Authorization': f'Bearer {tok["access_token"]}'}).json().get('nickname', '')
+        except Exception:
+            nick = ''
+        nuevo = {'access_token': tok['access_token'], 'refresh_token': tok['refresh_token'],
+                 'token_expires_at': expires_at, 'user_id': tok.get('user_id'), 'nickname': nick}
+
+        # Bug real (nov 2026): se apreto "Conectar" en Novara con la sesion de
+        # ML de otra cuenta (NEOBUYBOX) abierta en el navegador y el token de
+        # esa cuenta piso al de Novara sin avisar: todo el sistema paso a leer
+        # otras publicaciones. Si quien autorizo no es el dueño que ya tenia
+        # este alias, no se guarda nada hasta que se confirme a proposito.
+        if acc.get('user_id') and str(acc['user_id']) != str(nuevo['user_id']):
+            session[f'oauth_pendiente_{alias}'] = nuevo
+            return (f'<h2>⚠️ Autorizaste con otra cuenta de MercadoLibre</h2>'
+                    f'<p>La cuenta <b>{escape(alias)}</b> es de <b>{escape(acc.get("nickname") or "")}</b> '
+                    f'(usuario {escape(str(acc["user_id"]))}), pero autorizaste con '
+                    f'<b>{escape(nick)}</b> (usuario {escape(str(nuevo["user_id"]))}). '
+                    f'<b>No se guardó nada.</b></p>'
+                    f'<p>Si fue sin querer: cerrá sesión en MercadoLibre, entrá con '
+                    f'{escape(acc.get("nickname") or "la cuenta correcta")} y '
+                    f'<a href="/oauth/connect/{escape(alias)}">volvé a conectar</a>. '
+                    f'Si querés sumar {escape(nick)} como otra cuenta, creala aparte en Configuración → Cuentas.</p>'
+                    f'<form method="post" action="/oauth/confirmar-reemplazo/{escape(alias)}">'
+                    f'<button type="submit">Sí, reemplazar: {escape(alias)} pasa a ser {escape(nick)}</button></form>'
+                    f'<p><a href="/">Volver sin cambiar nada</a></p>')
+        acc.update(nuevo)
         save_json(accounts_path, data)
         return render_template('oauth_success.html', alias=alias, scope=tok.get('scope',''))
     except Exception as e:
         return f'<h2>Error: {e}</h2><a href="/">Volver</a>'
+
+
+@app.route('/oauth/confirmar-reemplazo/<alias>', methods=['POST'])
+def oauth_confirmar_reemplazo(alias):
+    """Guarda el token que quedo en espera en /oauth/exchange porque era de
+    otro usuario de ML. Solo con la confirmacion explicita del boton."""
+    from flask import session
+    nuevo = session.pop(f'oauth_pendiente_{alias}', None)
+    if not nuevo:
+        return (f'<h2>No hay nada pendiente — volvé a conectar</h2>'
+                f'<a href="/oauth/connect/{escape(alias)}">Conectar</a>')
+    accounts_path = os.path.join(CONFIG_DIR, 'accounts.json')
+    data = load_json(accounts_path) or {'accounts': []}
+    if not isinstance(data, dict):
+        data = {'accounts': data}
+    acc = next((a for a in data['accounts'] if a['alias'] == alias), None)
+    if not acc:
+        return '<h2>Cuenta no encontrada</h2><a href="/">Volver</a>'
+    _audit('OAUTH_REEMPLAZO_USUARIO', alias=alias, user_id_antes=acc.get('user_id'),
+           user_id_nuevo=nuevo.get('user_id'), nickname_nuevo=nuevo.get('nickname'))
+    acc.update(nuevo)
+    save_json(accounts_path, data)
+    return render_template('oauth_success.html', alias=alias, scope='')
 
 
 # ── Notificaciones por email ──────────────────────────────────────────────────
