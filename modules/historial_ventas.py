@@ -16,7 +16,9 @@ Este módulo:
 Solo lee: no toca nada en MercadoLibre.
 """
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+
+AR = timezone(timedelta(hours=-3))
 
 from core.db_storage import db_load, db_save
 
@@ -46,7 +48,7 @@ def cargar(alias: str) -> dict:
 
 def meses_a_sincronizar(alias: str, meses: int = MESES_DEFAULT, hoy: date | None = None) -> list[str]:
     """Meses (AAAA-MM) que faltan pedir. El actual y el anterior se piden siempre."""
-    hoy = hoy or date.today()
+    hoy = hoy or datetime.now(AR).date()
     guardado = cargar(alias).get('meses', {})
     lista = []
     y, m = hoy.year, hoy.month
@@ -129,12 +131,12 @@ def sincronizar_mes(client, alias: str, mes: str) -> dict:
     dias, titulos = agregar_ordenes(ordenes)
     data = cargar(alias)
     data.setdefault('meses', {})[mes] = {
-        'sync_at': datetime.now().isoformat(timespec='seconds'),
+        'sync_at': datetime.now(AR).isoformat(timespec='seconds'),
         'dias': dias,
     }
     data.setdefault('titulos', {}).update(titulos)
     data['alias'] = alias
-    data['actualizado'] = datetime.now().isoformat(timespec='seconds')
+    data['actualizado'] = datetime.now(AR).isoformat(timespec='seconds')
     db_save(_path(alias), data)
     unidades = sum(v[0] for d in dias.values() for v in d.values())
     return {'mes': mes, 'ordenes': len(ordenes), 'unidades': unidades}
@@ -203,7 +205,7 @@ def analizar(alias: str, hoy: date | None = None) -> dict:
     data = cargar(alias)
     serie = _serie_diaria(data)
     titulos = data.get('titulos') or {}
-    hoy = hoy or date.today()
+    hoy = hoy or datetime.now(AR).date()
     manana = hoy + timedelta(days=1)
     if not serie:
         return {'vacio': True, 'actualizado': data.get('actualizado')}
