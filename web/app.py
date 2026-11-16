@@ -474,6 +474,8 @@ def require_login():
         _parts = _auth_header.split(None, 1)
         if len(_parts) == 2 and _parts[0].lower() == 'bearer' \
                 and _secrets.compare_digest(_parts[1], _mcp_token):
+            from flask import g as _g
+            _g.mcp_bearer = True
             return
     # Si no existe ningún admin todavía, el sistema funciona sin login
     if needs_setup():

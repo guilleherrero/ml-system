@@ -6,7 +6,7 @@ Usuarios y contraseñas hasheadas en config/users.json.
 import os
 import uuid
 from functools import wraps
-from flask import session, redirect, url_for, request
+from flask import session, redirect, url_for, request, g
 
 from werkzeug.security import generate_password_hash, check_password_hash
 from core.db_storage import db_load, db_save
@@ -126,6 +126,10 @@ def user_can_access(alias: str) -> bool:
 
 def get_permitted_accounts(all_accounts: list) -> list:
     """Filtra la lista de cuentas según permisos del usuario actual."""
+    # Pedido autenticado con el MCP_API_TOKEN (agentes, MCP): no hay usuario de
+    # sesión, pero el token ya da acceso total al sistema → ve todas las cuentas.
+    if g.get('mcp_bearer'):
+        return all_accounts
     user = get_current_user()
     if not user:
         return []
