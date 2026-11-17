@@ -20623,6 +20623,12 @@ try:
 except Exception as _e:
     print(f'[historial_ventas] ERROR registrando las rutas: {_e}')
 
+try:
+    from web.rentabilidad_routes import bp as _bp_rentabilidad_real
+    app.register_blueprint(_bp_rentabilidad_real)
+except Exception as _e:
+    print(f'[rentabilidad_real] ERROR registrando las rutas: {_e}')
+
 # Start scheduler on every worker — keep workers=1 in Procfile to avoid duplicate runs
 _app_scheduler = _start_scheduler()
 
