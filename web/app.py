@@ -17457,6 +17457,18 @@ def _scheduler_run_all_inner():
             app.logger.error('[scheduler] %s — Meli Ads ERROR: %s', alias, e)
             print(f'[scheduler] {alias} — Meli Ads ERROR: {e}')
 
+        # Historial de ventas: traer el mes actual y el anterior (y cualquier
+        # mes que falte) para que los agentes lean ventas del día. Antes solo
+        # se actualizaba al abrir la pantalla.
+        try:
+            from modules import historial_ventas as _hv
+            for _mes in _hv.meses_a_sincronizar(alias):
+                _hv.sincronizar_mes(client, alias, _mes)
+            print(f'[scheduler] {alias} — historial de ventas OK')
+        except Exception as e:
+            app.logger.error('[scheduler] %s — historial de ventas ERROR: %s', alias, e)
+            print(f'[scheduler] {alias} — historial de ventas ERROR: {e}')
+
         # Sprint 4.5 — precalentar cache de permisos para que el banner global
         # tenga datos frescos sin esperar a que el usuario abra /settings/permisos
         try:
