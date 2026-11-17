@@ -63,11 +63,17 @@ def _pago_mp(token, pago_id):
     }
 
 
-def _libro(order_id):
+def _libro(order_id, pack_id=None, payment_id=None):
+    from sqlalchemy import or_
     from web.db import session_scope
     from web.models_contabilidad import Movimiento
+    conds = [Movimiento.order_id == str(order_id)]
+    if pack_id:
+        conds.append(Movimiento.order_id == str(pack_id))
+    if payment_id:
+        conds.append(Movimiento.payment_id == str(payment_id))
     with session_scope() as s:
-        filas = s.query(Movimiento).filter(Movimiento.order_id == str(order_id)).all()
+        filas = s.query(Movimiento).filter(or_(*conds)).all()
         return [{'origen': m.origen, 'subtipo': m.subtipo, 'concepto': m.concepto[:80],
                  'monto': _f(m.monto), 'iva': _f(m.iva), 'percepciones': _f(m.percepciones),
                  'retenciones': _f(m.retenciones), 'periodo': m.periodo} for m in filas]
@@ -113,7 +119,7 @@ def api_muestra():
         pago_mp, err_mp = (None, err_tok or 'sin token MP')
         if tok_mp and pago_ml.get('id'):
             pago_mp, err_mp = _seguro(_pago_mp, tok_mp, pago_ml.get('id'))
-        libro, err_lib = _seguro(_libro, o.get('id'))
+        libro, err_lib = _seguro(_libro, o.get('id'), o.get('pack_id'), pago_ml.get('id'))
 
         senders = (costos_env or {}).get('senders') or []
         salida.append({
@@ -140,3 +146,29 @@ def api_muestra():
                                           'pago_mp': err_mp, 'libro': err_lib}.items() if v},
         })
     return jsonify({'ok': True, 'alias': alias, 'cantidad': len(salida), 'ventas': salida})
+
+
+@bp.route('/api/billing-cobertura')
+def api_billing_cobertura():
+    """Cuántos cargos de facturación hay por mes y subtipo, y cuántos traen orden."""
+    from sqlalchemy import func
+    from web.db import session_scope
+    from web.models_contabilidad import Movimiento
+    alias = request.args.get('alias', 'Novara')
+    with session_scope() as s:
+        q = (s.query(Movimiento.periodo, Movimiento.origen, Movimiento.subtipo,
+                     func.count(Movimiento.id), func.count(Movimiento.order_id),
+                     func.sum(Movimiento.monto))
+             .filter(Movimiento.cuenta_alias == alias, Movimiento.periodo >= '2026-09')
+             .group_by(Movimiento.periodo, Movimiento.origen, Movimiento.subtipo).all())
+        filas = [{'periodo': p, 'origen': o, 'subtipo': st, 'cantidad': c,
+                  'con_orden': co, 'total': _f(t)} for p, o, st, c, co, t in q]
+        ej = (s.query(Movimiento).filter(Movimiento.cuenta_alias == alias,
+                                         Movimiento.origen == 'ml_billing',
+                                         Movimiento.periodo == '2026-11')
+              .order_by(Movimiento.fecha.desc()).limit(3).all())
+        ejemplos = [{'subtipo': m.subtipo, 'concepto': m.concepto[:60], 'monto': _f(m.monto),
+                     'order_id': m.order_id, 'payment_id': m.payment_id,
+                     'fecha': m.fecha.isoformat() if m.fecha else None} for m in ej]
+    return jsonify({'ok': True, 'filas': sorted(filas, key=lambda x: (x['periodo'], x['origen'], str(x['subtipo']))),
+                    'ejemplos_nov': ejemplos})
