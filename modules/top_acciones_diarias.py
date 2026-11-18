@@ -17,6 +17,7 @@ import hashlib
 import logging
 import os
 import time
+from modules.precio_motor import tasa_impuestos
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -596,7 +597,7 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
         # Costo: usar campo directo; si falta, reconstruir desde margen_pct
         if costo is None:
             # margen_pct = (neto - costo) / precio → costo = precio*(1-fee_rate) - margen_pct*precio
-            neto_est = precio * (1.0 - fee_rate)
+            neto_est = precio * (1.0 - fee_rate - tasa_impuestos())
             costo = neto_est - float(margen_ratio) * precio
         costo = float(costo)
         if costo <= 0:
@@ -606,7 +607,7 @@ def _candidates_repricing(alias: str) -> list[Oportunidad]:
         if margen_ratio is not None:
             margen_actual_display = round(float(margen_ratio) * 100.0, 1)
         else:
-            neto = precio * (1.0 - fee_rate)
+            neto = precio * (1.0 - fee_rate - tasa_impuestos())
             margen_actual_display = round(max(0.0, (neto - costo) / precio * 100.0), 1)
 
         # Precio minimo y evaluacion: una sola fuente (bloque 12.2)

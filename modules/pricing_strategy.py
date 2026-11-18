@@ -25,6 +25,7 @@ from typing import Optional
 # Acceso a core/fees desde modules/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.fees import get_fee_rates, get_rate
+from modules.precio_motor import tasa_impuestos
 
 
 # ── Constantes ───────────────────────────────────────────────────────────────
@@ -394,11 +395,11 @@ def _analizar_umbral_envio(
 
     # ── Ganancia unitaria actual ──────────────────────────────────────────────
     # precio × (1 - fee_rate) - costo
-    ganancia_unit_actual = precio * (1.0 - fee_rate) - costo
+    ganancia_unit_actual = precio * (1.0 - fee_rate - tasa_impuestos()) - costo
 
     # ── Ganancia unitaria a precio_bajo_umbral sin envío gratis ──────────────
     # Fee = fee_base (solo comisión, sin shipping)
-    neto_nuevo          = precio_bajo_umbral * (1.0 - fee_base)
+    neto_nuevo          = precio_bajo_umbral * (1.0 - fee_base - tasa_impuestos())
     ganancia_unit_nueva = neto_nuevo - costo
 
     # Si la ganancia unitaria nueva es negativa no tiene sentido
@@ -715,7 +716,7 @@ def _calcular_recomendacion(
             nueva_fee  = fee_rate - ahorro_fee
             if nueva_fee > 0 and nueva_fee < 1:
                 # Precio que, con la nueva fee, mantiene la misma ganancia/u que hoy
-                precio_alt = (gan_unit_actual + costo) / (1.0 - nueva_fee)
+                precio_alt = (gan_unit_actual + costo) / (1.0 - nueva_fee - tasa_impuestos())
                 if precio_alt < precio_actual - 100 and precio_alt > precio_piso:
                     tiene_alt_cuotas    = True
                     precio_alt_cuotas   = round(precio_alt)
@@ -782,7 +783,7 @@ def analizar_producto(
     fee_base = _fee_base_raw if _fee_base_raw < fee_rate else None
 
     # ── Estado actual ────────────────────────────────────────────────────────
-    neto_actual          = precio * (1.0 - fee_rate)
+    neto_actual          = precio * (1.0 - fee_rate - tasa_impuestos())
     ganancia_unit_actual = neto_actual - costo
     ganancia_mensual_act = vtas * ganancia_unit_actual
     margen_actual_pct    = (ganancia_unit_actual / precio * 100.0) if precio > 0 else 0.0
@@ -812,12 +813,12 @@ def analizar_producto(
         )
         fee_escenario = fee_base if cruza_umbral else fee_rate
 
-        neto_nuevo     = precio_nuevo * (1.0 - fee_escenario)
+        neto_nuevo     = precio_nuevo * (1.0 - fee_escenario - tasa_impuestos())
         gan_unit_nvo   = neto_nuevo - costo
         margen_nvo_pct = (gan_unit_nvo / precio_nuevo * 100.0) if precio_nuevo > 0 else 0.0
 
         # Breakeven para este escenario (puede diferir si cruza umbral)
-        precio_piso_esc = costo / (1.0 - fee_escenario) if fee_escenario < 1.0 else costo * 2.0
+        precio_piso_esc = costo / (1.0 - fee_escenario - tasa_impuestos()) if fee_escenario < 1.0 else costo * 2.0
 
         # Uplift de conversión por elasticidad precio-demanda
         # Nota: si cruza umbral de envío gratis se aplica penalización por pérdida del badge
@@ -906,7 +907,7 @@ def analizar_producto(
     )
 
     # ── Recomendación sintetizada ─────────────────────────────────────────────
-    precio_piso = costo / (1.0 - fee_rate) if fee_rate < 1.0 else costo * 2.0
+    precio_piso = costo / (1.0 - fee_rate - tasa_impuestos()) if fee_rate < 1.0 else costo * 2.0
     recomendacion = _calcular_recomendacion(
         diagnostico=diagnostico,
         escenarios=escenarios,

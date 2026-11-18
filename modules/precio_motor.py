@@ -75,15 +75,44 @@ def _f(v, d=0.0) -> float:
         return d
 
 
+# ── Impuestos por venta ──────────────────────────────────────────────────────
+
+_IMP_CACHE = {'t': 0.0, 'v': None}
+
+
+def tasa_impuestos() -> float:
+    """IIBB + percepción de IVA como fracción del precio (0.129 = 12,9%): lo que
+    ML/MP cobran de impuestos por cada venta (retención en el cobro + percepciones
+    de la factura mensual). Sale de la config de cuenta de la Calculadora, así
+    todo el sistema descuenta lo mismo. Sin config, los defaults de Cargos."""
+    import time
+    if _IMP_CACHE['v'] is not None and time.time() - _IMP_CACHE['t'] < 300:
+        return _IMP_CACHE['v']
+    c = Cargos()
+    v = (c.iibb + c.percepcion_iva) / 100
+    try:
+        from web.db import session_scope
+        from web.models_pricing import PricingConfig
+        with session_scope() as s:
+            row = s.query(PricingConfig).filter(PricingConfig.item_id.is_(None)).first()
+            if row:
+                v = (float(row.iibb) + float(row.percepcion_iva)) / 100
+    except Exception:
+        pass  # sin base (CLI, tests): defaults
+    _IMP_CACHE.update(t=time.time(), v=v)
+    return v
+
+
 # ── Margen ───────────────────────────────────────────────────────────────────
 
 def margen_unitario(precio, costo, fee_rate) -> float | None:
-    """Lo que queda por unidad. None si falta el costo — no se inventa."""
+    """Lo que queda por unidad después de ML (fee_rate) e impuestos. None si
+    falta el costo — no se inventa."""
     precio = _f(precio)
     fee    = _f(fee_rate)
     if precio <= 0 or costo in (None, ''):
         return None
-    return precio * (1.0 - fee) - _f(costo)
+    return precio * (1.0 - fee - tasa_impuestos()) - _f(costo)
 
 
 def margen_pct(precio, costo, fee_rate) -> float | None:
@@ -97,7 +126,7 @@ def precio_piso(costo, fee_rate, margen_min: float = MARGEN_MINIMO_ACEPTABLE) ->
     """El precio mas bajo que respeta el margen minimo. None si falta el costo."""
     if costo in (None, ''):
         return None
-    den = 1.0 - _f(fee_rate) - margen_min
+    den = 1.0 - _f(fee_rate) - tasa_impuestos() - margen_min
     if den <= 0:
         return None
     return _f(costo) / den
@@ -476,7 +505,7 @@ def impacto_estimado_baja(precio_actual, precio_nuevo, costo, fee_rate,
 
 @dataclass
 class Cargos:
-    iibb: float = 3.0               # %
+    iibb: float = 4.0               # % — elegido por Guille (medido sep-oct 2026: 0,5% retención MP + 5,4% percepciones)
     percepcion_iva: float = 7.0     # % — no se recupera para esta cuenta, se trata como costo real
     envio: float = 5000.0           # $ por venta cuando corresponde
     umbral_envio: float = 33000.0   # $ desde donde el envio lo paga el vendedor

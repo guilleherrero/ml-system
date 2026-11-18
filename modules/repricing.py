@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import time
+from modules.precio_motor import tasa_impuestos
 from datetime import datetime, timezone
 
 import requests
@@ -378,7 +379,7 @@ def _calculate_new_price(
         if piso:
             min_price = max(min_price, round(piso, 2))
         else:
-            min_price = max(min_price, round(costo / (1 - fee_rate), 2))
+            min_price = max(min_price, round(costo / (1 - fee_rate - tasa_impuestos()), 2))
 
     if competitor_price is None:
         # Sin datos de competencia: subir levemente si podemos

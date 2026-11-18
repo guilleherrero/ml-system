@@ -20,6 +20,7 @@ import logging
 import math
 import os
 import re
+from modules.precio_motor import tasa_impuestos
 import sys
 import glob
 import base64
@@ -1968,7 +1969,8 @@ def stock(alias):
             fee_rate  = raw.get('fee_rate') or get_rate(raw.get('listing_type', ''), fees)
             fee_source = raw.get('fee_source', 'estimado')
             total_fee = round(precio * fee_rate, 2)
-            neto      = precio - total_fee
+            impuestos = round(precio * tasa_impuestos(), 2)
+            neto      = precio - total_fee - impuestos
 
             if costo and costo > 0:
                 ganancia   = neto - costo
@@ -4686,7 +4688,7 @@ def api_ventas_producto(alias):
             stock_data = load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}
             stock_item = next((s for s in stock_data.get('items', []) if s.get('id') == iid), {})
             fee_rate = stock_item.get('fee_rate') or get_rate(stock_item.get('listing_type', ''), fees_cache)
-            neto     = precio * (1 - fee_rate)
+            neto     = precio * (1 - fee_rate - tasa_impuestos())
 
             if costo and precio > 0:
                 margen_pct = (neto - costo) / precio * 100
@@ -7970,7 +7972,7 @@ def api_diagnostico_item():
         free_ship    = my_stock.get('free_shipping', False)
         alerta_stock = my_stock.get('alerta_stock', '')
         fee_rate     = my_stock.get('fee_rate', 0) or 0
-        neto         = precio * (1 - fee_rate)
+        neto         = precio * (1 - fee_rate - tasa_impuestos())
         costo_entry  = costos_data.get(item_id, {})
         costo        = costo_entry.get('costo') if costo_entry else my_stock.get('costo')
         margen_pct   = ((neto - costo) / precio * 100) if costo and precio > 0 else None
@@ -9368,6 +9370,8 @@ def api_pricing_config_put():
     except (TypeError, ValueError):
         return jsonify({'ok': False, 'error': 'Uno de los cargos tiene un valor inválido.'}), 400
 
+    from modules import precio_motor as _pm
+    _pm._IMP_CACHE['v'] = None   # los impuestos nuevos rigen ya en todo el sistema (en este proceso)
     return jsonify({'ok': True})
 
 
@@ -10828,7 +10832,7 @@ def api_repricing_simulate(alias):
                                        item_data.get('tags')) if item_data else None)
                         or get_rate(listing_type, fees))
             if costo:
-                min_p = max(min_p, round(costo / (1 - fee_rate), 2))
+                min_p = max(min_p, round(costo / (1 - fee_rate - tasa_impuestos()), 2))
 
             if competitor_price is None:
                 new_price = min(round(current_price * 1.02, 2), max_p)
@@ -10954,7 +10958,7 @@ def _calc_margen_pct(precio: float, costo: float, fee_rate: float) -> float:
     """Margen % luego de fees + costo. Devuelve negativo si vende a pérdida."""
     if precio <= 0 or not costo or costo <= 0:
         return 0.0
-    fee = precio * (fee_rate or 0)
+    fee = precio * ((fee_rate or 0) + tasa_impuestos())
     ganancia = precio - fee - costo
     return round((ganancia / precio) * 100, 1)
 
@@ -11046,7 +11050,7 @@ def api_repricing_wizard_candidates(alias):
         margen_actual    = _calc_margen_pct(precio, costo, fee_rate)
         margen_sugerido  = _calc_margen_pct(precio_sugerido, costo, fee_rate)
         # min_price calculado con cost-basis (antipérdida) y márgen target 15%
-        min_price_anti  = round(costo / (1 - fee_rate), 2)            # cubre fees
+        min_price_anti  = round(costo / (1 - fee_rate - tasa_impuestos()), 2)            # cubre fees
         min_price_15pct = round(costo / (1 - fee_rate - 0.15), 2)     # margen 15%
         min_price_sug   = max(min_price_anti, round(precio * 0.85, 2))
 
@@ -11122,7 +11126,7 @@ def api_repricing_wizard_simular():
             ventas_estim_delta = -round(ventas_30d * 0.1)
 
         impacto_fact = ventas_estim_delta * precio_nuevo
-        impacto_margen = ventas_estim_delta * (precio_nuevo - costo - precio_nuevo * fee_rate)
+        impacto_margen = ventas_estim_delta * (precio_nuevo - costo - precio_nuevo * (fee_rate + tasa_impuestos()))
         if impacto_margen >= 0:
             impacto_pos += impacto_margen
         else:
@@ -11769,7 +11773,7 @@ def api_alertas():
         if not precio or precio <= 0:
             return 0.0
         if costo and costo > 0:
-            neto = precio * (1 - (fee or 0))
+            neto = precio * (1 - (fee or 0) - tasa_impuestos())
             return max(0.0, round((neto - costo) / precio * 100, 2))
         return None
 
@@ -11829,7 +11833,7 @@ def api_alertas():
             ce      = costos_data.get(item_id, {})
             costo   = ce.get('costo') if ce else it.get('costo')
             fee     = it.get('fee_rate') or get_rate(it.get('listing_type', ''), fees_cache)
-            neto    = precio * (1 - fee)
+            neto    = precio * (1 - fee - tasa_impuestos())
             lk      = f'/stock/{alias}'
 
             if costo:
@@ -19864,7 +19868,7 @@ def api_full_data(alias):
 
         # Margen (Full siempre free shipping, commission 16.5% gold_pro / 13% gold_special)
         comision = 0.13 if item['listing_type'] in ('gold_special', 'silver') else 0.165
-        neto     = round(item['precio'] * (1 - comision), 2)
+        neto     = round(item['precio'] * (1 - comision - tasa_impuestos()), 2)
         costo_d  = costos.get(iid, {})
         costo    = costo_d.get('costo') if costo_d else None
         margen_pct = round((neto - costo) / item['precio'] * 100, 1) if costo else None
@@ -19970,7 +19974,7 @@ def api_full_data(alias):
             continue
 
         comision  = 0.13 if item['listing_type'] in ('gold_special', 'silver') else 0.165
-        neto_full = round(item['precio'] * (1 - comision), 2)  # Full siempre free shipping
+        neto_full = round(item['precio'] * (1 - comision - tasa_impuestos()), 2)  # Full siempre free shipping
         costo_d   = costos.get(iid, {})
         costo     = costo_d.get('costo') if costo_d else None
         margen_full = round((neto_full - costo) / item['precio'] * 100, 1) if costo else None

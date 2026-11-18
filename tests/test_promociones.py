@@ -17,6 +17,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.ml_client import MLApiError  # noqa: E402
 from modules import promociones as pm  # noqa: E402
 from modules import repricing  # noqa: E402
+from modules import precio_motor as _motor  # noqa: E402
+
+# Acá se prueba el precio de la promo; los impuestos por venta se prueban en
+# test_precio_motor. Se fijan en 0 para que estos números no dependan de la config.
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _sin_impuestos():
+    _motor._IMP_CACHE.update(t=9e18, v=0.0)
 
 
 class FakeClient:

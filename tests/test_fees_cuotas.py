@@ -1,6 +1,14 @@
 """Comisión por publicación según sus cuotas sin interés."""
 from core.fees import comision_item, cuotas_de_item
 from modules.stock_rentabilidad import _calcular_margen
+from modules import precio_motor as _motor
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _impuestos_10():
+    _motor._IMP_CACHE.update(t=9e18, v=0.10)   # impuestos por venta fijos en 10%
 
 
 def test_cuotas_por_tag():
@@ -43,4 +51,5 @@ def test_envio_gratis_suma_al_costo():
     # Cortador $48.000: 16% de comisión + $7.990 de envío = 32,6% del precio
     m = _calcular_margen(48000, 13000, 'gold_special', item_fee_rate=0.16, envio=7990)
     assert m['fee_rate'] == round(0.16 + 7990 / 48000, 4) and m['comision_rate'] == 0.16
-    assert round(m['ganancia']) == round(48000 - 48000 * m['fee_rate'] - 13000)
+    # y además los impuestos por venta (10% fijado arriba)
+    assert round(m['ganancia']) == round(48000 - 48000 * m['fee_rate'] - 4800 - 13000)

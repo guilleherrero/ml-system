@@ -17,6 +17,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules import precio_motor as pm
 
+# Impuestos por venta fijos en 10%: los tests no dependen de la config de la base.
+def setUpModule():
+    pm._IMP_CACHE.update(t=9e18, v=0.10)
+
 
 # Faja Reductora MLA2209044108 — el caso que el Top 3 proponia bajar 8%
 FAJA = {'precio': 29000.0, 'costo': 8000.0, 'fee_rate': 0.3259,
@@ -27,7 +31,7 @@ class TestMargen(unittest.TestCase):
 
     def test_margen_descuenta_comision_y_costo(self):
         m = pm.margen_unitario(29000, 8000, 0.3259)
-        self.assertAlmostEqual(m, 29000 * (1 - 0.3259) - 8000, places=2)
+        self.assertAlmostEqual(m, 29000 * (1 - 0.3259 - 0.10) - 8000, places=2)
 
     def test_sin_costo_no_inventa(self):
         self.assertIsNone(pm.margen_unitario(29000, None, 0.3259))
@@ -253,7 +257,7 @@ class TestEstrategiaTresPublicaciones(unittest.TestCase):
     """
 
     def _setup(self):
-        c = pm.Cargos()
+        c = pm.Cargos(iibb=3.0)
         costo = 15000.0
         pubs = [pm.Publicacion("Batalla", 17.0, 0.0),
                 pm.Publicacion("Medio", 17.0, 5.75),
@@ -322,7 +326,7 @@ class TestEstrategiaBordes(unittest.TestCase):
     """Los 7 casos borde del §8 de la spec."""
 
     def _setup(self):
-        c = pm.Cargos()
+        c = pm.Cargos(iibb=3.0)
         pub = pm.Publicacion("Batalla", 17.0, 0.0)
         return c, pub
 
@@ -362,7 +366,7 @@ class TestEstrategiaBordes(unittest.TestCase):
         self.assertNotEqual(str(p)[-3:], "999")
 
     def test_cargo_fijo_por_tramo(self):
-        c = pm.Cargos()
+        c = pm.Cargos(iibb=3.0)
         self.assertEqual(pm.cargo_fijo(10000, c), c.fijo_menos_15k)
         self.assertEqual(pm.cargo_fijo(20000, c), c.fijo_15k_25k)
         self.assertEqual(pm.cargo_fijo(30000, c), c.fijo_25k_umbral)
@@ -395,14 +399,14 @@ class TestDesgloseCostos(unittest.TestCase):
         # places=1 (no 2): cada linea se redondea a centavos individualmente
         # antes de sumar (como una factura real), asi que puede haber un
         # centavo de diferencia acumulada contra el calculo sin redondear.
-        c = pm.Cargos()
+        c = pm.Cargos(iibb=3.0)
         pub = pm.Publicacion("Batalla", 17.0, 5.75)
         for precio in (10000, 20000, 32999, 40999, 60578):
             d = pm.desglose_costos(precio, pub, c, 15000)
             self.assertAlmostEqual(d["ganancia"], pm.ganancia_publicacion(precio, pub, c, 15000), places=1)
 
     def test_arriba_del_umbral_paga_envio_no_cargo_fijo(self):
-        c = pm.Cargos()
+        c = pm.Cargos(iibb=3.0)
         pub = pm.Publicacion("Batalla", 17.0, 0.0)
         d = pm.desglose_costos(40999, pub, c, 15000)
         self.assertTrue(d["paga_envio"])
@@ -411,7 +415,7 @@ class TestDesgloseCostos(unittest.TestCase):
         self.assertEqual(d["fijo_monto"], 0.0)
 
     def test_debajo_del_umbral_paga_cargo_fijo_no_envio(self):
-        c = pm.Cargos()
+        c = pm.Cargos(iibb=3.0)
         pub = pm.Publicacion("Batalla", 17.0, 0.0)
         d = pm.desglose_costos(20000, pub, c, 15000)
         self.assertFalse(d["paga_envio"])

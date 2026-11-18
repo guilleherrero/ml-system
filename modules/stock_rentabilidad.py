@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from core.db_storage import db_load, db_save
 from core.ml_client import MLClient
 from core.fees import get_fee_rates, get_rate, comision_item, cuotas_de_item, costo_envio_item
+from modules.precio_motor import tasa_impuestos
 from modules.monitor_posicionamiento import _get_all_active_items
 from modules.seo_optimizer import _tokenize
 
@@ -272,7 +273,8 @@ def _calcular_margen(
     if envio and precio > 0:
         fee_rate = round(fee_rate + envio / precio, 4)
     total_fee = round(precio * fee_rate, 2)
-    ingresos_netos = precio - total_fee
+    impuestos = round(precio * tasa_impuestos(), 2)
+    ingresos_netos = precio - total_fee - impuestos
 
     if costo and costo > 0:
         ganancia   = ingresos_netos - costo
