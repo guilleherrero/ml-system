@@ -62,7 +62,7 @@ def sincronizar_espejo() -> int:
         if v['costo'] <= 0:
             continue
         nuevo[iid] = {'alias': (viejo.get(iid) or {}).get('alias', ''), 'titulo': v['titulo'],
-                      'costo': v['costo'], 'updated': v['vigente_desde']}
+                      'costo': v['costo'], 'updated': v['vigente_desde'], 'origen': v['origen']}
     db_save(ESPEJO, nuevo)
     return len(nuevo)
 

@@ -10,6 +10,8 @@
   .costo-cell:hover { background:var(--color-info-100); }
   .costo-inp { width:110px; font-size:.82rem; }
   .capital-badge { background:var(--color-info-100); color:var(--color-info-700); border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
+  .costo-china { background:#efe6ff; color:#6b21a8; border-radius:4px; padding:1px 6px; font-weight:600; }
+  .costo-china small { font-size:.66rem; opacity:.8; }
   .sin-costo-badge { background:var(--color-warning-100); color:var(--color-warning-700); border-radius:4px; padding:1px 7px; font-size:.72rem; font-weight:600; }
   .chk-col { width:28px; }
   .updated-dot { width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px; }
@@ -271,7 +273,9 @@
             </td>
             <td class="text-end costo-cell" onclick="editCostoInline(this,'{{ item.id }}','{{ item.titulo|replace("'","\\'") }}',{{ item.precio }},{{ item.costo if item.costo else 0 }})"
                 title="Clic para editar costo">
-              {% if item.costo %}
+              {% if item.costo and item.costo_origen == 'generador_china' %}
+                <span class="costo-china" title="Vino del Generador de pedidos China (precio + flete real, al blue del día que se envió)">${{ "{:,.0f}".format(item.costo) }} <small>China</small></span>
+              {% elif item.costo %}
                 <span class="text-success fw-semibold">${{ "{:,.0f}".format(item.costo) }}</span>
               {% else %}
                 <span class="sin-costo-badge"><i class="bi bi-pencil me-1"></i>Sin costo</span>
@@ -422,6 +426,15 @@
               El sistema calcula el margen real: <em>precio − comisión ML − envío − costo</em>.
             </div>
             <input type="text" id="costos-search" class="form-control form-control-sm" placeholder="Buscar..." style="width:200px" oninput="filterCostosModal()">
+          </div>
+
+          <div class="p-2 rounded mb-3 small" style="background:#efe6ff;border:1px solid #c4a5f5">
+            <strong style="color:#6b21a8">Generador de pedidos China:</strong> copiá esta clave y pegala la primera vez que toques
+            "Enviar costos a ML System" en el generador. Los costos que lleguen de ahí se ven en violeta.
+            <div class="input-group input-group-sm mt-1">
+              <input type="text" class="form-control" id="clave-generador" readonly value="{{ clave_generador }}">
+              <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('clave-generador').value);this.textContent='Copiada'">Copiar</button>
+            </div>
           </div>
 
           <!-- Bulk config -->

@@ -454,7 +454,7 @@ def require_login():
         return
     # La lee el capturador desde mercadolibre.com.ar (sin la cookie del sistema):
     # se protege con el token del bookmarklet dentro del endpoint.
-    if request.path.startswith('/api/mis-publicaciones-cors/') or request.path.startswith('/api/competidores-cors/'):
+    if request.path.startswith(('/api/mis-publicaciones-cors/', '/api/competidores-cors/', '/api/costos-generador/')):
         return
     # Auto-actualizar datos si no corrió hoy (resuelve el problema de Render durmiendo)
     if request.path not in _AUTH_EXEMPT and not request.path.startswith('/static'):
@@ -1990,6 +1990,7 @@ def stock(alias):
 
             items.append({**raw,
                 'costo':          costo,
+                'costo_origen':   costo_entry.get('origen') if costo_entry else None,
                 'capital':        capital,
                 'fee_rate':       fee_rate,
                 'fee_source':     fee_source,
@@ -2090,7 +2091,8 @@ def stock(alias):
     except Exception:
         pass
 
-    return render_template('stock.html', alias=alias, items=items,
+    clave_generador = f"{request.url_root.rstrip('/')}|{alias}|{_token_bookmarklet(alias)}"
+    return render_template('stock.html', alias=alias, items=items, clave_generador=clave_generador,
                            fecha=(data or {}).get('fecha'),
                            sin_costo=sin_costo, capital_total=capital_total,
                            seller_metrics=seller_metrics,
@@ -3058,6 +3060,46 @@ def api_costos_save():
         return jsonify(resp)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+
+
+@app.route('/api/costos-generador/<alias>', methods=['POST', 'OPTIONS'])
+def api_costos_generador(alias):
+    """Recibe los costos del Generador de pedidos China (otra web, sin la
+    sesión del sistema): va con CORS y se protege con el token del botón.
+    Body: {blue, items: [{mla, costo_usd, titulo}]}. Se guarda en pesos al
+    blue que manda el generador, marcado origen 'generador_china'."""
+    def cors(resp, status=200):
+        resp = make_response(resp, status)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Cerebro-Token'
+        return resp
+    if request.method == 'OPTIONS':
+        return cors('', 204)
+    if not _token_bookmarklet_ok(alias, request.headers.get('X-Cerebro-Token')):
+        return cors(jsonify({'ok': False, 'error': 'Clave inválida: copiala de nuevo desde ML System'}), 403)
+    body = request.get_json(silent=True) or {}
+    try:
+        blue = float(body.get('blue') or 0)
+    except (TypeError, ValueError):
+        blue = 0
+    if not 100 <= blue <= 100000:
+        return cors(jsonify({'ok': False, 'error': f'Dólar blue inválido: {body.get("blue")!r}'}), 400)
+    from modules import costos as _costos
+    guardados, rechazados = 0, []
+    for it in body.get('items') or []:
+        mla = str(it.get('mla') or '').strip().upper()
+        try:
+            usd = float(it.get('costo_usd') or 0)
+        except (TypeError, ValueError):
+            usd = 0
+        if not re.fullmatch(r'MLA\d+', mla) or usd <= 0:
+            rechazados.append(mla or '(sin MLA)')
+            continue
+        _costos.guardar(mla, round(usd * blue, 2), titulo=str(it.get('titulo') or '')[:300],
+                        alias=alias, origen='generador_china')
+        guardados += 1
+    return cors(jsonify({'ok': True, 'guardados': guardados, 'rechazados': rechazados}))
 
 
 @app.route('/costos/wizard')
