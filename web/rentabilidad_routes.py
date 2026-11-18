@@ -60,6 +60,8 @@ def _pago_mp(token, pago_id):
                        'monto': _f(t.get('amount'))}
                       for t in (p.get('taxes_amount_details') or p.get('taxes') or [])],
         'estado': p.get('status'),
+        'cargos': [{'tipo': c.get('type'), 'nombre': c.get('name'), 'monto': _f((c.get('amounts') or {}).get('original'))}
+                   for c in (p.get('charges_details') or []) if c.get('type') == 'tax'],
     }
 
 
