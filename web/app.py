@@ -3102,6 +3102,43 @@ def api_costos_generador(alias):
     return cors(jsonify({'ok': True, 'guardados': guardados, 'rechazados': rechazados}))
 
 
+@app.route('/api/costos-generador/<alias>/publicaciones', methods=['GET', 'OPTIONS'])
+def api_costos_generador_publicaciones(alias):
+    """Lista de publicaciones (título, foto, stock) para que el Generador de
+    pedidos China elija a cuál va cada producto. Mismo CORS y token que el envío."""
+    def cors(resp, status=200):
+        resp = make_response(resp, status)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'X-Cerebro-Token'
+        return resp
+    if request.method == 'OPTIONS':
+        return cors('', 204)
+    if not _token_bookmarklet_ok(alias, request.headers.get('X-Cerebro-Token')):
+        return cors(jsonify({'ok': False, 'error': 'Clave inválida: copiala de nuevo desde ML System'}), 403)
+    items = (load_json(os.path.join(DATA_DIR, f'stock_{safe(alias)}.json')) or {}).get('items', [])
+    pubs = [{'id': it.get('id', ''), 'titulo': it.get('titulo', ''), 'stock': it.get('stock', 0),
+             'precio': it.get('precio', 0), 'up': it.get('user_product_id') or '', 'foto': ''} for it in items]
+    try:
+        from core.account_manager import AccountManager
+        client = AccountManager().get_client(alias)
+        client._ensure_token()
+        heads = {'Authorization': f'Bearer {client.account.access_token}'}
+        por_id = {p['id']: p for p in pubs}
+        ids = list(por_id)
+        for i in range(0, len(ids), 20):
+            r = req_lib.get('https://api.mercadolibre.com/items', headers=heads, timeout=10,
+                            params={'ids': ','.join(ids[i:i + 20]), 'attributes': 'id,thumbnail'})
+            if r.ok:
+                for d in r.json():
+                    b = d.get('body') or {}
+                    if b.get('id') in por_id:
+                        por_id[b['id']]['foto'] = (b.get('thumbnail') or '').replace('http://', 'https://')
+    except Exception as e:
+        app.logger.warning('[costos-generador] sin fotos: %s', e)  # la lista sirve igual sin fotos
+    return cors(jsonify({'ok': True, 'publicaciones': pubs}))
+
+
 @app.route('/costos/wizard')
 def costos_wizard_page():
     """Wizard de carga de costos para los top 10 productos por facturación.
