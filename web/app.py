@@ -3139,6 +3139,38 @@ def api_costos_generador_publicaciones(alias):
     return cors(jsonify({'ok': True, 'publicaciones': pubs}))
 
 
+@app.route('/api/costos-generador/<alias>/mapa', methods=['GET', 'POST', 'OPTIONS'])
+def api_costos_generador_mapa(alias):
+    """Qué publicaciones van con cada producto del Generador China. Vive acá y no
+    en el navegador del generador, para no perderlo ni tener que restaurar backups.
+    GET → {mapa: {clave: "MLA1, MLA2"}}; POST {clave, mla} → guarda una."""
+    def cors(resp, status=200):
+        resp = make_response(resp, status)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Cerebro-Token'
+        return resp
+    if request.method == 'OPTIONS':
+        return cors('', 204)
+    if not _token_bookmarklet_ok(alias, request.headers.get('X-Cerebro-Token')):
+        return cors(jsonify({'ok': False, 'error': 'Clave inválida: copiala de nuevo desde ML System'}), 403)
+    from core.db_storage import db_load, db_save
+    ruta = os.path.join(DATA_DIR, f'generador_mla_{safe(alias)}.json')
+    mapa = db_load(ruta) or {}
+    if request.method == 'POST':
+        body = request.get_json(silent=True) or {}
+        clave = str(body.get('clave') or '').strip()[:300]
+        mlas = ', '.join(re.findall(r'MLA\d+', str(body.get('mla') or '').upper()))
+        if not clave:
+            return cors(jsonify({'ok': False, 'error': 'Falta el producto'}), 400)
+        if mlas:
+            mapa[clave] = mlas
+        else:
+            mapa.pop(clave, None)
+        db_save(ruta, mapa)
+    return cors(jsonify({'ok': True, 'mapa': mapa}))
+
+
 @app.route('/costos/wizard')
 def costos_wizard_page():
     """Wizard de carga de costos para los top 10 productos por facturación.
