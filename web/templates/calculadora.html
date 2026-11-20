@@ -114,7 +114,7 @@
 {% block scripts %}
 <script>
 const $ = id => document.getElementById(id);
-const pesos = n => '$' + Math.round(n).toLocaleString('es-AR');
+const pesos = n => (Math.round(n) < 0 ? '−$' : '$') + Math.abs(Math.round(n)).toLocaleString('es-AR');
 const pct = n => (Math.round(n * 10) / 10).toLocaleString('es-AR') + '%';
 let D = null, CAT = null;
 
