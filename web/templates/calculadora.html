@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% set tema_listo = true %}
+{% block title %} — Calculadora{% endblock %}
+{% block content %}
+<style>
+.cz-card { background:var(--color-neutral-0); border:1px solid var(--color-neutral-200); border-radius:12px; margin-bottom:.85rem; }
+.cz-h { background:var(--color-neutral-50); border-bottom:1px solid var(--color-neutral-100); padding:.55rem 1rem; border-radius:12px 12px 0 0;
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--color-neutral-700); }
+.cz-b { padding:.9rem 1rem; }
+.cz-l { font-size:.66rem; text-transform:uppercase; letter-spacing:.04em; color:var(--color-neutral-500); margin-bottom:.15rem; }
+.cz-cats { max-height:220px; overflow:auto; }
+.cz-cats div { padding:.3rem .5rem; cursor:pointer; font-size:.82rem; border-bottom:1px solid var(--color-neutral-100); }
+.cz-cats div:hover { background:var(--color-info-100); }
+.cz-energia { display:flex; align-items:center; gap:.75rem; padding:.75rem; border-radius:12px; background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); user-select:none; }
+.cz-energia button { width:44px; height:44px; border-radius:10px; font-size:1.3rem; font-weight:700; }
+.cz-energia input[type=range] { flex:1; accent-color:var(--color-success-700); height:28px; }
+.cz-pct { font-size:2rem; font-weight:800; min-width:6.5rem; text-align:center; font-variant-numeric:tabular-nums; }
+.cz-big { font-size:1.9rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.cz-res { border-radius:10px; padding:.6rem .8rem; background:var(--color-neutral-50); border:1px solid var(--color-neutral-200); height:100%; }
+.cz-t th, .cz-t td { font-size:.8rem; vertical-align:middle; font-variant-numeric:tabular-nums; }
+.cz-t tr.sel td { background:var(--color-success-100); font-weight:600; }
+.cz-in { max-width:110px; }
+.cz-ok { color:var(--color-success-700); } .cz-bad { color:var(--color-critical-700); }
+</style>
+
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Calculadora</h5>
+    <div class="text-muted" style="font-size:.8rem">Precio de venta según tu costo y el margen que querés. Comisiones, cargo fijo y envío salen en vivo de MercadoLibre para la categoría.</div>
+  </div>
+  <select class="form-select form-select-sm" id="czAlias" style="max-width:220px" onchange="document.cookie='ml_cuenta='+encodeURIComponent(this.value)+';path=/';traer()">
+    {% for acc in cuentas_menu %}<option value="{{ acc.alias }}" {% if acc.alias == alias %}selected{% endif %}>{{ acc.alias }}</option>{% endfor %}
+  </select>
+</div>
+
+<div class="row g-3">
+ <div class="col-lg-5">
+  <div class="cz-card"><div class="cz-h">1 · Producto</div><div class="cz-b">
+    <div class="cz-l">Categoría de MercadoLibre</div>
+    <input id="czQ" class="form-control form-control-sm" placeholder="Escribí qué es (ej: cortador de puntas, faja reductora)" autocomplete="off">
+    <div id="czCats" class="cz-cats"></div>
+    <div id="czCat" class="mt-1" style="font-size:.82rem"></div>
+    <div class="row g-2 mt-1">
+      <div class="col-3"><div class="cz-l">Peso (g)</div><input id="czPeso" type="number" class="form-control form-control-sm" value="500" min="1"></div>
+      <div class="col-3"><div class="cz-l">Largo cm</div><input id="czLargo" type="number" class="form-control form-control-sm" value="20" min="1"></div>
+      <div class="col-3"><div class="cz-l">Ancho cm</div><input id="czAncho" type="number" class="form-control form-control-sm" value="15" min="1"></div>
+      <div class="col-3"><div class="cz-l">Alto cm</div><input id="czAlto" type="number" class="form-control form-control-sm" value="10" min="1"></div>
+    </div>
+    <div id="czEstado" class="mt-2" style="font-size:.78rem"></div>
+  </div></div>
+
+  <div class="cz-card"><div class="cz-h">2 · Precios</div><div class="cz-b">
+    <div class="row g-2">
+      <div class="col-6"><div class="cz-l">Costo del producto $</div><input id="czCosto" type="number" class="form-control" placeholder="ej: 14110" min="0"></div>
+      <div class="col-6"><div class="cz-l">Competidor más barato $</div><input id="czComp" type="number" class="form-control" placeholder="opcional" min="0"></div>
+      <div class="col-6"><div class="cz-l">Modalidad</div><select id="czMod" class="form-select form-select-sm"></select></div>
+      <div class="col-6"><div class="cz-l">Envío</div><select id="czEnv" class="form-select form-select-sm"></select></div>
+    </div>
+  </div></div>
+ </div>
+
+ <div class="col-lg-7">
+  <div class="cz-card"><div class="cz-h">3 · Margen deseado</div><div class="cz-b">
+    <div class="cz-energia" id="czEnergia" title="Usá la ruedita del mouse, arrastrá o tocá − / +">
+      <button class="btn btn-outline-secondary" onclick="mover(-1)">−</button>
+      <input id="czMargen" type="range" min="0" max="80" step="0.5" value="30">
+      <button class="btn btn-outline-secondary" onclick="mover(1)">+</button>
+      <div class="cz-pct" id="czPct">30%</div>
+    </div>
+    <div class="row g-2 mt-2">
+      <div class="col-sm-4"><div class="cz-res"><div class="cz-l">Precio de venta sugerido</div><div class="cz-big" id="czPrecio">—</div></div></div>
+      <div class="col-sm-4"><div class="cz-res"><div class="cz-l">ROI sobre el costo</div><div class="cz-big" id="czRoi">—</div></div></div>
+      <div class="col-sm-4"><div class="cz-res"><div class="cz-l">Ganancia por venta</div><div class="cz-big" id="czGan">—</div></div></div>
+    </div>
+    <div id="czVsComp" class="mt-2" style="font-size:.85rem"></div>
+    <table class="table table-sm cz-t mt-2 mb-0"><tbody id="czDesglose"></tbody></table>
+  </div></div>
+
+  <div class="cz-card"><div class="cz-h">Todas las modalidades con este margen</div><div class="cz-b p-0">
+    <table class="table table-sm cz-t mb-0"><thead><tr><th class="ps-3">Modalidad</th><th>Comisión</th><th>Cuotas</th><th>Precio</th><th>Ganancia</th><th>ROI</th></tr></thead>
+    <tbody id="czTodas"><tr><td colspan="6" class="ps-3 text-muted">Elegí una categoría.</td></tr></tbody></table>
+  </div></div>
+ </div>
+</div>
+
+<div class="cz-card"><div class="cz-h d-flex justify-content-between align-items-center">
+  <span>Cargos que usa la cuenta (precargados de MercadoLibre · podés cambiarlos)</span>
+  <button class="btn btn-sm btn-outline-secondary py-0" onclick="pintarCargos(D)">Volver a los de ML</button></div><div class="cz-b">
+  <div class="row g-3">
+    <div class="col-md-3">
+      <div class="cz-l">Impuestos por venta</div>
+      <div class="input-group input-group-sm mb-1"><span class="input-group-text">IIBB</span><input id="cIibb" type="number" step="0.1" class="form-control"><span class="input-group-text">%</span></div>
+      <div class="input-group input-group-sm mb-1"><span class="input-group-text">Percep. IVA</span><input id="cIva" type="number" step="0.1" class="form-control"><span class="input-group-text">%</span></div>
+      <div id="cImpOrigen" class="text-muted" style="font-size:.7rem"></div>
+    </div>
+    <div class="col-md-4">
+      <div class="cz-l">Comisión y cuotas por modalidad (%)</div>
+      <table class="table table-sm cz-t mb-0"><tbody id="cMods"></tbody></table>
+    </div>
+    <div class="col-md-2">
+      <div class="cz-l">Cargo fijo por venta</div>
+      <table class="table table-sm cz-t mb-0"><tbody id="cFijos"></tbody></table>
+    </div>
+    <div class="col-md-3">
+      <div class="cz-l">Envío que pagás (según peso)</div>
+      <div id="cEnvios"></div>
+      <div class="input-group input-group-sm mt-1"><span class="input-group-text">Gratis desde $</span><input id="cUmbral" type="number" class="form-control"></div>
+      <div class="form-check mt-1" style="font-size:.78rem"><input class="form-check-input" type="checkbox" id="cBajo"><label class="form-check-label" for="cBajo">También pago el envío por debajo de ese precio</label></div>
+    </div>
+  </div>
+</div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = id => document.getElementById(id);
+const pesos = n => '$' + Math.round(n).toLocaleString('es-AR');
+const pct = n => (Math.round(n * 10) / 10).toLocaleString('es-AR') + '%';
+let D = null, CAT = null;
+
+// ── Categoría ──
+let tq;
+$('czQ').oninput = () => { clearTimeout(tq); tq = setTimeout(async () => {
+  const j = await (await fetch('/calculadora/api/categorias?q=' + encodeURIComponent($('czQ').value))).json();
+  $('czCats').innerHTML = (j.categorias || []).map(c => `<div data-id="${c.id}">${c.nombre.replace(/</g, '&lt;')}</div>`).join('');
+}, 350); };
+$('czCats').onclick = e => { const d = e.target.closest('[data-id]'); if (!d) return;
+  CAT = { id: d.dataset.id, nombre: d.textContent }; $('czCats').innerHTML = ''; $('czQ').value = '';
+  $('czCat').innerHTML = `<b>${CAT.nombre}</b> <span class="text-muted">${CAT.id}</span>`; traer(); };
+['czPeso', 'czLargo', 'czAncho', 'czAlto'].forEach(id => $(id).onchange = traer);
+
+async function traer() {
+  if (!CAT) return;
+  $('czEstado').innerHTML = '<span class="text-muted">Trayendo cargos de MercadoLibre… (la primera vez de cada categoría tarda unos segundos)</span>';
+  const q = new URLSearchParams({ alias: $('czAlias').value, category_id: CAT.id, peso: $('czPeso').value,
+    largo: $('czLargo').value, ancho: $('czAncho').value, alto: $('czAlto').value });
+  try {
+    const j = await (await fetch('/calculadora/api/datos?' + q)).json();
+    if (!j.ok) { $('czEstado').innerHTML = `<span class="cz-bad">${j.error}</span>`; return; }
+    D = j; pintarCargos(D);
+    $('czEstado').innerHTML = '<span class="cz-ok">✓ Cargos reales de MercadoLibre para esta categoría y este paquete.</span>';
+  } catch (e) { $('czEstado').innerHTML = `<span class="cz-bad">No se pudo conectar: ${e.message}</span>`; }
+}
+
+// ── Panel de cargos (editable) ──
+function pintarCargos(d) {
+  if (!d) return;
+  $('cIibb').value = d.iibb; $('cIva').value = d.percepcion_iva; $('cImpOrigen').textContent = d.origen_impuestos;
+  $('cMods').innerHTML = d.modalidades.map((m, i) => `<tr><td>${m.nombre}</td>
+    <td><input data-i="${i}" data-k="comision" type="number" step="0.1" class="form-control form-control-sm cz-in" value="${m.comision}"></td>
+    <td><input data-i="${i}" data-k="cuotas" type="number" step="0.1" class="form-control form-control-sm cz-in" value="${m.cuotas}"></td></tr>`).join('');
+  $('cFijos').innerHTML = d.tramos_fijo.map((t, i) => `<tr><td style="white-space:nowrap">desde ${pesos(t.desde)}</td>
+    <td><input data-t="${i}" type="number" class="form-control form-control-sm cz-in" value="${t.valor}"></td></tr>`).join('');
+  $('cEnvios').innerHTML = d.envios.map((e, i) => `<div style="font-size:.78rem;font-weight:600">${e.nombre}</div>` + (e.tramos.length ? e.tramos.map((t, j) => t.valor ?
+    `<div class="input-group input-group-sm mb-1"><span class="input-group-text" style="width:130px">desde ${pesos(t.desde)}</span>
+    <input data-e="${i}" data-j="${j}" type="number" class="form-control" value="${t.valor}"></div>` : '').join('') : '<div class="cz-bad" style="font-size:.75rem">ML no devolvió el costo</div>')).join('');
+  $('cUmbral').value = d.umbral; $('cBajo').checked = !!d.envio_bajo_umbral;
+  const mSel = $('czMod').value, eSel = $('czEnv').value;
+  $('czMod').innerHTML = d.modalidades.map((m, i) => `<option value="${i}">${m.nombre}</option>`).join('');
+  $('czEnv').innerHTML = d.envios.map((e, i) => `<option value="${i}">${e.nombre}</option>`).join('');
+  if (mSel) $('czMod').value = mSel; if (eSel) $('czEnv').value = eSel;
+  calcular();
+}
+document.addEventListener('input', e => { if (e.target.closest('.cz-card') && e.target.id !== 'czQ') calcular(); });
+
+function leerCargos() {
+  const num = el => parseFloat(el.value) || 0;
+  return {
+    imp: num($('cIibb')) + num($('cIva')),
+    mods: D.modalidades.map((m, i) => ({ nombre: m.nombre,
+      comision: num(document.querySelector(`[data-i="${i}"][data-k="comision"]`)),
+      cuotas: num(document.querySelector(`[data-i="${i}"][data-k="cuotas"]`)) })),
+    tramos: D.tramos_fijo.map((t, i) => ({ desde: t.desde, valor: num(document.querySelector(`[data-t="${i}"]`)) })),
+    envios: D.envios.map((e, i) => e.tramos.map((t, j) => { const el = document.querySelector(`[data-e="${i}"][data-j="${j}"]`);
+      return { desde: t.desde, valor: el ? num(el) : t.valor }; })),
+    umbral: num($('cUmbral')), bajo: $('cBajo').checked,
+  };
+}
+
+// ── Cuentas ──
+const valorEn = (tr, P) => (tr.filter(t => t.desde <= P).pop() || { valor: 0 }).valor;
+// envío: tramos de ML por precio; por debajo del "gratis desde" lo paga el comprador salvo que marques lo contrario
+function costoEnvio(P, C, envio) {
+  const primero = (envio.find(t => t.valor) || { valor: 0 }).valor;
+  if (P < C.umbral) return C.bajo ? (valorEn(envio, C.umbral) || primero) : 0;
+  return valorEn(envio, P) || primero;
+}
+function cuenta(P, costo, mod, C, envio) {
+  const fijo = valorEn(C.tramos, P);
+  const env = costoEnvio(P, C, envio);
+  const comision = P * mod.comision / 100, cuotas = P * mod.cuotas / 100, imp = P * C.imp / 100;
+  const gan = P - comision - cuotas - imp - fijo - env - costo;
+  return { P, comision, cuotas, imp, fijo, env, gan, margen: gan / P * 100, roi: costo ? gan / costo * 100 : null };
+}
+function precioPara(m, costo, mod, C, envio) {
+  const r = (mod.comision + mod.cuotas + C.imp + m) / 100;
+  if (r >= 1) return null;
+  const cortes = [...new Set([0, ...C.tramos.map(t => t.desde), ...envio.map(t => t.desde), C.umbral])].sort((a, b) => a - b);
+  let mejor = null;
+  cortes.forEach((lo, i) => {
+    const hi = cortes[i + 1] ?? Infinity, base = cuenta(Math.max(lo, 1), 0, mod, C, envio);
+    const P = Math.ceil((costo + base.fijo + base.env) / (1 - r));
+    if (P >= lo && P < hi) mejor = Math.min(mejor ?? P, P);
+    else if (lo > 0 && cuenta(lo, costo, mod, C, envio).margen >= m) mejor = Math.min(mejor ?? lo, lo);
+  });
+  return mejor;
+}
+
+function calcular() {
+  const m = parseFloat($('czMargen').value); $('czPct').textContent = pct(m);
+  if (!D) return;
+  const C = leerCargos(), costo = parseFloat($('czCosto').value) || 0, comp = parseFloat($('czComp').value) || 0;
+  const iMod = +$('czMod').value || 0, envio = C.envios[+$('czEnv').value || 0];
+  const fila = (mod) => { const P = precioPara(m, costo, mod, C, envio); return P && cuenta(P, costo, mod, C, envio); };
+  $('czTodas').innerHTML = C.mods.map((mod, i) => { const x = costo && fila(mod);
+    return `<tr class="${i === iMod ? 'sel' : ''}"><td class="ps-3">${mod.nombre}</td><td>${pct(mod.comision)}</td><td>${pct(mod.cuotas)}</td>
+      <td>${x ? pesos(x.P) : '—'}</td><td>${x ? pesos(x.gan) : '—'}</td><td>${x && x.roi != null ? pct(x.roi) : '—'}</td></tr>`; }).join('');
+  const x = costo ? fila(C.mods[iMod]) : null;
+  $('czPrecio').textContent = x ? pesos(x.P) : (costo ? 'Imposible' : '—');
+  $('czRoi').textContent = x ? pct(x.roi) : '—';
+  $('czGan').textContent = x ? pesos(x.gan) : '—';
+  $('czDesglose').innerHTML = x ? [
+    ['Precio de venta', x.P], [`Comisión ${pct(C.mods[iMod].comision)}`, -x.comision], [`Cuotas ${pct(C.mods[iMod].cuotas)}`, -x.cuotas],
+    [`Impuestos ${pct(C.imp)}`, -x.imp], ['Cargo fijo', -x.fijo], [x.env ? 'Envío' : 'Envío (lo paga el comprador)', -x.env],
+    ['Costo del producto', -costo], ['Ganancia', x.gan]].map(([k, v], i, a) =>
+      `<tr${i === a.length - 1 ? ' style="font-weight:700"' : ''}><td>${k}</td><td class="text-end">${pesos(v)}</td></tr>`).join('') : '';
+  if (x && comp) {
+    const c = cuenta(comp, costo, C.mods[iMod], C, envio), dif = (x.P / comp - 1) * 100;
+    $('czVsComp').innerHTML = `Sugerido ${dif <= 0 ? '<span class="cz-ok">' + pct(-dif) + ' más barato</span>' : '<span class="cz-bad">' + pct(dif) + ' más caro</span>'} que el competidor.
+      Al precio del competidor (${pesos(comp)}): margen <b class="${c.margen >= 0 ? 'cz-ok' : 'cz-bad'}">${pct(c.margen)}</b>, ROI <b>${c.roi != null ? pct(c.roi) : '—'}</b>, ganancia <b>${pesos(c.gan)}</b>.`;
+  } else $('czVsComp').innerHTML = '';
+}
+
+// ── Panel de energía: ruedita, arrastre, − / + ──
+function mover(d) { const r = $('czMargen'); r.value = Math.min(80, Math.max(0, parseFloat(r.value) + d * 0.5)); calcular(); }
+$('czEnergia').addEventListener('wheel', e => { e.preventDefault(); mover(e.deltaY < 0 ? 1 : -1); }, { passive: false });
+calcular();
+</script>
+{% endblock %}
