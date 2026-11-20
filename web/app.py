@@ -9362,9 +9362,9 @@ def api_pricing_config_put():
             row.envio             = _num('envio', 5000)
             row.umbral_envio      = _num('umbral_envio', 33000)
             row.envio_bajo_umbral = bool(cargos.get('envio_bajo_umbral', False))
-            row.fijo_menos_15k    = _num('fijo_menos_15k', 1115)
-            row.fijo_15k_25k      = _num('fijo_15k_25k', 2300)
-            row.fijo_25k_umbral   = _num('fijo_25k_umbral', 2810)
+            row.fijo_menos_15k    = _num('fijo_menos_15k', 1330)
+            row.fijo_15k_25k      = _num('fijo_15k_25k', 2740)
+            row.fijo_25k_umbral   = _num('fijo_25k_umbral', 3320)
             row.redondeo          = bool(cargos.get('redondeo', True))
             row.perfiles          = perfiles
     except (TypeError, ValueError):
@@ -10189,8 +10189,8 @@ def api_pricing_ganancia_a_precio():
         iibb=_num('iibb', 3.0), percepcion_iva=_num('percepcion_iva', 7.0),
         envio=_num('envio', 5000), umbral_envio=_num('umbral_envio', 33000),
         envio_bajo_umbral=request.args.get('envio_bajo_umbral') == 'true',
-        fijo_menos_15k=_num('fijo_menos_15k', 1115), fijo_15k_25k=_num('fijo_15k_25k', 2300),
-        fijo_25k_umbral=_num('fijo_25k_umbral', 2810),
+        fijo_menos_15k=_num('fijo_menos_15k', 1330), fijo_15k_25k=_num('fijo_15k_25k', 2740),
+        fijo_25k_umbral=_num('fijo_25k_umbral', 3320),
     )
     ganancia = pm.ganancia_publicacion(precio, pub, c, costo)
     return jsonify({'ok': True, 'ganancia_venta': round(ganancia, 2)})

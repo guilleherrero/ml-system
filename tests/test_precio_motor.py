@@ -319,7 +319,7 @@ class TestEstrategiaTresPublicaciones(unittest.TestCase):
         self.assertGreater(por_precio[32999]["ganancia_venta"],
                            por_precio[34999]["ganancia_venta"])
         self.assertAlmostEqual(por_precio[34999]["ganancia_venta"], 5549.27, places=1)
-        self.assertAlmostEqual(por_precio[32999]["ganancia_venta"], 6279.27, places=1)
+        self.assertAlmostEqual(por_precio[32999]["ganancia_venta"], 5769.27, places=1)
 
 
 class TestEstrategiaBordes(unittest.TestCase):
@@ -370,6 +370,8 @@ class TestEstrategiaBordes(unittest.TestCase):
         self.assertEqual(pm.cargo_fijo(10000, c), c.fijo_menos_15k)
         self.assertEqual(pm.cargo_fijo(20000, c), c.fijo_15k_25k)
         self.assertEqual(pm.cargo_fijo(30000, c), c.fijo_25k_umbral)
+        self.assertEqual(pm.cargo_fijo(24000, c), 3320)  # corte real ML en 24000
+        self.assertEqual(pm.cargo_fijo(999, c), 0)
         # Por encima del umbral: se paga envio, no cargo fijo
         self.assertEqual(pm.cargo_fijo(40000, c), c.envio)
 

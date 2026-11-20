@@ -95,6 +95,14 @@ def _ensure_columns():
             print('[db] Columna item_ids_trio agregada a pricing_config.')
     except Exception as e:
         print(f'[db] ERROR agregando columna item_ids_trio (no bloquea el boot): {e}')
+    try:  # cargo fijo ML 20/11/2026: solo pisa filas que siguen con los valores viejos de fábrica
+        with engine.begin() as conn:
+            n = conn.execute(text('UPDATE pricing_config SET fijo_menos_15k=1330, fijo_15k_25k=2740, fijo_25k_umbral=3320 '
+                                  'WHERE fijo_menos_15k=1115 AND fijo_15k_25k=2300 AND fijo_25k_umbral=2810')).rowcount
+        if n:
+            print(f'[db] Cargo fijo actualizado a tarifas ML 20/11/2026 en {n} filas de pricing_config.')
+    except Exception as e:
+        print(f'[db] ERROR actualizando cargo fijo (no bloquea el boot): {e}')
 
 
 def init_db():

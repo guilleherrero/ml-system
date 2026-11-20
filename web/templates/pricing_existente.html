@@ -236,15 +236,15 @@
               <div class="row g-2 mb-2">
                 <div class="col-4">
                   <label class="pc-etiqueta d-block">Fijo &lt; $15.000</label>
-                  <input type="number" step="0.01" class="form-control form-control-sm" id="peFijo15" value="1115">
+                  <input type="number" step="0.01" class="form-control form-control-sm" id="peFijo15" value="1330">
                 </div>
                 <div class="col-4">
-                  <label class="pc-etiqueta d-block">Fijo $15-25k</label>
-                  <input type="number" step="0.01" class="form-control form-control-sm" id="peFijo25" value="2300">
+                  <label class="pc-etiqueta d-block">Fijo $15-24k</label>
+                  <input type="number" step="0.01" class="form-control form-control-sm" id="peFijo25" value="2740">
                 </div>
                 <div class="col-4">
-                  <label class="pc-etiqueta d-block">Fijo $25k-umbral</label>
-                  <input type="number" step="0.01" class="form-control form-control-sm" id="peFijoUmbral" value="2810">
+                  <label class="pc-etiqueta d-block">Fijo $24k-umbral</label>
+                  <input type="number" step="0.01" class="form-control form-control-sm" id="peFijoUmbral" value="3320">
                 </div>
               </div>
               <div class="form-check form-check-inline">
@@ -455,9 +455,9 @@ document.getElementById('peItem').addEventListener('change', function () {
     document.getElementById('pePercepcion').value = c.percepcion_iva ?? 7;
     document.getElementById('peEnvio').value = c.envio ?? 5000;
     document.getElementById('peUmbral').value = c.umbral_envio ?? 33000;
-    document.getElementById('peFijo15').value = c.fijo_menos_15k ?? 1115;
-    document.getElementById('peFijo25').value = c.fijo_15k_25k ?? 2300;
-    document.getElementById('peFijoUmbral').value = c.fijo_25k_umbral ?? 2810;
+    document.getElementById('peFijo15').value = c.fijo_menos_15k ?? 1330;
+    document.getElementById('peFijo25').value = c.fijo_15k_25k ?? 2740;
+    document.getElementById('peFijoUmbral').value = c.fijo_25k_umbral ?? 3320;
     document.getElementById('peEnvioBajoUmbral').checked = !!c.envio_bajo_umbral;
     document.getElementById('peRedondeo').checked = c.redondeo !== false;
 

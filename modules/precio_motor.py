@@ -510,9 +510,10 @@ class Cargos:
     envio: float = 5000.0           # $ por venta cuando corresponde
     umbral_envio: float = 33000.0   # $ desde donde el envio lo paga el vendedor
     envio_bajo_umbral: bool = False
-    fijo_menos_15k: float = 1115.0
-    fijo_15k_25k: float = 2300.0
-    fijo_25k_umbral: float = 2810.0
+    # cargo fijo ML verificado 20/11/2026 (listing_prices): $0 <1000, cortes en 15000 y 24000
+    fijo_menos_15k: float = 1330.0
+    fijo_15k_25k: float = 2740.0
+    fijo_25k_umbral: float = 3320.0
     redondeo: bool = True           # precios terminados en 999
 
 
@@ -552,8 +553,9 @@ def cargo_fijo(precio: float, c: Cargos) -> float:
     if precio >= c.umbral_envio or c.envio_bajo_umbral:
         f += c.envio
     if precio < c.umbral_envio:
-        if precio < 15000:   f += c.fijo_menos_15k
-        elif precio < 25000: f += c.fijo_15k_25k
+        if precio < 1000:    pass
+        elif precio < 15000: f += c.fijo_menos_15k
+        elif precio < 24000: f += c.fijo_15k_25k
         else:                f += c.fijo_25k_umbral
     return f
 
@@ -576,12 +578,7 @@ def desglose_costos(precio: float, pub: Publicacion, c: Cargos, costo: float) ->
     paga_envio = precio >= c.umbral_envio or c.envio_bajo_umbral
     envio_monto = round(c.envio, 2) if paga_envio else 0.0
 
-    if precio < c.umbral_envio:
-        if precio < 15000:   fijo_monto = round(c.fijo_menos_15k, 2)
-        elif precio < 25000: fijo_monto = round(c.fijo_15k_25k, 2)
-        else:                fijo_monto = round(c.fijo_25k_umbral, 2)
-    else:
-        fijo_monto = 0.0
+    fijo_monto = round(cargo_fijo(precio, c) - (c.envio if paga_envio else 0.0), 2)  # mismos tramos que cargo_fijo
 
     ganancia = round(precio - comision_monto - cuotas_monto - iibb_monto
                      - percepcion_monto - envio_monto - fijo_monto - costo, 2)

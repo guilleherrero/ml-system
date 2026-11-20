@@ -39,9 +39,9 @@ class PricingConfig(Base):
     envio             = Column(Numeric(12, 2), nullable=False, default=5000)
     umbral_envio      = Column(Numeric(12, 2), nullable=False, default=33000)
     envio_bajo_umbral = Column(Boolean, nullable=False, default=False)
-    fijo_menos_15k    = Column(Numeric(12, 2), nullable=False, default=1115)
-    fijo_15k_25k      = Column(Numeric(12, 2), nullable=False, default=2300)
-    fijo_25k_umbral   = Column(Numeric(12, 2), nullable=False, default=2810)
+    fijo_menos_15k    = Column(Numeric(12, 2), nullable=False, default=1330)
+    fijo_15k_25k      = Column(Numeric(12, 2), nullable=False, default=2740)
+    fijo_25k_umbral   = Column(Numeric(12, 2), nullable=False, default=3320)
     redondeo          = Column(Boolean, nullable=False, default=True)
 
     # Lista de 3 perfiles: [{"nombre","comision","costo_cuotas",...}, ...]
